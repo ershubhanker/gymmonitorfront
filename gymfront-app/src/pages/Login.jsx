@@ -45,7 +45,7 @@ const Login = () => {
               <Dumbbell className="h-12 w-12 text-white" />
             </div>
           </div>
-          <h2 className="mt-6 text-3xl font-extrabold text-gray-900">Welcome back!</h2>
+          <h2 className="mt-6 text-3xl font-extrabold text-gray-900">Welcome back!23</h2>
           
         </div>
 
