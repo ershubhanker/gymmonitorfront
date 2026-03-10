@@ -5,9 +5,9 @@ import api from '../services/api';
 
 const AuthContext = createContext();
 
-// const API_BASE_URL = 'http://103.86.176.220:8000';
+const API_BASE_URL = 'http://103.86.176.220:8001';
 
-const API_BASE_URL = 'http://localhost:8000';
+// const API_BASE_URL = 'http://localhost:8000';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
