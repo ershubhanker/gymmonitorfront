@@ -1,9 +1,9 @@
 import axios from 'axios';
 import toast from 'react-hot-toast'; // ✅ FIX: was missing — caused interceptor crash → redirect to /login
 
-const API_BASE_URL = 'http://103.86.176.220:8000';
+// const API_BASE_URL = 'http://103.86.176.220:8000';
 
-// const API_BASE_URL = 'http://localhost:8000'; // for local host
+const API_BASE_URL = 'http://localhost:8000'; // for local host
 
 const api = axios.create({
   baseURL: API_BASE_URL,
