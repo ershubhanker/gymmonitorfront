@@ -1,0 +1,973 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  X, User, Phone, Heart, FileText, Camera, Plus, CheckCircle,
+  Calendar, CreditCard, AlertCircle, ChevronRight, Loader2, RefreshCw,
+  ChevronUp, ChevronDown
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import api from '../services/api';
+
+// ─── Plan type presets ────────────────────────────────────────────────────────
+const PLAN_PRESETS = [
+  { label: 'Monthly',     plan_type: 'monthly',     duration_days: 30  },
+  { label: 'Quarterly',   plan_type: 'quarterly',   duration_days: 90  },
+  { label: 'Half-Yearly', plan_type: 'half_yearly', duration_days: 180 },
+  { label: 'Yearly',      plan_type: 'yearly',      duration_days: 365 },
+];
+
+// ─── DOB Scroll Picker ────────────────────────────────────────────────────────
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const ITEM_H = 40; // px height per row
+
+/**
+ * A single scrollable column (Day / Month / Year).
+ * Renders a padded list and snaps to the nearest item on scroll end.
+ */
+const ScrollColumn = ({ items, selectedIndex, onChange, label }) => {
+  const listRef = useRef(null);
+  const isDragging = useRef(false);
+  const startY = useRef(0);
+  const startScroll = useRef(0);
+
+  const scrollToIndex = useCallback((idx, smooth = true) => {
+    if (!listRef.current) return;
+    listRef.current.scrollTo({ top: idx * ITEM_H, behavior: smooth ? 'smooth' : 'auto' });
+  }, []);
+
+  // Sync scroll position whenever the selected index changes externally
+  useEffect(() => {
+    scrollToIndex(selectedIndex, false);
+  }, [selectedIndex, scrollToIndex]);
+
+  const handleScroll = () => {
+    if (!listRef.current || isDragging.current) return;
+    const rawIdx = Math.round(listRef.current.scrollTop / ITEM_H);
+    const clamped = Math.max(0, Math.min(rawIdx, items.length - 1));
+    if (clamped !== selectedIndex) onChange(clamped);
+  };
+
+  // Pointer / touch drag support
+  const onPointerDown = (e) => {
+    isDragging.current = true;
+    startY.current = e.clientY ?? e.touches?.[0]?.clientY;
+    startScroll.current = listRef.current?.scrollTop ?? 0;
+  };
+  const onPointerMove = (e) => {
+    if (!isDragging.current || !listRef.current) return;
+    const y = e.clientY ?? e.touches?.[0]?.clientY;
+    listRef.current.scrollTop = startScroll.current + (startY.current - y);
+  };
+  const onPointerUp = () => {
+    if (!isDragging.current || !listRef.current) return;
+    isDragging.current = false;
+    const rawIdx = Math.round(listRef.current.scrollTop / ITEM_H);
+    const clamped = Math.max(0, Math.min(rawIdx, items.length - 1));
+    scrollToIndex(clamped);
+    if (clamped !== selectedIndex) onChange(clamped);
+  };
+
+  return (
+    <div className="flex flex-col items-center select-none" style={{ width: 72 }}>
+      <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">{label}</span>
+
+      <button
+        type="button"
+        className="text-gray-300 hover:text-blue-500 transition-colors p-1"
+        onClick={() => { const ni = Math.max(0, selectedIndex - 1); scrollToIndex(ni); onChange(ni); }}
+      >
+        <ChevronUp className="h-4 w-4" />
+      </button>
+
+      {/* Scroll window: 3 items tall, centre one is selected */}
+      <div className="relative overflow-hidden rounded-xl" style={{ height: ITEM_H * 3, width: 72 }}>
+        {/* Top fade */}
+        <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-white to-transparent z-10 pointer-events-none" />
+        {/* Selected highlight band */}
+        <div
+          className="absolute inset-x-0 z-10 pointer-events-none rounded-lg border-2 border-blue-500 bg-blue-50/60"
+          style={{ top: ITEM_H, height: ITEM_H }}
+        />
+        {/* Bottom fade */}
+        <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent z-10 pointer-events-none" />
+
+        <div
+          ref={listRef}
+          onScroll={handleScroll}
+          onMouseDown={onPointerDown}
+          onMouseMove={onPointerMove}
+          onMouseUp={onPointerUp}
+          onMouseLeave={onPointerUp}
+          onTouchStart={onPointerDown}
+          onTouchMove={onPointerMove}
+          onTouchEnd={onPointerUp}
+          style={{
+            overflowY: 'scroll',
+            height: '100%',
+            scrollSnapType: 'y mandatory',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+          }}
+        >
+          {/* top spacer so first item centres in the window */}
+          <div style={{ height: ITEM_H }} />
+          {items.map((item, i) => (
+            <div
+              key={i}
+              className={`flex items-center justify-center font-medium transition-all cursor-pointer
+                ${i === selectedIndex
+                  ? 'text-blue-600 text-base'
+                  : 'text-gray-400 text-sm hover:text-gray-600'
+                }`}
+              style={{ height: ITEM_H, scrollSnapAlign: 'start' }}
+              onClick={() => { scrollToIndex(i); onChange(i); }}
+            >
+              {typeof item === 'number' ? String(item).padStart(2, '0') : item}
+            </div>
+          ))}
+          {/* bottom spacer */}
+          <div style={{ height: ITEM_H }} />
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="text-gray-300 hover:text-blue-500 transition-colors p-1"
+        onClick={() => { const ni = Math.min(items.length - 1, selectedIndex + 1); scrollToIndex(ni); onChange(ni); }}
+      >
+        <ChevronDown className="h-4 w-4" />
+      </button>
+    </div>
+  );
+};
+
+/**
+ * DOBPicker — a button that opens a three-column scroll picker popover.
+ * value / onChange use "YYYY-MM-DD" strings, same as a native date input.
+ */
+const DOBPicker = ({ value, onChange, maxDate }) => {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const parseValue = (v) => {
+    if (!v) return { year: 1995, month: 0, day: 1 };
+    const [y, m, d] = v.split('-').map(Number);
+    return { year: y, month: m - 1, day: d };
+  };
+  const parsed = parseValue(value);
+
+  const currentYear = maxDate ? parseInt(maxDate.split('-')[0]) : new Date().getFullYear();
+  const years = [];
+  for (let y = currentYear; y >= 1930; y--) years.push(y);
+
+  const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
+  const days = Array.from({ length: daysInMonth(parsed.year, parsed.month) }, (_, i) => i + 1);
+
+  const yearIdx  = Math.max(0, years.indexOf(parsed.year));
+  const monthIdx = parsed.month;
+  const dayIdx   = Math.min(parsed.day - 1, days.length - 1);
+
+  const emit = (y, m, d) => {
+    const safeDay = Math.min(d + 1, daysInMonth(y, m));
+    onChange(`${y}-${String(m + 1).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`);
+  };
+
+  const displayValue = value
+    ? new Date(value + 'T00:00:00').toLocaleDateString('en-IN', {
+        day: 'numeric', month: 'long', year: 'numeric',
+      })
+    : '';
+
+  // Close popover on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    };
+    if (open) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      {/* Trigger button — looks like an input */}
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`w-full px-3 py-2 border rounded-lg text-sm text-left flex items-center justify-between bg-white transition-all
+          ${open
+            ? 'border-blue-500 ring-2 ring-blue-100'
+            : 'border-gray-300 hover:border-blue-400'}
+          ${!value ? 'text-gray-400' : 'text-gray-800'}`}
+      >
+        <span className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
+          {value ? displayValue : 'Select date of birth'}
+        </span>
+        <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Popover */}
+      {open && (
+        <div
+          className="absolute left-0 mt-2 z-[60] bg-white border border-gray-200 rounded-2xl shadow-2xl p-5"
+          style={{ minWidth: 300 }}
+          onWheel={e => e.stopPropagation()}   // don't scroll the modal behind
+          onTouchMove={e => e.stopPropagation()}
+        >
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider text-center mb-3">
+            Date of Birth
+          </p>
+
+          <div className="flex items-start justify-center gap-2">
+            <ScrollColumn label="Day"   items={days}   selectedIndex={dayIdx}   onChange={(i) => emit(parsed.year, parsed.month, i)} />
+            <div className="w-px bg-gray-100 self-stretch" />
+            <ScrollColumn label="Month" items={MONTHS} selectedIndex={monthIdx} onChange={(i) => emit(parsed.year, i, dayIdx)} />
+            <div className="w-px bg-gray-100 self-stretch" />
+            <ScrollColumn label="Year"  items={years}  selectedIndex={yearIdx}  onChange={(i) => emit(years[i], parsed.month, dayIdx)} />
+          </div>
+
+          {/* Selected date summary */}
+          {value && (
+            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+              <p className="text-sm font-semibold text-blue-700">{displayValue}</p>
+              <button
+                type="button"
+                onClick={() => { onChange(''); setOpen(false); }}
+                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="mt-3 w-full py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 active:bg-blue-800 transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Inline Plan Creator ──────────────────────────────────────────────────────
+const QuickPlanCreator = ({ onPlanCreated, onCancel, showCancel }) => {
+  const [creating, setCreating] = useState(false);
+  const [planForm, setPlanForm] = useState({
+    name: '', plan_type: 'monthly', duration_days: 30,
+    price: '', discounted_price: '', description: '', is_active: true,
+  });
+
+  const handlePreset = (preset) => {
+    setPlanForm(prev => ({
+      ...prev,
+      plan_type: preset.plan_type,
+      duration_days: preset.duration_days,
+      name: prev.name || preset.label,
+    }));
+  };
+
+  const handleCreate = async () => {
+    if (!planForm.name.trim() || !planForm.price) {
+      toast.error('Plan name and price are required');
+      return;
+    }
+    setCreating(true);
+    try {
+      const payload = {
+        name: planForm.name.trim(),
+        plan_type: planForm.plan_type,
+        duration_days: planForm.duration_days,
+        price: parseFloat(planForm.price),
+        discounted_price: planForm.discounted_price ? parseFloat(planForm.discounted_price) : null,
+        description: planForm.description || null,
+        features: null,
+        is_active: true,
+      };
+      const res = await api.post('/gym/plans', payload);
+      toast.success(`Plan "${res.data.name}" created!`);
+      onPlanCreated(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to create plan');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h4 className="font-semibold text-blue-900 flex items-center gap-2">
+          <Plus className="h-4 w-4" /> Create a Membership Plan
+        </h4>
+        {showCancel && (
+          <button type="button" onClick={onCancel} className="text-blue-400 hover:text-blue-600 p-1">
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Plan Type</label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {PLAN_PRESETS.map(preset => (
+              <button key={preset.plan_type} type="button" onClick={() => handlePreset(preset)}
+                className={`py-2 px-3 rounded-lg text-sm font-medium border transition-all ${
+                  planForm.plan_type === preset.plan_type
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                }`}>
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Plan Name <span className="text-red-500">*</span></label>
+            <input type="text" value={planForm.name}
+              onChange={e => setPlanForm({ ...planForm, name: e.target.value })}
+              placeholder="e.g. Basic Monthly"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Duration (days)</label>
+            <input type="number" min="1" value={planForm.duration_days}
+              onChange={e => setPlanForm({ ...planForm, duration_days: parseInt(e.target.value) || 30 })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Price (₹) <span className="text-red-500">*</span></label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+              <input type="number" min="0" step="0.01" value={planForm.price}
+                onChange={e => setPlanForm({ ...planForm, price: e.target.value })}
+                placeholder="0.00"
+                className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Discounted Price (₹) <span className="text-gray-400 font-normal">optional</span></label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+              <input type="number" min="0" step="0.01" value={planForm.discounted_price}
+                onChange={e => setPlanForm({ ...planForm, discounted_price: e.target.value })}
+                placeholder="Optional"
+                className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          {showCancel && (
+            <button type="button" onClick={onCancel}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+              Cancel
+            </button>
+          )}
+          <button type="button" disabled={creating} onClick={handleCreate}
+            className="flex items-center gap-2 px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors">
+            {creating ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating...</> : <><Plus className="h-4 w-4" /> Create Plan</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Membership Selector ──────────────────────────────────────────────────────
+const MembershipSelector = ({ formData, setFormData, membershipPlans, setMembershipPlans, showPlanCreator, setShowPlanCreator, inputCls, labelCls }) => {
+  const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
+  const set = (field) => (e) => setFormData(prev => ({ ...prev, [field]: e.target.value }));
+
+  const handlePlanCreated = (newPlan) => {
+    setMembershipPlans(prev => [...prev, newPlan]);
+    setShowPlanCreator(false);
+    setFormData(prev => ({
+      ...prev,
+      plan_id: String(newPlan.id),
+      amount_paid: String(newPlan.discounted_price || newPlan.price),
+    }));
+  };
+
+  return (
+    <div className="space-y-4">
+      {membershipPlans.length === 0 && !showPlanCreator && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium text-amber-800">No membership plans yet</p>
+            <p className="text-sm text-amber-700 mt-0.5">Create your first plan below.</p>
+          </div>
+        </div>
+      )}
+
+      {membershipPlans.length === 0 && (
+        <QuickPlanCreator onPlanCreated={handlePlanCreated} onCancel={null} showCancel={false} />
+      )}
+
+      {membershipPlans.length > 0 && !showPlanCreator && (
+        <div>
+          <p className="text-sm text-gray-500 mb-3">Select a plan:</p>
+          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+            {membershipPlans.map(plan => {
+              const price = plan.discounted_price || plan.price;
+              const isSelected = String(formData.plan_id) === String(plan.id);
+              return (
+                <label key={plan.id}
+                  className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                    isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                  }`}>
+                  <input type="radio" name="plan_id" value={String(plan.id)}
+                    checked={isSelected} onChange={set('plan_id')}
+                    className="accent-blue-600 w-4 h-4 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm truncate">{plan.name}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{plan.duration_days} days{plan.description ? ` · ${plan.description}` : ''}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-lg font-bold text-gray-900">₹{price}</p>
+                    {plan.discounted_price && <p className="text-xs text-gray-400 line-through">₹{plan.price}</p>}
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          <button type="button" onClick={() => setShowPlanCreator(true)}
+            className="mt-3 flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium">
+            <Plus className="h-4 w-4" /> Create a new plan instead
+          </button>
+        </div>
+      )}
+
+      {membershipPlans.length > 0 && showPlanCreator && (
+        <QuickPlanCreator onPlanCreated={handlePlanCreated}
+          onCancel={() => setShowPlanCreator(false)} showCancel={true} />
+      )}
+
+      {selectedPlan && !showPlanCreator && (
+        <div className="space-y-4">
+          <div className="border border-green-200 bg-green-50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <span className="text-sm font-semibold text-green-800">Selected: {selectedPlan.name}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-sm text-green-700">
+              <div><span className="font-medium">Duration:</span> {selectedPlan.duration_days} days</div>
+              <div><span className="font-medium">Price:</span> ₹{selectedPlan.discounted_price || selectedPlan.price}</div>
+              <div>
+                <span className="font-medium">Expires:</span>{' '}
+                {formData.membership_start_date
+                  ? new Date(new Date(formData.membership_start_date).getTime() + selectedPlan.duration_days * 86400000)
+                      .toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                  : '—'}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4 text-gray-400" />
+                  Start Date <span className="text-red-500">*</span>
+                </span>
+              </label>
+              <input type="date" value={formData.membership_start_date} onChange={set('membership_start_date')}
+                className={inputCls} style={{ colorScheme: 'light' }} />
+              {formData.membership_start_date && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {new Date(formData.membership_start_date + 'T00:00:00').toLocaleDateString('en-IN', {
+                    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+                  })}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className={labelCls}>
+                <span className="flex items-center gap-1.5">
+                  <CreditCard className="h-4 w-4 text-gray-400" /> Payment Method
+                </span>
+              </label>
+              <select value={formData.payment_method} onChange={set('payment_method')} className={inputCls}>
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="upi">UPI</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="online">Online</option>
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className={labelCls}>Amount Paid (₹)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">₹</span>
+                <input type="number" min="0" step="0.01" value={formData.amount_paid}
+                  onChange={set('amount_paid')} className={`${inputCls} pl-7`} placeholder="0.00" />
+              </div>
+              {formData.amount_paid !== '' && Number(formData.amount_paid) < (selectedPlan.discounted_price || selectedPlan.price) && (
+                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  Amount is less than plan price — will be marked as pending payment
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Main MemberModal ─────────────────────────────────────────────────────────
+const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
+  const today = new Date().toISOString().split('T')[0];
+  const isEdit = !!member;
+
+  const [formData, setFormData] = useState({
+    full_name: '', email: '', phone: '', date_of_birth: '', gender: 'male',
+    address: '', emergency_contact_name: '', emergency_contact_phone: '',
+    medical_conditions: '', allergies: '', medications: '',
+    id_proof_type: 'aadhar', id_proof_number: '',
+    plan_id: '', membership_start_date: today, payment_method: 'cash', amount_paid: '',
+    renew_membership: false,
+  });
+
+  const [activeTab, setActiveTab] = useState('personal');
+  const [membershipPlans, setMembershipPlans] = useState([]);
+  const [loadingPlans, setLoadingPlans] = useState(false);
+  const [showPlanCreator, setShowPlanCreator] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setActiveTab('personal');
+    setSaving(false);
+    setShowPlanCreator(false);
+
+    if (member) {
+      setFormData({
+        full_name: member.full_name || '',
+        email: member.email || '',
+        phone: member.phone || '',
+        date_of_birth: member.date_of_birth || '',
+        gender: member.gender || 'male',
+        address: member.address || '',
+        emergency_contact_name: member.emergency_contact_name || '',
+        emergency_contact_phone: member.emergency_contact_phone || '',
+        medical_conditions: member.medical_conditions || '',
+        allergies: member.allergies || '',
+        medications: member.medications || '',
+        id_proof_type: member.id_proof_type || 'aadhar',
+        id_proof_number: member.id_proof_number || '',
+        plan_id: '', membership_start_date: today, payment_method: 'cash', amount_paid: '',
+        renew_membership: false,
+      });
+    } else {
+      setFormData({
+        full_name: '', email: '', phone: '', date_of_birth: '', gender: 'male',
+        address: '', emergency_contact_name: '', emergency_contact_phone: '',
+        medical_conditions: '', allergies: '', medications: '',
+        id_proof_type: 'aadhar', id_proof_number: '',
+        plan_id: '', membership_start_date: today, payment_method: 'cash', amount_paid: '',
+        renew_membership: false,
+      });
+    }
+    fetchMembershipPlans();
+  }, [isOpen, member]);
+
+  useEffect(() => {
+    if (formData.plan_id) {
+      const plan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
+      if (plan) {
+        setFormData(prev => ({ ...prev, amount_paid: String(plan.discounted_price || plan.price) }));
+      }
+    }
+  }, [formData.plan_id, membershipPlans]);
+
+  const fetchMembershipPlans = async () => {
+    setLoadingPlans(true);
+    try {
+      const response = await api.get('/gym/plans?active_only=true');
+      const plans = response.data || [];
+      setMembershipPlans(plans);
+      if (!member) setShowPlanCreator(plans.length === 0);
+    } catch (error) {
+      toast.error('Could not load membership plans');
+    } finally {
+      setLoadingPlans(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!formData.full_name.trim()) {
+      toast.error('Full name is required');
+      setActiveTab('personal');
+      return;
+    }
+    if (!formData.phone.trim()) {
+      toast.error('Phone number is required');
+      setActiveTab('personal');
+      return;
+    }
+    if (!isEdit && !formData.plan_id) {
+      toast.error('Please select a membership plan');
+      setActiveTab('membership');
+      return;
+    }
+    if (isEdit && formData.renew_membership && !formData.plan_id) {
+      toast.error('Please select a plan to renew');
+      setActiveTab('membership');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave(formData);
+    } catch (error) {
+      console.error('Save error:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const set = (field) => (e) => setFormData(prev => ({ ...prev, [field]: e.target.value }));
+
+  const tabs = [
+    { id: 'personal',   name: 'Personal',                                     icon: User      },
+    { id: 'contact',    name: 'Contact',                                      icon: Phone     },
+    { id: 'medical',    name: 'Medical',                                      icon: Heart     },
+    { id: 'documents',  name: 'Documents',                                    icon: FileText  },
+    { id: 'membership', name: isEdit ? 'Renew / Change Plan' : 'Membership',  icon: isEdit ? RefreshCw : CreditCard },
+  ];
+
+  const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-white";
+  const labelCls = "block text-sm font-medium text-gray-700 mb-1";
+
+  const idProofOptions = [
+    { value: 'aadhar',   label: 'Aadhar Card'      },
+    { value: 'pan',      label: 'PAN Card'          },
+    { value: 'dl',       label: 'Driving License'   },
+    { value: 'passport', label: 'Passport'          },
+    { value: 'voter',    label: 'Voter ID'          },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">{isEdit ? 'Edit Member' : 'Add New Member'}</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {isEdit ? 'Update details or renew / change membership plan' : 'Register a new gym member'}
+            </p>
+          </div>
+          <button type="button" onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-700 transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="border-b border-gray-200 px-6 flex-shrink-0 overflow-x-auto">
+          <nav className="flex space-x-1 min-w-max">
+            {tabs.map((tab) => (
+              <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 py-3 px-4 border-b-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}>
+                <tab.icon className="h-4 w-4" />
+                {tab.name}
+                {tab.id === 'membership' && formData.plan_id && (
+                  <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                )}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-6">
+
+            {/* ── Personal Info ── */}
+            {activeTab === 'personal' && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-5 p-4 bg-gray-50 rounded-xl">
+                  <div className="relative flex-shrink-0">
+                    <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-2xl font-bold">
+                      {formData.full_name ? formData.full_name.charAt(0).toUpperCase() : <User className="h-8 w-8" />}
+                    </div>
+                    <button type="button" className="absolute -bottom-1 -right-1 bg-blue-600 p-1.5 rounded-full text-white hover:bg-blue-700 shadow">
+                      <Camera className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-800 text-sm">Member Photo</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Click camera to upload</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelCls}>Full Name <span className="text-red-500">*</span></label>
+                    <input type="text" required value={formData.full_name} onChange={set('full_name')}
+                      className={inputCls} placeholder="Enter full name" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Email</label>
+                    <input type="email" value={formData.email} onChange={set('email')}
+                      className={inputCls} placeholder="member@example.com" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Phone <span className="text-red-500">*</span></label>
+                    <input type="tel" required value={formData.phone} onChange={set('phone')}
+                      className={inputCls} placeholder="+91 98765 43210" />
+                  </div>
+
+                  {/* ── Custom DOB Picker replaces <input type="date"> ── */}
+                  <div>
+                    <label className={labelCls}>Date of Birth</label>
+                    <DOBPicker
+                      value={formData.date_of_birth}
+                      onChange={(val) => setFormData(prev => ({ ...prev, date_of_birth: val }))}
+                      maxDate={today}
+                    />
+                    {formData.date_of_birth && (() => {
+                      const dob = new Date(formData.date_of_birth + 'T00:00:00');
+                      const now = new Date();
+                      let age = now.getFullYear() - dob.getFullYear();
+                      const mDiff = now.getMonth() - dob.getMonth();
+                      if (mDiff < 0 || (mDiff === 0 && now.getDate() < dob.getDate())) age--;
+                      return <p className="text-xs text-gray-400 mt-1.5">{age} years old</p>;
+                    })()}
+                  </div>
+
+                  <div>
+                    <label className={labelCls}>Gender</label>
+                    <select value={formData.gender} onChange={set('gender')} className={inputCls}>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                      <option value="prefer_not_to_say">Prefer not to say</option>
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className={labelCls}>Address</label>
+                    <textarea rows="2" value={formData.address} onChange={set('address')}
+                      className={inputCls} placeholder="Full address" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Contact ── */}
+            {activeTab === 'contact' && (
+              <div className="space-y-4">
+                <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Emergency Contact</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelCls}>Contact Name</label>
+                    <input type="text" value={formData.emergency_contact_name}
+                      onChange={set('emergency_contact_name')} className={inputCls}
+                      placeholder="Emergency contact name" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Contact Phone</label>
+                    <input type="tel" value={formData.emergency_contact_phone}
+                      onChange={set('emergency_contact_phone')} className={inputCls}
+                      placeholder="+91 98765 43210" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Medical ── */}
+            {activeTab === 'medical' && (
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-700">
+                  This information is confidential and used only for member safety.
+                </div>
+                {[
+                  { key: 'medical_conditions', label: 'Medical Conditions', placeholder: 'e.g. Diabetes, Hypertension' },
+                  { key: 'allergies',           label: 'Allergies',          placeholder: 'e.g. Peanuts, Latex'         },
+                  { key: 'medications',         label: 'Current Medications', placeholder: 'List any regular medications' },
+                ].map(({ key, label, placeholder }) => (
+                  <div key={key}>
+                    <label className={labelCls}>{label}</label>
+                    <textarea rows="3" value={formData[key]}
+                      onChange={e => setFormData(prev => ({ ...prev, [key]: e.target.value }))}
+                      placeholder={placeholder} className={inputCls} />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── Documents ── */}
+            {activeTab === 'documents' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelCls}>ID Proof Type</label>
+                    <select value={formData.id_proof_type} onChange={set('id_proof_type')} className={inputCls}>
+                      {idProofOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>ID Proof Number</label>
+                    <input type="text" value={formData.id_proof_number} onChange={set('id_proof_number')}
+                      className={inputCls} placeholder="Enter ID number" />
+                  </div>
+                </div>
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer bg-gray-50 hover:bg-blue-50">
+                  <Camera className="h-10 w-10 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-gray-600">Click to upload ID proof image</p>
+                  <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 5MB</p>
+                </div>
+              </div>
+            )}
+
+            {/* ── Membership ── */}
+            {activeTab === 'membership' && (
+              <div className="space-y-5">
+                {isEdit && (
+                  <div className="space-y-4">
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Current Membership</p>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-gray-800">
+                            {member?.membership && member.membership !== 'No Plan'
+                              ? member.membership
+                              : <span className="text-gray-400 italic">No active plan</span>}
+                          </p>
+                          {member?.membershipEndDate && (
+                            <p className="text-sm text-gray-500 mt-0.5">
+                              Expires: {new Date(member.membershipEndDate).toLocaleDateString('en-IN', {
+                                day: 'numeric', month: 'long', year: 'numeric'
+                              })}
+                            </p>
+                          )}
+                        </div>
+                        {member?.membershipEndDate && (
+                          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                            new Date(member.membershipEndDate) < new Date()
+                              ? 'bg-red-100 text-red-700'
+                              : new Date(member.membershipEndDate) < new Date(Date.now() + 7 * 86400000)
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-green-100 text-green-700'
+                          }`}>
+                            {new Date(member.membershipEndDate) < new Date() ? 'Expired' :
+                             new Date(member.membershipEndDate) < new Date(Date.now() + 7 * 86400000) ? 'Expiring soon' : 'Active'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <RefreshCw className="h-5 w-5 text-blue-600" />
+                        <div>
+                          <p className="font-medium text-blue-900 text-sm">Renew or Change Plan</p>
+                          <p className="text-xs text-blue-600 mt-0.5">Creates a new membership period for this member</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({
+                          ...prev,
+                          renew_membership: !prev.renew_membership,
+                          plan_id: '',
+                          amount_paid: '',
+                        }))}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                          formData.renew_membership ? 'bg-blue-600' : 'bg-gray-200'
+                        }`}>
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                          formData.renew_membership ? 'translate-x-6' : 'translate-x-1'
+                        }`} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {(!isEdit || formData.renew_membership) && (
+                  loadingPlans ? (
+                    <div className="flex flex-col items-center justify-center py-12 gap-3 text-gray-500">
+                      <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                      <p className="text-sm">Loading plans...</p>
+                    </div>
+                  ) : (
+                    <MembershipSelector
+                      formData={formData}
+                      setFormData={setFormData}
+                      membershipPlans={membershipPlans}
+                      setMembershipPlans={setMembershipPlans}
+                      showPlanCreator={showPlanCreator}
+                      setShowPlanCreator={setShowPlanCreator}
+                      inputCls={inputCls}
+                      labelCls={labelCls}
+                    />
+                  )
+                )}
+
+                {isEdit && !formData.renew_membership && (
+                  <p className="text-sm text-gray-400 text-center py-6">
+                    Toggle the switch above to renew or change this member's plan.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex-shrink-0 border-t border-gray-200 px-6 py-4 flex items-center justify-between bg-gray-50 rounded-b-2xl">
+            <div className="flex items-center gap-1.5">
+              {tabs.map((tab) => (
+                <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} title={tab.name}
+                  className={`rounded-full transition-all ${
+                    activeTab === tab.id ? 'w-6 h-2.5 bg-blue-600' : 'w-2.5 h-2.5 bg-gray-300 hover:bg-gray-400'
+                  }`} />
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={onClose}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-100 font-medium">
+                Cancel
+              </button>
+              {activeTab !== tabs[tabs.length - 1].id && (
+                <button type="button"
+                  onClick={() => {
+                    const idx = tabs.findIndex(t => t.id === activeTab);
+                    setActiveTab(tabs[idx + 1].id);
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900">
+                  Next <ChevronRight className="h-4 w-4" />
+                </button>
+              )}
+              <button type="submit" disabled={saving}
+                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                {saving
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</>
+                  : <>{isEdit ? 'Save Changes' : 'Add Member'}</>}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default MemberModal;
