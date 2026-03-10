@@ -985,7 +985,7 @@ const Dashboard = () => {
                 <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-xl font-bold text-lg shadow-md">
                   <div className="flex items-center gap-2">
                     <Dumbbell className="h-5 w-5" />
-                    <span>GymManager Pro</span>
+                    <span>Gym Monitor</span>
                   </div>
                 </div>
               </div>
