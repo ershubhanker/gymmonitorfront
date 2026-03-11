@@ -36,7 +36,9 @@ import {
   Flame,
   Zap,
   Target,
-  TrendingUp as TrendUp
+  TrendingUp as TrendUp,
+  MessageCircle,
+  Mail
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -91,6 +93,12 @@ const Dashboard = () => {
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  // Function to navigate to dashboard
+  const goToDashboard = () => {
+    setActiveTab('dashboard');
+    navigate('/dashboard');
   };
 
   // Function to fetch all dashboard data
@@ -981,8 +989,8 @@ const Dashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-xl font-bold text-lg shadow-md">
+              <div className="flex-shrink-0 cursor-pointer" onClick={goToDashboard}>
+                <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-xl font-bold text-lg shadow-md hover:shadow-xl transition-all hover:scale-105">
                   <div className="flex items-center gap-2">
                     <Dumbbell className="h-5 w-5" />
                     <span>Gym Monitor</span>
@@ -1097,6 +1105,37 @@ const Dashboard = () => {
           )}
         </div>
       </nav>
+
+      {/* Support Message Banner */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 py-2 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
+            <div className="flex items-center gap-2 text-gray-700">
+              <MessageCircle className="h-4 w-4 text-green-600" />
+              <span className="font-medium">For any query or support, kindly WhatsApp me on:</span>
+              <a 
+                href="https://wa.me/919041300884" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-green-600 hover:text-green-700 font-semibold hover:underline flex items-center gap-1"
+              >
+                +91-9041300884
+              </a>
+            </div>
+            <span className="text-gray-400 hidden sm:inline">|</span>
+            <div className="flex items-center gap-2 text-gray-700">
+              <Mail className="h-4 w-4 text-red-500" />
+              <span className="font-medium">Email:</span>
+              <a 
+                href="mailto:theshubhankertiwari@gmail.com"
+                className="text-blue-600 hover:text-blue-700 font-semibold hover:underline"
+              >
+                theshubhankertiwari@gmail.com
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
