@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   LogOut, 
@@ -58,6 +58,10 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   
+  // Refs for click outside detection
+  const userMenuRef = useRef(null);
+  const userButtonRef = useRef(null);
+  
   // Initialize with default values
   const [stats, setStats] = useState({
     totalMembers: 0,
@@ -89,6 +93,32 @@ const Dashboard = () => {
 
   const [recentActivities, setRecentActivities] = useState([]);
   const [upcomingClasses, setUpcomingClasses] = useState([]);
+
+  // Handle click outside for user menu
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      // If user menu is open and click is outside both the button and the menu, close it
+      if (
+        showUserMenu && 
+        userMenuRef.current && 
+        userButtonRef.current &&
+        !userMenuRef.current.contains(event.target) && 
+        !userButtonRef.current.contains(event.target)
+      ) {
+        setShowUserMenu(false);
+      }
+    };
+
+    // Add event listener when menu is open
+    if (showUserMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showUserMenu]);
 
   const handleLogout = () => {
     logout();
@@ -1026,6 +1056,7 @@ const Dashboard = () => {
               {/* User Menu */}
               <div className="relative">
                 <button
+                  ref={userButtonRef}
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-100 transition-all"
                 >
@@ -1038,7 +1069,10 @@ const Dashboard = () => {
                 </button>
 
                 {showUserMenu && (
-                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl py-2 border border-gray-100 backdrop-blur-lg">
+                  <div 
+                    ref={userMenuRef}
+                    className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl py-2 border border-gray-100 backdrop-blur-lg"
+                  >
                     <div className="px-4 py-3 border-b border-gray-100">
                       <p className="text-sm font-semibold text-gray-900">{user?.full_name}</p>
                       <p className="text-xs text-gray-500 mt-1">{user?.email}</p>
