@@ -1161,10 +1161,10 @@ const Dashboard = () => {
               <Mail className="h-4 w-4 text-red-500" />
               <span className="font-medium">Email:</span>
               <a 
-                href="mailto:theshubhankertiwari@gmail.com"
+                href="mailto:info@maskottchentechnology.com"
                 className="text-blue-600 hover:text-blue-700 font-semibold hover:underline"
               >
-                theshubhankertiwari@gmail.com
+                info@maskottchentechnology.com
               </a>
             </div>
           </div>

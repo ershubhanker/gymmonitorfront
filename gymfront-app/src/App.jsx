@@ -8,16 +8,17 @@ import ForgotPassword from './pages/ForgotPassword';
 import VerifyEmail from './pages/VerifyEmail';
 import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
-import Profile from './pages/Profile'; // Add this import
+import Profile from './pages/Profile';
 import GymSetup from './pages/GymSetup';
 import AdminDashboard from './pages/AdminDashboard';
+import LandingPage from './pages/LandingPage'; // ← new
 
 function App() {
   return (
     <Router>
       <AuthProvider>
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-          <Toaster 
+          <Toaster
             position="top-right"
             toastOptions={{
               duration: 4000,
@@ -42,6 +43,9 @@ function App() {
             }}
           />
           <Routes>
+            {/* Landing page is now the home route */}
+            <Route path="/" element={<LandingPage />} />
+
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -63,11 +67,10 @@ function App() {
               </PrivateRoute>
             } />
             <Route path="/admin" element={
-  <PrivateRoute>
-    <AdminDashboard />
-  </PrivateRoute>
-} />
-            <Route path="/" element={<Navigate to="/login" />} />
+              <PrivateRoute>
+                <AdminDashboard />
+              </PrivateRoute>
+            } />
           </Routes>
         </div>
       </AuthProvider>
