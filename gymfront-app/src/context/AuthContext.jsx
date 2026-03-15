@@ -6,7 +6,6 @@ import api from '../services/api';
 const AuthContext = createContext();
 
 const API_BASE_URL = 'https://api.gymmonitor.in';
-
 // const API_BASE_URL = 'http://localhost:8001';
 
 export const useAuth = () => {
@@ -23,82 +22,95 @@ export const AuthProvider = ({ children }) => {
   const [initialLoading, setInitialLoading] = useState(true);
   const [tempEmail, setTempEmail] = useState('');
 
-  // Check for existing session on mount
+  // Restore session on mount
   useEffect(() => {
     const loadUser = async () => {
       const token = localStorage.getItem('access_token');
       if (token) {
         try {
           const response = await api.get('/me');
-          setUser(response.data);
-        } catch (error) {
+          // Merge stored role in case /me doesn't return it
+          const storedRole = localStorage.getItem('user_role');
+          setUser({
+            ...response.data,
+            role: storedRole || response.data.role,
+          });
+        } catch {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
+          localStorage.removeItem('user_role');
+          localStorage.removeItem('gym_id');
         }
       }
       setInitialLoading(false);
     };
-    
     loadUser();
   }, []);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // LOGIN — now returns a `redirect` string so Login.jsx can navigate there.
+  //
+  //   super_admin  → '/admin'
+  //   gym_staff    → '/dashboard'
+  //   gym_owner    → '/gym-setup'  (if setup not done)
+  //                  '/dashboard'  (if setup done)
+  // ─────────────────────────────────────────────────────────────────────────
   const login = async (email, password) => {
     setLoading(true);
     try {
-      console.log('Attempting login with:', { email });
-      
-      const response = await axios.post(`${API_BASE_URL}/login`, {
-        email,
-        password
-      });
-      
-      console.log('Login response:', response.data);
-      
+      const response = await axios.post(`${API_BASE_URL}/login`, { email, password });
+
       if (response.data) {
-        // Store tokens
+        // Persist tokens
         localStorage.setItem('access_token', response.data.access_token);
         localStorage.setItem('refresh_token', response.data.refresh_token);
         localStorage.setItem('user_role', response.data.user_role);
         if (response.data.gym_id) {
           localStorage.setItem('gym_id', response.data.gym_id);
         }
-        
-        // Get user details
+
+        // Fetch full user record
         const userResponse = await api.get('/me');
-        console.log('User details:', userResponse.data);
-        
         setUser({
           ...userResponse.data,
           role: response.data.user_role,
-          gymId: response.data.gym_id
+          gymId: response.data.gym_id,
         });
-        
+
         toast.success('Login successful!');
 
-        // Staff doesn't need setup, go directly to dashboard
-        if (response.data.user_role === 'gym_staff') {
-          return { success: true, data: response.data, needsSetup: false };
+        const role = response.data.user_role;
+
+        // ── SUPER ADMIN: always go to /admin ──────────────────────────────
+        if (role === 'super_admin') {
+          return { success: true, data: response.data, redirect: '/admin' };
         }
-        
-        // Check if gym owner needs to complete setup
-        if (response.data.user_role === 'gym_owner') {
+
+        // ── GYM STAFF: straight to dashboard ─────────────────────────────
+        if (role === 'gym_staff') {
+          return { success: true, data: response.data, redirect: '/dashboard' };
+        }
+
+        // ── GYM OWNER: check setup status ─────────────────────────────────
+        if (role === 'gym_owner') {
           try {
             const setupResponse = await api.get('/gym/setup-status');
-            // Return setup status along with success
-            return { 
-              success: true, 
+            const needsSetup = !setupResponse.data.setup_complete;
+            return {
+              success: true,
               data: response.data,
-              needsSetup: !setupResponse.data.setup_complete
+              redirect: needsSetup ? '/gym-setup' : '/dashboard',
             };
-          } catch (error) {
-            console.error('Error checking setup status:', error);
+          } catch {
+            // If setup-status check fails, send to setup to be safe
+            return { success: true, data: response.data, redirect: '/gym-setup' };
           }
         }
-        
-        return { success: true, data: response.data };
+
+        // Fallback
+        return { success: true, data: response.data, redirect: '/dashboard' };
       }
     } catch (error) {
-      console.error('Login error:', error.response?.data || error.message);
       const message = error.response?.data?.detail || 'Login failed. Please try again.';
       toast.error(message);
       return { success: false, error: message };
@@ -106,33 +118,24 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     }
   };
-  
+
   const signup = async (userData) => {
     setLoading(true);
     try {
-      console.log('Sending signup data:', userData);
-      
       const payload = {
         email: userData.email,
         username: userData.username,
         full_name: userData.full_name,
         password: userData.password,
-        role: "gym_owner", // Default role
+        role: 'gym_owner',
         phone: userData.phone || null,
-        gym_id: null
+        gym_id: null,
       };
-      
-      console.log('Signup payload:', payload);
-      
       const response = await axios.post(`${API_BASE_URL}/signup`, payload);
-      
-      console.log('Signup response:', response.data);
-      
       setTempEmail(userData.email);
       toast.success('Account created! Please check your email for verification OTP.');
       return { success: true, data: response.data };
     } catch (error) {
-      console.error('Signup error:', error.response?.data || error.message);
       const message = error.response?.data?.detail || 'Signup failed. Please try again.';
       toast.error(message);
       return { success: false, error: message };
@@ -144,10 +147,7 @@ export const AuthProvider = ({ children }) => {
   const verifyEmail = async (email, otp) => {
     setLoading(true);
     try {
-      const response = await axios.post(`${API_BASE_URL}/verify-email`, {
-        email,
-        otp
-      });
+      const response = await axios.post(`${API_BASE_URL}/verify-email`, { email, otp });
       toast.success('Email verified successfully! You can now login.');
       return { success: true, data: response.data };
     } catch (error) {
@@ -162,9 +162,7 @@ export const AuthProvider = ({ children }) => {
   const forgotPassword = async (email) => {
     setLoading(true);
     try {
-      const response = await axios.post(`${API_BASE_URL}/forgot-password`, {
-        email
-      });
+      const response = await axios.post(`${API_BASE_URL}/forgot-password`, { email });
       setTempEmail(email);
       toast.success('OTP sent to your email!');
       return { success: true, data: response.data };
@@ -183,7 +181,7 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.post(`${API_BASE_URL}/reset-password`, {
         email,
         otp,
-        new_password: newPassword
+        new_password: newPassword,
       });
       toast.success('Password reset successfully!');
       return { success: true, data: response.data };
@@ -202,11 +200,11 @@ export const AuthProvider = ({ children }) => {
       if (refreshToken) {
         await api.post('/logout', { refresh_token: refreshToken });
       }
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
+    } catch { /* ignore */ } finally {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user_role');
+      localStorage.removeItem('gym_id');
       setUser(null);
       toast.success('Logged out successfully');
     }
@@ -223,7 +221,7 @@ export const AuthProvider = ({ children }) => {
     forgotPassword,
     resetPassword,
     logout,
-    setTempEmail
+    setTempEmail,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

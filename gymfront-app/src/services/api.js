@@ -12,6 +12,7 @@ const api = axios.create({
   },
 });
 
+
 // ── Attach access token to every request ──────────────────────────────────────
 api.interceptors.request.use(
   (config) => {
@@ -23,6 +24,7 @@ api.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
+
 
 // ── Auto-refresh on 401, but ONLY log out when refresh itself fails ────────────
 api.interceptors.response.use(

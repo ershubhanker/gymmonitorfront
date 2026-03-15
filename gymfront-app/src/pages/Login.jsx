@@ -2,17 +2,13 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Dumbbell, Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import toast from 'react-hot-toast';
 
 const Login = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  });
+  const [formData, setFormData] = useState({ email: '', password: '' });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,14 +16,17 @@ const Login = () => {
 
     try {
       const result = await login(formData.email, formData.password);
-      
-      if (result.success) {
-        // Check if user needs to complete gym setup
-        if (result.needsSetup) {
-          navigate('/gym-setup');
-        } else {
-          navigate('/dashboard');
-        }
+
+      if (result?.success) {
+        // ── THE ONLY CHANGE ────────────────────────────────────────────────
+        // result.redirect is set by AuthContext based on the user's role:
+        //   'super_admin' → '/admin'
+        //   'gym_staff'   → '/dashboard'
+        //   'gym_owner'   → '/gym-setup' or '/dashboard'
+        // Previously this was hardcoded to '/dashboard', so super_admin
+        // always ended up on the gym-owner dashboard.
+        navigate(result.redirect || '/dashboard');
+        // ──────────────────────────────────────────────────────────────────
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -46,7 +45,6 @@ const Login = () => {
             </div>
           </div>
           <h2 className="mt-6 text-3xl font-extrabold text-gray-900">Welcome back!</h2>
-          
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -111,10 +109,7 @@ const Login = () => {
             className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Signing in...
-              </>
+              <><Loader2 className="h-5 w-5 animate-spin" /> Signing in...</>
             ) : (
               'Sign in'
             )}
@@ -122,9 +117,7 @@ const Login = () => {
 
           <p className="mt-2 text-sm text-gray-600">
             Don't have an account?{' '}
-            <Link to="/signup" className="font-medium text-blue-600 hover:text-blue-500">
-              Sign up
-            </Link>
+            <Link to="/signup" className="font-medium text-blue-600 hover:text-blue-500">Sign up</Link>
           </p>
         </form>
       </div>
