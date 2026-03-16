@@ -2,17 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { 
   User, Mail, Phone, Shield, Key, Save, Camera, Building2, 
   MapPin, Clock, Users, CreditCard, AlertCircle,
-  CheckCircle, Loader2
+  CheckCircle, Loader2, IndianRupee
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
+const CURRENCIES = [
+  { symbol: '₹', label: 'Indian Rupee', code: 'INR', flag: '🇮🇳' },
+  { symbol: '$', label: 'US Dollar', code: 'USD', flag: '🇺🇸' },
+  { symbol: '€', label: 'Euro', code: 'EUR', flag: '🇪🇺' },
+  { symbol: '£', label: 'British Pound', code: 'GBP', flag: '🇬🇧' },
+  { symbol: '¥', label: 'Japanese Yen', code: 'JPY', flag: '🇯🇵' },
+  { symbol: '₩', label: 'South Korean Won', code: 'KRW', flag: '🇰🇷' },
+  { symbol: 'A$', label: 'Australian Dollar', code: 'AUD', flag: '🇦🇺' },
+  { symbol: 'C$', label: 'Canadian Dollar', code: 'CAD', flag: '🇨🇦' },
+  { symbol: 'CHF', label: 'Swiss Franc', code: 'CHF', flag: '🇨🇭' },
+  { symbol: 'AED', label: 'UAE Dirham', code: 'AED', flag: '🇦🇪' },
+  { symbol: 'SGD', label: 'Singapore Dollar', code: 'SGD', flag: '🇸🇬' },
+  { symbol: 'R', label: 'South African Rand', code: 'ZAR', flag: '🇿🇦' },
+];
+
 const Profile = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, updateCurrencySymbol } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [selectedCurrency, setSelectedCurrency] = useState(user?.currency_symbol || '₹');
+  const [currencySaving, setCurrencySaving] = useState(false);
 
   const [profileForm, setProfileForm] = useState({
     full_name: user?.full_name || '',
@@ -173,6 +190,7 @@ const Profile = () => {
   const tabs = [
     { id: 'profile', label: 'Profile Info', icon: User, roles: ['super_admin', 'gym_owner', 'gym_staff'] },
     { id: 'gym', label: 'Gym Info', icon: Building2, roles: ['gym_owner'] },
+    { id: 'preferences', label: 'Preferences', icon: IndianRupee, roles: ['super_admin', 'gym_owner', 'gym_staff'] },
     { id: 'security', label: 'Security', icon: Key, roles: ['super_admin', 'gym_owner', 'gym_staff'] },
   ];
 
@@ -529,6 +547,98 @@ const Profile = () => {
                 </button>
               </div>
             </form>
+          )}
+
+          {/* Preferences Tab */}
+          {activeTab === 'preferences' && (
+            <div className="space-y-6 max-w-2xl">
+              {/* Header */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <IndianRupee className="h-5 w-5 text-blue-600" />
+                  Currency Display Preference
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Choose the currency symbol shown across your dashboard — revenue cards, payments, and all financial figures.
+                </p>
+              </div>
+
+              {/* Current setting banner */}
+              <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                <span className="text-2xl">
+                  {CURRENCIES.find(c => c.symbol === (user?.currency_symbol || '₹'))?.flag || '💰'}
+                </span>
+                <div>
+                  <p className="text-sm font-medium text-blue-900">Current setting</p>
+                  <p className="text-blue-700 font-bold">
+                    {user?.currency_symbol || '₹'} —{' '}
+                    {CURRENCIES.find(c => c.symbol === (user?.currency_symbol || '₹'))?.label || 'Indian Rupee'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Currency grid */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">Select Currency</label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {CURRENCIES.map((c) => (
+                    <button
+                      key={c.symbol}
+                      type="button"
+                      onClick={() => setSelectedCurrency(c.symbol)}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all ${
+                        selectedCurrency === c.symbol
+                          ? 'border-blue-500 bg-blue-50 shadow-sm'
+                          : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className="text-xl flex-shrink-0">{c.flag}</span>
+                      <div className="min-w-0">
+                        <div className={`font-bold text-base leading-none ${selectedCurrency === c.symbol ? 'text-blue-700' : 'text-gray-800'}`}>
+                          {c.symbol}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5 truncate">{c.label}</div>
+                        <div className="text-xs text-gray-400">{c.code}</div>
+                      </div>
+                      {selectedCurrency === c.symbol && (
+                        <CheckCircle className="h-4 w-4 text-blue-500 ml-auto flex-shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Preview */}
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Preview</p>
+                <div className="flex gap-4 flex-wrap">
+                  {[1250, 24500, 128000].map(amt => (
+                    <div key={amt} className="bg-white rounded-lg px-4 py-2 shadow-sm border border-gray-100">
+                      <span className="text-lg font-bold text-gray-800">
+                        {selectedCurrency} {amt.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Save */}
+              <div className="flex justify-end pt-2 border-t">
+                <button
+                  type="button"
+                  disabled={currencySaving || selectedCurrency === user?.currency_symbol}
+                  onClick={async () => {
+                    setCurrencySaving(true);
+                    await updateCurrencySymbol(selectedCurrency);
+                    setCurrencySaving(false);
+                  }}
+                  className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
+                >
+                  <Save className="h-4 w-4" />
+                  {currencySaving ? 'Saving...' : selectedCurrency === user?.currency_symbol ? 'Already Saved' : 'Save Currency Preference'}
+                </button>
+              </div>
+            </div>
           )}
 
           {/* Security Tab */}

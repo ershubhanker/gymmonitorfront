@@ -5,8 +5,8 @@ import api from '../services/api';
 
 const AuthContext = createContext();
 
-const API_BASE_URL = 'https://api.gymmonitor.in';
-// const API_BASE_URL = 'http://localhost:8001';
+// const API_BASE_URL = 'https://api.gymmonitor.in';
+const API_BASE_URL = 'http://localhost:8001';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -218,6 +218,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updateCurrencySymbol = async (symbol) => {
+    try {
+      await api.put('/me/preferences', { currency_symbol: symbol });
+      setUser(prev => ({ ...prev, currency_symbol: symbol }));
+      toast.success('Currency preference saved!');
+      return { success: true };
+    } catch (error) {
+      toast.error('Failed to save currency preference');
+      return { success: false };
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -229,6 +241,7 @@ export const AuthProvider = ({ children }) => {
     forgotPassword,
     resetPassword,
     logout,
+    updateCurrencySymbol,
     setTempEmail,
   };
 

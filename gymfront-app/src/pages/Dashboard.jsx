@@ -37,7 +37,8 @@ import {
   Target,
   TrendingUp as TrendUp,
   MessageCircle,
-  Mail
+  Mail,
+  CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -51,13 +52,95 @@ import Profile from './Profile';
 // Auto-refresh interval in milliseconds (60 seconds)
 const AUTO_REFRESH_INTERVAL = 40_000;
 
+// ── Currency list ──────────────────────────────────────────────────────────
+const CURRENCIES = [
+  { symbol: '₹', label: 'Indian Rupee (INR)', flag: '🇮🇳' },
+  { symbol: '$', label: 'US Dollar (USD)', flag: '🇺🇸' },
+  { symbol: '€', label: 'Euro (EUR)', flag: '🇪🇺' },
+  { symbol: '£', label: 'British Pound (GBP)', flag: '🇬🇧' },
+  { symbol: '¥', label: 'Japanese Yen (JPY)', flag: '🇯🇵' },
+  { symbol: '₩', label: 'South Korean Won (KRW)', flag: '🇰🇷' },
+  { symbol: 'A$', label: 'Australian Dollar (AUD)', flag: '🇦🇺' },
+  { symbol: 'C$', label: 'Canadian Dollar (CAD)', flag: '🇨🇦' },
+  { symbol: 'CHF', label: 'Swiss Franc (CHF)', flag: '🇨🇭' },
+  { symbol: 'AED', label: 'UAE Dirham (AED)', flag: '🇦🇪' },
+  { symbol: 'SGD', label: 'Singapore Dollar (SGD)', flag: '🇸🇬' },
+  { symbol: 'R', label: 'South African Rand (ZAR)', flag: '🇿🇦' },
+];
+
+const CurrencyPickerModal = ({ onSelect }) => {
+  const [selected, setSelected] = React.useState('₹');
+  const [saving, setSaving] = React.useState(false);
+
+  const handleConfirm = async () => {
+    setSaving(true);
+    await onSelect(selected);
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 animate-fade-in">
+        {/* Header */}
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 text-white text-3xl mb-4 shadow-lg">
+            💰
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900">Choose Your Currency</h2>
+          <p className="text-gray-500 mt-2 text-sm">
+            Select the currency to display across your dashboard. You can change this anytime from your Profile.
+          </p>
+        </div>
+
+        {/* Currency Grid */}
+        <div className="grid grid-cols-2 gap-2 mb-6 max-h-64 overflow-y-auto pr-1">
+          {CURRENCIES.map((c) => (
+            <button
+              key={c.symbol}
+              onClick={() => setSelected(c.symbol)}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all ${
+                selected === c.symbol
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                  : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50 text-gray-700'
+              }`}
+            >
+              <span className="text-xl">{c.flag}</span>
+              <div>
+                <div className="font-bold text-base leading-none">{c.symbol}</div>
+                <div className="text-xs text-gray-500 mt-0.5 leading-tight">{c.label.split(' (')[0]}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {/* Confirm button */}
+        <button
+          onClick={handleConfirm}
+          disabled={saving}
+          className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 rounded-xl hover:shadow-lg hover:scale-[1.02] transition-all disabled:opacity-60"
+        >
+          {saving ? (
+            <><Loader className="h-4 w-4 animate-spin" /> Saving...</>
+          ) : (
+            <><CheckCircle className="h-5 w-5" /> Confirm — Use {selected}</>
+          )}
+        </button>
+        <p className="text-center text-xs text-gray-400 mt-3">
+          This will be remembered for all future logins.
+        </p>
+      </div>
+    </div>
+  );
+};
+
 const Dashboard = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, updateCurrencySymbol } = useAuth();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
   
   // Refs for click outside detection
   const userMenuRef = useRef(null);
@@ -127,6 +210,13 @@ const Dashboard = () => {
     setActiveTab('dashboard');
     navigate('/dashboard');
   };
+
+  // ─── Show currency picker on first login (when no currency saved) ─────────
+  useEffect(() => {
+    if (user && !user.currency_symbol && !loading) {
+      setShowCurrencyModal(true);
+    }
+  }, [user, loading]);
 
   // ─── fetchDashboardData ────────────────────────────────────────────────────
   // FIX: Removed the `showRefreshToast` / `refreshing` state — the dashboard
@@ -409,13 +499,14 @@ const Dashboard = () => {
     return colors[type] || 'bg-gray-100 text-gray-600';
   };
 
+  const currencySymbol = user?.currency_symbol || '₹';
+
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
+    const formatted = new Intl.NumberFormat('en-IN', {
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(amount).replace('₹', '₹ ');
+      maximumFractionDigits: 0,
+    }).format(amount);
+    return `${currencySymbol} ${formatted}`;
   };
 
   if (loading) {
@@ -1006,6 +1097,15 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* ── Currency Preference Modal ── */}
+      {showCurrencyModal && (
+        <CurrencyPickerModal
+          onSelect={async (symbol) => {
+            await updateCurrencySymbol(symbol);
+            setShowCurrencyModal(false);
+          }}
+        />
+      )}
       {/* Navigation Bar */}
       <nav className="bg-white/80 backdrop-blur-lg shadow-lg border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1078,6 +1178,16 @@ const Dashboard = () => {
                     >
                       <User className="h-4 w-4" />
                       Profile
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowCurrencyModal(true);
+                        setShowUserMenu(false);
+                      }}
+                      className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
+                    >
+                      <IndianRupee className="h-4 w-4" />
+                      Currency ({currencySymbol})
                     </button>
                     <button
                       onClick={() => {
