@@ -22,38 +22,53 @@ export const AuthProvider = ({ children }) => {
   const [initialLoading, setInitialLoading] = useState(true);
   const [tempEmail, setTempEmail] = useState('');
 
-  // Restore session on mount
+  // ─── Restore session on mount ───────────────────────────────────────────────
+  // FIX: Previously any error during /me (including network blips) would call
+  // localStorage.clear() and log the user out. Now we only clear tokens if the
+  // server explicitly returns 401 (invalid/expired token). All other errors
+  // (500, network timeout, etc.) leave the tokens intact so the user stays
+  // logged in after a page refresh.
   useEffect(() => {
     const loadUser = async () => {
       const token = localStorage.getItem('access_token');
-      if (token) {
-        try {
-          const response = await api.get('/me');
-          // Merge stored role in case /me doesn't return it
-          const storedRole = localStorage.getItem('user_role');
-          setUser({
-            ...response.data,
-            role: storedRole || response.data.role,
-          });
-        } catch {
+
+      if (!token) {
+        // No token at all — nothing to restore
+        setInitialLoading(false);
+        return;
+      }
+
+      try {
+        const response = await api.get('/me');
+        const storedRole = localStorage.getItem('user_role');
+        setUser({
+          ...response.data,
+          role: storedRole || response.data.role,
+        });
+      } catch (err) {
+        const status = err.response?.status;
+
+        if (status === 401) {
+          // Token is genuinely invalid / expired — clear everything
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
           localStorage.removeItem('user_role');
           localStorage.removeItem('gym_id');
         }
+        // For any other error (network down, 500, etc.) we intentionally do
+        // NOT clear the tokens. The user's session is preserved and they will
+        // remain logged in — the api interceptor will refresh the token if
+        // needed on the next real request.
+      } finally {
+        setInitialLoading(false);
       }
-      setInitialLoading(false);
     };
+
     loadUser();
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // LOGIN — now returns a `redirect` string so Login.jsx can navigate there.
-  //
-  //   super_admin  → '/admin'
-  //   gym_staff    → '/dashboard'
-  //   gym_owner    → '/gym-setup'  (if setup not done)
-  //                  '/dashboard'  (if setup done)
+  // LOGIN
   // ─────────────────────────────────────────────────────────────────────────
   const login = async (email, password) => {
     setLoading(true);
@@ -61,7 +76,6 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.post(`${API_BASE_URL}/login`, { email, password });
 
       if (response.data) {
-        // Persist tokens
         localStorage.setItem('access_token', response.data.access_token);
         localStorage.setItem('refresh_token', response.data.refresh_token);
         localStorage.setItem('user_role', response.data.user_role);
@@ -69,7 +83,6 @@ export const AuthProvider = ({ children }) => {
           localStorage.setItem('gym_id', response.data.gym_id);
         }
 
-        // Fetch full user record
         const userResponse = await api.get('/me');
         setUser({
           ...userResponse.data,
@@ -81,17 +94,14 @@ export const AuthProvider = ({ children }) => {
 
         const role = response.data.user_role;
 
-        // ── SUPER ADMIN: always go to /admin ──────────────────────────────
         if (role === 'super_admin') {
           return { success: true, data: response.data, redirect: '/admin' };
         }
 
-        // ── GYM STAFF: straight to dashboard ─────────────────────────────
         if (role === 'gym_staff') {
           return { success: true, data: response.data, redirect: '/dashboard' };
         }
 
-        // ── GYM OWNER: check setup status ─────────────────────────────────
         if (role === 'gym_owner') {
           try {
             const setupResponse = await api.get('/gym/setup-status');
@@ -102,12 +112,10 @@ export const AuthProvider = ({ children }) => {
               redirect: needsSetup ? '/gym-setup' : '/dashboard',
             };
           } catch {
-            // If setup-status check fails, send to setup to be safe
             return { success: true, data: response.data, redirect: '/gym-setup' };
           }
         }
 
-        // Fallback
         return { success: true, data: response.data, redirect: '/dashboard' };
       }
     } catch (error) {

@@ -30,7 +30,6 @@ import {
   UserMinus,
   Calendar,
   IndianRupee,
-  RefreshCw,
   Gift,
   Star,
   Flame,
@@ -49,6 +48,9 @@ import Members from './Members';
 import Staff from './Staff';
 import Profile from './Profile';
 
+// Auto-refresh interval in milliseconds (60 seconds)
+const AUTO_REFRESH_INTERVAL = 40_000;
+
 const Dashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -56,7 +58,6 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   
   // Refs for click outside detection
   const userMenuRef = useRef(null);
@@ -97,7 +98,6 @@ const Dashboard = () => {
   // Handle click outside for user menu
   useEffect(() => {
     const handleClickOutside = (event) => {
-      // If user menu is open and click is outside both the button and the menu, close it
       if (
         showUserMenu && 
         userMenuRef.current && 
@@ -109,12 +109,10 @@ const Dashboard = () => {
       }
     };
 
-    // Add event listener when menu is open
     if (showUserMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
-    // Cleanup
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
@@ -125,19 +123,20 @@ const Dashboard = () => {
     navigate('/login');
   };
 
-  // Function to navigate to dashboard
   const goToDashboard = () => {
     setActiveTab('dashboard');
     navigate('/dashboard');
   };
 
-  // Function to fetch all dashboard data
-  const fetchDashboardData = useCallback(async (showRefreshToast = false) => {
-    if (showRefreshToast) setRefreshing(true);
-    setLoading(true);
+  // ─── fetchDashboardData ────────────────────────────────────────────────────
+  // FIX: Removed the `showRefreshToast` / `refreshing` state — the dashboard
+  // now silently updates itself in the background every AUTO_REFRESH_INTERVAL ms.
+  // The first load still shows the full-screen spinner; subsequent silent
+  // refreshes update values without any visual disruption.
+  const fetchDashboardData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     
     try {
-      // Fetch dashboard stats, members, payments, and memberships in parallel
       const [statsResponse, membersResponse, paymentsResponse, membershipsResponse] = await Promise.all([
         api.get('/gym/dashboard/stats').catch(err => {
           console.error('Error fetching stats:', err);
@@ -161,28 +160,23 @@ const Dashboard = () => {
       const payments = paymentsResponse.data || [];
       const memberships = membershipsResponse.data || [];
       
-      // Calculate real stats from actual data
       const today = new Date().toISOString().split('T')[0];
       const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
       
-      // Member calculations
       const totalMembers = members.length;
       const activeMembers = members.filter(m => m.is_active).length;
       const inactiveMembers = totalMembers - activeMembers;
       
-      // New members this month
       const newMembersThisMonth = members.filter(m => 
         m.joined_date && m.joined_date >= firstDayOfMonth
       ).length;
       
-      // Members by gender
       const membersByGender = members.reduce((acc, m) => {
         const gender = m.gender || 'other';
         acc[gender] = (acc[gender] || 0) + 1;
         return acc;
       }, { male: 0, female: 0, other: 0 });
 
-      // Recent members (last 5)
       const recentMembers = members
         .sort((a, b) => new Date(b.created_at || b.joined_date) - new Date(a.created_at || a.joined_date))
         .slice(0, 5)
@@ -197,15 +191,12 @@ const Dashboard = () => {
           avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(m.full_name)}&background=0D9488&color=fff`
         }));
 
-      // Payment calculations
       const totalRevenue = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
       
-      // Monthly revenue (current month)
       const monthlyRevenue = payments
         .filter(p => p.payment_date && p.payment_date.split('T')[0] >= firstDayOfMonth)
         .reduce((sum, p) => sum + (p.amount || 0), 0);
       
-      // Previous month revenue for growth calculation
       const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().split('T')[0];
       const lastMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().split('T')[0];
       
@@ -220,12 +211,10 @@ const Dashboard = () => {
         ? ((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue * 100).toFixed(1)
         : monthlyRevenue > 0 ? 100 : 0;
 
-      // Pending payments (memberships with pending status)
       const pendingPayments = memberships.filter(m => 
         m.payment_status === 'pending' || m.payment_status === 'PENDING'
       ).length;
 
-      // Expiring memberships (within next 30 days)
       const today_date = new Date();
       const thirtyDaysLater = new Date(today_date.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
@@ -243,7 +232,6 @@ const Dashboard = () => {
         m.end_date >= today
       ).length;
 
-      // FIX: Get expiring members details with proper member data
       const expiringMembers = memberships
         .filter(m => 
           m.status === 'active' && 
@@ -252,12 +240,8 @@ const Dashboard = () => {
           m.end_date >= today
         )
         .map(m => {
-          // Find the member by ID from the members array
           const member = members.find(mem => mem.id === m.member_id);
-          
-          // If member is not found in the members array, try to get it from the membership object
           const memberData = member || m.member;
-          
           const daysLeft = Math.ceil((new Date(m.end_date) - today_date) / (1000 * 60 * 60 * 24));
           
           return {
@@ -279,10 +263,8 @@ const Dashboard = () => {
         .sort((a, b) => a.daysLeft - b.daysLeft)
         .slice(0, 5);
 
-      // Today's check-ins (from attendance - if available)
       const todayCheckins = statsResponse.data?.today_checkins || 0;
 
-      // Recent payments for display
       const recentPayments = payments
         .sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date))
         .slice(0, 5)
@@ -297,7 +279,6 @@ const Dashboard = () => {
           };
         });
 
-      // Create recent activities from payments and new members
       const activities = [
         ...payments.slice(0, 3).map(p => {
           const member = members.find(m => m.id === p.member_id);
@@ -320,7 +301,6 @@ const Dashboard = () => {
         }))
       ].sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 5);
 
-      // Membership distribution
       const membershipDistribution = memberships.reduce((acc, m) => {
         const planName = m.plan?.name || 'No Plan';
         acc[planName] = (acc[planName] || 0) + 1;
@@ -357,36 +337,54 @@ const Dashboard = () => {
 
       setUpcomingClasses(statsResponse.data?.upcoming_classes || []);
       
-      if (showRefreshToast) {
-        toast.success('Dashboard updated!');
-      }
-      
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      toast.error('Failed to load dashboard data');
+      if (!silent) toast.error('Failed to load dashboard data');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
-  // Initial data fetch
+  // ─── Initial load ──────────────────────────────────────────────────────────
   useEffect(() => {
-    fetchDashboardData();
+    fetchDashboardData(false);
   }, [fetchDashboardData]);
 
-  // Listen for member added events
+  // ─── Auto-refresh every 60 seconds (silent, no spinner/toast) ─────────────
   useEffect(() => {
-    const handleMemberAdded = () => {
+    const timer = setInterval(() => {
+      // Only auto-refresh when the dashboard tab is active
+      if (document.visibilityState === 'visible') {
+        fetchDashboardData(true);
+      }
+    }, AUTO_REFRESH_INTERVAL);
+
+    return () => clearInterval(timer);
+  }, [fetchDashboardData]);
+
+  // ─── Refresh when tab becomes visible again (user switches back) ───────────
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchDashboardData(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [fetchDashboardData]);
+
+  // ─── Listen for member/payment added events ────────────────────────────────
+  useEffect(() => {
+    const handleDataChange = () => {
       fetchDashboardData(true);
     };
 
-    window.addEventListener('memberAdded', handleMemberAdded);
-    window.addEventListener('paymentAdded', handleMemberAdded);
+    window.addEventListener('memberAdded', handleDataChange);
+    window.addEventListener('paymentAdded', handleDataChange);
     
     return () => {
-      window.removeEventListener('memberAdded', handleMemberAdded);
-      window.removeEventListener('paymentAdded', handleMemberAdded);
+      window.removeEventListener('memberAdded', handleDataChange);
+      window.removeEventListener('paymentAdded', handleDataChange);
     };
   }, [fetchDashboardData]);
 
@@ -411,7 +409,6 @@ const Dashboard = () => {
     return colors[type] || 'bg-gray-100 text-gray-600';
   };
 
-  // Format currency in Rupees
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -421,8 +418,7 @@ const Dashboard = () => {
     }).format(amount).replace('₹', '₹ ');
   };
 
-  // Show loading spinner
-  if (loading && !refreshing) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
@@ -440,10 +436,10 @@ const Dashboard = () => {
     );
   }
 
-  // Render dashboard content
+  // ─── Dashboard content ─────────────────────────────────────────────────────
   const renderDashboard = () => (
     <div className="space-y-6">
-      {/* Welcome Header with Refresh Button */}
+      {/* Welcome Header — Refresh button removed; data updates automatically */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white shadow-xl">
         <div className="flex justify-between items-center">
           <div>
@@ -455,14 +451,11 @@ const Dashboard = () => {
             </h1>
             <p className="text-blue-100 mt-2 text-lg">Here's what's happening at your gym today.</p>
           </div>
-          <button
-            onClick={() => fetchDashboardData(true)}
-            disabled={refreshing}
-            className="flex items-center gap-2 px-6 py-3 bg-white/20 backdrop-blur-lg rounded-xl hover:bg-white/30 transition-all disabled:opacity-50 border border-white/30"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            <span className="text-sm font-medium">Refresh Data</span>
-          </button>
+          {/* Auto-refresh indicator — subtle, no button needed */}
+          <div className="flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-lg rounded-xl border border-white/20 text-sm text-white/80">
+            <span className="h-2 w-2 bg-green-400 rounded-full animate-pulse"></span>
+            Live · auto-updates every minute
+          </div>
         </div>
         
         {/* Quick Stats Pills */}
@@ -482,7 +475,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Key Stats Cards - First Row */}
+      {/* Key Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-blue-500">
           <div className="flex items-center justify-between mb-4">
@@ -660,7 +653,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Expiry Notifications Card - Fixed */}
+        {/* Expiry Notifications Card */}
         <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
@@ -720,7 +713,6 @@ const Dashboard = () => {
                   <button 
                     onClick={() => {
                       setActiveTab('members');
-                      // You can add logic to open renewal modal
                       toast.success(`Ready to renew ${member.memberName}'s membership`);
                     }}
                     className="opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transform hover:-translate-y-0.5 transition-all"
@@ -965,7 +957,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Alerts Section - Only shown when there are alerts */}
+      {/* Alerts Section */}
       {(stats.expiringThisMonth > 0 || stats.pendingPayments > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {stats.expiringThisMonth > 0 && (
