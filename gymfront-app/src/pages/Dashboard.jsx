@@ -23,6 +23,7 @@ import {
   Calendar as CalendarIcon,
   CreditCard as CreditCardIcon,
   BarChart,
+  Target,
   ChevronDown,
   Loader,
   TrendingDown,
@@ -34,7 +35,6 @@ import {
   Star,
   Flame,
   Zap,
-  Target,
   TrendingUp as TrendUp,
   MessageCircle,
   Mail,
@@ -48,6 +48,7 @@ import toast from 'react-hot-toast';
 import Members from './Members';
 import Staff from './Staff';
 import Profile from './Profile';
+import Leads from './Leads';
 
 // Auto-refresh interval in milliseconds (60 seconds)
 const AUTO_REFRESH_INTERVAL = 40_000;
@@ -484,7 +485,7 @@ const Dashboard = () => {
     { name: 'Staff', icon: UserPlus, id: 'staff' },
     { name: 'Classes', icon: CalendarIcon, id: 'classes' },
     { name: 'Payments', icon: CreditCardIcon, id: 'payments' },
-    { name: 'Reports', icon: BarChart, id: 'reports' },
+    { name: 'Leads', icon: Target, id: 'leads' },
   ];
 
   const getActivityColor = (type) => {
@@ -1293,13 +1294,7 @@ const Dashboard = () => {
             <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
           </div>
         )}
-        {activeTab === 'reports' && (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <BarChart className="h-16 w-16 text-orange-300 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900">Reports</h2>
-            <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
-          </div>
-        )}
+        {activeTab === 'leads' && <Leads />}
         {activeTab === 'settings' && (
           <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
             <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
