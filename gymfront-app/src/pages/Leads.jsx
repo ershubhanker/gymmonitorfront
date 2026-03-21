@@ -99,6 +99,7 @@ const LeadModal = ({ lead, onClose, onSave }) => {
   const handleSubmit = async () => {
     if (!form.full_name.trim()) { toast.error('Name is required'); return; }
     if (!form.phone.trim()) { toast.error('Phone is required'); return; }
+    if (!/^[+]?[\d\s\-]{7,15}$/.test(form.phone.trim())) { toast.error('Enter a valid phone number (e.g. +91-9876543210)'); return; }
 
     setSaving(true);
     const payload = {
@@ -127,6 +128,11 @@ const LeadModal = ({ lead, onClose, onSave }) => {
     }
   };
 
+  const phoneKeyDown = (e) => {
+    const allowed = new Set(['Backspace','Delete','Tab','Escape','Enter','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End']);
+    if (!e.ctrlKey && !e.metaKey && !allowed.has(e.key) && !/^[0-9+\- ]$/.test(e.key)) e.preventDefault();
+  };
+
   const field = (label, key, type = 'text', opts = {}) => (
     <div>
       <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
@@ -134,6 +140,7 @@ const LeadModal = ({ lead, onClose, onSave }) => {
         type={type}
         value={form[key]}
         onChange={e => set(key, e.target.value)}
+        {...(type === 'tel' ? { maxLength: 15, onKeyDown: phoneKeyDown } : {})}
         className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
         {...opts}
       />

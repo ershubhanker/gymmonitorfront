@@ -39,8 +39,8 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
     
     if (!formData.phone.trim()) {
       newErrors.phone = 'Phone number is required';
-    } else if (!/^[0-9+\-\s]{10,15}$/.test(formData.phone)) {
-      newErrors.phone = 'Phone number is invalid';
+    } else if (!/^[+]?[\d\s\-]{7,15}$/.test(formData.phone.trim())) {
+      newErrors.phone = 'Enter a valid phone number (e.g. +91-9876543210)';
     }
     
     if (!formData.position) {
@@ -301,6 +301,11 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
                     required
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onKeyDown={(e) => {
+                      const nav = new Set(['Backspace','Delete','Tab','Escape','Enter','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End']);
+                      if (!e.ctrlKey && !e.metaKey && !nav.has(e.key) && !/^[0-9+\- ]$/.test(e.key)) e.preventDefault();
+                    }}
+                    maxLength={15}
                     className={`w-full pl-10 pr-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition ${
                       errors.phone ? 'border-red-500 bg-red-50' : 'border-gray-300'
                     }`}

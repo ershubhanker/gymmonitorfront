@@ -617,6 +617,16 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
       setActiveTab('personal');
       return;
     }
+    if (!/^[+]?[\d\s\-]{7,15}$/.test(formData.phone.trim())) {
+      toast.error('Enter a valid phone number (e.g. +91-9876543210)');
+      setActiveTab('personal');
+      return;
+    }
+    if (formData.emergency_contact_phone.trim() && !/^[+]?[\d\s\-]{7,15}$/.test(formData.emergency_contact_phone.trim())) {
+      toast.error('Enter a valid emergency contact phone number');
+      setActiveTab('contact');
+      return;
+    }
     if (!isEdit && !formData.plan_id) {
       toast.error('Please select a membership plan');
       setActiveTab('membership');
@@ -649,6 +659,11 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
   ];
 
   const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-white";
+  const phoneKeyDown = (e) => {
+    const nav = new Set(['Backspace','Delete','Tab','Escape','Enter','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End']);
+    if (!e.ctrlKey && !e.metaKey && !nav.has(e.key) && !/^[0-9+\- ]$/.test(e.key)) e.preventDefault();
+  };
+
   const labelCls = "block text-sm font-medium text-gray-700 mb-1";
 
   const idProofOptions = [
@@ -733,6 +748,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
                   <div>
                     <label className={labelCls}>Phone <span className="text-red-500">*</span></label>
                     <input type="tel" required value={formData.phone} onChange={set('phone')}
+                      maxLength={15} onKeyDown={phoneKeyDown}
                       className={inputCls} placeholder="+91 98765 43210" />
                   </div>
 
@@ -787,6 +803,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
                     <label className={labelCls}>Contact Phone</label>
                     <input type="tel" value={formData.emergency_contact_phone}
                       onChange={set('emergency_contact_phone')} className={inputCls}
+                      maxLength={15} onKeyDown={phoneKeyDown}
                       placeholder="+91 98765 43210" />
                   </div>
                 </div>
