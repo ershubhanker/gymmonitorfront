@@ -77,7 +77,7 @@ const Members = () => {
           status: member.is_active ? 'active' : 'inactive',
           lastVisit: member.last_visit || null,
           payments: paymentCount,
-          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff`,
+          avatar: member.profile_image || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff`,
           // Keep raw data for edit modal
           raw: member,
         };
@@ -111,6 +111,7 @@ const Members = () => {
     // 1. Create member
     const response = await api.post('/gym/members', memberFields);
     const memberId = response.data.id;
+    const createdMember = response.data;
     let membershipLabel = 'No Plan';
 
     // 2. Create membership + payment if plan selected
@@ -144,6 +145,7 @@ const Members = () => {
     fetchStats();
     setIsModalOpen(false);
     toast.success('Member added successfully!');
+    return createdMember;
   };
 
   const handleUpdateMember = async (memberData) => {

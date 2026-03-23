@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, User, Phone, Heart, FileText, Camera, Plus, CheckCircle,
   Calendar, CreditCard, AlertCircle, ChevronRight, Loader2, RefreshCw,
-  ChevronUp, ChevronDown
+  ChevronUp, ChevronDown, Upload, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -17,12 +17,8 @@ const PLAN_PRESETS = [
 
 // ─── DOB Scroll Picker ────────────────────────────────────────────────────────
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const ITEM_H = 40; // px height per row
+const ITEM_H = 40;
 
-/**
- * A single scrollable column (Day / Month / Year).
- * Renders a padded list and snaps to the nearest item on scroll end.
- */
 const ScrollColumn = ({ items, selectedIndex, onChange, label }) => {
   const listRef = useRef(null);
   const isDragging = useRef(false);
@@ -34,10 +30,7 @@ const ScrollColumn = ({ items, selectedIndex, onChange, label }) => {
     listRef.current.scrollTo({ top: idx * ITEM_H, behavior: smooth ? 'smooth' : 'auto' });
   }, []);
 
-  // Sync scroll position whenever the selected index changes externally
-  useEffect(() => {
-    scrollToIndex(selectedIndex, false);
-  }, [selectedIndex, scrollToIndex]);
+  useEffect(() => { scrollToIndex(selectedIndex, false); }, [selectedIndex, scrollToIndex]);
 
   const handleScroll = () => {
     if (!listRef.current || isDragging.current) return;
@@ -46,7 +39,6 @@ const ScrollColumn = ({ items, selectedIndex, onChange, label }) => {
     if (clamped !== selectedIndex) onChange(clamped);
   };
 
-  // Pointer / touch drag support
   const onPointerDown = (e) => {
     isDragging.current = true;
     startY.current = e.clientY ?? e.touches?.[0]?.clientY;
@@ -69,81 +61,41 @@ const ScrollColumn = ({ items, selectedIndex, onChange, label }) => {
   return (
     <div className="flex flex-col items-center select-none" style={{ width: 72 }}>
       <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">{label}</span>
-
-      <button
-        type="button"
-        className="text-gray-300 hover:text-blue-500 transition-colors p-1"
-        onClick={() => { const ni = Math.max(0, selectedIndex - 1); scrollToIndex(ni); onChange(ni); }}
-      >
+      <button type="button" className="text-gray-300 hover:text-blue-500 transition-colors p-1"
+        onClick={() => { const ni = Math.max(0, selectedIndex - 1); scrollToIndex(ni); onChange(ni); }}>
         <ChevronUp className="h-4 w-4" />
       </button>
-
-      {/* Scroll window: 3 items tall, centre one is selected */}
       <div className="relative overflow-hidden rounded-xl" style={{ height: ITEM_H * 3, width: 72 }}>
-        {/* Top fade */}
         <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-white to-transparent z-10 pointer-events-none" />
-        {/* Selected highlight band */}
-        <div
-          className="absolute inset-x-0 z-10 pointer-events-none rounded-lg border-2 border-blue-500 bg-blue-50/60"
-          style={{ top: ITEM_H, height: ITEM_H }}
-        />
-        {/* Bottom fade */}
+        <div className="absolute inset-x-0 z-10 pointer-events-none rounded-lg border-2 border-blue-500 bg-blue-50/60"
+          style={{ top: ITEM_H, height: ITEM_H }} />
         <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent z-10 pointer-events-none" />
-
-        <div
-          ref={listRef}
-          onScroll={handleScroll}
-          onMouseDown={onPointerDown}
-          onMouseMove={onPointerMove}
-          onMouseUp={onPointerUp}
-          onMouseLeave={onPointerUp}
-          onTouchStart={onPointerDown}
-          onTouchMove={onPointerMove}
-          onTouchEnd={onPointerUp}
-          style={{
-            overflowY: 'scroll',
-            height: '100%',
-            scrollSnapType: 'y mandatory',
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-          }}
-        >
-          {/* top spacer so first item centres in the window */}
+        <div ref={listRef} onScroll={handleScroll}
+          onMouseDown={onPointerDown} onMouseMove={onPointerMove}
+          onMouseUp={onPointerUp} onMouseLeave={onPointerUp}
+          onTouchStart={onPointerDown} onTouchMove={onPointerMove} onTouchEnd={onPointerUp}
+          style={{ overflowY: 'scroll', height: '100%', scrollSnapType: 'y mandatory', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           <div style={{ height: ITEM_H }} />
           {items.map((item, i) => (
-            <div
-              key={i}
+            <div key={i}
               className={`flex items-center justify-center font-medium transition-all cursor-pointer
-                ${i === selectedIndex
-                  ? 'text-blue-600 text-base'
-                  : 'text-gray-400 text-sm hover:text-gray-600'
-                }`}
+                ${i === selectedIndex ? 'text-blue-600 text-base' : 'text-gray-400 text-sm hover:text-gray-600'}`}
               style={{ height: ITEM_H, scrollSnapAlign: 'start' }}
-              onClick={() => { scrollToIndex(i); onChange(i); }}
-            >
+              onClick={() => { scrollToIndex(i); onChange(i); }}>
               {typeof item === 'number' ? String(item).padStart(2, '0') : item}
             </div>
           ))}
-          {/* bottom spacer */}
           <div style={{ height: ITEM_H }} />
         </div>
       </div>
-
-      <button
-        type="button"
-        className="text-gray-300 hover:text-blue-500 transition-colors p-1"
-        onClick={() => { const ni = Math.min(items.length - 1, selectedIndex + 1); scrollToIndex(ni); onChange(ni); }}
-      >
+      <button type="button" className="text-gray-300 hover:text-blue-500 transition-colors p-1"
+        onClick={() => { const ni = Math.min(items.length - 1, selectedIndex + 1); scrollToIndex(ni); onChange(ni); }}>
         <ChevronDown className="h-4 w-4" />
       </button>
     </div>
   );
 };
 
-/**
- * DOBPicker — a button that opens a three-column scroll picker popover.
- * value / onChange use "YYYY-MM-DD" strings, same as a native date input.
- */
 const DOBPicker = ({ value, onChange, maxDate }) => {
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
@@ -154,69 +106,45 @@ const DOBPicker = ({ value, onChange, maxDate }) => {
     return { year: y, month: m - 1, day: d };
   };
   const parsed = parseValue(value);
-
   const currentYear = maxDate ? parseInt(maxDate.split('-')[0]) : new Date().getFullYear();
   const years = [];
   for (let y = currentYear; y >= 1930; y--) years.push(y);
-
   const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
   const days = Array.from({ length: daysInMonth(parsed.year, parsed.month) }, (_, i) => i + 1);
-
   const yearIdx  = Math.max(0, years.indexOf(parsed.year));
   const monthIdx = parsed.month;
   const dayIdx   = Math.min(parsed.day - 1, days.length - 1);
-
   const emit = (y, m, d) => {
     const safeDay = Math.min(d + 1, daysInMonth(y, m));
     onChange(`${y}-${String(m + 1).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`);
   };
-
   const displayValue = value
-    ? new Date(value + 'T00:00:00').toLocaleDateString('en-IN', {
-        day: 'numeric', month: 'long', year: 'numeric',
-      })
+    ? new Date(value + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
     : '';
 
-  // Close popover on outside click
   useEffect(() => {
-    const handler = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
-    };
+    const handler = (e) => { if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false); };
     if (open) document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
   return (
     <div ref={containerRef} className="relative">
-      {/* Trigger button — looks like an input */}
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
+      <button type="button" onClick={() => setOpen(o => !o)}
         className={`w-full px-3 py-2 border rounded-lg text-sm text-left flex items-center justify-between bg-white transition-all
-          ${open
-            ? 'border-blue-500 ring-2 ring-blue-100'
-            : 'border-gray-300 hover:border-blue-400'}
-          ${!value ? 'text-gray-400' : 'text-gray-800'}`}
-      >
+          ${open ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-300 hover:border-blue-400'}
+          ${!value ? 'text-gray-400' : 'text-gray-800'}`}>
         <span className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
           {value ? displayValue : 'Select date of birth'}
         </span>
         <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
-
-      {/* Popover */}
       {open && (
-        <div
-          className="absolute left-0 mt-2 z-[60] bg-white border border-gray-200 rounded-2xl shadow-2xl p-5"
+        <div className="absolute left-0 mt-2 z-[60] bg-white border border-gray-200 rounded-2xl shadow-2xl p-5"
           style={{ minWidth: 300 }}
-          onWheel={e => e.stopPropagation()}   // don't scroll the modal behind
-          onTouchMove={e => e.stopPropagation()}
-        >
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider text-center mb-3">
-            Date of Birth
-          </p>
-
+          onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider text-center mb-3">Date of Birth</p>
           <div className="flex items-start justify-center gap-2">
             <ScrollColumn label="Day"   items={days}   selectedIndex={dayIdx}   onChange={(i) => emit(parsed.year, parsed.month, i)} />
             <div className="w-px bg-gray-100 self-stretch" />
@@ -224,30 +152,186 @@ const DOBPicker = ({ value, onChange, maxDate }) => {
             <div className="w-px bg-gray-100 self-stretch" />
             <ScrollColumn label="Year"  items={years}  selectedIndex={yearIdx}  onChange={(i) => emit(years[i], parsed.month, dayIdx)} />
           </div>
-
-          {/* Selected date summary */}
           {value && (
             <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
               <p className="text-sm font-semibold text-blue-700">{displayValue}</p>
-              <button
-                type="button"
-                onClick={() => { onChange(''); setOpen(false); }}
-                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-              >
-                Clear
-              </button>
+              <button type="button" onClick={() => { onChange(''); setOpen(false); }}
+                className="text-xs text-gray-400 hover:text-red-500 transition-colors">Clear</button>
             </div>
           )}
-
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="mt-3 w-full py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 active:bg-blue-800 transition-colors"
-          >
+          <button type="button" onClick={() => setOpen(false)}
+            className="mt-3 w-full py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 active:bg-blue-800 transition-colors">
             Done
           </button>
         </div>
       )}
+    </div>
+  );
+};
+
+// ─── Profile Photo Uploader ───────────────────────────────────────────────────
+/**
+ * PhotoUploader handles TWO scenarios:
+ *
+ * 1. NEW member (memberId = null):
+ *    - The user picks a file → we store it in `pendingFile` state and show a preview.
+ *    - We expose `getPendingFile()` to the parent so it can upload AFTER the member is created.
+ *
+ * 2. EXISTING member (memberId = number):
+ *    - The user picks a file → we upload immediately via POST /gym/members/{id}/upload-photo.
+ *    - The returned photo_url replaces the preview.
+ */
+const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingFileRef }) => {
+  const fileInputRef = useRef(null);
+  const [preview, setPreview] = useState(currentPhotoUrl || null);
+  const [uploading, setUploading] = useState(false);
+  const [pendingFile, setPendingFile] = useState(null);
+
+  // Expose getPendingFile to parent via ref
+  useEffect(() => {
+    if (getPendingFileRef) {
+      getPendingFileRef.current = () => pendingFile;
+    }
+  }, [pendingFile, getPendingFileRef]);
+
+  // Reset when modal opens with a different member
+  useEffect(() => {
+    setPreview(currentPhotoUrl || null);
+    setPendingFile(null);
+  }, [currentPhotoUrl, memberId]);
+
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+  const MAX_SIZE_MB = 5;
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Client-side validation
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      toast.error('Please upload a JPEG, PNG, or WebP image.');
+      return;
+    }
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      toast.error(`Image must be smaller than ${MAX_SIZE_MB} MB.`);
+      return;
+    }
+
+    // Show local preview immediately
+    const localUrl = URL.createObjectURL(file);
+    setPreview(localUrl);
+
+    if (memberId) {
+      // Existing member → upload right away
+      setUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await api.post(
+          `/gym/members/${memberId}/upload-photo`,
+          formData,
+          { headers: { 'Content-Type': 'multipart/form-data' } }
+        );
+        setPreview(res.data.photo_url);
+        setPendingFile(null);
+        if (onPhotoUploaded) onPhotoUploaded(res.data.photo_url);
+        toast.success('Photo uploaded successfully!');
+      } catch (err) {
+        toast.error(err.response?.data?.detail || 'Photo upload failed. Please try again.');
+        setPreview(currentPhotoUrl || null); // revert preview on failure
+      } finally {
+        setUploading(false);
+      }
+    } else {
+      // New member → store file, upload after member is created
+      setPendingFile(file);
+    }
+
+    // Reset the input so the same file can be re-selected if needed
+    e.target.value = '';
+  };
+
+  const handleRemove = () => {
+    setPreview(null);
+    setPendingFile(null);
+    if (onPhotoUploaded) onPhotoUploaded(null);
+  };
+
+  return (
+    <div className="flex items-center gap-5 p-4 bg-gray-50 rounded-xl">
+      {/* Avatar / Preview */}
+      <div className="relative flex-shrink-0">
+        {preview ? (
+          <img
+            src={preview}
+            alt="Member photo"
+            className="h-20 w-20 rounded-full object-cover border-2 border-blue-200 shadow"
+          />
+        ) : (
+          <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-2xl font-bold shadow">
+            <User className="h-8 w-8" />
+          </div>
+        )}
+
+        {/* Camera overlay button */}
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="absolute -bottom-1 -right-1 bg-blue-600 p-1.5 rounded-full text-white hover:bg-blue-700 shadow transition-colors disabled:opacity-60"
+          title="Upload photo"
+        >
+          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+
+      {/* Labels and action buttons */}
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-gray-800 text-sm">Member Photo</p>
+        {pendingFile && !memberId ? (
+          <p className="text-xs text-amber-600 mt-0.5 font-medium">
+            📎 {pendingFile.name} — will upload after saving
+          </p>
+        ) : uploading ? (
+          <p className="text-xs text-blue-600 mt-0.5">Uploading…</p>
+        ) : preview ? (
+          <p className="text-xs text-green-600 mt-0.5 font-medium">✓ Photo set</p>
+        ) : (
+          <p className="text-xs text-gray-500 mt-0.5">JPEG, PNG, WebP · max 5 MB</p>
+        )}
+
+        <div className="flex items-center gap-2 mt-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            {preview ? 'Change Photo' : 'Upload Photo'}
+          </button>
+
+          {preview && (
+            <button
+              type="button"
+              onClick={handleRemove}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={handleFileChange}
+      />
     </div>
   );
 };
@@ -308,7 +392,6 @@ const QuickPlanCreator = ({ onPlanCreated, onCancel, showCancel }) => {
           </button>
         )}
       </div>
-
       <div className="space-y-4">
         <div>
           <label className="block text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Plan Type</label>
@@ -325,7 +408,6 @@ const QuickPlanCreator = ({ onPlanCreated, onCancel, showCancel }) => {
             ))}
           </div>
         </div>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Plan Name <span className="text-red-500">*</span></label>
@@ -361,7 +443,6 @@ const QuickPlanCreator = ({ onPlanCreated, onCancel, showCancel }) => {
             </div>
           </div>
         </div>
-
         <div className="flex justify-end gap-2 pt-1">
           {showCancel && (
             <button type="button" onClick={onCancel}
@@ -542,6 +623,9 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
   const [showPlanCreator, setShowPlanCreator] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Ref used to get the pending file from PhotoUploader for new members
+  const getPendingFileRef = useRef(null);
+
   useEffect(() => {
     if (!isOpen) return;
     setActiveTab('personal');
@@ -595,7 +679,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
       const plans = response.data || [];
       setMembershipPlans(plans);
       if (!member) setShowPlanCreator(plans.length === 0);
-    } catch (error) {
+    } catch {
       toast.error('Could not load membership plans');
     } finally {
       setLoadingPlans(false);
@@ -640,7 +724,27 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
 
     setSaving(true);
     try {
-      await onSave(formData);
+      // onSave returns the newly created/updated member (with id)
+      const savedMember = await onSave(formData);
+
+      // Upload pending photo for NEW members after creation succeeds
+      if (!isEdit && savedMember?.id) {
+        const pendingFile = getPendingFileRef.current?.();
+        if (pendingFile) {
+          try {
+            const fd = new FormData();
+            fd.append('file', pendingFile);
+            await api.post(
+              `/gym/members/${savedMember.id}/upload-photo`,
+              fd,
+              { headers: { 'Content-Type': 'multipart/form-data' } }
+            );
+            toast.success('Photo uploaded!');
+          } catch {
+            toast.error('Member saved, but photo upload failed. You can re-upload from edit mode.');
+          }
+        }
+      }
     } catch (error) {
       console.error('Save error:', error);
     } finally {
@@ -663,9 +767,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
     const nav = new Set(['Backspace','Delete','Tab','Escape','Enter','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End']);
     if (!e.ctrlKey && !e.metaKey && !nav.has(e.key) && !/^[0-9+\- ]$/.test(e.key)) e.preventDefault();
   };
-
   const labelCls = "block text-sm font-medium text-gray-700 mb-1";
-
   const idProofOptions = [
     { value: 'aadhar',   label: 'Aadhar Card'      },
     { value: 'pan',      label: 'PAN Card'          },
@@ -719,20 +821,15 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
             {/* ── Personal Info ── */}
             {activeTab === 'personal' && (
               <div className="space-y-4">
-                <div className="flex items-center gap-5 p-4 bg-gray-50 rounded-xl">
-                  <div className="relative flex-shrink-0">
-                    <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-2xl font-bold">
-                      {formData.full_name ? formData.full_name.charAt(0).toUpperCase() : <User className="h-8 w-8" />}
-                    </div>
-                    <button type="button" className="absolute -bottom-1 -right-1 bg-blue-600 p-1.5 rounded-full text-white hover:bg-blue-700 shadow">
-                      <Camera className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-800 text-sm">Member Photo</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Click camera to upload</p>
-                  </div>
-                </div>
+                {/* ── Photo Uploader ── */}
+                <PhotoUploader
+                  memberId={isEdit ? member?.id : null}
+                  currentPhotoUrl={isEdit ? member?.raw?.profile_image : null}
+                  onPhotoUploaded={(url) => {
+                    // For edit mode, update local view; Members.jsx will re-fetch anyway
+                  }}
+                  getPendingFileRef={isEdit ? null : getPendingFileRef}
+                />
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -752,7 +849,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
                       className={inputCls} placeholder="+91 98765 43210" />
                   </div>
 
-                  {/* ── Custom DOB Picker replaces <input type="date"> ── */}
                   <div>
                     <label className={labelCls}>Date of Birth</label>
                     <DOBPicker
