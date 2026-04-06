@@ -5,7 +5,7 @@ import {
   ChevronUp, ChevronDown, Upload, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../services/api';
+import api, { API_BASE_URL } from '../services/api';
 
 // ─── Plan type presets ────────────────────────────────────────────────────────
 const PLAN_PRESETS = [
@@ -18,6 +18,7 @@ const PLAN_PRESETS = [
 // ─── DOB Scroll Picker ────────────────────────────────────────────────────────
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const ITEM_H = 40;
+// const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8001';
 
 const ScrollColumn = ({ items, selectedIndex, onChange, label }) => {
   const listRef = useRef(null);
@@ -183,7 +184,7 @@ const DOBPicker = ({ value, onChange, maxDate }) => {
  */
 const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingFileRef }) => {
   const fileInputRef = useRef(null);
-  const [preview, setPreview] = useState(currentPhotoUrl || null);
+  const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
 
@@ -196,7 +197,16 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
 
   // Reset when modal opens with a different member
   useEffect(() => {
-    setPreview(currentPhotoUrl || null);
+    if (currentPhotoUrl) {
+      // Build full URL using API_BASE_URL
+      if (currentPhotoUrl.startsWith('http')) {
+        setPreview(currentPhotoUrl);
+      } else {
+        setPreview(`${API_BASE_URL}${currentPhotoUrl}`);
+      }
+    } else {
+      setPreview(null);
+    }
     setPendingFile(null);
   }, [currentPhotoUrl, memberId]);
 
@@ -232,13 +242,25 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
           formData,
           { headers: { 'Content-Type': 'multipart/form-data' } }
         );
-        setPreview(res.data.photo_url);
+        // Build full URL for the response
+        const fullUrl = res.data.photo_url.startsWith('http') 
+          ? res.data.photo_url 
+          : `${API_BASE_URL}${res.data.photo_url}`;
+        setPreview(fullUrl);
         setPendingFile(null);
         if (onPhotoUploaded) onPhotoUploaded(res.data.photo_url);
         toast.success('Photo uploaded successfully!');
       } catch (err) {
         toast.error(err.response?.data?.detail || 'Photo upload failed. Please try again.');
-        setPreview(currentPhotoUrl || null); // revert preview on failure
+        // Revert preview on failure
+        if (currentPhotoUrl) {
+          const revertUrl = currentPhotoUrl.startsWith('http') 
+            ? currentPhotoUrl 
+            : `${API_BASE_URL}${currentPhotoUrl}`;
+          setPreview(revertUrl);
+        } else {
+          setPreview(null);
+        }
       } finally {
         setUploading(false);
       }

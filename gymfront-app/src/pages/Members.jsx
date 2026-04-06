@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import toast from 'react-hot-toast';
-import api from '../services/api';
+import api, { API_BASE_URL } from '../services/api';
 
 const Members = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -43,7 +43,6 @@ const Members = () => {
       if (searchTerm) params.append('search', searchTerm);
       if (filters.status !== 'all') params.append('status', filters.status);
 
-      // Fetch members and their memberships + payments in parallel
       const [membersRes, membershipsRes, paymentsRes] = await Promise.all([
         api.get(`/gym/members?${params.toString()}`),
         api.get('/gym/memberships?limit=1000'),
@@ -54,15 +53,27 @@ const Members = () => {
       const paymentsData = paymentsRes.data || [];
 
       const transformed = membersRes.data.map(member => {
-        // Find this member's active membership
         const today = new Date().toISOString().split('T')[0];
         const activeMembership = membershipsData.find(
           ms => ms.member?.id === member.id &&
                 ms.status === 'active' &&
                 ms.end_date >= today
         );
-        // Count how many payments this member has made
         const paymentCount = paymentsData.filter(p => p.member_id === member.id).length;
+
+        // FIX: Build the full URL for profile_image using API_BASE_URL
+        let avatarUrl;
+        if (member.profile_image) {
+          // If it's already a full URL, use it; otherwise prepend API_BASE_URL
+          if (member.profile_image.startsWith('http')) {
+            avatarUrl = member.profile_image;
+          } else {
+            avatarUrl = `${API_BASE_URL}${member.profile_image}`;
+          }
+        } else {
+          // Fallback to avatar generator
+          avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
+        }
 
         return {
           id: member.id,
@@ -77,8 +88,8 @@ const Members = () => {
           status: member.is_active ? 'active' : 'inactive',
           lastVisit: member.last_visit || null,
           payments: paymentCount,
-          avatar: member.profile_image || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff`,
-          // Keep raw data for edit modal
+          avatar: avatarUrl,
+          profile_image: member.profile_image,
           raw: member,
         };
       });
@@ -108,13 +119,10 @@ const Members = () => {
   const handleAddMember = async (memberData) => {
     const { plan_id, membership_start_date, payment_method, amount_paid, ...memberFields } = memberData;
 
-    // 1. Create member
     const response = await api.post('/gym/members', memberFields);
     const memberId = response.data.id;
     const createdMember = response.data;
-    let membershipLabel = 'No Plan';
 
-    // 2. Create membership + payment if plan selected
     if (plan_id && membership_start_date) {
       try {
         const membershipResponse = await api.post('/gym/memberships', {
@@ -133,8 +141,6 @@ const Members = () => {
             payment_method: payment_method || 'cash',
           });
         }
-
-        membershipLabel = membershipResponse.data?.plan?.name || 'Plan assigned';
       } catch (membershipError) {
         console.error('Membership creation error:', membershipError);
         toast.error('Member created but membership assignment failed. Please assign manually.');
@@ -155,10 +161,8 @@ const Members = () => {
       ...memberFields
     } = memberData;
 
-    // 1. Update member personal details
     await api.put(`/gym/members/${selectedMember.id}`, memberFields);
 
-    // 2. If renewing/changing membership
     if (renew_membership && plan_id && membership_start_date) {
       try {
         const membershipResponse = await api.post('/gym/memberships', {
@@ -276,7 +280,6 @@ const Members = () => {
     );
   };
 
-  // Build member object for editing (pass raw fields + current membership info)
   const openEditModal = (member) => {
     setSelectedMember({
       id: member.id,
@@ -431,8 +434,15 @@ const Members = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <img className="h-10 w-10 rounded-full flex-shrink-0"
-                          src={member.avatar} alt="" />
+                        <img 
+                          className="h-10 w-10 rounded-full object-cover flex-shrink-0" 
+                          src={member.avatar} 
+                          alt={member.fullName}
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.fullName)}&background=0D9488&color=fff&size=128`;
+                          }}
+                        />
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900">{member.fullName}</div>
                           <div className="text-sm text-gray-500">

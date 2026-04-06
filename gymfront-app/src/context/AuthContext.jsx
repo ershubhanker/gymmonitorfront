@@ -5,10 +5,10 @@ import api from '../services/api';
 
 const AuthContext = createContext();
 
-const API_BASE_URL = 'https://api.gymmonitor.in';
-// const API_BASE_URL = 'http://localhost:8001';
+// const API_BASE_URL = 'https://api.gymmonitor.in';
+const API_BASE_URL = 'http://localhost:8001';
 
-export const useAuth = () => {
+export const useAuth = () => { 
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');

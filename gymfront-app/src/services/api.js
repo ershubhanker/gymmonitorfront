@@ -1,9 +1,11 @@
 import axios from 'axios';
 import toast from 'react-hot-toast'; // ✅ FIX: was missing — caused interceptor crash → redirect to /login
 
-const API_BASE_URL = 'https://api.gymmonitor.in';
+// const API_BASE_URL = 'https://api.gymmonitor.in';
+const API_BASE_URL = 'http://localhost:8001'; // for local host
 
-// const API_BASE_URL = 'http://localhost:8001'; // for local host
+// Export this so other components can use it
+export { API_BASE_URL };
 
 const api = axios.create({
   baseURL: API_BASE_URL,
