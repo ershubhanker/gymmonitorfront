@@ -1,10 +1,165 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   X, User, Mail, Phone, Key, Briefcase, Building2, 
-  AlertCircle, CheckCircle, Loader2, Eye, EyeOff , UserPlus
+  AlertCircle, CheckCircle, Loader2, Eye, EyeOff, UserPlus, Calendar,
+  ChevronUp, ChevronDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
+
+// ─── DOB Scroll Picker Component ─────────────────────────────────────────────
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const ITEM_H = 40;
+
+const ScrollColumn = ({ items, selectedIndex, onChange, label }) => {
+  const listRef = useRef(null);
+  const isDragging = useRef(false);
+  const startY = useRef(0);
+  const startScroll = useRef(0);
+
+  const scrollToIndex = useCallback((idx, smooth = true) => {
+    if (!listRef.current) return;
+    listRef.current.scrollTo({ top: idx * ITEM_H, behavior: smooth ? 'smooth' : 'auto' });
+  }, []);
+
+  useEffect(() => { scrollToIndex(selectedIndex, false); }, [selectedIndex, scrollToIndex]);
+
+  const handleScroll = () => {
+    if (!listRef.current || isDragging.current) return;
+    const rawIdx = Math.round(listRef.current.scrollTop / ITEM_H);
+    const clamped = Math.max(0, Math.min(rawIdx, items.length - 1));
+    if (clamped !== selectedIndex) onChange(clamped);
+  };
+
+  const onPointerDown = (e) => {
+    isDragging.current = true;
+    startY.current = e.clientY ?? e.touches?.[0]?.clientY;
+    startScroll.current = listRef.current?.scrollTop ?? 0;
+  };
+  const onPointerMove = (e) => {
+    if (!isDragging.current || !listRef.current) return;
+    const y = e.clientY ?? e.touches?.[0]?.clientY;
+    listRef.current.scrollTop = startScroll.current + (startY.current - y);
+  };
+  const onPointerUp = () => {
+    if (!isDragging.current || !listRef.current) return;
+    isDragging.current = false;
+    const rawIdx = Math.round(listRef.current.scrollTop / ITEM_H);
+    const clamped = Math.max(0, Math.min(rawIdx, items.length - 1));
+    scrollToIndex(clamped);
+    if (clamped !== selectedIndex) onChange(clamped);
+  };
+
+  return (
+    <div className="flex flex-col items-center select-none" style={{ width: 72 }}>
+      <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">{label}</span>
+      <button type="button" className="text-gray-300 hover:text-blue-500 transition-colors p-1"
+        onClick={() => { const ni = Math.max(0, selectedIndex - 1); scrollToIndex(ni); onChange(ni); }}>
+        <ChevronUp className="h-4 w-4" />
+      </button>
+      <div className="relative overflow-hidden rounded-xl" style={{ height: ITEM_H * 3, width: 72 }}>
+        <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-white to-transparent z-10 pointer-events-none" />
+        <div className="absolute inset-x-0 z-10 pointer-events-none rounded-lg border-2 border-blue-500 bg-blue-50/60"
+          style={{ top: ITEM_H, height: ITEM_H }} />
+        <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent z-10 pointer-events-none" />
+        <div ref={listRef} onScroll={handleScroll}
+          onMouseDown={onPointerDown} onMouseMove={onPointerMove}
+          onMouseUp={onPointerUp} onMouseLeave={onPointerUp}
+          onTouchStart={onPointerDown} onTouchMove={onPointerMove} onTouchEnd={onPointerUp}
+          style={{ overflowY: 'scroll', height: '100%', scrollSnapType: 'y mandatory', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          <div style={{ height: ITEM_H }} />
+          {items.map((item, i) => (
+            <div key={i}
+              className={`flex items-center justify-center font-medium transition-all cursor-pointer
+                ${i === selectedIndex ? 'text-blue-600 text-base' : 'text-gray-400 text-sm hover:text-gray-600'}`}
+              style={{ height: ITEM_H, scrollSnapAlign: 'start' }}
+              onClick={() => { scrollToIndex(i); onChange(i); }}>
+              {typeof item === 'number' ? String(item).padStart(2, '0') : item}
+            </div>
+          ))}
+          <div style={{ height: ITEM_H }} />
+        </div>
+      </div>
+      <button type="button" className="text-gray-300 hover:text-blue-500 transition-colors p-1"
+        onClick={() => { const ni = Math.min(items.length - 1, selectedIndex + 1); scrollToIndex(ni); onChange(ni); }}>
+        <ChevronDown className="h-4 w-4" />
+      </button>
+    </div>
+  );
+};
+
+const DOBPicker = ({ value, onChange, maxDate }) => {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const parseValue = (v) => {
+    if (!v) return { year: 1995, month: 0, day: 1 };
+    const [y, m, d] = v.split('-').map(Number);
+    return { year: y, month: m - 1, day: d };
+  };
+  const parsed = parseValue(value);
+  const currentYear = maxDate ? parseInt(maxDate.split('-')[0]) : new Date().getFullYear();
+  const years = [];
+  for (let y = currentYear; y >= 1930; y--) years.push(y);
+  const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
+  const days = Array.from({ length: daysInMonth(parsed.year, parsed.month) }, (_, i) => i + 1);
+  const yearIdx = Math.max(0, years.indexOf(parsed.year));
+  const monthIdx = parsed.month;
+  const dayIdx = Math.min(parsed.day - 1, days.length - 1);
+  const emit = (y, m, d) => {
+    const safeDay = Math.min(d + 1, daysInMonth(y, m));
+    onChange(`${y}-${String(m + 1).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`);
+  };
+  const displayValue = value
+    ? new Date(value + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+    : '';
+
+  useEffect(() => {
+    const handler = (e) => { if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false); };
+    if (open) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className={`w-full px-3 py-2.5 border rounded-lg text-sm text-left flex items-center justify-between bg-white transition-all
+          ${open ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-300 hover:border-blue-400'}
+          ${!value ? 'text-gray-400' : 'text-gray-800'}`}>
+        <span className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
+          {value ? displayValue : 'Select date of birth (optional)'}
+        </span>
+        <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 mt-2 z-[60] bg-white border border-gray-200 rounded-2xl shadow-2xl p-5"
+          style={{ minWidth: 300 }}
+          onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider text-center mb-3">Date of Birth</p>
+          <div className="flex items-start justify-center gap-2">
+            <ScrollColumn label="Day" items={days} selectedIndex={dayIdx} onChange={(i) => emit(parsed.year, parsed.month, i)} />
+            <div className="w-px bg-gray-100 self-stretch" />
+            <ScrollColumn label="Month" items={MONTHS} selectedIndex={monthIdx} onChange={(i) => emit(parsed.year, i, dayIdx)} />
+            <div className="w-px bg-gray-100 self-stretch" />
+            <ScrollColumn label="Year" items={years} selectedIndex={yearIdx} onChange={(i) => emit(years[i], parsed.month, dayIdx)} />
+          </div>
+          {value && (
+            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+              <p className="text-sm font-semibold text-blue-700">{displayValue}</p>
+              <button type="button" onClick={() => { onChange(''); setOpen(false); }}
+                className="text-xs text-gray-400 hover:text-red-500 transition-colors">Clear</button>
+            </div>
+          )}
+          <button type="button" onClick={() => setOpen(false)}
+            className="mt-3 w-full py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 active:bg-blue-800 transition-colors">
+            Done
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -12,13 +167,14 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
     email: '',
     phone: '',
     position: '',
+    date_of_birth: '',  // <-- ADD THIS
     password: 'Staff@123',
   });
   
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
-  const [step, setStep] = useState(1); // 1: form, 2: success
+  const [step, setStep] = useState(1);
 
   if (!isOpen) return null;
 
@@ -65,7 +221,6 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
     try {
       console.log('Step 1: Creating user account...');
       
-      // First, create the user account
       const userPayload = {
         email: formData.email,
         username: formData.email.split('@')[0],
@@ -87,13 +242,13 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
 
       console.log('Step 2: Creating staff record...');
       
-      // Then create the staff record
       const staffPayload = {
         user_id: userResponse.data.id,
         position: formData.position,
         hire_date: new Date().toISOString().split('T')[0],
         salary: null,
-        specializations: null
+        specializations: null,
+        date_of_birth: formData.date_of_birth || null,  // <-- ADD THIS
       };
 
       console.log('Staff payload:', staffPayload);
@@ -101,7 +256,6 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
       const staffResponse = await api.post('/gym/staff', staffPayload);
       console.log('Staff created:', staffResponse.data);
       
-      // Success! Move to success step
       setStep(2);
       
       toast.success(
@@ -113,7 +267,6 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
         { duration: 5000 }
       );
 
-      // Show credentials in a separate toast
       toast.success(
         <div className="bg-blue-50 p-3 rounded-lg">
           <p className="font-bold text-blue-800 mb-2">🔐 Staff Login Credentials</p>
@@ -124,16 +277,15 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
         { duration: 10000, icon: '🔑' }
       );
 
-      // Call onSuccess after a delay
       setTimeout(() => {
         onSuccess();
         onClose();
-        // Reset form after closing
         setFormData({
           full_name: '',
           email: '',
           phone: '',
           position: '',
+          date_of_birth: '',
           password: 'Staff@123',
         });
         setStep(1);
@@ -142,19 +294,14 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
     } catch (error) {
       console.error('Error adding staff:', error);
       
-      // Detailed error handling
       let errorMessage = 'Failed to add staff member';
       
       if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
         console.error('Error response data:', error.response.data);
         console.error('Error response status:', error.response.status);
-        console.error('Error response headers:', error.response.headers);
         
         if (error.response.status === 422) {
           errorMessage = 'Validation error: Please check all fields are correct';
-          // Show detailed validation errors
           if (error.response.data.detail) {
             const details = error.response.data.detail;
             if (Array.isArray(details)) {
@@ -182,12 +329,8 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
         
         errorMessage = error.response.data?.detail || errorMessage;
       } else if (error.request) {
-        // The request was made but no response was received
-        console.error('Error request:', error.request);
         errorMessage = 'No response from server. Please check your connection.';
       } else {
-        // Something happened in setting up the request that triggered an Error
-        console.error('Error message:', error.message);
         errorMessage = error.message;
       }
       
@@ -209,12 +352,13 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
     { value: 'Physiotherapist', label: 'Physiotherapist', icon: '🩺' },
   ];
 
+  const today = new Date().toISOString().split('T')[0];
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         {step === 1 ? (
           <>
-            {/* Header */}
             <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-purple-600 p-6 text-white">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold flex items-center gap-2">
@@ -321,6 +465,26 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
                 )}
               </div>
 
+              {/* Date of Birth - NEW FIELD */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Date of Birth <span className="text-gray-400 text-xs">(optional)</span>
+                </label>
+                <DOBPicker
+                  value={formData.date_of_birth}
+                  onChange={(val) => setFormData({ ...formData, date_of_birth: val })}
+                  maxDate={today}
+                />
+                {formData.date_of_birth && (() => {
+                  const dob = new Date(formData.date_of_birth + 'T00:00:00');
+                  const now = new Date();
+                  let age = now.getFullYear() - dob.getFullYear();
+                  const mDiff = now.getMonth() - dob.getMonth();
+                  if (mDiff < 0 || (mDiff === 0 && now.getDate() < dob.getDate())) age--;
+                  return <p className="text-xs text-gray-400 mt-1.5">{age} years old</p>;
+                })()}
+              </div>
+
               {/* Position */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -353,7 +517,7 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
                 )}
               </div>
 
-              {/* Password (read-only) */}
+              {/* Password */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Default Password
@@ -378,7 +542,6 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
 
               {/* Info Cards */}
               <div className="space-y-3">
-                {/* Gym Association */}
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                   <div className="flex items-start gap-3">
                     <div className="bg-blue-100 p-2 rounded-lg">
@@ -393,7 +556,6 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
                   </div>
                 </div>
 
-                {/* Password Info */}
                 <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
                   <div className="flex items-start gap-3">
                     <div className="bg-yellow-100 p-2 rounded-lg">
@@ -443,7 +605,6 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
             </form>
           </>
         ) : (
-          /* Success Step */
           <div className="p-8 text-center">
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="h-10 w-10 text-green-600" />

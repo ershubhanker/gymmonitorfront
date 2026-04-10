@@ -16,8 +16,10 @@ import {
 import MemberModal from '../components/MemberModal';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
+import { useAuth } from '../context/AuthContext'; 
 
 const Members = () => {
+  const { user } = useAuth(); 
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -119,7 +121,18 @@ const Members = () => {
   const handleAddMember = async (memberData) => {
     const { plan_id, membership_start_date, payment_method, amount_paid, ...memberFields } = memberData;
 
-    const response = await api.post('/gym/members', memberFields);
+    let response;
+    try {
+      response = await api.post('/gym/members', memberFields);
+    } catch (error) {
+      if (error.response?.status === 409) {
+        toast.error(error.response.data.detail, { duration: 5000 });
+      } else {
+        toast.error(error.response?.data?.detail || 'Failed to add member');
+      }
+      throw error; // re-throw so MemberModal knows save failed
+    }
+
     const memberId = response.data.id;
     const createdMember = response.data;
 
@@ -518,6 +531,7 @@ const Members = () => {
         onClose={() => { setIsModalOpen(false); setSelectedMember(null); }}
         onSave={selectedMember ? handleUpdateMember : handleAddMember}
         member={selectedMember}
+        userRole={user?.role}   // <-- pass the role
       />
     </div>
   );

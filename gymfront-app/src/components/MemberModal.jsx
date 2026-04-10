@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, User, Phone, Heart, FileText, Camera, Plus, CheckCircle,
   Calendar, CreditCard, AlertCircle, ChevronRight, Loader2, RefreshCw,
-  ChevronUp, ChevronDown, Upload, Trash2
+  ChevronUp, ChevronDown, Upload, Trash2, Edit
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
@@ -15,10 +15,9 @@ const PLAN_PRESETS = [
   { label: 'Yearly',      plan_type: 'yearly',      duration_days: 365 },
 ];
 
-// ─── DOB Scroll Picker ────────────────────────────────────────────────────────
+// ─── DOB Scroll Picker (unchanged) ────────────────────────────────────────────
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const ITEM_H = 40;
-// const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8001';
 
 const ScrollColumn = ({ items, selectedIndex, onChange, label }) => {
   const listRef = useRef(null);
@@ -170,35 +169,21 @@ const DOBPicker = ({ value, onChange, maxDate }) => {
   );
 };
 
-// ─── Profile Photo Uploader ───────────────────────────────────────────────────
-/**
- * PhotoUploader handles TWO scenarios:
- *
- * 1. NEW member (memberId = null):
- *    - The user picks a file → we store it in `pendingFile` state and show a preview.
- *    - We expose `getPendingFile()` to the parent so it can upload AFTER the member is created.
- *
- * 2. EXISTING member (memberId = number):
- *    - The user picks a file → we upload immediately via POST /gym/members/{id}/upload-photo.
- *    - The returned photo_url replaces the preview.
- */
+// ─── Profile Photo Uploader (unchanged) ───────────────────────────────────────
 const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingFileRef }) => {
   const fileInputRef = useRef(null);
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
 
-  // Expose getPendingFile to parent via ref
   useEffect(() => {
     if (getPendingFileRef) {
       getPendingFileRef.current = () => pendingFile;
     }
   }, [pendingFile, getPendingFileRef]);
 
-  // Reset when modal opens with a different member
   useEffect(() => {
     if (currentPhotoUrl) {
-      // Build full URL using API_BASE_URL
       if (currentPhotoUrl.startsWith('http')) {
         setPreview(currentPhotoUrl);
       } else {
@@ -217,7 +202,6 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Client-side validation
     if (!ALLOWED_TYPES.includes(file.type)) {
       toast.error('Please upload a JPEG, PNG, or WebP image.');
       return;
@@ -227,12 +211,10 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
       return;
     }
 
-    // Show local preview immediately
     const localUrl = URL.createObjectURL(file);
     setPreview(localUrl);
 
     if (memberId) {
-      // Existing member → upload right away
       setUploading(true);
       try {
         const formData = new FormData();
@@ -242,7 +224,6 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
           formData,
           { headers: { 'Content-Type': 'multipart/form-data' } }
         );
-        // Build full URL for the response
         const fullUrl = res.data.photo_url.startsWith('http') 
           ? res.data.photo_url 
           : `${API_BASE_URL}${res.data.photo_url}`;
@@ -252,7 +233,6 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
         toast.success('Photo uploaded successfully!');
       } catch (err) {
         toast.error(err.response?.data?.detail || 'Photo upload failed. Please try again.');
-        // Revert preview on failure
         if (currentPhotoUrl) {
           const revertUrl = currentPhotoUrl.startsWith('http') 
             ? currentPhotoUrl 
@@ -265,11 +245,8 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
         setUploading(false);
       }
     } else {
-      // New member → store file, upload after member is created
       setPendingFile(file);
     }
-
-    // Reset the input so the same file can be re-selected if needed
     e.target.value = '';
   };
 
@@ -281,7 +258,6 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
 
   return (
     <div className="flex items-center gap-5 p-4 bg-gray-50 rounded-xl">
-      {/* Avatar / Preview */}
       <div className="relative flex-shrink-0">
         {preview ? (
           <img
@@ -294,8 +270,6 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
             <User className="h-8 w-8" />
           </div>
         )}
-
-        {/* Camera overlay button */}
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -306,8 +280,6 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
           {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
         </button>
       </div>
-
-      {/* Labels and action buttons */}
       <div className="flex-1 min-w-0">
         <p className="font-medium text-gray-800 text-sm">Member Photo</p>
         {pendingFile && !memberId ? (
@@ -321,7 +293,6 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
         ) : (
           <p className="text-xs text-gray-500 mt-0.5">JPEG, PNG, WebP · max 5 MB</p>
         )}
-
         <div className="flex items-center gap-2 mt-2">
           <button
             type="button"
@@ -332,7 +303,6 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
             <Upload className="h-3.5 w-3.5" />
             {preview ? 'Change Photo' : 'Upload Photo'}
           </button>
-
           {preview && (
             <button
               type="button"
@@ -345,8 +315,6 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
           )}
         </div>
       </div>
-
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -358,16 +326,21 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
   );
 };
 
-// ─── Inline Plan Creator ──────────────────────────────────────────────────────
-const QuickPlanCreator = ({ onPlanCreated, onCancel, showCancel }) => {
-  const [creating, setCreating] = useState(false);
-  const [planForm, setPlanForm] = useState({
-    name: '', plan_type: 'monthly', duration_days: 30,
-    price: '', discounted_price: '', description: '', is_active: true,
+// ─── Reusable Plan Form (Create / Edit) ───────────────────────────────────────
+const PlanFormModal = ({ plan, onSave, onCancel }) => {
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState({
+    name: plan?.name || '',
+    plan_type: plan?.plan_type || 'monthly',
+    duration_days: plan?.duration_days || 30,
+    price: plan?.price?.toString() || '',
+    discounted_price: plan?.discounted_price?.toString() || '',
+    description: plan?.description || '',
+    is_active: plan?.is_active ?? true,
   });
 
   const handlePreset = (preset) => {
-    setPlanForm(prev => ({
+    setFormData(prev => ({
       ...prev,
       plan_type: preset.plan_type,
       duration_days: preset.duration_days,
@@ -375,30 +348,28 @@ const QuickPlanCreator = ({ onPlanCreated, onCancel, showCancel }) => {
     }));
   };
 
-  const handleCreate = async () => {
-    if (!planForm.name.trim() || !planForm.price) {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formData.name.trim() || !formData.price) {
       toast.error('Plan name and price are required');
       return;
     }
-    setCreating(true);
+    setSaving(true);
     try {
       const payload = {
-        name: planForm.name.trim(),
-        plan_type: planForm.plan_type,
-        duration_days: planForm.duration_days,
-        price: parseFloat(planForm.price),
-        discounted_price: planForm.discounted_price ? parseFloat(planForm.discounted_price) : null,
-        description: planForm.description || null,
-        features: null,
-        is_active: true,
+        name: formData.name.trim(),
+        plan_type: formData.plan_type,
+        duration_days: parseInt(formData.duration_days),
+        price: parseFloat(formData.price),
+        discounted_price: formData.discounted_price ? parseFloat(formData.discounted_price) : null,
+        description: formData.description || null,
+        is_active: formData.is_active,
       };
-      const res = await api.post('/gym/plans', payload);
-      toast.success(`Plan "${res.data.name}" created!`);
-      onPlanCreated(res.data);
+      await onSave(payload);
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed to create plan');
+      toast.error(err.response?.data?.detail || 'Failed to save plan');
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
   };
 
@@ -406,13 +377,11 @@ const QuickPlanCreator = ({ onPlanCreated, onCancel, showCancel }) => {
     <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
       <div className="flex items-center justify-between mb-4">
         <h4 className="font-semibold text-blue-900 flex items-center gap-2">
-          <Plus className="h-4 w-4" /> Create a Membership Plan
+          <Plus className="h-4 w-4" /> {plan ? 'Edit Plan' : 'Create Plan'}
         </h4>
-        {showCancel && (
-          <button type="button" onClick={onCancel} className="text-blue-400 hover:text-blue-600 p-1">
-            <X className="h-4 w-4" />
-          </button>
-        )}
+        <button type="button" onClick={onCancel} className="text-blue-400 hover:text-blue-600 p-1">
+          <X className="h-4 w-4" />
+        </button>
       </div>
       <div className="space-y-4">
         <div>
@@ -421,7 +390,7 @@ const QuickPlanCreator = ({ onPlanCreated, onCancel, showCancel }) => {
             {PLAN_PRESETS.map(preset => (
               <button key={preset.plan_type} type="button" onClick={() => handlePreset(preset)}
                 className={`py-2 px-3 rounded-lg text-sm font-medium border transition-all ${
-                  planForm.plan_type === preset.plan_type
+                  formData.plan_type === preset.plan_type
                     ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                     : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
                 }`}>
@@ -433,23 +402,23 @@ const QuickPlanCreator = ({ onPlanCreated, onCancel, showCancel }) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Plan Name <span className="text-red-500">*</span></label>
-            <input type="text" value={planForm.name}
-              onChange={e => setPlanForm({ ...planForm, name: e.target.value })}
+            <input type="text" value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
               placeholder="e.g. Basic Monthly"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Duration (days)</label>
-            <input type="number" min="1" value={planForm.duration_days}
-              onChange={e => setPlanForm({ ...planForm, duration_days: parseInt(e.target.value) || 30 })}
+            <input type="number" min="1" value={formData.duration_days}
+              onChange={e => setFormData({ ...formData, duration_days: parseInt(e.target.value) || 30 })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Price (₹) <span className="text-red-500">*</span></label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
-              <input type="number" min="0" step="0.01" value={planForm.price}
-                onChange={e => setPlanForm({ ...planForm, price: e.target.value })}
+              <input type="number" min="0" step="0.01" value={formData.price}
+                onChange={e => setFormData({ ...formData, price: e.target.value })}
                 placeholder="0.00"
                 className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
@@ -458,23 +427,36 @@ const QuickPlanCreator = ({ onPlanCreated, onCancel, showCancel }) => {
             <label className="block text-sm font-medium text-gray-700 mb-1">Discounted Price (₹) <span className="text-gray-400 font-normal">optional</span></label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
-              <input type="number" min="0" step="0.01" value={planForm.discounted_price}
-                onChange={e => setPlanForm({ ...planForm, discounted_price: e.target.value })}
+              <input type="number" min="0" step="0.01" value={formData.discounted_price}
+                onChange={e => setFormData({ ...formData, discounted_price: e.target.value })}
                 placeholder="Optional"
                 className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
           </div>
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea rows="2" value={formData.description}
+              onChange={e => setFormData({ ...formData, description: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Optional description" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={formData.is_active}
+                onChange={e => setFormData({ ...formData, is_active: e.target.checked })}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              Plan is active (available for selection)
+            </label>
+          </div>
         </div>
         <div className="flex justify-end gap-2 pt-1">
-          {showCancel && (
-            <button type="button" onClick={onCancel}
-              className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
-              Cancel
-            </button>
-          )}
-          <button type="button" disabled={creating} onClick={handleCreate}
+          <button type="button" onClick={onCancel}
+            className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button type="button" disabled={saving} onClick={handleSubmit}
             className="flex items-center gap-2 px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors">
-            {creating ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating...</> : <><Plus className="h-4 w-4" /> Create Plan</>}
+            {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</> : <>{plan ? 'Update Plan' : 'Create Plan'}</>}
           </button>
         </div>
       </div>
@@ -482,24 +464,88 @@ const QuickPlanCreator = ({ onPlanCreated, onCancel, showCancel }) => {
   );
 };
 
-// ─── Membership Selector ──────────────────────────────────────────────────────
-const MembershipSelector = ({ formData, setFormData, membershipPlans, setMembershipPlans, showPlanCreator, setShowPlanCreator, inputCls, labelCls }) => {
+// ─── Membership Selector (with Edit/Delete) ────────────────────────────────────
+const MembershipSelector = ({ 
+  formData, setFormData, membershipPlans, setMembershipPlans, 
+  showPlanCreator, setShowPlanCreator, inputCls, labelCls,
+  onRefreshPlans
+}) => {
+  const [editingPlan, setEditingPlan] = useState(null);
+  const [deletingPlanId, setDeletingPlanId] = useState(null);
   const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
   const set = (field) => (e) => setFormData(prev => ({ ...prev, [field]: e.target.value }));
 
-  const handlePlanCreated = (newPlan) => {
-    setMembershipPlans(prev => [...prev, newPlan]);
+  const handlePlanSave = async (planPayload) => {
+    if (editingPlan) {
+      const res = await api.put(`/gym/plans/${editingPlan.id}`, planPayload);
+      toast.success(`Plan "${res.data.name}" updated`);
+      setEditingPlan(null);
+      await onRefreshPlans();
+      if (String(formData.plan_id) === String(editingPlan.id)) {
+        const updatedPlan = res.data;
+        setFormData(prev => ({
+          ...prev,
+          amount_paid: String(updatedPlan.discounted_price || updatedPlan.price)
+        }));
+      }
+    } else {
+      const res = await api.post('/gym/plans', planPayload);
+      toast.success(`Plan "${res.data.name}" created`);
+      await onRefreshPlans();
+      setFormData(prev => ({
+        ...prev,
+        plan_id: String(res.data.id),
+        amount_paid: String(res.data.discounted_price || res.data.price)
+      }));
+    }
     setShowPlanCreator(false);
-    setFormData(prev => ({
-      ...prev,
-      plan_id: String(newPlan.id),
-      amount_paid: String(newPlan.discounted_price || newPlan.price),
-    }));
   };
+
+  const handleDeletePlan = async (plan) => {
+    if (!window.confirm(`Delete plan "${plan.name}"? This will not affect existing memberships, but the plan will be removed from selection.`)) return;
+    
+    setDeletingPlanId(plan.id);
+    try {
+      const response = await api.delete(`/gym/plans/${plan.id}`);
+      toast.success(response.data.message || 'Plan deleted/deactivated successfully');
+      
+      // If the deleted plan was selected, clear the selection
+      if (String(formData.plan_id) === String(plan.id)) {
+        setFormData(prev => ({ ...prev, plan_id: '', amount_paid: '' }));
+      }
+      
+      await onRefreshPlans();
+    } catch (err) {
+      console.error('Delete plan error:', err);
+      const errorMessage = err.response?.data?.detail || 'Failed to delete plan';
+      toast.error(errorMessage);
+      
+      // If the error is about active memberships, suggest deactivation instead
+      if (errorMessage.includes('active memberships')) {
+        toast.error('You can deactivate the plan instead by editing it and unchecking "Plan is active"');
+      }
+    } finally {
+      setDeletingPlanId(null);
+    }
+  };
+
+  const startEditPlan = (plan) => {
+    setEditingPlan(plan);
+    setShowPlanCreator(true);
+  };
+
+  const cancelPlanForm = () => {
+    setEditingPlan(null);
+    setShowPlanCreator(false);
+  };
+
+  // Always show "Create a new plan" button when there are plans
+  // And show the plan creator form when showPlanCreator is true OR when there are no plans
+  const shouldShowPlanCreator = showPlanCreator || membershipPlans.length === 0;
 
   return (
     <div className="space-y-4">
-      {membershipPlans.length === 0 && !showPlanCreator && (
+      {membershipPlans.length === 0 && !shouldShowPlanCreator && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
           <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
           <div>
@@ -509,50 +555,94 @@ const MembershipSelector = ({ formData, setFormData, membershipPlans, setMembers
         </div>
       )}
 
-      {membershipPlans.length === 0 && (
-        <QuickPlanCreator onPlanCreated={handlePlanCreated} onCancel={null} showCancel={false} />
+      {membershipPlans.length === 0 && !shouldShowPlanCreator && (
+        <PlanFormModal onSave={handlePlanSave} onCancel={cancelPlanForm} />
       )}
 
-      {membershipPlans.length > 0 && !showPlanCreator && (
+      {membershipPlans.length > 0 && !shouldShowPlanCreator && (
         <div>
-          <p className="text-sm text-gray-500 mb-3">Select a plan:</p>
+          <div className="flex justify-between items-center mb-3">
+            <p className="text-sm text-gray-500">Select a plan:</p>
+            <button
+              type="button"
+              onClick={onRefreshPlans}
+              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+            >
+              <RefreshCw className="h-3 w-3" /> Refresh
+            </button>
+          </div>
           <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
             {membershipPlans.map(plan => {
               const price = plan.discounted_price || plan.price;
               const isSelected = String(formData.plan_id) === String(plan.id);
+              const isDeleting = deletingPlanId === plan.id;
+              
               return (
-                <label key={plan.id}
-                  className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                <div key={plan.id}
+                  className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${
                     isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
                   }`}>
                   <input type="radio" name="plan_id" value={String(plan.id)}
                     checked={isSelected} onChange={set('plan_id')}
                     className="accent-blue-600 w-4 h-4 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 text-sm truncate">{plan.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-900 text-sm truncate">{plan.name}</p>
+                      {!plan.is_active && (
+                        <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                          Inactive
+                        </span>
+                      )}
+                      <div className="flex items-center gap-1 ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => startEditPlan(plan)}
+                          className="text-gray-400 hover:text-blue-600 p-1"
+                          title="Edit plan"
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePlan(plan)}
+                          disabled={isDeleting}
+                          className="text-gray-400 hover:text-red-600 p-1 disabled:opacity-50"
+                          title="Delete plan"
+                        >
+                          {isDeleting ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
                     <p className="text-xs text-gray-500 mt-0.5">{plan.duration_days} days{plan.description ? ` · ${plan.description}` : ''}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-lg font-bold text-gray-900">₹{price}</p>
                     {plan.discounted_price && <p className="text-xs text-gray-400 line-through">₹{plan.price}</p>}
                   </div>
-                </label>
+                </div>
               );
             })}
           </div>
-          <button type="button" onClick={() => setShowPlanCreator(true)}
+          <button type="button" onClick={() => { setEditingPlan(null); setShowPlanCreator(true); }}
             className="mt-3 flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium">
-            <Plus className="h-4 w-4" /> Create a new plan instead
+            <Plus className="h-4 w-4" /> Create a new plan
           </button>
         </div>
       )}
 
-      {membershipPlans.length > 0 && showPlanCreator && (
-        <QuickPlanCreator onPlanCreated={handlePlanCreated}
-          onCancel={() => setShowPlanCreator(false)} showCancel={true} />
+      {shouldShowPlanCreator && (
+        <PlanFormModal
+          plan={editingPlan}
+          onSave={handlePlanSave}
+          onCancel={cancelPlanForm}
+        />
       )}
 
-      {selectedPlan && !showPlanCreator && (
+      {selectedPlan && !shouldShowPlanCreator && (
         <div className="space-y-4">
           <div className="border border-green-200 bg-green-50 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -611,12 +701,79 @@ const MembershipSelector = ({ formData, setFormData, membershipPlans, setMembers
                 <input type="number" min="0" step="0.01" value={formData.amount_paid}
                   onChange={set('amount_paid')} className={`${inputCls} pl-7`} placeholder="0.00" />
               </div>
-              {formData.amount_paid !== '' && Number(formData.amount_paid) < (selectedPlan.discounted_price || selectedPlan.price) && (
-                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  Amount is less than plan price — will be marked as pending payment
-                </p>
-              )}
+
+              {/* Quick fill buttons */}
+              <div className="flex gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, amount_paid: String(selectedPlan.discounted_price || selectedPlan.price) }))}
+                  className="flex-1 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                >
+                  Full (₹{selectedPlan.discounted_price || selectedPlan.price})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, amount_paid: String(Math.floor((selectedPlan.discounted_price || selectedPlan.price) / 2)) }))}
+                  className="flex-1 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  Half (₹{Math.floor((selectedPlan.discounted_price || selectedPlan.price) / 2)})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, amount_paid: '0' }))}
+                  className="flex-1 py-1.5 text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  Pay Later
+                </button>
+              </div>
+
+              {/* Payment status feedback */}
+              {formData.amount_paid !== '' && (() => {
+                const planPrice = Number(selectedPlan.discounted_price || selectedPlan.price);
+                const paid = Number(formData.amount_paid);
+                const balanceDue = Math.max(0, planPrice - paid);
+                if (paid === 0) {
+                  return (
+                    <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                      <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                        <AlertCircle className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                        <span>No payment recorded — full amount of <strong>₹{planPrice}</strong> will remain as balance due</span>
+                      </p>
+                    </div>
+                  );
+                } else if (paid >= planPrice) {
+                  return (
+                    <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-xs text-green-700 flex items-center gap-1.5 font-medium">
+                        <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                        Full payment — no balance due ✓
+                      </p>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1">
+                      <p className="text-xs text-amber-700 flex items-center gap-1.5 font-medium">
+                        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                        Partial payment — balance will be tracked
+                      </p>
+                      <div className="flex justify-between text-xs text-amber-700 pl-5">
+                        <span>Plan price:</span>
+                        <span className="font-medium">₹{planPrice}</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-amber-700 pl-5">
+                        <span>Paying now:</span>
+                        <span className="font-medium text-green-700">₹{paid}</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-bold text-red-600 pl-5 pt-0.5 border-t border-amber-200">
+                        <span>Remaining balance due:</span>
+                        <span>₹{balanceDue}</span>
+                      </div>
+                      <p className="text-xs text-amber-600 pl-5">Member can pay remaining from Balance tab</p>
+                    </div>
+                  );
+                }
+              })()}
             </div>
           </div>
         </div>
@@ -626,7 +783,7 @@ const MembershipSelector = ({ formData, setFormData, membershipPlans, setMembers
 };
 
 // ─── Main MemberModal ─────────────────────────────────────────────────────────
-const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
+const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_owner' }) => {
   const today = new Date().toISOString().split('T')[0];
   const isEdit = !!member;
 
@@ -645,8 +802,27 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
   const [showPlanCreator, setShowPlanCreator] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Ref used to get the pending file from PhotoUploader for new members
   const getPendingFileRef = useRef(null);
+
+  const refreshMembershipPlans = useCallback(async () => {
+    setLoadingPlans(true);
+    try {
+      const response = await api.get('/gym/plans?active_only=false');
+      const plans = response.data || [];
+      setMembershipPlans(plans);
+      
+      // Show plan creator if there are no plans AND we're not in edit mode for a member
+      // This ensures new gym owners can create their first plan
+      if (!member && plans.length === 0) {
+        setShowPlanCreator(true);
+      }
+    } catch (err) {
+      console.error('Error fetching plans:', err);
+      toast.error('Could not load membership plans');
+    } finally {
+      setLoadingPlans(false);
+    }
+  }, [member]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -682,8 +858,8 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
         renew_membership: false,
       });
     }
-    fetchMembershipPlans();
-  }, [isOpen, member]);
+    refreshMembershipPlans();
+  }, [isOpen, member, refreshMembershipPlans, today]);
 
   useEffect(() => {
     if (formData.plan_id) {
@@ -693,20 +869,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
       }
     }
   }, [formData.plan_id, membershipPlans]);
-
-  const fetchMembershipPlans = async () => {
-    setLoadingPlans(true);
-    try {
-      const response = await api.get('/gym/plans?active_only=true');
-      const plans = response.data || [];
-      setMembershipPlans(plans);
-      if (!member) setShowPlanCreator(plans.length === 0);
-    } catch {
-      toast.error('Could not load membership plans');
-    } finally {
-      setLoadingPlans(false);
-    }
-  };
 
   if (!isOpen) return null;
 
@@ -744,12 +906,29 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
       return;
     }
 
+    if (!isEdit) {
+      try {
+        const phoneCheck = await api.get(`/gym/members?search=${encodeURIComponent(formData.phone.trim())}`);
+        const duplicate = phoneCheck.data?.find(
+          m => m.phone === formData.phone.trim()
+        );
+        if (duplicate) {
+          toast.error(
+            `A member with phone number ${formData.phone.trim()} already exists (${duplicate.full_name}). Please use a different number.`,
+            { duration: 5000 }
+          );
+          setActiveTab('personal');
+          return;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     setSaving(true);
     try {
-      // onSave returns the newly created/updated member (with id)
       const savedMember = await onSave(formData);
 
-      // Upload pending photo for NEW members after creation succeeds
       if (!isEdit && savedMember?.id) {
         const pendingFile = getPendingFileRef.current?.();
         if (pendingFile) {
@@ -802,7 +981,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col">
 
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
           <div>
             <h2 className="text-xl font-bold text-gray-900">{isEdit ? 'Edit Member' : 'Add New Member'}</h2>
@@ -816,7 +994,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
           </button>
         </div>
 
-        {/* Tabs */}
         <div className="border-b border-gray-200 px-6 flex-shrink-0 overflow-x-auto">
           <nav className="flex space-x-1 min-w-max">
             {tabs.map((tab) => (
@@ -836,23 +1013,17 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
           </nav>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
           <div className="flex-1 overflow-y-auto p-6">
 
-            {/* ── Personal Info ── */}
             {activeTab === 'personal' && (
               <div className="space-y-4">
-                {/* ── Photo Uploader ── */}
                 <PhotoUploader
                   memberId={isEdit ? member?.id : null}
                   currentPhotoUrl={isEdit ? member?.raw?.profile_image : null}
-                  onPhotoUploaded={(url) => {
-                    // For edit mode, update local view; Members.jsx will re-fetch anyway
-                  }}
+                  onPhotoUploaded={() => {}}
                   getPendingFileRef={isEdit ? null : getPendingFileRef}
                 />
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className={labelCls}>Full Name <span className="text-red-500">*</span></label>
@@ -870,7 +1041,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
                       maxLength={15} onKeyDown={phoneKeyDown}
                       className={inputCls} placeholder="+91 98765 43210" />
                   </div>
-
                   <div>
                     <label className={labelCls}>Date of Birth</label>
                     <DOBPicker
@@ -887,7 +1057,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
                       return <p className="text-xs text-gray-400 mt-1.5">{age} years old</p>;
                     })()}
                   </div>
-
                   <div>
                     <label className={labelCls}>Gender</label>
                     <select value={formData.gender} onChange={set('gender')} className={inputCls}>
@@ -906,7 +1075,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
               </div>
             )}
 
-            {/* ── Contact ── */}
             {activeTab === 'contact' && (
               <div className="space-y-4">
                 <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Emergency Contact</p>
@@ -928,7 +1096,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
               </div>
             )}
 
-            {/* ── Medical ── */}
             {activeTab === 'medical' && (
               <div className="space-y-4">
                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-700">
@@ -949,7 +1116,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
               </div>
             )}
 
-            {/* ── Documents ── */}
             {activeTab === 'documents' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -973,7 +1139,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
               </div>
             )}
 
-            {/* ── Membership ── */}
             {activeTab === 'membership' && (
               <div className="space-y-5">
                 {isEdit && (
@@ -1053,6 +1218,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
                       setShowPlanCreator={setShowPlanCreator}
                       inputCls={inputCls}
                       labelCls={labelCls}
+                      onRefreshPlans={refreshMembershipPlans}
                     />
                   )
                 )}
@@ -1066,7 +1232,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null }) => {
             )}
           </div>
 
-          {/* Footer */}
           <div className="flex-shrink-0 border-t border-gray-200 px-6 py-4 flex items-center justify-between bg-gray-50 rounded-b-2xl">
             <div className="flex items-center gap-1.5">
               {tabs.map((tab) => (
