@@ -1,3 +1,4 @@
+// src/pages/Dashboard.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -53,6 +54,7 @@ import Profile from './Profile';
 import Leads from './Leads';
 import Expenses from './Expenses';
 import Balance from './Balance';
+import Payments from './Payments';
 
 // Auto-refresh interval in milliseconds (60 seconds)
 const AUTO_REFRESH_INTERVAL = 40_000;
@@ -159,14 +161,12 @@ const Dashboard = () => {
     expiringSoon: 0,
     totalRevenue: 0,
     revenueGrowth: 0,
-    // New expense stats
     totalExpenses: 0,
     monthlyExpenses: 0,
     expenseGrowth: 0,
     netProfit: 0,
     profitMargin: 0,
     expenseByCategory: {},
-    // Balance stats
     totalBalanceDue: 0,
     membersWithBalance: 0,
     overdueCount: 0,
@@ -418,14 +418,13 @@ const Dashboard = () => {
         return acc;
       }, {});
 
-      // ─── Calculate Upcoming Birthdays ──────────────────────────────────────────
+      // Calculate Upcoming Birthdays
       const next7Days = new Date(today_date.getTime() + 7 * 24 * 60 * 60 * 1000);
       const upcomingBirthdays = {
         members: [],
         staff: []
       };
 
-      // Check member birthdays
       members.forEach(member => {
         if (member.date_of_birth) {
           const dob = new Date(member.date_of_birth);
@@ -454,7 +453,6 @@ const Dashboard = () => {
         }
       });
 
-      // Check staff birthdays
       staff.forEach(staffMember => {
         if (staffMember.date_of_birth) {
           const dob = new Date(staffMember.date_of_birth);
@@ -482,7 +480,6 @@ const Dashboard = () => {
         }
       });
 
-      // Sort by days until birthday
       upcomingBirthdays.members.sort((a, b) => a.daysUntil - b.daysUntil);
       upcomingBirthdays.staff.sort((a, b) => a.daysUntil - b.daysUntil);
 
@@ -498,14 +495,12 @@ const Dashboard = () => {
         expiringSoon,
         totalRevenue,
         revenueGrowth: parseFloat(revenueGrowth),
-        // New expense stats
         totalExpenses: statsResponse.data?.total_expenses || 0,
         monthlyExpenses: statsResponse.data?.monthly_expenses || 0,
         expenseGrowth: statsResponse.data?.expense_growth || 0,
         netProfit: statsResponse.data?.net_profit || 0,
         profitMargin: statsResponse.data?.profit_margin || 0,
         expenseByCategory: statsResponse.data?.expense_by_category || {},
-        // Balance stats
         totalBalanceDue: balanceOverview.total_balance_due || 0,
         membersWithBalance: balanceOverview.members_with_balance || 0,
         overdueCount: balanceOverview.overdue_count || 0,
@@ -676,7 +671,7 @@ const Dashboard = () => {
           <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Members</h3>
           <p className="text-4xl font-bold text-gray-900 mt-1">{stats.totalMembers?.toLocaleString() || 0}</p>
           <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-            <span className="text-green-600 flex items-center text-sm font-medium">
+            <span className="text-green-600 flex items-center text-sm">
               <UserCheck className="h-4 w-4 mr-1" />
               {stats.activeMembers || 0} active
             </span>
@@ -710,9 +705,13 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-purple-500">
+        {/* Clickable Monthly Revenue Card */}
+        <div 
+          className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-purple-500 cursor-pointer group"
+          onClick={() => setActiveTab('payments')}
+        >
           <div className="flex items-center justify-between mb-4">
-            <div className="bg-purple-100 p-3 rounded-xl">
+            <div className="bg-purple-100 p-3 rounded-xl group-hover:bg-purple-200 transition-colors">
               <IndianRupee className="h-6 w-6 text-purple-600" />
             </div>
             <span className={`text-sm font-medium px-3 py-1 rounded-full ${
@@ -733,9 +732,13 @@ const Dashboard = () => {
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-orange-500">
+        {/* Clickable Total Revenue Card */}
+        <div 
+          className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-orange-500 cursor-pointer group"
+          onClick={() => setActiveTab('payments')}
+        >
           <div className="flex items-center justify-between mb-4">
-            <div className="bg-orange-100 p-3 rounded-xl">
+            <div className="bg-orange-100 p-3 rounded-xl group-hover:bg-orange-200 transition-colors">
               <CreditCard className="h-6 w-6 text-orange-600" />
             </div>
             <span className="text-sm font-medium text-orange-600 bg-orange-100 px-3 py-1 rounded-full">
@@ -1691,13 +1694,7 @@ const Dashboard = () => {
             <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
           </div>
         )}
-        {activeTab === 'payments' && (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <CreditCardIcon className="h-16 w-16 text-purple-300 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900">Payments Management</h2>
-            <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
-          </div>
-        )}
+        {activeTab === 'payments' && <Payments />}
         {activeTab === 'leads' && <Leads />}
         {activeTab === 'settings' && (
           <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
