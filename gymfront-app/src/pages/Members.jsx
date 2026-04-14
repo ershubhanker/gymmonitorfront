@@ -63,17 +63,14 @@ const Members = () => {
         );
         const paymentCount = paymentsData.filter(p => p.member_id === member.id).length;
 
-        // FIX: Build the full URL for profile_image using API_BASE_URL
         let avatarUrl;
         if (member.profile_image) {
-          // If it's already a full URL, use it; otherwise prepend API_BASE_URL
           if (member.profile_image.startsWith('http')) {
             avatarUrl = member.profile_image;
           } else {
             avatarUrl = `${API_BASE_URL}${member.profile_image}`;
           }
         } else {
-          // Fallback to avatar generator
           avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
         }
 
@@ -121,91 +118,146 @@ const Members = () => {
   const handleAddMember = async (memberData) => {
     const { plan_id, membership_start_date, payment_method, amount_paid, ...memberFields } = memberData;
 
-    let response;
+    let memberResponse;
+    let createdMember = null;
+    let hasError = false;
+    
+    // Step 1: Create the member
     try {
-      response = await api.post('/gym/members', memberFields);
+      memberResponse = await api.post('/gym/members', memberFields);
+      createdMember = memberResponse.data;
     } catch (error) {
       if (error.response?.status === 409) {
         toast.error(error.response.data.detail, { duration: 5000 });
       } else {
         toast.error(error.response?.data?.detail || 'Failed to add member');
       }
-      throw error; // re-throw so MemberModal knows save failed
+      throw error;
     }
 
-    const memberId = response.data.id;
-    const createdMember = response.data;
+    const memberId = createdMember.id;
 
-    if (plan_id && membership_start_date) {
+    // Step 2: Create membership if plan is selected
+    if (plan_id && membership_start_date && memberId) {
       try {
-        const membershipResponse = await api.post('/gym/memberships', {
+        const membershipPayload = {
           member_id: memberId,
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
           amount_paid: amount_paid ? parseFloat(amount_paid) : 0,
           discount_applied: 0,
-        });
-
+        };
+        
+        const membershipResponse = await api.post('/gym/memberships', membershipPayload);
+        
+        // Step 3: Create payment record if amount paid
         if (amount_paid && parseFloat(amount_paid) > 0) {
-          await api.post('/gym/payments', {
-            member_id: memberId,
-            membership_id: membershipResponse.data.id,
-            amount: parseFloat(amount_paid),
-            payment_method: payment_method || 'cash',
-          });
+          try {
+            await api.post('/gym/payments', {
+              member_id: memberId,
+              membership_id: membershipResponse.data.id,
+              amount: parseFloat(amount_paid),
+              payment_method: payment_method || 'cash',
+              payment_date: new Date().toISOString().split('T')[0],
+            });
+          } catch (paymentError) {
+            console.error('Payment creation error:', paymentError);
+            hasError = true;
+            // Don't show error toast for payment - it's not critical
+          }
         }
       } catch (membershipError) {
         console.error('Membership creation error:', membershipError);
-        toast.error('Member created but membership assignment failed. Please assign manually.');
+        hasError = true;
+        toast.error(`Member added but membership assignment failed. Please assign membership manually.`);
+        // Return the member anyway so the modal closes
+        return createdMember;
       }
     }
 
+    // Refresh data
     await fetchMembers();
     fetchStats();
     setIsModalOpen(false);
-    toast.success('Member added successfully!');
+    
+    // Single success message
+    if (!hasError) {
+      toast.success('Member added successfully!');
+    } else {
+      toast.success('Member added! Please review membership and payment details.');
+    }
     return createdMember;
   };
 
   const handleUpdateMember = async (memberData) => {
     const {
-      plan_id, membership_start_date, payment_method, amount_paid,
+      plan_id, 
+      membership_start_date, 
+      payment_method, 
+      amount_paid,
       renew_membership,
       ...memberFields
     } = memberData;
 
-    await api.put(`/gym/members/${selectedMember.id}`, memberFields);
+    let hasError = false;
 
+    // Step 1: Update member details
+    try {
+      await api.put(`/gym/members/${selectedMember.id}`, memberFields);
+    } catch (error) {
+      console.error('Member update error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to update member details');
+      throw error;
+    }
+
+    // Step 2: Handle membership renewal if requested
     if (renew_membership && plan_id && membership_start_date) {
       try {
-        const membershipResponse = await api.post('/gym/memberships', {
+        const membershipPayload = {
           member_id: selectedMember.id,
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
           amount_paid: amount_paid ? parseFloat(amount_paid) : 0,
           discount_applied: 0,
-        });
-
+        };
+        
+        const membershipResponse = await api.post('/gym/memberships', membershipPayload);
+        
+        // Step 3: Create payment record if amount paid
         if (amount_paid && parseFloat(amount_paid) > 0) {
-          await api.post('/gym/payments', {
-            member_id: selectedMember.id,
-            membership_id: membershipResponse.data.id,
-            amount: parseFloat(amount_paid),
-            payment_method: payment_method || 'cash',
-          });
+          try {
+            await api.post('/gym/payments', {
+              member_id: selectedMember.id,
+              membership_id: membershipResponse.data.id,
+              amount: parseFloat(amount_paid),
+              payment_method: payment_method || 'cash',
+              payment_date: new Date().toISOString().split('T')[0],
+            });
+          } catch (paymentError) {
+            console.error('Payment creation error:', paymentError);
+            hasError = true;
+          }
         }
-
-        toast.success('Membership renewed/updated successfully!');
       } catch (err) {
-        console.error('Membership update error:', err);
-        toast.error('Details saved but membership renewal failed.');
+        console.error('Membership renewal error:', err);
+        hasError = true;
+        toast.error(`Details saved but membership renewal failed. Please assign membership manually.`);
       }
     }
 
+    // Refresh data
     await fetchMembers();
     fetchStats();
     setIsModalOpen(false);
-    toast.success('Member updated successfully!');
+    
+    // Single success message
+    if (!hasError) {
+      toast.success('Member updated successfully!');
+    } else if (renew_membership) {
+      toast.success('Member details updated! Please review membership details.');
+    } else {
+      toast.success('Member updated successfully!');
+    }
   };
 
   const handleDeleteMember = async (memberId) => {
@@ -531,7 +583,7 @@ const Members = () => {
         onClose={() => { setIsModalOpen(false); setSelectedMember(null); }}
         onSave={selectedMember ? handleUpdateMember : handleAddMember}
         member={selectedMember}
-        userRole={user?.role}   // <-- pass the role
+        userRole={user?.role}
       />
     </div>
   );

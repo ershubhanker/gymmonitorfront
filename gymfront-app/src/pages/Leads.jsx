@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import MemberModal from '../components/MemberModal';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,70 @@ const StatCard = ({ label, value, icon: Icon, color }) => (
     </div>
   </div>
 );
+
+// ── Convert Lead to Member Modal ──────────────────────────────────────────────
+const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
+  const [showMemberModal, setShowMemberModal] = useState(true);
+  const [converting, setConverting] = useState(false);
+
+  // Prepare prefill data from lead - map all available fields
+  const prefillData = {
+    full_name: lead.full_name || '',
+    email: lead.email || '',
+    phone: lead.phone || '',
+    gender: lead.gender || 'male',
+    date_of_birth: '', // Leads don't have DOB by default
+    address: '',
+    emergency_contact_name: '',
+    emergency_contact_phone: '',
+    medical_conditions: '',
+    allergies: '',
+    medications: '',
+    id_proof_type: 'aadhar',
+    id_proof_number: '',
+    notes: lead.notes || '', // Pass notes as additional info
+    interest: lead.interest || '',
+    preferred_plan: lead.preferred_plan || '',
+    budget: lead.budget || '',
+    source: lead.source || '',
+  };
+
+  const handleMemberSave = async (memberFormData) => {
+    setConverting(true);
+    try {
+      // First update lead status to converted
+      await api.put(`/gym/leads/${lead.id}`, { status: 'converted' });
+      
+      // The member is already created by MemberModal via its onSave
+      // We just need to refresh the leads list
+      toast.success(`Lead "${lead.full_name}" converted to member successfully!`);
+      onConverted();
+      onClose();
+      return memberFormData;
+    } catch (err) {
+      console.error('Conversion error:', err);
+      toast.error(err.response?.data?.detail || 'Failed to convert lead to member');
+      throw err;
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  return (
+    <>
+      {showMemberModal && (
+        <MemberModal
+          isOpen={showMemberModal}
+          onClose={onClose}
+          onSave={handleMemberSave}
+          member={null}
+          userRole="gym_owner"
+          prefillData={prefillData}
+        />
+      )}
+    </>
+  );
+};
 
 // ── Add / Edit Modal ──────────────────────────────────────────────────────────
 
@@ -168,7 +233,6 @@ const LeadModal = ({ lead, onClose, onSave }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
           <h2 className="text-xl font-bold text-gray-900">
             {lead ? 'Edit Lead' : 'Add New Lead'}
@@ -178,7 +242,6 @@ const LeadModal = ({ lead, onClose, onSave }) => {
           </button>
         </div>
 
-        {/* Body */}
         <div className="px-6 py-5 grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[65vh] overflow-y-auto">
           {field('Full Name *', 'full_name', 'text', { placeholder: 'John Doe' })}
           {field('Phone *', 'phone', 'tel', { placeholder: '+91 98765 43210' })}
@@ -218,7 +281,6 @@ const LeadModal = ({ lead, onClose, onSave }) => {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
           <button
             onClick={onClose}
@@ -241,7 +303,7 @@ const LeadModal = ({ lead, onClose, onSave }) => {
 
 // ── Lead Row Actions Menu ────────────────────────────────────────────────────
 
-const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange }) => {
+const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange, onConvert }) => {
   const [open, setOpen] = useState(false);
   const ref = React.useRef(null);
 
@@ -251,7 +313,8 @@ const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange }) => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const quickStatuses = ['contacted', 'interested', 'not_interested', 'converted', 'lost'].filter(s => s !== lead.status);
+  // Quick statuses: show only interested, not_interested, contacted (removed lost, and converted is separate)
+  const quickStatuses = ['contacted', 'interested', 'not_interested'].filter(s => s !== lead.status);
 
   return (
     <div className="relative" ref={ref}>
@@ -278,9 +341,20 @@ const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange }) => {
               className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
               <span className={`inline-block h-2 w-2 rounded-full ${STATUS_CONFIG[s]?.color.split(' ')[0]}`} />
-              Mark as {STATUS_CONFIG[s]?.label}
+              {STATUS_CONFIG[s]?.label}
             </button>
           ))}
+          {lead.status !== 'converted' && (
+            <>
+              <div className="border-t border-gray-100 my-1" />
+              <button
+                onClick={() => { onConvert(); setOpen(false); }}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-green-600 hover:bg-green-50"
+              >
+                <UserCheck className="h-4 w-4" /> Convert to Member
+              </button>
+            </>
+          )}
           <div className="border-t border-gray-100 my-1" />
           <button
             onClick={() => { onDelete(); setOpen(false); }}
@@ -306,6 +380,7 @@ const Leads = () => {
   const [showModal, setShowModal] = useState(false);
   const [editLead, setEditLead] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [convertLead, setConvertLead] = useState(null);
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -354,7 +429,14 @@ const Leads = () => {
     }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const handleConvert = (lead) => {
+    setConvertLead(lead);
+  };
+
+  const onConverted = () => {
+    fetchLeads();
+  };
+
   return (
     <div className="space-y-6">
 
@@ -534,6 +616,7 @@ const Leads = () => {
                           onEdit={() => { setEditLead(lead); setShowModal(true); }}
                           onDelete={() => setDeleteConfirm(lead)}
                           onStatusChange={(s) => handleStatusChange(lead, s)}
+                          onConvert={() => handleConvert(lead)}
                         />
                       </td>
                     </tr>
@@ -558,6 +641,15 @@ const Leads = () => {
           lead={editLead}
           onClose={() => { setShowModal(false); setEditLead(null); }}
           onSave={fetchLeads}
+        />
+      )}
+
+      {/* Convert to Member Modal */}
+      {convertLead && (
+        <ConvertToMemberModal
+          lead={convertLead}
+          onClose={() => setConvertLead(null)}
+          onConverted={onConverted}
         />
       )}
 
