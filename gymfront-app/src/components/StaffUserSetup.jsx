@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   X, User, Mail, Phone, Key, Briefcase, Building2, 
   AlertCircle, CheckCircle, Loader2, Eye, EyeOff, UserPlus, Calendar,
-  ChevronUp, ChevronDown
+  ChevronUp, ChevronDown, Clock, Coffee
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -161,14 +161,164 @@ const DOBPicker = ({ value, onChange, maxDate }) => {
   );
 };
 
+// ─── Shift Timing Picker Component ─────────────────────────────────────────────
+const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const weekDays = [
+    { value: 'mon', label: 'Mon' },
+    { value: 'tue', label: 'Tue' },
+    { value: 'wed', label: 'Wed' },
+    { value: 'thu', label: 'Thu' },
+    { value: 'fri', label: 'Fri' },
+    { value: 'sat', label: 'Sat' },
+    { value: 'sun', label: 'Sun' }
+  ];
+  
+  const selectedDays = days ? days.split(',').map(d => d.trim()) : [];
+  
+  const toggleDay = (dayValue) => {
+    let newDays;
+    if (selectedDays.includes(dayValue)) {
+      newDays = selectedDays.filter(d => d !== dayValue);
+    } else {
+      newDays = [...selectedDays, dayValue];
+    }
+    onChange({ startTime, endTime, days: newDays.join(','), breakDuration });
+  };
+  
+  const formatTime = (time) => {
+    if (!time) return 'Not set';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${minutes} ${ampm}`;
+  };
+  
+  const getDisplayText = () => {
+    if (!startTime || !endTime) return 'Set shift timing';
+    const dayCount = selectedDays.length;
+    const daysText = dayCount === 7 ? 'Daily' : dayCount === 0 ? 'No days' : `${dayCount} day${dayCount > 1 ? 's' : ''}`;
+    return `${formatTime(startTime)} - ${formatTime(endTime)} (${daysText})`;
+  };
+  
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-left flex items-center justify-between bg-white hover:border-blue-400 transition-all"
+      >
+        <span className="flex items-center gap-2">
+          <Clock className="h-4 w-4 text-gray-400" />
+          <span className={!startTime ? 'text-gray-400' : 'text-gray-800'}>
+            {getDisplayText()}
+          </span>
+        </span>
+        <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      
+      {isOpen && (
+        <div className="absolute left-0 mt-2 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 min-w-[320px]">
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-gray-500 mb-2">Start Time</label>
+            <input
+              type="time"
+              value={startTime || ''}
+              onChange={(e) => onChange({ startTime: e.target.value, endTime, days, breakDuration })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-gray-500 mb-2">End Time</label>
+            <input
+              type="time"
+              value={endTime || ''}
+              onChange={(e) => onChange({ startTime, endTime: e.target.value, days, breakDuration })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-gray-500 mb-2">Break Duration (minutes)</label>
+            <div className="relative">
+              <Coffee className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="number"
+                min="0"
+                max="180"
+                step="15"
+                value={breakDuration || ''}
+                onChange={(e) => onChange({ startTime, endTime, days, breakDuration: parseInt(e.target.value) || 0 })}
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g., 60"
+              />
+            </div>
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-gray-500 mb-2">Working Days</label>
+            <div className="grid grid-cols-7 gap-1">
+              {weekDays.map(day => (
+                <button
+                  key={day.value}
+                  type="button"
+                  onClick={() => toggleDay(day.value)}
+                  className={`px-2 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                    selectedDays.includes(day.value)
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {day.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              {selectedDays.length === 0 && "No days selected"}
+              {selectedDays.length > 0 && selectedDays.length < 7 && `${selectedDays.length} day(s) selected`}
+              {selectedDays.length === 7 && "Working every day"}
+            </p>
+          </div>
+          
+          <div className="flex justify-end gap-2 pt-3 border-t">
+            <button
+              type="button"
+              onClick={() => {
+                onChange({ startTime: null, endTime: null, days: '', breakDuration: null });
+              }}
+              className="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg"
+            >
+              Clear All
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
     phone: '',
     position: '',
-    date_of_birth: '',  // <-- ADD THIS
+    date_of_birth: '',
     password: 'Staff@123',
+    shift_start_time: '',
+    shift_end_time: '',
+    shift_days: '',
+    break_duration: '',
   });
   
   const [loading, setLoading] = useState(false);
@@ -205,6 +355,16 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const handleShiftChange = ({ startTime, endTime, days, breakDuration }) => {
+    setFormData(prev => ({
+      ...prev,
+      shift_start_time: startTime !== undefined ? startTime : prev.shift_start_time,
+      shift_end_time: endTime !== undefined ? endTime : prev.shift_end_time,
+      shift_days: days !== undefined ? days : prev.shift_days,
+      break_duration: breakDuration !== undefined ? breakDuration : prev.break_duration,
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -248,7 +408,11 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
         hire_date: new Date().toISOString().split('T')[0],
         salary: null,
         specializations: null,
-        date_of_birth: formData.date_of_birth || null,  // <-- ADD THIS
+        date_of_birth: formData.date_of_birth || null,
+        shift_start_time: formData.shift_start_time || null,
+        shift_end_time: formData.shift_end_time || null,
+        shift_days: formData.shift_days || null,
+        break_duration: formData.break_duration ? parseInt(formData.break_duration) : null,
       };
 
       console.log('Staff payload:', staffPayload);
@@ -287,6 +451,10 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
           position: '',
           date_of_birth: '',
           password: 'Staff@123',
+          shift_start_time: '',
+          shift_end_time: '',
+          shift_days: '',
+          break_duration: '',
         });
         setStep(1);
       }, 2000);
@@ -340,19 +508,28 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
     }
   };
 
+  // Updated positions array with Head Trainer at the top
   const positions = [
-    { value: 'Trainer', label: 'Trainer', icon: '💪' },
-    { value: 'Personal Trainer', label: 'Personal Trainer', icon: '🏋️' },
-    { value: 'Yoga Instructor', label: 'Yoga Instructor', icon: '🧘' },
-    { value: 'Group Fitness Instructor', label: 'Group Fitness Instructor', icon: '👥' },
-    { value: 'Manager', label: 'Manager', icon: '👔' },
-    { value: 'Receptionist', label: 'Receptionist', icon: '📞' },
-    { value: 'Cleanliness Staff', label: 'Cleanliness Staff', icon: '🧹' },
-    { value: 'Nutritionist', label: 'Nutritionist', icon: '🥗' },
-    { value: 'Physiotherapist', label: 'Physiotherapist', icon: '🩺' },
+    { value: 'Head Trainer', label: 'Head Trainer', icon: '👑', description: 'Leads the training team and oversees all fitness programs' },
+    { value: 'Trainer', label: 'Trainer', icon: '💪', description: 'Conducts general fitness training sessions' },
+    { value: 'Personal Trainer', label: 'Personal Trainer', icon: '🏋️', description: 'One-on-one personal training sessions' },
+    { value: 'Yoga Instructor', label: 'Yoga Instructor', icon: '🧘', description: 'Yoga and meditation classes' },
+    { value: 'Spin Instructor', label: 'Spin Instructor', icon: '🚴', description: 'Indoor cycling classes' },
+    { value: 'Group Fitness Instructor', label: 'Group Fitness Instructor', icon: '👥', description: 'Leads group workout sessions' },
+    { value: 'Nutritionist', label: 'Nutritionist', icon: '🥗', description: 'Diet planning and nutrition advice' },
+    { value: 'Physiotherapist', label: 'Physiotherapist', icon: '🩺', description: 'Injury rehabilitation and recovery' },
+    { value: 'Manager', label: 'Manager', icon: '👔', description: 'Overall gym operations management' },
+    { value: 'Receptionist', label: 'Receptionist', icon: '📞', description: 'Front desk and member services' },
+    { value: 'Cleanliness Staff', label: 'Cleanliness Staff', icon: '🧹', description: 'Gym cleaning and maintenance' },
+    { value: 'Zumba Instructor', label: 'Zumba Instructor', icon: '💃', description: 'Zumba dance fitness classes' },
+    { value: 'Martial Arts Coach', label: 'Martial Arts Coach', icon: '🥋', description: 'Martial arts training' },
+    { value: 'Swimming Coach', label: 'Swimming Coach', icon: '🏊', description: 'Swimming lessons (if pool available)' },
   ];
 
   const today = new Date().toISOString().split('T')[0];
+
+  // Get icon and description for selected position
+  const selectedPositionData = positions.find(p => p.value === formData.position);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -465,7 +642,7 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
                 )}
               </div>
 
-              {/* Date of Birth - NEW FIELD */}
+              {/* Date of Birth */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Date of Birth <span className="text-gray-400 text-xs">(optional)</span>
@@ -515,6 +692,27 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
                     {errors.position}
                   </p>
                 )}
+                {/* Show position description when selected */}
+                {selectedPositionData && selectedPositionData.description && (
+                  <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
+                    <span className="text-blue-500">ℹ️</span>
+                    {selectedPositionData.description}
+                  </p>
+                )}
+              </div>
+
+              {/* Shift Timing - NEW */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Shift Timing <span className="text-gray-400 text-xs">(optional)</span>
+                </label>
+                <ShiftTimingPicker
+                  startTime={formData.shift_start_time}
+                  endTime={formData.shift_end_time}
+                  days={formData.shift_days}
+                  breakDuration={formData.break_duration}
+                  onChange={handleShiftChange}
+                />
               </div>
 
               {/* Password */}
@@ -538,6 +736,9 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Staff can change password after first login
+                </p>
               </div>
 
               {/* Info Cards */}
@@ -572,6 +773,28 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
                     </div>
                   </div>
                 </div>
+
+                {/* Head Trainer Special Note */}
+                {formData.position === 'Head Trainer' && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="bg-purple-100 p-2 rounded-lg">
+                        <span className="text-purple-600 text-lg">👑</span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-purple-800 text-sm">Head Trainer Role</p>
+                        <p className="text-xs text-purple-600 mt-1">
+                          Head Trainers have additional privileges including:
+                        </p>
+                        <ul className="text-xs text-purple-600 mt-1 list-disc list-inside">
+                          <li>Manage other trainers</li>
+                          <li>Create training schedules</li>
+                          <li>Oversee fitness programs</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}
@@ -618,6 +841,15 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
               <p className="text-sm text-blue-700">Email: {formData.email}</p>
               <p className="text-sm text-blue-700">Password: {formData.password}</p>
             </div>
+            {formData.shift_start_time && formData.shift_end_time && (
+              <div className="bg-green-50 rounded-lg p-4 text-left mb-4">
+                <p className="text-sm font-medium text-green-800 mb-2">Shift Timing:</p>
+                <p className="text-sm text-green-700">
+                  {formData.shift_start_time} - {formData.shift_end_time}
+                  {formData.break_duration > 0 && ` (${formData.break_duration} min break)`}
+                </p>
+              </div>
+            )}
             <p className="text-xs text-gray-500">
               Redirecting to staff list...
             </p>

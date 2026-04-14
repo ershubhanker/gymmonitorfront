@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import {
   Search, UserPlus, Edit, Trash2, Phone, Mail,
   Briefcase, ChevronLeft, ChevronRight, X, RefreshCw, Calendar,
-  ChevronUp, ChevronDown, AlertCircle
+  ChevronUp, ChevronDown, AlertCircle, Crown, Clock, Coffee
 } from 'lucide-react';
 import { X as CloseIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
 import StaffUserSetup from '../components/StaffUserSetup';
 
-// ─── DOB Scroll Picker Component ─────────────────────────────────────────────
+// ─── DOB Scroll Picker Component (same as before) ─────────────────────────────
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ITEM_H = 40;
 
@@ -163,7 +163,148 @@ const DOBPicker = ({ value, onChange, maxDate }) => {
   );
 };
 
-// ─── Staff Edit Modal ───────────────────────────────────────────────────────
+// ─── Shift Timing Component ─────────────────────────────────────────────────────
+const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const weekDays = [
+    { value: 'mon', label: 'Mon' },
+    { value: 'tue', label: 'Tue' },
+    { value: 'wed', label: 'Wed' },
+    { value: 'thu', label: 'Thu' },
+    { value: 'fri', label: 'Fri' },
+    { value: 'sat', label: 'Sat' },
+    { value: 'sun', label: 'Sun' }
+  ];
+  
+  const selectedDays = days ? days.split(',').map(d => d.trim()) : [];
+  
+  const toggleDay = (dayValue) => {
+    let newDays;
+    if (selectedDays.includes(dayValue)) {
+      newDays = selectedDays.filter(d => d !== dayValue);
+    } else {
+      newDays = [...selectedDays, dayValue];
+    }
+    onChange({ startTime, endTime, days: newDays.join(','), breakDuration });
+  };
+  
+  const formatTime = (time) => {
+    if (!time) return 'Not set';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${minutes} ${ampm}`;
+  };
+  
+  const getDisplayText = () => {
+    if (!startTime || !endTime) return 'Set shift timing';
+    const dayCount = selectedDays.length;
+    const daysText = dayCount === 7 ? 'Everyday' : dayCount === 0 ? 'No days selected' : `${dayCount} day${dayCount > 1 ? 's' : ''}`;
+    return `${formatTime(startTime)} - ${formatTime(endTime)} (${daysText})`;
+  };
+  
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-left flex items-center justify-between bg-white hover:border-blue-400 transition-all"
+      >
+        <span className="flex items-center gap-2">
+          <Clock className="h-4 w-4 text-gray-400" />
+          <span className={!startTime ? 'text-gray-400' : 'text-gray-800'}>
+            {getDisplayText()}
+          </span>
+        </span>
+        <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      
+      {isOpen && (
+        <div className="absolute left-0 mt-2 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 min-w-[320px]">
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-gray-500 mb-2">Start Time</label>
+            <input
+              type="time"
+              value={startTime || ''}
+              onChange={(e) => onChange({ startTime: e.target.value, endTime, days, breakDuration })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-gray-500 mb-2">End Time</label>
+            <input
+              type="time"
+              value={endTime || ''}
+              onChange={(e) => onChange({ startTime, endTime: e.target.value, days, breakDuration })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-gray-500 mb-2">Break Duration (minutes)</label>
+            <div className="relative">
+              <Coffee className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="number"
+                min="0"
+                max="180"
+                step="15"
+                value={breakDuration || ''}
+                onChange={(e) => onChange({ startTime, endTime, days, breakDuration: parseInt(e.target.value) || 0 })}
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g., 60"
+              />
+            </div>
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-gray-500 mb-2">Working Days</label>
+            <div className="grid grid-cols-7 gap-1">
+              {weekDays.map(day => (
+                <button
+                  key={day.value}
+                  type="button"
+                  onClick={() => toggleDay(day.value)}
+                  className={`px-2 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                    selectedDays.includes(day.value)
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {day.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <div className="flex justify-end gap-2 pt-3 border-t">
+            <button
+              type="button"
+              onClick={() => {
+                onChange({ startTime: null, endTime: null, days: '', breakDuration: null });
+              }}
+              className="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg"
+            >
+              Clear All
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Staff Edit Modal with Shift Timing ───────────────────────────────────────
 const StaffEditModal = ({ isOpen, onClose, onSave, staff = null }) => {
   const [formData, setFormData] = useState({
     position: staff?.position || '',
@@ -172,12 +313,26 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null }) => {
     specializations: staff?.specializations || '',
     date_of_birth: staff?.date_of_birth || '',
     status: staff?.is_active ? 'active' : 'inactive',
+    shift_start_time: staff?.shift_start_time || '',
+    shift_end_time: staff?.shift_end_time || '',
+    shift_days: staff?.shift_days || '',
+    break_duration: staff?.break_duration || '',
   });
 
   const [saving, setSaving] = useState(false);
   const today = new Date().toISOString().split('T')[0];
 
   if (!isOpen) return null;
+
+  const handleShiftChange = ({ startTime, endTime, days, breakDuration }) => {
+    setFormData(prev => ({
+      ...prev,
+      shift_start_time: startTime !== undefined ? startTime : prev.shift_start_time,
+      shift_end_time: endTime !== undefined ? endTime : prev.shift_end_time,
+      shift_days: days !== undefined ? days : prev.shift_days,
+      break_duration: breakDuration !== undefined ? breakDuration : prev.break_duration,
+    }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -193,9 +348,10 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null }) => {
   };
 
   const positions = [
-    'Head Trainer', 'Personal Trainer', 'Yoga Instructor', 'Spin Instructor',
+    'Head Trainer', 'Trainer', 'Personal Trainer', 'Yoga Instructor', 'Spin Instructor',
     'Group Fitness Instructor', 'Nutritionist', 'Physiotherapist',
-    'Receptionist', 'Manager', 'Cleanliness Staff',
+    'Manager', 'Receptionist', 'Cleanliness Staff', 'Zumba Instructor',
+    'Martial Arts Coach', 'Swimming Coach',
   ];
 
   return (
@@ -240,6 +396,17 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null }) => {
               value={formData.date_of_birth}
               onChange={(val) => setFormData({ ...formData, date_of_birth: val })}
               maxDate={today}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Shift Timing</label>
+            <ShiftTimingPicker
+              startTime={formData.shift_start_time}
+              endTime={formData.shift_end_time}
+              days={formData.shift_days}
+              breakDuration={formData.break_duration}
+              onChange={handleShiftChange}
             />
           </div>
 
@@ -350,6 +517,10 @@ const Staff = () => {
         is_active: formData.status === 'active',
         hire_date: formData.hireDate,
         date_of_birth: formData.date_of_birth || null,
+        shift_start_time: formData.shift_start_time || null,
+        shift_end_time: formData.shift_end_time || null,
+        shift_days: formData.shift_days || null,
+        break_duration: formData.break_duration ? parseInt(formData.break_duration) : null,
       });
       toast.success('Staff updated successfully!');
       fetchStaff();
@@ -383,6 +554,30 @@ const Staff = () => {
     }
   };
 
+  const getPositionBadgeColor = (position) => {
+    if (position === 'Head Trainer') return 'bg-purple-100 text-purple-800';
+    if (position === 'Trainer' || position === 'Personal Trainer') return 'bg-blue-100 text-blue-800';
+    if (position === 'Yoga Instructor') return 'bg-green-100 text-green-800';
+    if (position === 'Manager') return 'bg-yellow-100 text-yellow-800';
+    return 'bg-gray-100 text-gray-800';
+  };
+
+  const formatShiftTime = (time) => {
+    if (!time) return '—';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${minutes} ${ampm}`;
+  };
+
+  const getShiftDisplay = (staff) => {
+    if (!staff.shift_start_time || !staff.shift_end_time) return 'Not set';
+    const days = staff.shift_days ? staff.shift_days.split(',').length : 0;
+    const daysText = days === 7 ? 'Daily' : days === 0 ? '' : ` (${days}d)`;
+    return `${formatShiftTime(staff.shift_start_time)} - ${formatShiftTime(staff.shift_end_time)}${daysText}`;
+  };
+
   const filteredStaff = staffList.filter(s => {
     const name = s.user?.full_name || '';
     const email = s.user?.email || '';
@@ -397,7 +592,7 @@ const Staff = () => {
   return (
     <div className="p-6">
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <div className="bg-white rounded-xl shadow-sm p-6">
           <p className="text-sm text-gray-600">Total Staff</p>
           <p className="text-2xl font-bold text-gray-900">{staffList.length}</p>
@@ -409,6 +604,10 @@ const Staff = () => {
         <div className="bg-white rounded-xl shadow-sm p-6">
           <p className="text-sm text-gray-600">On Leave / Inactive</p>
           <p className="text-2xl font-bold text-yellow-600">{staffList.filter(s => !s.is_active).length}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <p className="text-sm text-gray-600">With Shift Set</p>
+          <p className="text-2xl font-bold text-blue-600">{staffList.filter(s => s.shift_start_time && s.shift_end_time).length}</p>
         </div>
       </div>
 
@@ -451,8 +650,8 @@ const Staff = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff Member</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Position</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shift Timing</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hire Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">DOB</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salary</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -477,8 +676,12 @@ const Staff = () => {
                 <tr key={s.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center">
-                        <span className="text-indigo-700 font-semibold text-sm">
+                      <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                        s.position === 'Head Trainer' ? 'bg-purple-100' : 'bg-indigo-100'
+                      }`}>
+                        <span className={`font-semibold text-sm ${
+                          s.position === 'Head Trainer' ? 'text-purple-700' : 'text-indigo-700'
+                        }`}>
                           {(s.user?.full_name || 'S').charAt(0).toUpperCase()}
                         </span>
                       </div>
@@ -505,18 +708,34 @@ const Staff = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="text-sm text-gray-800">{s.position || '—'}</div>
+                    <div className="flex items-center gap-1">
+                      {s.position === 'Head Trainer' && <Crown className="h-3 w-3 text-purple-600" />}
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionBadgeColor(s.position)}`}>
+                        {s.position || '—'}
+                      </span>
+                    </div>
                     {s.specializations && (
-                      <p className="text-xs text-gray-500 mt-0.5 max-w-[160px] truncate" title={s.specializations}>
+                      <p className="text-xs text-gray-500 mt-1 max-w-[160px] truncate" title={s.specializations}>
                         {s.specializations}
                       </p>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {s.hire_date ? new Date(s.hire_date).toLocaleDateString() : '—'}
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-1 text-sm">
+                      <Clock className="h-3 w-3 text-gray-400" />
+                      <span className={!s.shift_start_time ? 'text-gray-400' : 'text-gray-700'}>
+                        {getShiftDisplay(s)}
+                      </span>
+                    </div>
+                    {s.break_duration > 0 && (
+                      <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
+                        <Coffee className="h-3 w-3" />
+                        <span>{s.break_duration} min break</span>
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {s.date_of_birth ? new Date(s.date_of_birth).toLocaleDateString() : '—'}
+                    {s.hire_date ? new Date(s.hire_date).toLocaleDateString() : '—'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                     {s.salary ? `₹${s.salary.toLocaleString()}` : '—'}
