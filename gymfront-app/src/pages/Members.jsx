@@ -11,12 +11,14 @@ import {
   X,
   CheckCircle,
   XCircle,
-  Clock
+  Clock,
+  FileText
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
-import { useAuth } from '../context/AuthContext'; 
+import { useAuth } from '../context/AuthContext';
+import { generateMemberInvoice } from '../services/invoiceGenerator';
 
 const Members = () => {
   const { user } = useAuth(); 
@@ -30,13 +32,46 @@ const Members = () => {
   const [members, setMembers] = useState([]);
   const [stats, setStats] = useState({ total: 0, active: 0, newThisMonth: 0 });
   const [filters, setFilters] = useState({ status: 'all', plan: 'all', gender: 'all' });
+  const [downloadingInvoice, setDownloadingInvoice] = useState(null);
+  const [gymDetails, setGymDetails] = useState({
+    name: 'GYM MANAGEMENT SYSTEM',
+    address: '',
+    phone: '',
+    email: '',
+    currency_symbol: '₹',
+  });
 
   const itemsPerPage = 10;
 
   useEffect(() => {
     fetchMembers();
     fetchStats();
+    fetchGymDetails();
   }, [filters, searchTerm]);
+
+  const fetchGymDetails = async () => {
+    try {
+      // Try to get gym details from the my-gym endpoint instead
+      const response = await api.get('/gym/my-gym');
+      setGymDetails({
+        name: response.data.name || 'GYM MANAGEMENT SYSTEM',
+        address: response.data.address || '',
+        phone: response.data.phone || '',
+        email: response.data.email || '',
+        currency_symbol: '₹', // Default currency
+      });
+    } catch (error) {
+      console.error('Error fetching gym details:', error);
+      // Keep default values
+      setGymDetails({
+        name: 'GYM MANAGEMENT SYSTEM',
+        address: '',
+        phone: '',
+        email: '',
+        currency_symbol: '₹',
+      });
+    }
+  };
 
   const fetchMembers = async () => {
     setLoading(true);
@@ -61,7 +96,8 @@ const Members = () => {
                 ms.status === 'active' &&
                 ms.end_date >= today
         );
-        const paymentCount = paymentsData.filter(p => p.member_id === member.id).length;
+        const memberPayments = paymentsData.filter(p => p.member_id === member.id);
+        const paymentCount = memberPayments.length;
 
         let avatarUrl;
         if (member.profile_image) {
@@ -90,6 +126,8 @@ const Members = () => {
           avatar: avatarUrl,
           profile_image: member.profile_image,
           raw: member,
+          activeMembership: activeMembership,
+          memberPayments: memberPayments,
         };
       });
 
@@ -112,6 +150,74 @@ const Members = () => {
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
+    }
+  };
+
+  const handleDownloadInvoice = async (member) => {
+    setDownloadingInvoice(member.id);
+    try {
+      // Prepare invoice data with comprehensive information
+      const invoiceData = {
+        id: member.id,
+        full_name: member.fullName,
+        phone: member.phone,
+        email: member.email || '',
+        gender: member.gender,
+        joined_date: member.joinDate,
+        plan_name: member.membership !== 'No Plan' ? member.membership : 'No Active Plan',
+        plan_price: 0,
+        amount_paid: 0,
+        discount_applied: 0,
+        start_date: null,
+        end_date: null,
+        membership_status: member.membershipStatus || 'inactive',
+        payments: [],
+      };
+  
+      // Try to get detailed membership info if available
+      if (member.activeMembership && member.activeMembership.plan) {
+        const plan = member.activeMembership.plan;
+        invoiceData.plan_name = plan.name || member.membership;
+        invoiceData.plan_price = plan.discounted_price || plan.price || 0;
+        invoiceData.amount_paid = member.activeMembership.amount_paid || 0;
+        invoiceData.discount_applied = member.activeMembership.discount_applied || 0;
+        invoiceData.start_date = member.activeMembership.start_date;
+        invoiceData.end_date = member.activeMembership.end_date;
+        invoiceData.plan_type = plan.plan_type;
+        invoiceData.duration_days = plan.duration_days;
+        invoiceData.membership_status = member.activeMembership.status || 'active';
+      }
+  
+      // Get payment history if available
+      if (member.memberPayments && member.memberPayments.length > 0) {
+        invoiceData.payments = member.memberPayments.map(p => ({
+          payment_date: p.payment_date,
+          payment_method: p.payment_method,
+          amount: p.amount,
+          status: p.status || 'completed',
+        }));
+        
+        // Calculate total paid from payments if amount_paid is not set
+        if (!invoiceData.amount_paid || invoiceData.amount_paid === 0) {
+          const totalPaid = member.memberPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+          invoiceData.amount_paid = totalPaid;
+        }
+      }
+  
+      // Validate required data
+      if (!invoiceData.plan_price || invoiceData.plan_price === 0) {
+        console.warn('Plan price is zero, using default');
+      }
+  
+      // Generate invoice with error handling
+      await generateMemberInvoice(invoiceData, gymDetails);
+      toast.success('Invoice downloaded successfully!');
+    } catch (error) {
+      console.error('Error generating invoice:', error);
+      console.error('Error details:', error.message);
+      toast.error(error.message || 'Failed to generate invoice. Please try again.');
+    } finally {
+      setDownloadingInvoice(null);
     }
   };
 
@@ -163,14 +269,12 @@ const Members = () => {
           } catch (paymentError) {
             console.error('Payment creation error:', paymentError);
             hasError = true;
-            // Don't show error toast for payment - it's not critical
           }
         }
       } catch (membershipError) {
         console.error('Membership creation error:', membershipError);
         hasError = true;
         toast.error(`Member added but membership assignment failed. Please assign membership manually.`);
-        // Return the member anyway so the modal closes
         return createdMember;
       }
     }
@@ -417,7 +521,7 @@ const Members = () => {
             )}
             <button onClick={handleExport} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center">
               <Download className="h-4 w-4 mr-2" />
-              Export
+              Export CSV
             </button>
             <button
               onClick={() => { setSelectedMember(null); setIsModalOpen(true); }}
@@ -538,6 +642,18 @@ const Members = () => {
                       {member.lastVisit ? new Date(member.lastVisit).toLocaleDateString() : 'Never'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button 
+                        onClick={() => handleDownloadInvoice(member)} 
+                        className="text-green-600 hover:text-green-900 mr-3 inline-flex items-center"
+                        title="Download Invoice"
+                        disabled={downloadingInvoice === member.id}
+                      >
+                        {downloadingInvoice === member.id ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                        ) : (
+                          <FileText className="h-4 w-4" />
+                        )}
+                      </button>
                       <button onClick={() => openEditModal(member)} className="text-blue-600 hover:text-blue-900 mr-3">
                         <Edit className="h-4 w-4" />
                       </button>
