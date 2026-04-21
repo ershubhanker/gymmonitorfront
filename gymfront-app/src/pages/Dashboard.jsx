@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx
+// src/pages/Dashboard.jsx - Complete with all features restored
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -41,7 +41,10 @@ import {
   Mail,
   CheckCircle,
   Briefcase,
-  Wallet
+  Wallet,
+  ChevronLeft,
+  ChevronRight,
+  Wifi
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api, { API_BASE_URL } from '../services/api';
@@ -55,11 +58,15 @@ import Leads from './Leads';
 import Expenses from './Expenses';
 import Balance from './Balance';
 import Payments from './Payments';
+import DeviceManager from '../components/attendance/DeviceManager';
+import LiveMonitoring from '../components/attendance/LiveMonitoring';
+import AttendanceHistory from '../components/attendance/AttendanceHistory';
+import StaffHours from '../components/attendance/StaffHours';
 
-// Auto-refresh interval in milliseconds (60 seconds)
-const AUTO_REFRESH_INTERVAL = 40_000;
+// Auto-refresh interval in milliseconds
+const AUTO_REFRESH_INTERVAL = 40000;
 
-// ── Currency list ──────────────────────────────────────────────────────────
+// Currency list
 const CURRENCIES = [
   { symbol: '₹', label: 'Indian Rupee (INR)', flag: '🇮🇳' },
   { symbol: '$', label: 'US Dollar (USD)', flag: '🇺🇸' },
@@ -94,7 +101,7 @@ const CurrencyPickerModal = ({ onSelect }) => {
           </div>
           <h2 className="text-2xl font-bold text-gray-900">Choose Your Currency</h2>
           <p className="text-gray-500 mt-2 text-sm">
-            Select the currency to display across your dashboard. You can change this anytime from your Profile.
+            Select the currency to display across your dashboard.
           </p>
         </div>
 
@@ -140,7 +147,8 @@ const CurrencyPickerModal = ({ onSelect }) => {
 const Dashboard = () => {
   const { user, logout, updateCurrencySymbol } = useAuth();
   const navigate = useNavigate();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -194,6 +202,7 @@ const Dashboard = () => {
   const [recentActivities, setRecentActivities] = useState([]);
   const [upcomingClasses, setUpcomingClasses] = useState([]);
 
+  // Close user menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -223,7 +232,6 @@ const Dashboard = () => {
 
   const goToDashboard = () => {
     setActiveTab('dashboard');
-    navigate('/dashboard');
   };
 
   useEffect(() => {
@@ -574,6 +582,10 @@ const Dashboard = () => {
     { name: 'Dashboard', icon: Home, id: 'dashboard' },
     { name: 'Members', icon: UsersIcon, id: 'members' },
     { name: 'Balance', icon: Wallet, id: 'balance' },
+    { name: 'Devices', icon: Wifi, id: 'devices' },
+    { name: 'Live Attendance', icon: Activity, id: 'attendance' },
+    { name: 'Attendance History', icon: CalendarIcon, id: 'history' },
+    // { name: 'Staff Hours', icon: Briefcase, id: 'staff-hours' },
     { name: 'Expenses', icon: TrendingDown, id: 'expenses' },
     { name: 'Staff', icon: UserPlus, id: 'staff' },
     { name: 'Classes', icon: CalendarIcon, id: 'classes' },
@@ -602,24 +614,6 @@ const Dashboard = () => {
     }).format(amount);
     return `${currencySymbol} ${formatted}`;
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="relative">
-            <div className="h-24 w-24 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 animate-pulse mx-auto mb-4 flex items-center justify-center">
-              <Dumbbell className="h-12 w-12 text-white" />
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Loader className="h-8 w-8 text-white animate-spin" />
-            </div>
-          </div>
-          <p className="text-gray-600 font-medium">Loading your fitness empire...</p>
-        </div>
-      </div>
-    );
-  }
 
   const renderDashboard = () => (
     <div className="space-y-6">
@@ -824,7 +818,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Expense and Profit Cards Row */}
+      {/* ✅ EXPENSE AND PROFIT CARDS - RESTORED */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-red-500">
           <div className="flex items-center justify-between mb-4">
@@ -939,7 +933,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Member Demographics and Expiry Notifications Row */}
+      {/* ✅ MEMBER DEMOGRAPHICS AND EXPIRING MEMBERSHIPS - RESTORED */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-1 hover:shadow-xl transition-all">
           <div className="flex items-center justify-between mb-6">
@@ -1021,6 +1015,7 @@ const Dashboard = () => {
           </div>
         </div>
 
+        {/* ✅ EXPIRING MEMBERSHIPS SECTION - RESTORED */}
         <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
@@ -1114,7 +1109,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Birthday Notifications Section */}
+      {/* ✅ BIRTHDAY NOTIFICATIONS SECTION - RESTORED */}
       {(stats.upcomingBirthdays?.members?.length > 0 || stats.upcomingBirthdays?.staff?.length > 0) && (
         <div className="space-y-4">
           <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -1509,8 +1504,27 @@ const Dashboard = () => {
     </div>
   );
 
+  // Don't show loading state if already logged in
+  if (loading && !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="relative">
+            <div className="h-24 w-24 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 animate-pulse mx-auto mb-4 flex items-center justify-center">
+              <Dumbbell className="h-12 w-12 text-white" />
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader className="h-8 w-8 text-white animate-spin" />
+            </div>
+          </div>
+          <p className="text-gray-600 font-medium">Loading your fitness empire...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-gray-50">
       {showCurrencyModal && (
         <CurrencyPickerModal
           onSelect={async (symbol) => {
@@ -1519,191 +1533,262 @@ const Dashboard = () => {
           }}
         />
       )}
-      <nav className="bg-white/80 backdrop-blur-lg shadow-lg border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 gap-4 min-w-0">
-            <div className="flex items-center min-w-0 flex-1">
-              <div className="flex-shrink-0 cursor-pointer" onClick={goToDashboard}>
-                <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-xl font-bold text-lg shadow-md hover:shadow-xl transition-all hover:scale-105">
-                  <div className="flex items-center gap-2">
-                    <Dumbbell className="h-5 w-5" />
-                    <span className="whitespace-nowrap">Gym Monitor</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="hidden md:flex ml-6 items-center gap-1 overflow-x-auto scrollbar-hide flex-1">
-                {navigation.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveTab(item.id)}
-                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
-                      activeTab === item.id
-                        ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-md'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    {item.name}
-                  </button>
-                ))}
-              </div>
-            </div>
 
-            <div className="flex-shrink-0 flex items-center space-x-2">
-              <button className="p-2 rounded-xl hover:bg-gray-100 relative">
+      {/* Mobile Menu Button */}
+      <button
+        onClick={() => setMobileMenuOpen(true)}
+        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
+      {/* Sidebar */}
+      <aside className={`
+        fixed top-0 left-0 z-40 h-screen bg-gradient-to-b from-blue-900 to-purple-900 
+        transition-all duration-300 shadow-xl
+        ${sidebarCollapsed ? 'w-20' : 'w-64'}
+        ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
+        {/* Logo */}
+        <div className="flex items-center justify-between p-4 border-b border-white/10">
+          {!sidebarCollapsed && (
+            <div className="flex items-center gap-2 cursor-pointer" onClick={goToDashboard}>
+              <Dumbbell className="h-8 w-8 text-white" />
+              <span className="text-white font-bold text-lg">GymMonitor</span>
+            </div>
+          )}
+          {sidebarCollapsed && (
+            <Dumbbell className="h-8 w-8 text-white mx-auto cursor-pointer" onClick={goToDashboard} />
+          )}
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="hidden md:block text-white/70 hover:text-white"
+          >
+            {sidebarCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+          </button>
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="md:hidden text-white/70 hover:text-white"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* User Info */}
+        <div className={`p-4 border-b border-white/10 ${sidebarCollapsed ? 'text-center' : ''}`}>
+          <div className={`flex ${sidebarCollapsed ? 'flex-col' : 'items-center gap-3'}`}>
+            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold">
+              {user?.full_name?.charAt(0) || 'U'}
+            </div>
+            {!sidebarCollapsed && (
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-medium truncate">{user?.full_name || 'User'}</p>
+                <p className="text-white/60 text-xs truncate">{user?.email}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto py-4">
+          {navigation.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => {
+                setActiveTab(item.id);
+                setMobileMenuOpen(false);
+              }}
+              className={`
+                w-full flex items-center gap-3 px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors
+                ${activeTab === item.id ? 'bg-white/10 text-white border-r-4 border-blue-400' : ''}
+                ${sidebarCollapsed ? 'justify-center' : ''}
+              `}
+              title={sidebarCollapsed ? item.name : ''}
+            >
+              <item.icon className="h-5 w-5 flex-shrink-0" />
+              {!sidebarCollapsed && <span className="text-sm">{item.name}</span>}
+            </button>
+          ))}
+        </nav>
+
+        {/* Bottom Actions */}
+        <div className="p-4 border-t border-white/10">
+          <button
+            onClick={() => {
+              setActiveTab('profile');
+              setMobileMenuOpen(false);
+            }}
+            className={`
+              w-full flex items-center gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors
+              ${sidebarCollapsed ? 'justify-center' : ''}
+            `}
+            title={sidebarCollapsed ? 'Profile' : ''}
+          >
+            <User className="h-5 w-5" />
+            {!sidebarCollapsed && <span className="text-sm">Profile</span>}
+          </button>
+          <button
+            onClick={handleLogout}
+            className={`
+              w-full flex items-center gap-3 px-4 py-2 text-red-300 hover:text-red-400 hover:bg-white/10 rounded-lg transition-colors mt-2
+              ${sidebarCollapsed ? 'justify-center' : ''}
+            `}
+            title={sidebarCollapsed ? 'Logout' : ''}
+          >
+            <LogOut className="h-5 w-5" />
+            {!sidebarCollapsed && <span className="text-sm">Logout</span>}
+          </button>
+        </div>
+      </aside>
+
+      {/* Overlay for mobile */}
+      {mobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Main Content */}
+      <main className={`
+        transition-all duration-300
+        ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-64'}
+        ml-0
+      `}>
+        {/* Header */}
+        <header className="bg-white shadow-sm sticky top-0 z-30">
+          <div className="flex items-center justify-between px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="md:hidden">
+                <div className="w-10" />
+              </div>
+              <h1 className="text-xl font-bold text-gray-800">
+                {navigation.find(n => n.id === activeTab)?.name || 'Dashboard'}
+              </h1>
+            </div>
+            <div className="flex items-center gap-3">
+              <button className="p-2 rounded-lg hover:bg-gray-100 relative">
                 <Bell className="h-5 w-5 text-gray-600" />
                 <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full animate-pulse"></span>
               </button>
-              
-              <div className="relative">
+              <div className="flex items-center gap-2">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-medium text-gray-700">{user?.full_name}</p>
+                  <p className="text-xs text-gray-500 capitalize">{user?.role?.replace('_', ' ')}</p>
+                </div>
                 <button
                   ref={userButtonRef}
                   onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-100 transition-all"
+                  className="flex items-center gap-2"
                 >
-                  <img
-                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.full_name || 'User')}&background=0D9488&color=fff&size=32`}
-                    alt="Profile"
-                    className="h-8 w-8 rounded-full ring-2 ring-blue-200"
-                  />
-                  <ChevronDown className="h-4 w-4 text-gray-600" />
-                </button>
-
-                {showUserMenu && (
-                  <div 
-                    ref={userMenuRef}
-                    className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl py-2 border border-gray-100 backdrop-blur-lg"
-                  >
-                    <div className="px-4 py-3 border-b border-gray-100">
-                      <p className="text-sm font-semibold text-gray-900">{user?.full_name}</p>
-                      <p className="text-xs text-gray-500 mt-1">{user?.email}</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setActiveTab('profile');
-                        setShowUserMenu(false);
-                      }}
-                      className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
-                    >
-                      <User className="h-4 w-4" />
-                      Profile
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowCurrencyModal(true);
-                        setShowUserMenu(false);
-                      }}
-                      className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
-                    >
-                      <IndianRupee className="h-4 w-4" />
-                      Currency ({currencySymbol})
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveTab('settings');
-                        setShowUserMenu(false);
-                      }}
-                      className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
-                    >
-                      <Settings className="h-4 w-4" />
-                      Settings
-                    </button>
-                    <hr className="my-1" />
-                    <button
-                      onClick={handleLogout}
-                      className="flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 w-full"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      Logout
-                    </button>
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                    {user?.full_name?.charAt(0) || 'U'}
                   </div>
-                )}
+                  <ChevronDown className="h-4 w-4 text-gray-500 hidden sm:block" />
+                </button>
               </div>
-
-              <button 
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="md:hidden p-2 rounded-lg hover:bg-gray-100"
-              >
-                {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-              </button>
             </div>
           </div>
 
-          {isMobileMenuOpen && (
-            <div className="md:hidden py-4 border-t">
-              {navigation.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="flex items-center w-full px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg"
-                >
-                  <item.icon className="h-5 w-5 mr-3" />
-                  {item.name}
-                </button>
-              ))}
+          {/* User Dropdown Menu */}
+          {showUserMenu && (
+            <div 
+              ref={userMenuRef}
+              className="absolute right-6 mt-2 w-56 bg-white rounded-xl shadow-xl py-2 border border-gray-100 z-50"
+            >
+              <div className="px-4 py-3 border-b border-gray-100">
+                <p className="text-sm font-semibold text-gray-900">{user?.full_name}</p>
+                <p className="text-xs text-gray-500 mt-1">{user?.email}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setActiveTab('profile');
+                  setShowUserMenu(false);
+                }}
+                className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
+              >
+                <User className="h-4 w-4" />
+                Profile
+              </button>
+              <button
+                onClick={() => {
+                  setShowCurrencyModal(true);
+                  setShowUserMenu(false);
+                }}
+                className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
+              >
+                <IndianRupee className="h-4 w-4" />
+                Currency ({currencySymbol})
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('settings');
+                  setShowUserMenu(false);
+                }}
+                className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
+              >
+                <Settings className="h-4 w-4" />
+                Settings
+              </button>
+              <hr className="my-1" />
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 w-full"
+              >
+                <LogOut className="h-4 w-4" />
+                Logout
+              </button>
+            </div>
+          )}
+        </header>
+
+        {/* Page Content */}
+        <div className="p-6">
+          {activeTab === 'dashboard' && renderDashboard()}
+          {activeTab === 'members' && <Members />}
+          {activeTab === 'balance' && <Balance />}
+          {activeTab === 'devices' && <DeviceManager />}
+          {activeTab === 'attendance' && <LiveMonitoring />}
+          {activeTab === 'history' && <AttendanceHistory />}
+          {/* {activeTab === 'staff-hours' && <StaffHours />} */}
+          {activeTab === 'expenses' && <Expenses />}
+          {activeTab === 'staff' && <Staff />}
+          {activeTab === 'profile' && <Profile />}
+          {activeTab === 'payments' && <Payments />}
+          {activeTab === 'leads' && <Leads />}
+          {activeTab === 'classes' && (
+            <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+              <CalendarIcon className="h-16 w-16 text-blue-300 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-gray-900">Classes Management</h2>
+              <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
+            </div>
+          )}
+          {activeTab === 'settings' && (
+            <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+              <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+              <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
             </div>
           )}
         </div>
-      </nav>
 
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 py-2 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
-            <div className="flex items-center gap-2 text-gray-700">
+        {/* Footer */}
+        <footer className="bg-white border-t border-gray-200 py-4 px-6 mt-6">
+          <div className="flex flex-wrap items-center justify-center gap-4 text-sm text-gray-500">
+            <div className="flex items-center gap-2">
               <MessageCircle className="h-4 w-4 text-green-600" />
-              <span className="font-medium">For any query or support, kindly WhatsApp me on:</span>
-              <a 
-                href="https://wa.me/919041300884" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-green-600 hover:text-green-700 font-semibold hover:underline flex items-center gap-1"
-              >
-                +91-9041300884
-              </a>
+              <span>Support WhatsApp:</span>
+              <a href="https://wa.me/919041300884" className="text-green-600 hover:text-green-700">+91-9041300884</a>
             </div>
-            <span className="text-gray-400 hidden sm:inline">|</span>
-            <div className="flex items-center gap-2 text-gray-700">
+            <span className="text-gray-300">|</span>
+            <div className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-red-500" />
-              <span className="font-medium">Email:</span>
-              <a 
-                href="mailto:info@maskottchentechnology.com"
-                className="text-blue-600 hover:text-blue-700 font-semibold hover:underline"
-              >
-                info@maskottchentechnology.com
-              </a>
+              <span>Email:</span>
+              <a href="mailto:info@maskottchentechnology.com" className="text-blue-600 hover:text-blue-700">info@maskottchentenology.com</a>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'dashboard' && renderDashboard()}
-        {activeTab === 'members' && <Members />}
-        {activeTab === 'balance' && <Balance />}
-        {activeTab === 'expenses' && <Expenses />}
-        {activeTab === 'staff' && <Staff />}
-        {activeTab === 'profile' && <Profile />}
-        {activeTab === 'classes' && (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <CalendarIcon className="h-16 w-16 text-blue-300 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900">Classes Management</h2>
-            <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
-          </div>
-        )}
-        {activeTab === 'payments' && <Payments />}
-        {activeTab === 'leads' && <Leads />}
-        {activeTab === 'settings' && (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
-            <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
-          </div>
-        )}
-      </div>
+        </footer>
+      </main>
     </div>
   );
 };

@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react';
 import {
   Search, UserPlus, Edit, Trash2, Phone, Mail,
   Briefcase, ChevronLeft, ChevronRight, X, RefreshCw, Calendar,
-  ChevronUp, ChevronDown, AlertCircle, Crown, Clock, Coffee
+  ChevronUp, ChevronDown, AlertCircle, Crown, Clock, Coffee,
+  Wifi, WifiOff, Database, Smartphone, CheckCircle, XCircle,
+  Loader2, Cloud, Server
 } from 'lucide-react';
 import { X as CloseIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
 import StaffUserSetup from '../components/StaffUserSetup';
 
-// ─── DOB Scroll Picker Component (same as before) ─────────────────────────────
+// ─── DOB Scroll Picker Component ─────────────────────────────────────────────
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const ITEM_H = 40;
 
@@ -304,8 +306,8 @@ const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }
   );
 };
 
-// ─── Staff Edit Modal with Shift Timing ───────────────────────────────────────
-const StaffEditModal = ({ isOpen, onClose, onSave, staff = null }) => {
+// ─── Staff Edit Modal with Shift Timing and Device Sync ─────────────────────────
+const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], onSyncToDevice }) => {
   const [formData, setFormData] = useState({
     position: staff?.position || '',
     hireDate: staff?.hire_date || new Date().toISOString().split('T')[0],
@@ -320,6 +322,8 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null }) => {
   });
 
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const today = new Date().toISOString().split('T')[0];
 
   if (!isOpen) return null;
@@ -344,6 +348,21 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null }) => {
       console.error('Error saving staff:', error);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSyncToDevice = async () => {
+    if (!selectedDeviceId) {
+      toast.error('Please select a device');
+      return;
+    }
+    setSyncing(true);
+    try {
+      await onSyncToDevice(staff.id, selectedDeviceId, staff.user?.full_name || staff.user?.username);
+    } catch (error) {
+      console.error('Error syncing to device:', error);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -447,6 +466,44 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null }) => {
             </select>
           </div>
 
+          {/* Device Sync Section */}
+          {devices.length > 0 && (
+            <div className="pt-4 border-t">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Smartphone className="inline h-4 w-4 mr-1" />
+                Sync to Attendance Device
+              </label>
+              <div className="flex gap-2">
+                <select
+                  value={selectedDeviceId}
+                  onChange={(e) => setSelectedDeviceId(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select Device</option>
+                  {devices.map(device => (
+                    <option key={device.id} value={device.id}>
+                      {device.device_name} ({device.device_ip})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleSyncToDevice}
+                  disabled={syncing || !selectedDeviceId}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+                  Sync
+                </button>
+              </div>
+              {staff?.device_user_id && (
+                <p className="text-xs text-green-600 mt-2">
+                  ✓ Device ID: {staff.device_user_id}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end gap-3 pt-4 border-t">
             <button
               type="button"
@@ -469,6 +526,211 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null }) => {
   );
 };
 
+// ─── Staff Device Sync Modal ─────────────────────────────────────────────────────
+const StaffDeviceSyncModal = ({ isOpen, onClose, staffList, devices, onSyncSelected, onSyncAll }) => {
+  const [selectedStaffIds, setSelectedStaffIds] = useState(new Set());
+  const [selectedDeviceId, setSelectedDeviceId] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMode, setSyncMode] = useState('selected'); // 'selected' or 'all'
+
+  if (!isOpen) return null;
+
+  const handleToggleStaff = (staffId) => {
+    const newSet = new Set(selectedStaffIds);
+    if (newSet.has(staffId)) {
+      newSet.delete(staffId);
+    } else {
+      newSet.add(staffId);
+    }
+    setSelectedStaffIds(newSet);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedStaffIds.size === staffList.length) {
+      setSelectedStaffIds(new Set());
+    } else {
+      setSelectedStaffIds(new Set(staffList.map(s => s.id)));
+    }
+  };
+
+  const handleSync = async () => {
+    if (!selectedDeviceId) {
+      toast.error('Please select a device');
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      if (syncMode === 'selected' && selectedStaffIds.size > 0) {
+        await onSyncSelected(Array.from(selectedStaffIds), selectedDeviceId);
+      } else if (syncMode === 'all') {
+        await onSyncAll(selectedDeviceId);
+      }
+      onClose();
+    } catch (error) {
+      console.error('Sync error:', error);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const getSyncStatus = (staff) => {
+    if (staff.device_user_id) {
+      return { text: 'Synced', color: 'text-green-600', icon: CheckCircle };
+    }
+    return { text: 'Not Synced', color: 'text-gray-400', icon: XCircle };
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-6 border-b">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            Sync Staff to Device
+          </h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+            <CloseIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-6 border-b">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Select Device</label>
+          <select
+            value={selectedDeviceId}
+            onChange={(e) => setSelectedDeviceId(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="">Select an attendance device</option>
+            {devices.map(device => (
+              <option key={device.id} value={device.id}>
+                {device.device_name} ({device.device_ip}) - {device.is_online ? 'Online' : 'Offline'}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="p-6 border-b">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  value="selected"
+                  checked={syncMode === 'selected'}
+                  onChange={() => setSyncMode('selected')}
+                  className="w-4 h-4 text-blue-600"
+                />
+                <span className="text-sm">Selected Staff</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  value="all"
+                  checked={syncMode === 'all'}
+                  onChange={() => setSyncMode('all')}
+                  className="w-4 h-4 text-blue-600"
+                />
+                <span className="text-sm">All Staff</span>
+              </label>
+            </div>
+            {syncMode === 'selected' && staffList.length > 0 && (
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                className="text-sm text-blue-600 hover:text-blue-700"
+              >
+                {selectedStaffIds.size === staffList.length ? 'Deselect All' : 'Select All'}
+              </button>
+            )}
+          </div>
+
+          {syncMode === 'selected' && (
+            <div className="border rounded-lg overflow-hidden max-h-80 overflow-y-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="w-10 px-4 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={selectedStaffIds.size === staffList.length && staffList.length > 0}
+                        onChange={handleSelectAll}
+                        className="w-4 h-4 rounded border-gray-300"
+                      />
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Staff Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Position</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {staffList.map(staff => {
+                    const status = getSyncStatus(staff);
+                    const StatusIcon = status.icon;
+                    return (
+                      <tr key={staff.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedStaffIds.has(staff.id)}
+                            onChange={() => handleToggleStaff(staff.id)}
+                            className="w-4 h-4 rounded border-gray-300"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{staff.user?.full_name || '—'}</p>
+                            <p className="text-xs text-gray-500">{staff.user?.email || ''}</p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{staff.position || '—'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <StatusIcon className={`h-4 w-4 ${status.color}`} />
+                            <span className={`text-xs ${status.color}`}>{status.text}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {syncMode === 'all' && (
+            <div className="bg-blue-50 rounded-lg p-4">
+              <p className="text-sm text-blue-700">
+                This will sync all {staffList.length} staff members to the selected device.
+                Staff members already synced will be updated if their information has changed.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSync}
+            disabled={syncing || !selectedDeviceId || (syncMode === 'selected' && selectedStaffIds.size === 0)}
+            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+            Sync to Device
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Main Staff Page ─────────────────────────────────────────────────────────────
 const Staff = () => {
   const [staffList, setStaffList] = useState([]);
@@ -476,12 +738,18 @@ const Staff = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeviceSyncModalOpen, setIsDeviceSyncModalOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [devices, setDevices] = useState([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  const [staffDeviceIds, setStaffDeviceIds] = useState({});
   const itemsPerPage = 10;
 
   useEffect(() => {
     fetchStaff();
+    fetchDevices();
+    fetchStaffDeviceIds();
   }, []);
 
   const fetchStaff = async () => {
@@ -496,6 +764,31 @@ const Staff = () => {
       toast.error('Failed to fetch staff');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDevices = async () => {
+    setLoadingDevices(true);
+    try {
+      const response = await api.get('/attendance/devices');
+      setDevices(response.data || []);
+    } catch (error) {
+      console.error('Error fetching devices:', error);
+    } finally {
+      setLoadingDevices(false);
+    }
+  };
+
+  const fetchStaffDeviceIds = async () => {
+    try {
+      const response = await api.get('/attendance/staff/device-ids');
+      const deviceIdMap = {};
+      response.data.forEach(item => {
+        deviceIdMap[item.staff_id] = item.device_user_id;
+      });
+      setStaffDeviceIds(deviceIdMap);
+    } catch (error) {
+      console.error('Error fetching staff device IDs:', error);
     }
   };
 
@@ -524,11 +817,54 @@ const Staff = () => {
       });
       toast.success('Staff updated successfully!');
       fetchStaff();
+      fetchStaffDeviceIds();
     } catch (error) {
       console.error('Error updating staff:', error);
       toast.error(error.response?.data?.detail || 'Failed to update staff');
       throw error;
     }
+  };
+
+  const handleSyncStaffToDevice = async (staffId, deviceId, staffName) => {
+    try {
+      const response = await api.post(`/attendance/devices/${deviceId}/sync-staff`, {
+        id: staffId,
+        full_name: staffName
+      });
+      if (response.data.success) {
+        toast.success(`Staff member synced to device! Device ID: ${response.data.device_user_id}`);
+        fetchStaffDeviceIds();
+        fetchStaff();
+      } else {
+        toast.error('Failed to sync staff member');
+      }
+    } catch (error) {
+      console.error('Error syncing staff:', error);
+      toast.error(error.response?.data?.detail || 'Failed to sync staff member');
+      throw error;
+    }
+  };
+
+  const handleSyncSelectedStaff = async (staffIds, deviceId) => {
+    try {
+      const response = await api.post(`/attendance/devices/bulk-sync-staff?device_id=${deviceId}`, staffIds);
+      if (response.data.success) {
+        toast.success(`Queued ${staffIds.length} staff members for sync`);
+        fetchStaffDeviceIds();
+        fetchStaff();
+      } else {
+        toast.error('Failed to sync staff members');
+      }
+    } catch (error) {
+      console.error('Error syncing staff:', error);
+      toast.error(error.response?.data?.detail || 'Failed to sync staff members');
+      throw error;
+    }
+  };
+
+  const handleSyncAllStaff = async (deviceId) => {
+    const allStaffIds = staffList.map(s => s.id);
+    return handleSyncSelectedStaff(allStaffIds, deviceId);
   };
 
   const handleDeleteStaff = async (staffId) => {
@@ -588,11 +924,13 @@ const Staff = () => {
 
   const totalPages = Math.ceil(filteredStaff.length / itemsPerPage);
   const paginated = filteredStaff.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const onlineDevices = devices.filter(d => d.is_online);
+  const hasDevices = devices.length > 0;
 
   return (
     <div className="p-6">
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-6">
         <div className="bg-white rounded-xl shadow-sm p-6">
           <p className="text-sm text-gray-600">Total Staff</p>
           <p className="text-2xl font-bold text-gray-900">{staffList.length}</p>
@@ -602,12 +940,18 @@ const Staff = () => {
           <p className="text-2xl font-bold text-green-600">{staffList.filter(s => s.is_active).length}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-6">
-          <p className="text-sm text-gray-600">On Leave / Inactive</p>
+          <p className="text-sm text-gray-600">Inactive</p>
           <p className="text-2xl font-bold text-yellow-600">{staffList.filter(s => !s.is_active).length}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-6">
           <p className="text-sm text-gray-600">With Shift Set</p>
           <p className="text-2xl font-bold text-blue-600">{staffList.filter(s => s.shift_start_time && s.shift_end_time).length}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <p className="text-sm text-gray-600">Synced to Device</p>
+          <p className="text-2xl font-bold text-purple-600">
+            {staffList.filter(s => staffDeviceIds[s.id] || s.device_user_id).length}
+          </p>
         </div>
       </div>
 
@@ -631,6 +975,15 @@ const Staff = () => {
           >
             Search
           </button>
+          {hasDevices && (
+            <button
+              onClick={() => setIsDeviceSyncModalOpen(true)}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+            >
+              <Database className="h-4 w-4" />
+              Sync to Device
+            </button>
+          )}
           <button
             onClick={() => { setIsAddModalOpen(true); }}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
@@ -640,6 +993,29 @@ const Staff = () => {
           </button>
         </div>
       </div>
+
+      {/* Device Status Banner */}
+      {hasDevices && (
+        <div className={`mb-4 p-3 rounded-lg flex items-center gap-2 ${
+          onlineDevices.length > 0 ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'
+        }`}>
+          {onlineDevices.length > 0 ? (
+            <>
+              <Wifi className="h-4 w-4" />
+              <span className="text-sm">
+                {onlineDevices.length} device(s) online. Staff can be synced to attendance device.
+              </span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="h-4 w-4" />
+              <span className="text-sm">
+                No devices online. Please check device connection to sync staff.
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -651,8 +1027,7 @@ const Staff = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Position</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shift Timing</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hire Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salary</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -660,7 +1035,7 @@ const Staff = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="8" className="px-6 py-8 text-center">
+                  <td colSpan="7" className="px-6 py-8 text-center">
                     <div className="flex justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
                     </div>
@@ -668,113 +1043,120 @@ const Staff = () => {
                 </tr>
               ) : paginated.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
                     {searchTerm ? 'No staff found matching your search.' : 'No staff members yet. Click "Add Staff" to get started.'}
                   </td>
                 </tr>
-              ) : paginated.map((s) => (
-                <tr key={s.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-3">
-                      <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                        s.position === 'Head Trainer' ? 'bg-purple-100' : 'bg-indigo-100'
-                      }`}>
-                        <span className={`font-semibold text-sm ${
-                          s.position === 'Head Trainer' ? 'text-purple-700' : 'text-indigo-700'
+              ) : paginated.map((s) => {
+                const deviceUserId = staffDeviceIds[s.id] || s.device_user_id;
+                return (
+                  <tr key={s.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-3">
+                        <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                          s.position === 'Head Trainer' ? 'bg-purple-100' : 'bg-indigo-100'
                         }`}>
-                          {(s.user?.full_name || 'S').charAt(0).toUpperCase()}
+                          <span className={`font-semibold text-sm ${
+                            s.position === 'Head Trainer' ? 'text-purple-700' : 'text-indigo-700'
+                          }`}>
+                            {(s.user?.full_name || 'S').charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{s.user?.full_name || '—'}</p>
+                          <p className="text-xs text-gray-500">@{s.user?.username || ''}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-1">
+                        {s.user?.email && (
+                          <div className="flex items-center gap-1 text-sm text-gray-600">
+                            <Mail className="h-3 w-3 flex-shrink-0" /> 
+                            <span className="truncate max-w-[150px]">{s.user.email}</span>
+                          </div>
+                        )}
+                        {s.user?.phone && (
+                          <div className="flex items-center gap-1 text-sm text-gray-600">
+                            <Phone className="h-3 w-3 flex-shrink-0" /> 
+                            <span>{s.user.phone}</span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1">
+                        {s.position === 'Head Trainer' && <Crown className="h-3 w-3 text-purple-600" />}
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionBadgeColor(s.position)}`}>
+                          {s.position || '—'}
                         </span>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{s.user?.full_name || '—'}</p>
-                        <p className="text-xs text-gray-500">@{s.user?.username || ''}</p>
+                      {s.specializations && (
+                        <p className="text-xs text-gray-500 mt-1 max-w-[160px] truncate" title={s.specializations}>
+                          {s.specializations}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1 text-sm">
+                        <Clock className="h-3 w-3 text-gray-400" />
+                        <span className={!s.shift_start_time ? 'text-gray-400' : 'text-gray-700'}>
+                          {getShiftDisplay(s)}
+                        </span>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col gap-1">
-                      {s.user?.email && (
-                        <div className="flex items-center gap-1 text-sm text-gray-600">
-                          <Mail className="h-3 w-3 flex-shrink-0" /> 
-                          <span className="truncate max-w-[150px]">{s.user.email}</span>
+                      {s.break_duration > 0 && (
+                        <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
+                          <Coffee className="h-3 w-3" />
+                          <span>{s.break_duration} min break</span>
                         </div>
                       )}
-                      {s.user?.phone && (
-                        <div className="flex items-center gap-1 text-sm text-gray-600">
-                          <Phone className="h-3 w-3 flex-shrink-0" /> 
-                          <span>{s.user.phone}</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {deviceUserId ? (
+                        <div className="flex items-center gap-1">
+                          <Smartphone className="h-3 w-3 text-green-600" />
+                          <span className="text-xs font-mono text-green-600">{deviceUserId}</span>
                         </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">Not synced</span>
                       )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1">
-                      {s.position === 'Head Trainer' && <Crown className="h-3 w-3 text-purple-600" />}
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionBadgeColor(s.position)}`}>
-                        {s.position || '—'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        s.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {s.is_active ? 'Active' : 'Inactive'}
                       </span>
-                    </div>
-                    {s.specializations && (
-                      <p className="text-xs text-gray-500 mt-1 max-w-[160px] truncate" title={s.specializations}>
-                        {s.specializations}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1 text-sm">
-                      <Clock className="h-3 w-3 text-gray-400" />
-                      <span className={!s.shift_start_time ? 'text-gray-400' : 'text-gray-700'}>
-                        {getShiftDisplay(s)}
-                      </span>
-                    </div>
-                    {s.break_duration > 0 && (
-                      <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
-                        <Coffee className="h-3 w-3" />
-                        <span>{s.break_duration} min break</span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {s.hire_date ? new Date(s.hire_date).toLocaleDateString() : '—'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {s.salary ? `₹${s.salary.toLocaleString()}` : '—'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      s.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {s.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => {
-                        setSelectedStaff(s);
-                        setIsEditModalOpen(true);
-                      }}
-                      className="text-blue-600 hover:text-blue-900 mr-2"
-                      title="Edit"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleResetPassword(s.user_id)}
-                      className="text-orange-600 hover:text-orange-900 mr-2"
-                      title="Reset Password"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteStaff(s.id)}
-                      className="text-red-600 hover:text-red-900"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button
+                        onClick={() => {
+                          setSelectedStaff(s);
+                          setIsEditModalOpen(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-900 mr-2"
+                        title="Edit"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleResetPassword(s.user_id)}
+                        className="text-orange-600 hover:text-orange-900 mr-2"
+                        title="Reset Password"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteStaff(s.id)}
+                        className="text-red-600 hover:text-red-900"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -812,7 +1194,7 @@ const Staff = () => {
         onSuccess={handleAddSuccess}
       />
 
-      {/* Edit Staff Modal */}
+      {/* Edit Staff Modal with Device Sync */}
       <StaffEditModal
         isOpen={isEditModalOpen}
         onClose={() => {
@@ -821,6 +1203,18 @@ const Staff = () => {
         }}
         onSave={handleUpdateStaff}
         staff={selectedStaff}
+        devices={devices.filter(d => d.is_online)}
+        onSyncToDevice={handleSyncStaffToDevice}
+      />
+
+      {/* Device Sync Modal */}
+      <StaffDeviceSyncModal
+        isOpen={isDeviceSyncModalOpen}
+        onClose={() => setIsDeviceSyncModalOpen(false)}
+        staffList={staffList}
+        devices={devices.filter(d => d.is_online)}
+        onSyncSelected={handleSyncSelectedStaff}
+        onSyncAll={handleSyncAllStaff}
       />
     </div>
   );

@@ -1,12 +1,11 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 
 const AuthContext = createContext();
 
-const API_BASE_URL = 'https://api.gymmonitor.in';
-// const API_BASE_URL = 'http://localhost:8001';
+const API_BASE_URL = 'http://localhost:8001';
 
 export const useAuth = () => { 
   const context = useContext(AuthContext);
@@ -21,19 +20,20 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [tempEmail, setTempEmail] = useState('');
+  
+  // ✅ Add a ref to track if initial load has been done
+  const initialLoadDone = useRef(false);
 
-  // ─── Restore session on mount ───────────────────────────────────────────────
-  // FIX: Previously any error during /me (including network blips) would call
-  // localStorage.clear() and log the user out. Now we only clear tokens if the
-  // server explicitly returns 401 (invalid/expired token). All other errors
-  // (500, network timeout, etc.) leave the tokens intact so the user stays
-  // logged in after a page refresh.
+  // ─── Restore session on mount - ONLY ONCE ───────────────────────────────
   useEffect(() => {
+    // ✅ Prevent multiple executions
+    if (initialLoadDone.current) return;
+    initialLoadDone.current = true;
+    
     const loadUser = async () => {
       const token = localStorage.getItem('access_token');
 
       if (!token) {
-        // No token at all — nothing to restore
         setInitialLoading(false);
         return;
       }
@@ -49,26 +49,22 @@ export const AuthProvider = ({ children }) => {
         const status = err.response?.status;
 
         if (status === 401) {
-          // Token is genuinely invalid / expired — clear everything
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
           localStorage.removeItem('user_role');
           localStorage.removeItem('gym_id');
         }
-        // For any other error (network down, 500, etc.) we intentionally do
-        // NOT clear the tokens. The user's session is preserved and they will
-        // remain logged in — the api interceptor will refresh the token if
-        // needed on the next real request.
+        // Don't clear tokens for other errors
       } finally {
         setInitialLoading(false);
       }
     };
 
     loadUser();
-  }, []);
+  }, []); // Empty dependency array - runs once
 
   // ─────────────────────────────────────────────────────────────────────────
-  // LOGIN
+  // LOGIN - Fixed to prevent redirect loops
   // ─────────────────────────────────────────────────────────────────────────
   const login = async (email, password) => {
     setLoading(true);
@@ -84,16 +80,18 @@ export const AuthProvider = ({ children }) => {
         }
 
         const userResponse = await api.get('/me');
-        setUser({
+        const userData = {
           ...userResponse.data,
           role: response.data.user_role,
           gymId: response.data.gym_id,
-        });
+        };
+        setUser(userData);
 
         toast.success('Login successful!');
 
         const role = response.data.user_role;
 
+        // ✅ Return redirect path without any additional API calls that might cause re-renders
         if (role === 'super_admin') {
           return { success: true, data: response.data, redirect: '/admin' };
         }
@@ -103,6 +101,7 @@ export const AuthProvider = ({ children }) => {
         }
 
         if (role === 'gym_owner') {
+          // ✅ Check setup status but don't let it cause loops
           try {
             const setupResponse = await api.get('/gym/setup-status');
             const needsSetup = !setupResponse.data.setup_complete;
@@ -127,6 +126,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Rest of your functions remain the same...
   const signup = async (userData) => {
     setLoading(true);
     try {

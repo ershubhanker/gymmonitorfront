@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+// src/pages/Members.jsx
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Search, 
   Filter, 
@@ -12,16 +13,23 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  FileText
+  FileText,
+  RefreshCw,
+  Wifi,
+  Loader2,
+  WifiOff
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
+import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useAttendance } from '../context/AttendanceContext';
 import { generateMemberInvoice } from '../services/invoiceGenerator';
 
 const Members = () => {
   const { user } = useAuth(); 
+  const { devices, syncMemberToDevice, removeMemberFromDevice, refreshAllData, attendanceApi } = useAttendance();
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,6 +41,11 @@ const Members = () => {
   const [stats, setStats] = useState({ total: 0, active: 0, newThisMonth: 0 });
   const [filters, setFilters] = useState({ status: 'all', plan: 'all', gender: 'all' });
   const [downloadingInvoice, setDownloadingInvoice] = useState(null);
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [showDeviceSyncModal, setShowDeviceSyncModal] = useState(false);
+  const [selectedMemberForSync, setSelectedMemberForSync] = useState(null);
+  const [showBulkDeviceSelect, setShowBulkDeviceSelect] = useState(false);
+  const [selectedBulkDevice, setSelectedBulkDevice] = useState(null);
   const [gymDetails, setGymDetails] = useState({
     name: 'GYM MANAGEMENT SYSTEM',
     address: '',
@@ -43,51 +56,32 @@ const Members = () => {
 
   const itemsPerPage = 10;
 
-  useEffect(() => {
-    fetchMembers();
-    fetchStats();
-    fetchGymDetails();
-  }, [filters, searchTerm]);
-
-  const fetchGymDetails = async () => {
-    try {
-      // Try to get gym details from the my-gym endpoint instead
-      const response = await api.get('/gym/my-gym');
-      setGymDetails({
-        name: response.data.name || 'GYM MANAGEMENT SYSTEM',
-        address: response.data.address || '',
-        phone: response.data.phone || '',
-        email: response.data.email || '',
-        currency_symbol: '₹', // Default currency
-      });
-    } catch (error) {
-      console.error('Error fetching gym details:', error);
-      // Keep default values
-      setGymDetails({
-        name: 'GYM MANAGEMENT SYSTEM',
-        address: '',
-        phone: '',
-        email: '',
-        currency_symbol: '₹',
-      });
-    }
-  };
-
-  const fetchMembers = async () => {
+  // Wrap fetchMembers in useCallback to prevent infinite loops
+  const fetchMembers = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (filters.status !== 'all') params.append('status', filters.status);
 
-      const [membersRes, membershipsRes, paymentsRes] = await Promise.all([
+      const [membersRes, membershipsRes, paymentsRes, deviceIdsRes] = await Promise.all([
         api.get(`/gym/members?${params.toString()}`),
         api.get('/gym/memberships?limit=1000'),
         api.get('/gym/payments?limit=1000'),
+        // Fetch device IDs from attendance routes (not gym_routes) so schema gap doesn't matter
+        api.get('/attendance/members/device-ids').catch(() => ({ data: [] })),
       ]);
 
       const membershipsData = membershipsRes.data || [];
       const paymentsData = paymentsRes.data || [];
+
+      // Build a lookup map: member_id -> device_user_id
+      const deviceIdMap = {};
+      (deviceIdsRes.data || []).forEach(entry => {
+        if (entry.device_user_id) {
+          deviceIdMap[entry.member_id] = entry.device_user_id;
+        }
+      });
 
       const transformed = membersRes.data.map(member => {
         const today = new Date().toISOString().split('T')[0];
@@ -110,6 +104,9 @@ const Members = () => {
           avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
         }
 
+        // Use device_user_id from gym_routes if present, otherwise fall back to deviceIdMap
+        const deviceUserId = member.device_user_id || deviceIdMap[member.id] || null;
+
         return {
           id: member.id,
           fullName: member.full_name,
@@ -128,6 +125,8 @@ const Members = () => {
           raw: member,
           activeMembership: activeMembership,
           memberPayments: memberPayments,
+          syncedToDevice: !!deviceUserId,
+          deviceUserId: deviceUserId,
         };
       });
 
@@ -138,7 +137,7 @@ const Members = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchTerm, filters.status]);
 
   const fetchStats = async () => {
     try {
@@ -153,10 +152,30 @@ const Members = () => {
     }
   };
 
+  const fetchGymDetails = async () => {
+    try {
+      const response = await api.get('/gym/my-gym');
+      setGymDetails({
+        name: response.data.name || 'GYM MANAGEMENT SYSTEM',
+        address: response.data.address || '',
+        phone: response.data.phone || '',
+        email: response.data.email || '',
+        currency_symbol: '₹',
+      });
+    } catch (error) {
+      console.error('Error fetching gym details:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchMembers();
+    fetchStats();
+    fetchGymDetails();
+  }, [fetchMembers]); // Only depend on fetchMembers now
+
   const handleDownloadInvoice = async (member) => {
     setDownloadingInvoice(member.id);
     try {
-      // Prepare invoice data with comprehensive information
       const invoiceData = {
         id: member.id,
         full_name: member.fullName,
@@ -174,7 +193,6 @@ const Members = () => {
         payments: [],
       };
   
-      // Try to get detailed membership info if available
       if (member.activeMembership && member.activeMembership.plan) {
         const plan = member.activeMembership.plan;
         invoiceData.plan_name = plan.name || member.membership;
@@ -188,7 +206,6 @@ const Members = () => {
         invoiceData.membership_status = member.activeMembership.status || 'active';
       }
   
-      // Get payment history if available
       if (member.memberPayments && member.memberPayments.length > 0) {
         invoiceData.payments = member.memberPayments.map(p => ({
           payment_date: p.payment_date,
@@ -197,24 +214,16 @@ const Members = () => {
           status: p.status || 'completed',
         }));
         
-        // Calculate total paid from payments if amount_paid is not set
         if (!invoiceData.amount_paid || invoiceData.amount_paid === 0) {
           const totalPaid = member.memberPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
           invoiceData.amount_paid = totalPaid;
         }
       }
   
-      // Validate required data
-      if (!invoiceData.plan_price || invoiceData.plan_price === 0) {
-        console.warn('Plan price is zero, using default');
-      }
-  
-      // Generate invoice with error handling
       await generateMemberInvoice(invoiceData, gymDetails);
       toast.success('Invoice downloaded successfully!');
     } catch (error) {
       console.error('Error generating invoice:', error);
-      console.error('Error details:', error.message);
       toast.error(error.message || 'Failed to generate invoice. Please try again.');
     } finally {
       setDownloadingInvoice(null);
@@ -228,7 +237,6 @@ const Members = () => {
     let createdMember = null;
     let hasError = false;
     
-    // Step 1: Create the member
     try {
       memberResponse = await api.post('/gym/members', memberFields);
       createdMember = memberResponse.data;
@@ -243,7 +251,6 @@ const Members = () => {
 
     const memberId = createdMember.id;
 
-    // Step 2: Create membership if plan is selected
     if (plan_id && membership_start_date && memberId) {
       try {
         const membershipPayload = {
@@ -256,7 +263,6 @@ const Members = () => {
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
         
-        // Step 3: Create payment record if amount paid
         if (amount_paid && parseFloat(amount_paid) > 0) {
           try {
             await api.post('/gym/payments', {
@@ -279,14 +285,26 @@ const Members = () => {
       }
     }
 
-    // Refresh data
     await fetchMembers();
     fetchStats();
     setIsModalOpen(false);
     
-    // Single success message
     if (!hasError) {
       toast.success('Member added successfully!');
+      
+      // Ask if user wants to sync to device
+      const onlineDevices = devices.filter(d => d.is_online);
+      if (onlineDevices.length > 0) {
+        setTimeout(() => {
+          if (window.confirm(`Would you like to sync "${createdMember.full_name}" to the attendance device?`)) {
+            setSelectedMemberForSync({
+              id: createdMember.id,
+              full_name: createdMember.full_name,
+            });
+            setShowDeviceSyncModal(true);
+          }
+        }, 500);
+      }
     } else {
       toast.success('Member added! Please review membership and payment details.');
     }
@@ -305,7 +323,6 @@ const Members = () => {
 
     let hasError = false;
 
-    // Step 1: Update member details
     try {
       await api.put(`/gym/members/${selectedMember.id}`, memberFields);
     } catch (error) {
@@ -314,7 +331,6 @@ const Members = () => {
       throw error;
     }
 
-    // Step 2: Handle membership renewal if requested
     if (renew_membership && plan_id && membership_start_date) {
       try {
         const membershipPayload = {
@@ -327,7 +343,6 @@ const Members = () => {
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
         
-        // Step 3: Create payment record if amount paid
         if (amount_paid && parseFloat(amount_paid) > 0) {
           try {
             await api.post('/gym/payments', {
@@ -349,12 +364,10 @@ const Members = () => {
       }
     }
 
-    // Refresh data
     await fetchMembers();
     fetchStats();
     setIsModalOpen(false);
     
-    // Single success message
     if (!hasError) {
       toast.success('Member updated successfully!');
     } else if (renew_membership) {
@@ -390,10 +403,56 @@ const Members = () => {
     }
   };
 
+  const handleBulkSyncToDevice = async () => {
+    if (!selectedBulkDevice) {
+      toast.error('Please select a device');
+      return;
+    }
+
+    if (selectedMembers.length === 0) {
+      toast.error('Please select members to sync');
+      return;
+    }
+
+    setSyncingAll(true);
+    try {
+      const memberIds = selectedMembers;
+      const result = await attendanceApi.bulkSyncMembersToDevice(selectedBulkDevice.id, memberIds);
+      
+      if (result.success) {
+        toast.success(`Syncing ${memberIds.length} members to device ${selectedBulkDevice.device_name}`);
+        
+        // Update local state immediately
+        setMembers(prevMembers => 
+          prevMembers.map(m => 
+            memberIds.includes(m.id) 
+              ? { ...m, syncedToDevice: true, deviceUserId: String(m.id) }
+              : m
+          )
+        );
+        
+        setSelectedMembers([]);
+        setShowBulkDeviceSelect(false);
+        setSelectedBulkDevice(null);
+        refreshAllData();
+        
+        // Full refresh to sync with server
+        setTimeout(() => fetchMembers(), 2000);
+      } else {
+        toast.error(result.error || 'Bulk sync failed');
+      }
+    } catch (error) {
+      console.error('Bulk sync error:', error);
+      toast.error(error.response?.data?.detail || 'Bulk sync failed');
+    } finally {
+      setSyncingAll(false);
+    }
+  };
+
   const handleExport = () => {
     const csv = [
-      ['Name', 'Email', 'Phone', 'Membership', 'Status', 'Join Date', 'Payments'],
-      ...members.map(m => [m.fullName, m.email, m.phone, m.membership, m.status, m.joinDate, m.payments])
+      ['Name', 'Email', 'Phone', 'Membership', 'Status', 'Join Date', 'Payments', 'Device User ID', 'Synced to Device'],
+      ...members.map(m => [m.fullName, m.email, m.phone, m.membership, m.status, m.joinDate, m.payments, m.deviceUserId || '', m.syncedToDevice ? 'Yes' : 'No'])
     ].map(row => row.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -417,6 +476,47 @@ const Members = () => {
         {status.charAt(0).toUpperCase() + status.slice(1)}
       </span>
     );
+  };
+
+  const openDeviceSyncModal = (member) => {
+    setSelectedMemberForSync(member);
+    setShowDeviceSyncModal(true);
+  };
+
+  const handleSyncComplete = (deviceUserId, memberId) => {
+    console.log('Sync complete called with:', { deviceUserId, memberId });
+    
+    const targetId = memberId;
+    
+    if (targetId) {
+      // Immediately update the UI
+      setMembers(prevMembers => {
+        const updatedMembers = prevMembers.map(m =>
+          m.id === targetId
+            ? {
+                ...m,
+                deviceUserId: String(deviceUserId || targetId),
+                syncedToDevice: true,
+              }
+            : m
+        );
+        console.log('Updated member:', updatedMembers.find(m => m.id === targetId));
+        return updatedMembers;
+      });
+    }
+    
+    // Also do a full refresh to sync with server
+    setTimeout(() => {
+      fetchMembers();
+    }, 1000);
+  };
+
+  const openBulkDeviceSelect = () => {
+    if (selectedMembers.length === 0) {
+      toast.error('Please select members to sync first');
+      return;
+    }
+    setShowBulkDeviceSelect(true);
   };
 
   const filteredMembers = members.filter(member => {
@@ -464,6 +564,15 @@ const Members = () => {
     setIsModalOpen(true);
   };
 
+  const onlineDevices = devices.filter(d => d.is_online);
+
+  const copyDeviceIdToClipboard = (deviceUserId) => {
+    if (deviceUserId) {
+      navigator.clipboard.writeText(deviceUserId);
+      toast.success('Device User ID copied to clipboard!');
+    }
+  };
+
   return (
     <div className="p-6">
       {/* Header Stats */}
@@ -506,11 +615,30 @@ const Members = () => {
             >
               <Filter className="h-5 w-5 text-gray-600" />
             </button>
+            <button
+              onClick={() => fetchMembers()}
+              className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              title="Refresh Members"
+            >
+              <RefreshCw className="h-5 w-5 text-gray-600" />
+            </button>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 flex-wrap gap-2">
             {selectedMembers.length > 0 && (
               <>
+                <button 
+                  onClick={openBulkDeviceSelect}
+                  disabled={syncingAll || onlineDevices.length === 0}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {syncingAll ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wifi className="h-4 w-4" />
+                  )}
+                  Sync Selected ({selectedMembers.length})
+                </button>
                 <button onClick={handleBulkDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
                   Delete Selected ({selectedMembers.length})
                 </button>
@@ -575,22 +703,24 @@ const Members = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Membership</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Visit</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device Sync</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Visit</th> */}
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-4 text-center">
+                  <td colSpan="9" className="px-6 py-4 text-center">
                     <div className="flex justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
-                  </td>
-                </tr>
+                   </td>
+                 </tr>
               ) : paginatedMembers.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-4 text-center text-gray-500">No members found</td>
+                  <td colSpan="9" className="px-6 py-4 text-center text-gray-500">No members found</td>
                 </tr>
               ) : (
                 paginatedMembers.map((member) => (
@@ -638,9 +768,45 @@ const Members = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStatusBadge(member.status)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {member.lastVisit ? new Date(member.lastVisit).toLocaleDateString() : 'Never'}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {member.syncedToDevice ? (
+                        <div className="group relative">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 cursor-help">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Synced
+                          </span>
+                          {member.deviceUserId && (
+                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+                              Device ID: {member.deviceUserId}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                          <XCircle className="h-3 w-3 mr-1" />
+                          Not Synced
+                        </span>
+                      )}
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {member.deviceUserId ? (
+                        <button
+                          onClick={() => copyDeviceIdToClipboard(member.deviceUserId)}
+                          className="group relative inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors cursor-pointer"
+                          title="Click to copy Device User ID"
+                        >
+                          {member.deviceUserId}
+                          <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                            Click to copy
+                          </span>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
+                    {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {member.lastVisit ? new Date(member.lastVisit).toLocaleDateString() : 'Never'}
+                    </td> */}
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button 
                         onClick={() => handleDownloadInvoice(member)} 
@@ -653,6 +819,13 @@ const Members = () => {
                         ) : (
                           <FileText className="h-4 w-4" />
                         )}
+                      </button>
+                      <button 
+                        onClick={() => openDeviceSyncModal(member)} 
+                        className="text-purple-600 hover:text-purple-900 mr-3"
+                        title="Sync to Attendance Device"
+                      >
+                        <Wifi className="h-4 w-4" />
                       </button>
                       <button onClick={() => openEditModal(member)} className="text-blue-600 hover:text-blue-900 mr-3">
                         <Edit className="h-4 w-4" />
@@ -701,6 +874,108 @@ const Members = () => {
         member={selectedMember}
         userRole={user?.role}
       />
+
+      {/* Device Sync Modal for Single Member */}
+      <DeviceSyncModal
+        isOpen={showDeviceSyncModal}
+        onClose={() => {
+          setShowDeviceSyncModal(false);
+          setSelectedMemberForSync(null);
+        }}
+        member={selectedMemberForSync}
+        onSyncComplete={handleSyncComplete}
+        refreshMemberList={fetchMembers}
+      />
+
+      {/* Bulk Device Selection Modal */}
+      {showBulkDeviceSelect && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
+            <div className="flex items-center justify-between p-4 border-b">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Sync to Attendance Device</h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Selected {selectedMembers.length} member{selectedMembers.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowBulkDeviceSelect(false);
+                  setSelectedBulkDevice(null);
+                }} 
+                className="p-1 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              {onlineDevices.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <WifiOff className="h-12 w-12 mx-auto mb-3 text-orange-300" />
+                  <p>No online devices</p>
+                  <p className="text-sm mt-1">Please ensure the bridge is running</p>
+                </div>
+              ) : (
+                <>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Device
+                  </label>
+                  <div className="space-y-2 mb-6">
+                    {onlineDevices.map(device => (
+                      <button
+                        key={device.id}
+                        onClick={() => setSelectedBulkDevice(device)}
+                        className={`w-full p-3 rounded-lg border-2 text-left transition-all ${
+                          selectedBulkDevice?.id === device.id
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-blue-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-900">{device.device_name}</p>
+                            <p className="text-xs text-gray-500">{device.device_ip}:{device.device_port}</p>
+                          </div>
+                          {device.is_online ? (
+                            <Wifi className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <WifiOff className="h-4 w-4 text-gray-400" />
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setShowBulkDeviceSelect(false);
+                        setSelectedBulkDevice(null);
+                      }}
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleBulkSyncToDevice}
+                      disabled={!selectedBulkDevice || syncingAll}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                    >
+                      {syncingAll ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Wifi className="h-4 w-4" />
+                      )}
+                      Sync {selectedMembers.length} Member{selectedMembers.length !== 1 ? 's' : ''}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
