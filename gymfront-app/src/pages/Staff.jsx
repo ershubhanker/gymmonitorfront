@@ -309,22 +309,40 @@ const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }
 // ─── Staff Edit Modal with Shift Timing and Device Sync ─────────────────────────
 const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], onSyncToDevice }) => {
   const [formData, setFormData] = useState({
-    position: staff?.position || '',
-    hireDate: staff?.hire_date || new Date().toISOString().split('T')[0],
-    salary: staff?.salary || '',
-    specializations: staff?.specializations || '',
-    date_of_birth: staff?.date_of_birth || '',
-    status: staff?.is_active ? 'active' : 'inactive',
-    shift_start_time: staff?.shift_start_time || '',
-    shift_end_time: staff?.shift_end_time || '',
-    shift_days: staff?.shift_days || '',
-    break_duration: staff?.break_duration || '',
+    position: '',
+    hireDate: '',
+    salary: '',
+    specializations: '',
+    date_of_birth: '',
+    status: 'active',
+    shift_start_time: '',
+    shift_end_time: '',
+    shift_days: '',
+    break_duration: '',
   });
 
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const today = new Date().toISOString().split('T')[0];
+
+  // Populate form when staff data changes
+  useEffect(() => {
+    if (staff) {
+      setFormData({
+        position: staff.position || '',
+        hireDate: staff.hire_date || new Date().toISOString().split('T')[0],
+        salary: staff.salary?.toString() || '',
+        specializations: staff.specializations || '',
+        date_of_birth: staff.date_of_birth || '',
+        status: staff.is_active === true ? 'active' : 'inactive',
+        shift_start_time: staff.shift_start_time || '',
+        shift_end_time: staff.shift_end_time || '',
+        shift_days: staff.shift_days || '',
+        break_duration: staff.break_duration?.toString() || '',
+      });
+    }
+  }, [staff]);
 
   if (!isOpen) return null;
 
@@ -384,6 +402,18 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Staff Name
+            </label>
+            <input
+              type="text"
+              value={staff?.user?.full_name || ''}
+              disabled
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
+            />
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Position <span className="text-red-500">*</span>
@@ -531,7 +561,7 @@ const StaffDeviceSyncModal = ({ isOpen, onClose, staffList, devices, onSyncSelec
   const [selectedStaffIds, setSelectedStaffIds] = useState(new Set());
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [syncing, setSyncing] = useState(false);
-  const [syncMode, setSyncMode] = useState('selected'); // 'selected' or 'all'
+  const [syncMode, setSyncMode] = useState('selected');
 
   if (!isOpen) return null;
 
@@ -803,11 +833,13 @@ const Staff = () => {
 
   const handleUpdateStaff = async (staffId, formData) => {
     try {
+      const isActive = formData.status === 'active' ? true : false;
+      
       await api.put(`/gym/staff/${staffId}`, {
         position: formData.position,
         salary: formData.salary ? parseFloat(formData.salary) : null,
         specializations: formData.specializations,
-        is_active: formData.status === 'active',
+        is_active: isActive,
         hire_date: formData.hireDate,
         date_of_birth: formData.date_of_birth || null,
         shift_start_time: formData.shift_start_time || null,
@@ -1047,116 +1079,118 @@ const Staff = () => {
                     {searchTerm ? 'No staff found matching your search.' : 'No staff members yet. Click "Add Staff" to get started.'}
                   </td>
                 </tr>
-              ) : paginated.map((s) => {
-                const deviceUserId = staffDeviceIds[s.id] || s.device_user_id;
-                return (
-                  <tr key={s.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                          s.position === 'Head Trainer' ? 'bg-purple-100' : 'bg-indigo-100'
-                        }`}>
-                          <span className={`font-semibold text-sm ${
-                            s.position === 'Head Trainer' ? 'text-purple-700' : 'text-indigo-700'
+              ) : (
+                paginated.map((s) => {
+                  const deviceUserId = staffDeviceIds[s.id] || s.device_user_id;
+                  return (
+                    <tr key={s.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                            s.position === 'Head Trainer' ? 'bg-purple-100' : 'bg-indigo-100'
                           }`}>
-                            {(s.user?.full_name || 'S').charAt(0).toUpperCase()}
+                            <span className={`font-semibold text-sm ${
+                              s.position === 'Head Trainer' ? 'text-purple-700' : 'text-indigo-700'
+                            }`}>
+                              {(s.user?.full_name || 'S').charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{s.user?.full_name || '—'}</p>
+                            <p className="text-xs text-gray-500">@{s.user?.username || ''}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1">
+                          {s.user?.email && (
+                            <div className="flex items-center gap-1 text-sm text-gray-600">
+                              <Mail className="h-3 w-3 flex-shrink-0" /> 
+                              <span className="truncate max-w-[150px]">{s.user.email}</span>
+                            </div>
+                          )}
+                          {s.user?.phone && (
+                            <div className="flex items-center gap-1 text-sm text-gray-600">
+                              <Phone className="h-3 w-3 flex-shrink-0" /> 
+                              <span>{s.user.phone}</span>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1">
+                          {s.position === 'Head Trainer' && <Crown className="h-3 w-3 text-purple-600" />}
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionBadgeColor(s.position)}`}>
+                            {s.position || '—'}
                           </span>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{s.user?.full_name || '—'}</p>
-                          <p className="text-xs text-gray-500">@{s.user?.username || ''}</p>
+                        {s.specializations && (
+                          <p className="text-xs text-gray-500 mt-1 max-w-[160px] truncate" title={s.specializations}>
+                            {s.specializations}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1 text-sm">
+                          <Clock className="h-3 w-3 text-gray-400" />
+                          <span className={!s.shift_start_time ? 'text-gray-400' : 'text-gray-700'}>
+                            {getShiftDisplay(s)}
+                          </span>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-1">
-                        {s.user?.email && (
-                          <div className="flex items-center gap-1 text-sm text-gray-600">
-                            <Mail className="h-3 w-3 flex-shrink-0" /> 
-                            <span className="truncate max-w-[150px]">{s.user.email}</span>
+                        {s.break_duration > 0 && (
+                          <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
+                            <Coffee className="h-3 w-3" />
+                            <span>{s.break_duration} min break</span>
                           </div>
                         )}
-                        {s.user?.phone && (
-                          <div className="flex items-center gap-1 text-sm text-gray-600">
-                            <Phone className="h-3 w-3 flex-shrink-0" /> 
-                            <span>{s.user.phone}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {deviceUserId ? (
+                          <div className="flex items-center gap-1">
+                            <Smartphone className="h-3 w-3 text-green-600" />
+                            <span className="text-xs font-mono text-green-600">{deviceUserId}</span>
                           </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">Not synced</span>
                         )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1">
-                        {s.position === 'Head Trainer' && <Crown className="h-3 w-3 text-purple-600" />}
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionBadgeColor(s.position)}`}>
-                          {s.position || '—'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          s.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {s.is_active ? 'Active' : 'Inactive'}
                         </span>
-                      </div>
-                      {s.specializations && (
-                        <p className="text-xs text-gray-500 mt-1 max-w-[160px] truncate" title={s.specializations}>
-                          {s.specializations}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1 text-sm">
-                        <Clock className="h-3 w-3 text-gray-400" />
-                        <span className={!s.shift_start_time ? 'text-gray-400' : 'text-gray-700'}>
-                          {getShiftDisplay(s)}
-                        </span>
-                      </div>
-                      {s.break_duration > 0 && (
-                        <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
-                          <Coffee className="h-3 w-3" />
-                          <span>{s.break_duration} min break</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {deviceUserId ? (
-                        <div className="flex items-center gap-1">
-                          <Smartphone className="h-3 w-3 text-green-600" />
-                          <span className="text-xs font-mono text-green-600">{deviceUserId}</span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">Not synced</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        s.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {s.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => {
-                          setSelectedStaff(s);
-                          setIsEditModalOpen(true);
-                        }}
-                        className="text-blue-600 hover:text-blue-900 mr-2"
-                        title="Edit"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleResetPassword(s.user_id)}
-                        className="text-orange-600 hover:text-orange-900 mr-2"
-                        title="Reset Password"
-                      >
-                        <RefreshCw className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteStaff(s.id)}
-                        className="text-red-600 hover:text-red-900"
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button
+                          onClick={() => {
+                            setSelectedStaff(s);
+                            setIsEditModalOpen(true);
+                          }}
+                          className="text-blue-600 hover:text-blue-900 mr-2"
+                          title="Edit"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleResetPassword(s.user_id)}
+                          className="text-orange-600 hover:text-orange-900 mr-2"
+                          title="Reset Password"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteStaff(s.id)}
+                          className="text-red-600 hover:text-red-900"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
