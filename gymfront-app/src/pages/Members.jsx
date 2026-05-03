@@ -519,13 +519,22 @@ const Members = () => {
     setShowBulkDeviceSelect(true);
   };
 
+  // FIXED: Case-insensitive search - Convert both search term and member fields to lowercase
   const filteredMembers = members.filter(member => {
+    const searchLower = searchTerm.toLowerCase().trim();
+    
+    // If search term is empty, show all members
+    if (!searchLower) return true;
+    
+    // Check each field with case-insensitive comparison
     const matchesSearch =
-      member.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      member.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      member.phone?.includes(searchTerm);
+      member.fullName?.toLowerCase().includes(searchLower) ||
+      member.email?.toLowerCase().includes(searchLower) ||
+      member.phone?.includes(searchTerm); // Phone numbers are usually case-insensitive by nature
+    
     const matchesStatus = filters.status === 'all' || member.status === filters.status;
     const matchesGender = filters.gender === 'all' || member.gender === filters.gender;
+    
     return matchesSearch && matchesStatus && matchesGender;
   });
 
@@ -717,7 +726,7 @@ const Members = () => {
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
                    </td>
-                 </tr>
+                  </tr>
               ) : paginatedMembers.length === 0 ? (
                 <tr>
                   <td colSpan="9" className="px-6 py-4 text-center text-gray-500">No members found</td>
