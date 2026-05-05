@@ -12,6 +12,12 @@ import {
   Zap,
   Clock,
   IndianRupee,
+  Wallet,
+  Receipt,
+  Fingerprint,
+  CalendarCheck,
+  Coffee,
+  Activity
 } from 'lucide-react';
 
 const features = [
@@ -22,6 +28,46 @@ const features = [
     color: 'from-blue-500 to-blue-600',
     bg: 'bg-blue-50',
     iconColor: 'text-blue-600',
+  },
+  {
+    icon: Wallet,
+    title: 'Member Balance Management',
+    description: 'Track member payments, outstanding balances, and payment history. Send automatic reminders for pending dues.',
+    color: 'from-emerald-500 to-emerald-600',
+    bg: 'bg-emerald-50',
+    iconColor: 'text-emerald-600',
+  },
+  {
+    icon: Receipt,
+    title: 'Gym Daily Expenses',
+    description: 'Log and track daily operational expenses, generate expense reports, and monitor your gym\'s financial health.',
+    color: 'from-orange-500 to-red-500',
+    bg: 'bg-orange-50',
+    iconColor: 'text-orange-600',
+  },
+  {
+    icon: Fingerprint,
+    title: 'Biometric Access',
+    description: 'Integrate with biometric devices for secure member check-ins. Fast, accurate, and fraud-proof attendance.',
+    color: 'from-indigo-500 to-indigo-600',
+    bg: 'bg-indigo-50',
+    iconColor: 'text-indigo-600',
+  },
+  {
+    icon: CalendarCheck,
+    title: 'Staff Attendance Management',
+    description: 'Track staff check-ins, manage shifts, and generate attendance reports for your entire team.',
+    color: 'from-teal-500 to-cyan-600',
+    bg: 'bg-teal-50',
+    iconColor: 'text-teal-600',
+  },
+  {
+    icon: Activity,
+    title: 'Member Attendance Tracking',
+    description: 'Monitor daily member check-ins, track visit patterns, and identify your most engaged members.',
+    color: 'from-purple-500 to-purple-600',
+    bg: 'bg-purple-50',
+    iconColor: 'text-purple-600',
   },
   {
     icon: IndianRupee,
@@ -43,25 +89,9 @@ const features = [
     icon: Shield,
     title: 'Secure & Reliable',
     description: 'Your data is protected with enterprise-grade security. Access from anywhere, anytime.',
-    color: 'from-orange-500 to-red-500',
-    bg: 'bg-orange-50',
-    iconColor: 'text-orange-600',
-  },
-  {
-    icon: Clock,
-    title: 'Check-in Tracking',
-    description: 'Track daily check-ins and peak hours to optimize your gym operations and staffing.',
-    color: 'from-teal-500 to-cyan-600',
-    bg: 'bg-teal-50',
-    iconColor: 'text-teal-600',
-  },
-  {
-    icon: CreditCard,
-    title: 'Membership Plans',
-    description: 'Create flexible membership tiers and handle renewals, upgrades and cancellations with ease.',
-    color: 'from-pink-500 to-rose-600',
-    bg: 'bg-pink-50',
-    iconColor: 'text-pink-600',
+    color: 'from-blue-500 to-blue-600',
+    bg: 'bg-blue-50',
+    iconColor: 'text-blue-600',
   },
 ];
 
@@ -79,6 +109,8 @@ const highlights = [
   'Instant member search',
   'Automated expiry alerts',
   'Multi-staff access control',
+  'Biometric device integration',
+  'Automated payment reminders',
 ];
 
 export default function LandingPage() {
@@ -135,7 +167,8 @@ export default function LandingPage() {
           </h1>
 
           <p className="mt-6 max-w-2xl mx-auto text-lg sm:text-xl text-gray-500 leading-relaxed">
-            Gym Monitor gives you everything you need to run a thriving gym — member management, revenue tracking, attendance insights and more. All in one beautiful dashboard.
+            Gym Monitor gives you everything you need to run a thriving gym — member management, revenue tracking, 
+            biometric integration, expense tracking, and staff attendance. All in one beautiful dashboard.
           </p>
 
           <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -215,7 +248,9 @@ export default function LandingPage() {
                 <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"> messy registers</span>
               </h2>
               <p className="mt-5 text-gray-500 text-lg leading-relaxed">
-                Running a gym shouldn't mean drowning in paperwork or juggling multiple apps. Gym Monitor brings everything together so you can focus on what matters — your members.
+                Running a gym shouldn't mean drowning in paperwork or juggling multiple apps. 
+                Gym Monitor brings everything together including biometric integration, expense tracking, 
+                and staff management so you can focus on what matters — your members.
               </p>
               <ul className="mt-8 space-y-3">
                 {highlights.map((h) => (
@@ -250,7 +285,7 @@ export default function LandingPage() {
                     { label: 'Total Members', value: '248', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
                     { label: 'Monthly Revenue', value: '₹1,24,500', icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
                     { label: "Today's Check-ins", value: '37', icon: CheckCircle, color: 'text-purple-600', bg: 'bg-purple-50' },
-                    { label: 'Pending Payments', value: '12', icon: CreditCard, color: 'text-orange-600', bg: 'bg-orange-50' },
+                    { label: 'Pending Payments', value: '₹12,400', icon: CreditCard, color: 'text-orange-600', bg: 'bg-orange-50' },
                   ].map((card) => (
                     <div key={card.label} className={`${card.bg} rounded-xl p-4`}>
                       <card.icon className={`h-5 w-5 ${card.color} mb-2`} />
@@ -259,15 +294,38 @@ export default function LandingPage() {
                     </div>
                   ))}
                 </div>
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4">
-                  <div className="text-xs font-semibold text-gray-500 mb-3">Recent Members</div>
-                  {['Rahul Sharma', 'Priya Patel', 'Amit Verma'].map((name, i) => (
-                    <div key={name} className="flex items-center gap-3 mb-2 last:mb-0">
-                      <div className="h-7 w-7 rounded-full bg-gradient-to-br from-blue-400 to-purple-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                        {name[0]}
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 mb-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-xs font-semibold text-gray-500">Today's Expenses</div>
+                    <div className="text-xs font-semibold text-gray-500">₹2,450</div>
+                  </div>
+                  <div className="space-y-2">
+                    {['Staff Salary', 'Equipment', 'Utilities'].map((expense, i) => (
+                      <div key={expense} className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">{expense}</span>
+                        <span className="text-gray-800 font-medium">₹{i === 0 ? '1,200' : i === 1 ? '800' : '450'}</span>
                       </div>
-                      <span className="text-sm text-gray-700 font-medium">{name}</span>
-                      <span className="ml-auto text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">Active</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4">
+                  <div className="text-xs font-semibold text-gray-500 mb-3">Recent Check-ins</div>
+                  {[
+                    { name: 'Rahul Sharma', time: '08:15 AM', type: 'Biometric' },
+                    { name: 'Priya Patel', time: '09:30 AM', type: 'Biometric' },
+                    { name: 'Amit Verma', time: '10:45 AM', type: 'Manual' }
+                  ].map((checkin) => (
+                    <div key={checkin.name} className="flex items-center gap-3 mb-2 last:mb-0">
+                      <div className="h-7 w-7 rounded-full bg-gradient-to-br from-blue-400 to-purple-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                        {checkin.name[0]}
+                      </div>
+                      <div className="flex-1">
+                        <span className="text-sm text-gray-700 font-medium">{checkin.name}</span>
+                        <span className="text-xs text-gray-400 ml-2">{checkin.time}</span>
+                      </div>
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">
+                        {checkin.type}
+                      </span>
                     </div>
                   ))}
                 </div>
