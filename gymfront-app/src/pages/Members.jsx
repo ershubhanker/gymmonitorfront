@@ -27,10 +27,28 @@ import { useAuth } from '../context/AuthContext';
 import { useAttendance } from '../context/AttendanceContext';
 import { generateMemberInvoice } from '../services/invoiceGenerator';
 
+// Debounce hook to prevent excessive API calls
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 const Members = () => {
   const { user } = useAuth(); 
   const { devices, syncMemberToDevice, removeMemberFromDevice, refreshAllData, attendanceApi } = useAttendance();
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [showFilters, setShowFilters] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -61,7 +79,7 @@ const Members = () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
+      if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
       if (filters.status !== 'all') params.append('status', filters.status);
 
       const [membersRes, membershipsRes, paymentsRes, deviceIdsRes] = await Promise.all([
@@ -137,7 +155,7 @@ const Members = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, filters.status]);
+  }, [debouncedSearchTerm, filters.status]);
 
   const fetchStats = async () => {
     try {
@@ -519,7 +537,7 @@ const Members = () => {
     setShowBulkDeviceSelect(true);
   };
 
-  // FIXED: Case-insensitive search - Convert both search term and member fields to lowercase
+  // Case-insensitive search filter (fallback for frontend filtering)
   const filteredMembers = members.filter(member => {
     const searchLower = searchTerm.toLowerCase().trim();
     
@@ -530,7 +548,7 @@ const Members = () => {
     const matchesSearch =
       member.fullName?.toLowerCase().includes(searchLower) ||
       member.email?.toLowerCase().includes(searchLower) ||
-      member.phone?.includes(searchTerm); // Phone numbers are usually case-insensitive by nature
+      member.phone?.includes(searchTerm);
     
     const matchesStatus = filters.status === 'all' || member.status === filters.status;
     const matchesGender = filters.gender === 'all' || member.gender === filters.gender;
@@ -714,7 +732,6 @@ const Members = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device Sync</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Visit</th> */}
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -725,8 +742,8 @@ const Members = () => {
                     <div className="flex justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
-                   </td>
-                  </tr>
+                  </td>
+                </tr>
               ) : paginatedMembers.length === 0 ? (
                 <tr>
                   <td colSpan="9" className="px-6 py-4 text-center text-gray-500">No members found</td>
@@ -813,9 +830,6 @@ const Members = () => {
                         <span className="text-xs text-gray-400">—</span>
                       )}
                     </td>
-                    {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {member.lastVisit ? new Date(member.lastVisit).toLocaleDateString() : 'Never'}
-                    </td> */}
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button 
                         onClick={() => handleDownloadInvoice(member)} 
