@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
@@ -13,6 +14,7 @@ import GymSetup from './pages/GymSetup';
 import AdminDashboard from './pages/AdminDashboard';
 import LandingPage from './pages/LandingPage';
 import { AttendanceProvider } from './context/AttendanceContext';
+import LeadCaptureForm from './components/LeadCaptureForm';
 
 function AdminRoute({ children }) {
   const { user, initialLoading } = useAuth();
@@ -33,52 +35,62 @@ function AdminRoute({ children }) {
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <AttendanceProvider>
-          <div className="min-h-screen">
-            <Toaster
-              position="top-right"
-              toastOptions={{
-                duration: 4000,
-                style: {
-                  background: '#1e293b',
-                  color: '#f1f5f9',
-                  borderRadius: '12px',
-                  border: '1px solid #334155',
-                },
-                success: {
-                  duration: 3000,
-                  iconTheme: { primary: '#10b981', secondary: '#fff' },
-                },
-                error: {
+    <ErrorBoundary>
+      <Router>
+        <AuthProvider>
+          <AttendanceProvider>
+            <div className="min-h-screen">
+              <Toaster
+                position="top-right"
+                toastOptions={{
                   duration: 4000,
-                  iconTheme: { primary: '#ef4444', secondary: '#fff' },
-                },
-              }}
-            />
+                  style: {
+                    background: '#1e293b',
+                    color: '#f1f5f9',
+                    borderRadius: '12px',
+                    border: '1px solid #334155',
+                  },
+                  success: {
+                    duration: 3000,
+                    iconTheme: { primary: '#10b981', secondary: '#fff' },
+                  },
+                  error: {
+                    duration: 4000,
+                    iconTheme: { primary: '#ef4444', secondary: '#fff' },
+                  },
+                }}
+              />
 
-            <Routes>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/verify-email" element={<VerifyEmail />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/gym-setup" element={<PrivateRoute><GymSetup /></PrivateRoute>} />
-              <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-              <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
-              <Route path="/admin" element={
-                <AdminRoute>
-                  <AdminDashboard />
-                </AdminRoute>
-              } />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </div>
-        </AttendanceProvider>
-      </AuthProvider>
-    </Router>
+              <Routes>
+                {/* Public Routes - No authentication needed */}
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<Signup />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                
+                {/* Public Lead Capture Form - No authentication required */}
+                <Route path="/lead-form/:gymSlug" element={<LeadCaptureForm />} />
+                
+                {/* Protected Routes - Require authentication */}
+                <Route path="/gym-setup" element={<PrivateRoute><GymSetup /></PrivateRoute>} />
+                <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+                <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+                <Route path="/admin" element={
+                  <AdminRoute>
+                    <AdminDashboard />
+                  </AdminRoute>
+                } />
+                
+                {/* Catch all - redirect to home */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </div>
+          </AttendanceProvider>
+        </AuthProvider>
+      </Router>
+    </ErrorBoundary>
   );
 }
 

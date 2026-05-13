@@ -18,7 +18,8 @@ import {
   Eye,
   Plus,
   X,
-  RefreshCw
+  RefreshCw,
+  CalendarDays
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -35,7 +36,9 @@ const Balance = () => {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentNotes, setPaymentNotes] = useState('');
+  const [nextPaymentDate, setNextPaymentDate] = useState('');
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [errorDetails, setErrorDetails] = useState(null);
   const [overview, setOverview] = useState({
     total_balance_due: 0,
     members_with_balance: 0,
@@ -51,6 +54,12 @@ const Balance = () => {
       maximumFractionDigits: 0,
     }).format(amount);
     return `${currencySymbol} ${formatted}`;
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
   const fetchBalanceData = async () => {
@@ -80,31 +89,125 @@ const Balance = () => {
   }, [searchTerm, showPaidOnly]);
 
   const handlePartialPayment = async (member) => {
-    if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
-      toast.error('Please enter a valid amount');
+    // Reset error details
+    setErrorDetails(null);
+    
+    // Validate payment amount
+    const amount = parseFloat(paymentAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount greater than 0');
       return;
     }
     
-    if (parseFloat(paymentAmount) > member.balance_due) {
+    if (amount > member.balance_due) {
       toast.error(`Payment amount cannot exceed balance due of ${formatCurrency(member.balance_due)}`);
       return;
     }
     
     setProcessingPayment(true);
+    
     try {
-      await api.post(`/gym/memberships/${member.membership_id}/partial-payment`, {
+      // Log the request for debugging
+      console.log('Sending payment request:', {
         membership_id: member.membership_id,
-        amount: parseFloat(paymentAmount),
+        amount: amount,
         payment_method: paymentMethod,
         notes: paymentNotes
       });
       
-      toast.success(`Payment of ${formatCurrency(parseFloat(paymentAmount))} recorded successfully!`);
+      // Make sure we're using the correct endpoint
+      const response = await api.post(`/gym/memberships/${member.membership_id}/partial-payment`, {
+        membership_id: member.membership_id,
+        amount: amount,
+        payment_method: paymentMethod,
+        notes: paymentNotes,
+        payment_date: new Date().toISOString()
+      });
+      
+      console.log('Payment response:', response.data);
+      
+      // If there's a remaining balance and next payment date is set, update the payment schedule
+      const isFullPayment = amount >= member.balance_due;
+      const remainingBalance = member.balance_due - amount;
+      
+      if (!isFullPayment && remainingBalance > 0 && nextPaymentDate) {
+        try {
+          await api.put(`/gym/memberships/${member.membership_id}/payment-schedule`, {
+            membership_id: member.membership_id,
+            next_payment_date: nextPaymentDate,
+            notes: paymentNotes || `Next payment scheduled for ${formatDate(nextPaymentDate)}`
+          });
+          console.log('Payment schedule updated:', nextPaymentDate);
+        } catch (scheduleError) {
+          console.warn('Could not update payment schedule:', scheduleError);
+          // Don't fail the main payment if schedule update fails
+        }
+      }
+      
+      // Show success message with details
+      toast.success(
+        <div>
+          <p className="font-bold">✓ Payment Recorded Successfully!</p>
+          <p className="text-sm mt-1">Amount: {formatCurrency(amount)}</p>
+          {isFullPayment && <p className="text-sm text-green-600">Balance cleared!</p>}
+          {!isFullPayment && (
+            <>
+              <p className="text-sm text-amber-600">Remaining balance: {formatCurrency(remainingBalance)}</p>
+              {nextPaymentDate && (
+                <p className="text-sm text-blue-600">Next payment scheduled: {formatDate(nextPaymentDate)}</p>
+              )}
+            </>
+          )}
+        </div>,
+        { duration: 5000 }
+      );
+      
+      // Close modal and refresh data
       closeModal();
-      fetchBalanceData();
+      await fetchBalanceData();
+      
     } catch (error) {
-      console.error('Payment error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to record payment');
+      console.error('Payment error details:', error);
+      
+      // Extract detailed error message
+      let errorMessage = 'Failed to record payment';
+      let statusCode = error.response?.status;
+      let serverDetail = error.response?.data?.detail;
+      
+      if (statusCode === 401) {
+        errorMessage = 'Your session has expired. Please login again.';
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 2000);
+      } else if (statusCode === 403) {
+        errorMessage = 'You do not have permission to record payments';
+      } else if (statusCode === 404) {
+        errorMessage = 'Membership not found. Please refresh the page and try again.';
+      } else if (statusCode === 422) {
+        errorMessage = 'Validation error: ' + (serverDetail || 'Please check the payment details');
+      } else if (statusCode === 500) {
+        errorMessage = 'Server error. Please try again later.';
+      }
+      
+      if (serverDetail && typeof serverDetail === 'string') {
+        errorMessage = serverDetail;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
+      toast.error(errorMessage);
+      
+      // Set error details for debugging
+      setErrorDetails({
+        status: statusCode,
+        message: serverDetail,
+        requestData: {
+          membership_id: member.membership_id,
+          amount: amount,
+          payment_method: paymentMethod
+        }
+      });
+      
     } finally {
       setProcessingPayment(false);
     }
@@ -116,6 +219,8 @@ const Balance = () => {
     setPaymentAmount('');
     setPaymentNotes('');
     setPaymentMethod('cash');
+    setNextPaymentDate('');
+    setErrorDetails(null);
   };
 
   const getStatusBadge = (status, balanceDue) => {
@@ -155,6 +260,36 @@ const Balance = () => {
     selectedMember &&
     parseFloat(paymentAmount) > 0 &&
     parseFloat(paymentAmount) >= selectedMember.balance_due;
+
+  // Get minimum date for next payment (today + 1 day)
+  const getMinDate = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  };
+
+  // Get suggested next payment dates
+  const getSuggestedDates = () => {
+    const suggestions = [];
+    const today = new Date();
+    
+    // Next week
+    const nextWeek = new Date(today);
+    nextWeek.setDate(today.getDate() + 7);
+    suggestions.push(nextWeek);
+    
+    // Next 2 weeks
+    const nextTwoWeeks = new Date(today);
+    nextTwoWeeks.setDate(today.getDate() + 14);
+    suggestions.push(nextTwoWeeks);
+    
+    // Next month
+    const nextMonth = new Date(today);
+    nextMonth.setMonth(today.getMonth() + 1);
+    suggestions.push(nextMonth);
+    
+    return suggestions;
+  };
 
   return (
     <div className="p-6">
@@ -337,6 +472,8 @@ const Balance = () => {
                             setPaymentAmount('');
                             setPaymentNotes('');
                             setPaymentMethod('cash');
+                            setNextPaymentDate('');
+                            setErrorDetails(null);
                             setShowPaymentModal(true);
                           }}
                           className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
@@ -354,12 +491,12 @@ const Balance = () => {
         </div>
       </div>
 
-      {/* Payment Modal */}
+      {/* Payment Modal with Next Payment Date */}
       {showPaymentModal && selectedMember && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b">
+            <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-white">
               <h2 className="text-xl font-bold text-gray-900">Record Payment</h2>
               <button
                 onClick={closeModal}
@@ -409,6 +546,7 @@ const Balance = () => {
                     onChange={(e) => setPaymentAmount(e.target.value)}
                     className="w-full pl-8 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                     placeholder="0.00"
+                    min="0.01"
                     max={selectedMember.balance_due}
                   />
                 </div>
@@ -472,6 +610,48 @@ const Balance = () => {
                 </select>
               </div>
 
+              {/* Next Payment Date - Only show for partial payments */}
+              {!isFullPayment && parseFloat(paymentAmount) > 0 && remainingAfterPayment > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Next Payment Date
+                    <span className="text-gray-400 text-xs ml-1">(optional)</span>
+                  </label>
+                  <div className="relative">
+                    <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      type="date"
+                      value={nextPaymentDate}
+                      onChange={(e) => setNextPaymentDate(e.target.value)}
+                      min={getMinDate()}
+                      className="w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    />
+                  </div>
+                  
+                  {/* Suggested dates */}
+                  <div className="mt-2">
+                    <p className="text-xs text-gray-500 mb-1.5">Suggested dates:</p>
+                    <div className="flex gap-2">
+                      {getSuggestedDates().map((date, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => setNextPaymentDate(date.toISOString().split('T')[0])}
+                          className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-md hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                        >
+                          {formatDate(date.toISOString().split('T')[0])}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    Set a date for when the customer will pay the remaining {formatCurrency(remainingAfterPayment)}
+                  </p>
+                </div>
+              )}
+
               {/* Notes */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -485,10 +665,40 @@ const Balance = () => {
                   placeholder="e.g. Partial payment, rest to be paid next week..."
                 />
               </div>
+
+              {/* Summary for partial payment with date */}
+              {!isFullPayment && nextPaymentDate && parseFloat(paymentAmount) > 0 && remainingAfterPayment > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-blue-800 mb-1">Payment Summary:</p>
+                  <div className="space-y-1 text-xs text-blue-700">
+                    <div className="flex justify-between">
+                      <span>Today's payment:</span>
+                      <span className="font-medium">{formatCurrency(parseFloat(paymentAmount))}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Remaining balance:</span>
+                      <span className="font-medium">{formatCurrency(remainingAfterPayment)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Next payment due:</span>
+                      <span className="font-medium">{formatDate(nextPaymentDate)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Error Display */}
+              {errorDetails && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-red-700 mb-1">Debug Info:</p>
+                  <p className="text-xs text-red-600">Status: {errorDetails.status}</p>
+                  <p className="text-xs text-red-600 break-all">Message: {errorDetails.message || 'No details'}</p>
+                </div>
+              )}
             </div>
 
             {/* Modal Footer */}
-            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-2xl">
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-2xl sticky bottom-0">
               <button
                 onClick={closeModal}
                 className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 text-sm font-medium transition-colors"

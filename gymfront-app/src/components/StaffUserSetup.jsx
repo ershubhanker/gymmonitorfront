@@ -514,7 +514,7 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
     { value: 'Trainer', label: 'Trainer', icon: '💪', description: 'Conducts general fitness training sessions' },
     { value: 'Personal Trainer', label: 'Personal Trainer', icon: '🏋️', description: 'One-on-one personal training sessions' },
     { value: 'Yoga Instructor', label: 'Yoga Instructor', icon: '🧘', description: 'Yoga and meditation classes' },
-    { value: 'Spin Instructor', label: 'Spin Instructor', icon: '🚴', description: 'Indoor cycling classes' },
+    { value: 'Sales Executive', label: 'Sales Executive', icon: '📈', description: 'Handles membership sales, lead follow-ups, and renewals' },
     { value: 'Group Fitness Instructor', label: 'Group Fitness Instructor', icon: '👥', description: 'Leads group workout sessions' },
     { value: 'Nutritionist', label: 'Nutritionist', icon: '🥗', description: 'Diet planning and nutrition advice' },
     { value: 'Physiotherapist', label: 'Physiotherapist', icon: '🩺', description: 'Injury rehabilitation and recovery' },
