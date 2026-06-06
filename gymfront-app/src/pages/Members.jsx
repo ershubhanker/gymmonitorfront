@@ -467,17 +467,89 @@ const Members = () => {
     }
   };
 
-  const handleExport = () => {
-    const csv = [
-      ['Name', 'Email', 'Phone', 'Membership', 'Status', 'Join Date', 'Payments', 'Device User ID', 'Synced to Device'],
-      ...members.map(m => [m.fullName, m.email, m.phone, m.membership, m.status, m.joinDate, m.payments, m.deviceUserId || '', m.syncedToDevice ? 'Yes' : 'No'])
-    ].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'members.csv';
-    a.click();
+  // Updated handleExport function with balance information
+  const handleExport = async () => {
+    try {
+      // Fetch balances for all members
+      const balancesResponse = await api.get('/gym/members/balances');
+      const balancesMap = new Map();
+      balancesResponse.data.forEach(balance => {
+        balancesMap.set(balance.member_id, balance);
+      });
+
+      // Prepare CSV data with all required fields
+      const csvRows = [
+        [
+          'Member ID',
+          'Name', 
+          'Email', 
+          'Phone', 
+          'Gender',
+          'Membership Plan', 
+          'Status', 
+          'Join Date', 
+          'Payments Count',
+          'Plan Amount (₹)',
+          'Amount Paid (₹)',
+          'Pending Balance (₹)',
+          'Payment Status',
+          'Next Payment Date',
+          'Last Payment Date',
+          'Device User ID', 
+          'Synced to Device'
+        ]
+      ];
+
+      for (const member of members) {
+        const balance = balancesMap.get(member.id);
+        
+        csvRows.push([
+          member.id,
+          member.fullName,
+          member.email,
+          member.phone,
+          member.gender || 'Not specified',
+          member.membership,
+          member.status,
+          member.joinDate,
+          member.payments,
+          balance ? balance.total_amount : '0',
+          balance ? balance.amount_paid : '0',
+          balance ? balance.balance_due : '0',
+          balance ? balance.payment_status : 'N/A',
+          balance?.next_payment_date ? new Date(balance.next_payment_date).toLocaleDateString() : '',
+          balance?.last_payment_date ? new Date(balance.last_payment_date).toLocaleDateString() : '',
+          member.deviceUserId || '',
+          member.syncedToDevice ? 'Yes' : 'No'
+        ]);
+      }
+
+      // Create and download CSV with proper encoding
+      const csv = csvRows.map(row => {
+        // Wrap fields containing commas or quotes in quotes
+        return row.map(cell => {
+          const stringCell = String(cell || '');
+          if (stringCell.includes(',') || stringCell.includes('"') || stringCell.includes('\n')) {
+            return `"${stringCell.replace(/"/g, '""')}"`;
+          }
+          return stringCell;
+        }).join(',');
+      }).join('\n');
+
+      // Add BOM for UTF-8 encoding to handle special characters properly
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `members_export_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      
+      toast.success(`Exported ${members.length} members with balance information`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export members with balance data');
+    }
   };
 
   const getStatusBadge = (status) => {
@@ -856,8 +928,8 @@ const Members = () => {
                       <button onClick={() => handleDeleteMember(member.id)} className="text-red-600 hover:text-red-900">
                         <Trash2 className="h-4 w-4" />
                       </button>
-                    </td>
-                  </tr>
+                     </td>
+                   </tr>
                 ))
               )}
             </tbody>
