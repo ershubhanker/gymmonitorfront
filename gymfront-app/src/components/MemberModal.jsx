@@ -509,7 +509,6 @@ const MembershipSelector = ({
       const response = await api.delete(`/gym/plans/${plan.id}`);
       toast.success(response.data.message || 'Plan deleted/deactivated successfully');
       
-      // If the deleted plan was selected, clear the selection
       if (String(formData.plan_id) === String(plan.id)) {
         setFormData(prev => ({ ...prev, plan_id: '', amount_paid: '' }));
       }
@@ -520,7 +519,6 @@ const MembershipSelector = ({
       const errorMessage = err.response?.data?.detail || 'Failed to delete plan';
       toast.error(errorMessage);
       
-      // If the error is about active memberships, suggest deactivation instead
       if (errorMessage.includes('active memberships')) {
         toast.error('You can deactivate the plan instead by editing it and unchecking "Plan is active"');
       }
@@ -539,8 +537,6 @@ const MembershipSelector = ({
     setShowPlanCreator(false);
   };
 
-  // Always show "Create a new plan" button when there are plans
-  // And show the plan creator form when showPlanCreator is true OR when there are no plans
   const shouldShowPlanCreator = showPlanCreator || membershipPlans.length === 0;
 
   return (
@@ -702,7 +698,6 @@ const MembershipSelector = ({
                   onChange={set('amount_paid')} className={`${inputCls} pl-7`} placeholder="0.00" />
               </div>
 
-              {/* Quick fill buttons */}
               <div className="flex gap-2 mt-2">
                 <button
                   type="button"
@@ -727,7 +722,6 @@ const MembershipSelector = ({
                 </button>
               </div>
 
-              {/* Payment status feedback */}
               {formData.amount_paid !== '' && (() => {
                 const planPrice = Number(selectedPlan.discounted_price || selectedPlan.price);
                 const paid = Number(formData.amount_paid);
@@ -782,6 +776,20 @@ const MembershipSelector = ({
   );
 };
 
+// ─── Helper function to clean form data (convert empty strings to null) ───────
+const cleanFormData = (data) => {
+  const cleaned = {};
+  for (const [key, value] of Object.entries(data)) {
+    // Convert empty strings to null for optional fields
+    if (value === '') {
+      cleaned[key] = null;
+    } else {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+};
+
 // ─── Main MemberModal ─────────────────────────────────────────────────────────
 const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_owner' }) => {
   const today = new Date().toISOString().split('T')[0];
@@ -811,8 +819,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
       const plans = response.data || [];
       setMembershipPlans(plans);
       
-      // Show plan creator if there are no plans AND we're not in edit mode for a member
-      // This ensures new gym owners can create their first plan
       if (!member && plans.length === 0) {
         setShowPlanCreator(true);
       }
@@ -927,7 +933,51 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
 
     setSaving(true);
     try {
-      const savedMember = await onSave(formData);
+      // Build member data with proper null handling for empty strings
+      const memberFields = {
+        full_name: formData.full_name.trim(),
+        email: formData.email?.trim() || null,
+        phone: formData.phone.trim(),
+        address: formData.address?.trim() || null,
+        date_of_birth: formData.date_of_birth || null,
+        gender: formData.gender,
+        emergency_contact_name: formData.emergency_contact_name?.trim() || null,
+        emergency_contact_phone: formData.emergency_contact_phone?.trim() || null,
+        medical_conditions: formData.medical_conditions?.trim() || null,
+        allergies: formData.allergies?.trim() || null,
+        medications: formData.medications?.trim() || null,
+        id_proof_type: formData.id_proof_type || null,
+        id_proof_number: formData.id_proof_number?.trim() || null,
+      };
+
+      // Build payload for onSave
+      let payload;
+      
+      if (isEdit && formData.renew_membership) {
+        // When renewing, include membership data
+        payload = {
+          ...memberFields,
+          plan_id: formData.plan_id,
+          membership_start_date: formData.membership_start_date,
+          payment_method: formData.payment_method,
+          amount_paid: formData.amount_paid,
+          renew_membership: true,
+        };
+      } else if (isEdit) {
+        // Just update member details
+        payload = memberFields;
+      } else {
+        // New member
+        payload = {
+          ...memberFields,
+          plan_id: formData.plan_id,
+          membership_start_date: formData.membership_start_date,
+          payment_method: formData.payment_method,
+          amount_paid: formData.amount_paid,
+        };
+      }
+
+      const savedMember = await onSave(payload);
 
       if (!isEdit && savedMember?.id) {
         const pendingFile = getPendingFileRef.current?.();
@@ -948,6 +998,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
       }
     } catch (error) {
       console.error('Save error:', error);
+      // Let the onSave function handle its own error messages
     } finally {
       setSaving(false);
     }
