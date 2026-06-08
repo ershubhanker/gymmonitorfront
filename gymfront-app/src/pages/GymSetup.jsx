@@ -28,6 +28,7 @@ const GymSetup = () => {
     address: '',
     phone: '',
     email: '',
+    gst_number: '',
     max_members: 100,
     max_staff: 5,
     opening_time: '06:00',
@@ -206,6 +207,22 @@ const GymSetup = () => {
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Building2 className="h-4 w-4 inline mr-1" />
+                      GST/Tax Number
+                    </label>
+                    <input
+                      type="text"
+                      name="gst_number"
+                      value={formData.gst_number}
+                      onChange={handleInputChange}
+                      placeholder="22AAAAA0000A1Z"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Optional - Will appear on invoices</p>
                   </div>
                 </div>
               )}

@@ -43,6 +43,7 @@ const Profile = () => {
     address: '',
     phone: '',
     email: '',
+    gst_number: '',
     max_members: 100,
     max_staff: 5,
     opening_time: '06:00',
@@ -69,12 +70,14 @@ const Profile = () => {
     setLoading(true);
     try {
       const response = await api.get('/gym/my-gym');
+      console.log('Gym details fetched:', response.data); // Debug log
       setGymData(response.data);
       setGymForm({
         name: response.data.name || '',
         address: response.data.address || '',
         phone: response.data.phone || '',
         email: response.data.email || '',
+        gst_number: response.data.gst_number || '', // Make sure this is being set
         max_members: response.data.max_members || 100,
         max_staff: response.data.max_staff || 5,
         opening_time: response.data.opening_time || '06:00',
@@ -116,6 +119,19 @@ const Profile = () => {
         // Update existing gym
         const response = await api.put('/gym/my-gym', gymForm);
         setGymData(response.data);
+        // Update the form with the response data to ensure consistency
+        setGymForm({
+          name: response.data.name || '',
+          address: response.data.address || '',
+          phone: response.data.phone || '',
+          email: response.data.email || '',
+          gst_number: response.data.gst_number || '',
+          max_members: response.data.max_members || 100,
+          max_staff: response.data.max_staff || 5,
+          opening_time: response.data.opening_time || '06:00',
+          closing_time: response.data.closing_time || '22:00',
+          description: response.data.description || '',
+        });
         toast.success('Gym details updated successfully!');
       } else {
         // Create new gym
@@ -375,7 +391,7 @@ const Profile = () => {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
+                <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Building2 className="h-4 w-4 inline mr-1" />
                     Gym Name <span className="text-red-500">*</span>
@@ -418,6 +434,21 @@ const Profile = () => {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="+91 98765 43210"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Building2 className="h-4 w-4 inline mr-1" />
+                    GST/Tax Number
+                  </label>
+                  <input
+                    type="text"
+                    value={gymForm.gst_number}
+                    onChange={(e) => setGymForm({ ...gymForm, gst_number: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="22AAAAA0000A1Z"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Your GST/Tax number will appear on invoices</p>
                 </div>
 
                 <div className="md:col-span-2">

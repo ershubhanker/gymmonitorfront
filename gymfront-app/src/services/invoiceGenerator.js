@@ -185,6 +185,7 @@ const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails
   const balanceDue = Math.max(0, planPrice - discountApplied - amountPaid);
   const currencyLabel = getCurrencyLabel(gymDetails);
   const gymName = safeText(gymDetails.name, 'GYMMONITOR FITNESS');
+  const gstNumber = gymDetails.gst_number || '';
   const currentDate = new Date();
   const receiptNo = `REC-${safeText(member.id, 'NEW')}-${currentDate.getFullYear()}${String(
     currentDate.getMonth() + 1
@@ -193,57 +194,70 @@ const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails
 
   let y = margin;
 
+  // Header Section
   doc.setFillColor(...colors.brand);
-  doc.roundedRect(margin, y, contentWidth, 24, 3, 3, 'F');
+  doc.roundedRect(margin, y, contentWidth, 28, 3, 3, 'F');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
   doc.setTextColor(255, 255, 255);
-  doc.text(gymName, margin + 6, y + 9);
+  doc.text(gymName, margin + 6, y + 10);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(226, 232, 240);
-  doc.text('Membership Payment Receipt', margin + 6, y + 15);
+  doc.text('Membership Payment Receipt', margin + 6, y + 17);
+
+  if (gstNumber) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(226, 232, 240);
+    doc.text(`GST/Tax No: ${gstNumber}`, pageWidth - margin - 6, y + 12, { align: 'right' });
+  }
 
   const metaBoxX = pageWidth - margin - 56;
   const metaBoxY = y + 4;
   const metaBoxWidth = 50;
-  const metaBoxHeight = 16;
+  const metaBoxHeight = 20;
 
   doc.setFillColor(30, 41, 59);
   doc.roundedRect(metaBoxX, metaBoxY, metaBoxWidth, metaBoxHeight, 2, 2, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255);
   doc.text('Receipt No.', metaBoxX + 3, metaBoxY + 5);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.text(receiptNo, metaBoxX + 3, metaBoxY + 9);
-  doc.text(`Issued: ${formatDate(currentDate, 'datetime')}`, metaBoxX + 3, metaBoxY + 13);
+  doc.text(`Issued: ${formatDate(currentDate, 'datetime')}`, metaBoxX + 3, metaBoxY + 14);
+  doc.text(`Time: ${currentDate.toLocaleTimeString('en-IN')}`, metaBoxX + 3, metaBoxY + 18);
 
-  y += 30;
+  y += 34;
 
+  // Gym Contact Information Section
   const contactParts = [
     gymDetails.address ? safeText(gymDetails.address) : null,
-    gymDetails.phone ? `Phone: ${gymDetails.phone}` : null,
-    gymDetails.email ? `Email: ${gymDetails.email}` : null,
+    gymDetails.phone ? `📞 ${gymDetails.phone}` : null,
+    gymDetails.email ? `✉️ ${gymDetails.email}` : null,
+    gstNumber ? `GST: ${gstNumber}` : null,
   ].filter(Boolean);
 
   if (contactParts.length > 0) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
+    doc.setFontSize(8);
     doc.setTextColor(...colors.muted);
-    const contactLines = doc.splitTextToSize(contactParts.join(' | '), contentWidth);
+    const contactLines = doc.splitTextToSize(contactParts.join('  |  '), contentWidth);
     doc.text(contactLines, margin, y);
-    y += contactLines.length * 4.2 + 4;
+    y += contactLines.length * 4.5 + 6;
   }
 
+  // Member Details Section
   addSectionTitle(doc, 'Member Details', margin, y, contentWidth, colors);
   y += 12;
 
   doc.setDrawColor(...colors.border);
   doc.setFillColor(255, 255, 255);
-  doc.roundedRect(margin, y, contentWidth, 30, 2, 2, 'FD');
+  doc.roundedRect(margin, y, contentWidth, 34, 2, 2, 'FD');
 
   drawLabeledText(doc, 'Name', safeText(member.full_name), margin + 5, y + 8, 24, 55);
   drawLabeledText(doc, 'Member ID', memberCode, margin + 105, y + 8, 26, 35);
@@ -268,9 +282,10 @@ const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails
     35
   );
 
-  y += 38;
+  y += 42;
 
-  addSectionTitle(doc, 'Membership Summary', margin, y, contentWidth, colors);
+  // Membership Details Section
+  addSectionTitle(doc, 'Membership Details', margin, y, contentWidth, colors);
   y += 10;
 
   autoTable(doc, {
@@ -295,7 +310,7 @@ const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails
     bodyStyles: {
       textColor: colors.text,
       fontSize: 9,
-      cellPadding: 4.5,
+      cellPadding: 5,
     },
     alternateRowStyles: {
       fillColor: colors.brandSoft,
@@ -306,21 +321,28 @@ const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails
     },
   });
 
-  y = doc.lastAutoTable.finalY + 8;
+  y = doc.lastAutoTable.finalY + 10;
 
+  // Payment Summary Section (Simple - No GST breakdown)
   addSectionTitle(doc, 'Payment Summary', margin, y, contentWidth, colors);
   y += 10;
+
+  const paymentRows = [
+    ['Plan Price', formatCurrency(planPrice, currencyLabel)],
+  ];
+  
+  if (discountApplied > 0) {
+    paymentRows.push(['Discount Applied', `- ${formatCurrency(discountApplied, currencyLabel)}`]);
+  }
+  
+  paymentRows.push(['Amount Paid', formatCurrency(amountPaid, currencyLabel)]);
+  paymentRows.push(['Balance Due', formatCurrency(balanceDue, currencyLabel)]);
 
   autoTable(doc, {
     startY: y,
     theme: 'grid',
     head: [['Description', 'Amount']],
-    body: [
-      ['Plan Price', formatCurrency(planPrice, currencyLabel)],
-      ...(discountApplied > 0 ? [['Discount Applied', formatCurrency(discountApplied, currencyLabel)]] : []),
-      ['Amount Paid', formatCurrency(amountPaid, currencyLabel)],
-      ['Balance Due', formatCurrency(balanceDue, currencyLabel)],
-    ],
+    body: paymentRows,
     margin: { left: margin, right: margin },
     headStyles: {
       fillColor: colors.brand,
@@ -332,7 +354,7 @@ const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails
     bodyStyles: {
       textColor: colors.text,
       fontSize: 9,
-      cellPadding: 4.5,
+      cellPadding: 5,
     },
     alternateRowStyles: {
       fillColor: colors.brandSoft,
@@ -351,86 +373,40 @@ const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails
       } else if (rowTitle === 'Amount Paid') {
         hookData.cell.styles.textColor = colors.success;
         hookData.cell.styles.fontStyle = 'bold';
+      } else if (rowTitle === 'Discount Applied' && discountApplied > 0) {
+        hookData.cell.styles.textColor = colors.accent;
       }
     },
   });
 
-  y = doc.lastAutoTable.finalY + 8;
+  y = doc.lastAutoTable.finalY + 10;
 
-  if (payments.length > 0) {
-    addSectionTitle(doc, 'Payment History', margin, y, contentWidth, colors);
-    y += 10;
+  // ⚠️ PAYMENT HISTORY SECTION - COMPLETELY REMOVED ⚠️
+  // No payment history table anymore
 
-    autoTable(doc, {
-      startY: y,
-      theme: 'grid',
-      head: [['Date', 'Method', 'Reference', 'Amount', 'Status']],
-      body: payments.map((payment) => [
-        formatDate(payment.payment_date, 'short'),
-        safeText(payment.payment_method || 'Cash').toUpperCase(),
-        safeText(payment.reference_no || payment.transaction_id || '-'),
-        formatCurrency(payment.amount, currencyLabel),
-        payment.status === 'completed' ? 'Completed' : 'Pending',
-      ]),
-      margin: { left: margin, right: margin },
-      headStyles: {
-        fillColor: colors.accent,
-        textColor: [255, 255, 255],
-        fontStyle: 'bold',
-        halign: 'center',
-        fontSize: 8.5,
-      },
-      bodyStyles: {
-        textColor: colors.text,
-        fontSize: 8.5,
-        cellPadding: 4,
-      },
-      alternateRowStyles: {
-        fillColor: colors.brandSoft,
-      },
-      columnStyles: {
-        0: { cellWidth: 28 },
-        1: { cellWidth: 28, halign: 'center' },
-        2: { cellWidth: 55 },
-        3: { cellWidth: 32, halign: 'right' },
-        4: { cellWidth: 28, halign: 'center' },
-      },
-      didParseCell: (hookData) => {
-        if (hookData.section !== 'body' || hookData.column.index !== 4) return;
-        if (hookData.cell.raw === 'Completed') {
-          hookData.cell.styles.textColor = colors.success;
-          hookData.cell.styles.fontStyle = 'bold';
-        } else {
-          hookData.cell.styles.textColor = colors.danger;
-          hookData.cell.styles.fontStyle = 'bold';
-        }
-      },
-    });
-
-    y = doc.lastAutoTable.finalY + 8;
-  }
-
+  // Balance Status Message
   if (balanceDue > 0) {
     doc.setFillColor(...colors.dangerSoft);
     doc.setDrawColor(254, 202, 202);
-    doc.roundedRect(margin, y, contentWidth, 11, 2, 2, 'FD');
+    doc.roundedRect(margin, y, contentWidth, 12, 2, 2, 'FD');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...colors.danger);
-    doc.text(`Outstanding balance: ${formatCurrency(balanceDue, currencyLabel)}`, margin + 4, y + 7);
-    y += 16;
+    doc.text(`⚠️ Outstanding Balance: ${formatCurrency(balanceDue, currencyLabel)}`, margin + 4, y + 8);
+    y += 18;
   } else {
     doc.setFillColor(...colors.successSoft);
     doc.setDrawColor(187, 247, 208);
-    doc.roundedRect(margin, y, contentWidth, 11, 2, 2, 'FD');
+    doc.roundedRect(margin, y, contentWidth, 12, 2, 2, 'FD');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...colors.success);
-    doc.text('Payment received in full. No outstanding dues.', margin + 4, y + 7);
-    y += 16;
+    doc.text('✓ Payment received in full. No outstanding dues.', margin + 4, y + 8);
+    y += 18;
   }
 
-  const footerY = Math.min(y + 8, pageHeight - 24);
+  // Footer Section
+  const footerY = Math.min(y + 8, pageHeight - 28);
   doc.setDrawColor(...colors.border);
   doc.line(margin, footerY, pageWidth - margin, footerY);
 
@@ -440,13 +416,24 @@ const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails
   doc.text('Authorized Signatory', margin, footerY + 8);
   doc.text('Member Signature', pageWidth - margin - 30, footerY + 8);
 
-  doc.setFontSize(7.5);
+  doc.setFontSize(7);
+  doc.setTextColor(150, 150, 150);
   doc.text(
     'This is a computer-generated receipt and does not require a physical signature.',
     pageWidth / 2,
     pageHeight - 10,
     { align: 'center' }
   );
+
+  if (gstNumber) {
+    doc.setFontSize(6.5);
+    doc.setTextColor(120, 120, 120);
+    doc.text(
+      `* GST/Tax Number: ${gstNumber} | This invoice is valid for tax purposes.`,
+      margin,
+      pageHeight - 6
+    );
+  }
 
   const safeName = safeText(member.full_name, 'member').replace(/[^a-zA-Z0-9]/g, '_');
   doc.save(`Receipt_${safeName}_${currentDate.getTime()}.pdf`);
@@ -466,19 +453,27 @@ export const generateBulkInvoiceSummary = async (members, gymDetails = {}) => {
   let y = margin;
 
   doc.setFillColor(15, 23, 42);
-  doc.roundedRect(margin, y, pageWidth - margin * 2, 18, 3, 3, 'F');
+  doc.roundedRect(margin, y, pageWidth - margin * 2, 22, 3, 3, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
   doc.setTextColor(255, 255, 255);
-  doc.text('Membership Summary Report', margin + 6, y + 8);
+  doc.text('Membership Summary Report', margin + 6, y + 10);
+  
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.text(safeText(gymDetails.name, 'GYMMONITOR FITNESS'), margin + 6, y + 14);
-  doc.text(`Generated: ${formatDate(new Date(), 'datetime')}`, pageWidth - margin - 6, y + 14, {
+  doc.text(safeText(gymDetails.name, 'GYMMONITOR FITNESS'), margin + 6, y + 17);
+  
+  if (gymDetails.gst_number) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.text(`GST: ${gymDetails.gst_number}`, pageWidth - margin - 6, y + 17, { align: 'right' });
+  }
+  
+  doc.text(`Generated: ${formatDate(new Date(), 'datetime')}`, pageWidth - margin - 6, y + 10, {
     align: 'right',
   });
 
-  y += 26;
+  y += 30;
 
   autoTable(doc, {
     startY: y,
