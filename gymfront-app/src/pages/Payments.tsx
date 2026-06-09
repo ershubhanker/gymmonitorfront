@@ -1,4 +1,4 @@
-// src/pages/Payments.jsx
+// src/pages/Payments.tsx
 import React, { useState, useEffect } from 'react';
 import { 
   CreditCard, 
@@ -12,7 +12,10 @@ import {
   Users,
   CheckCircle,
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  FileText,
+  Building,
+  DollarSign
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -39,10 +42,19 @@ const Payments = () => {
     cardPayments: 0,
     upiPayments: 0,
     otherPayments: 0,
-    growth: 0
+    growth: 0,
+    totalGST: 0,
+    totalBalancePayments: 0
   });
 
   const currencySymbol = user?.currency_symbol || '₹';
+  // gym_gst_number is now correctly populated from /me endpoint (joined from Gym table)
+  const gymGST = user?.gym_gst_number || user?.gst_number || 'Not Available';
+  const gymName = user?.gym_name || 'Gym Management System';
+  // GST rate from user context (set in backend, editable by gym owner)
+  const [gstRate, setGstRate] = useState<number>(user?.gst_rate || 5.0);
+  const [showGstModal, setShowGstModal] = useState(false);
+  const [updatingGst, setUpdatingGst] = useState(false);
 
   useEffect(() => {
     // Set default date range to current month
@@ -66,15 +78,18 @@ const Payments = () => {
       const response = await api.get('/gym/payments?limit=1000');
       console.log('Payments response:', response.data);
       
-      // Ensure we have an array and member data is properly structured
       let paymentsData = Array.isArray(response.data) ? response.data : [];
       
-      // Process payments to ensure member_name is available
       paymentsData = paymentsData.map(payment => ({
         ...payment,
         member_name: payment.member?.full_name || payment.member_name || 'Unknown Member',
         member_phone: payment.member?.phone || '',
-        member_email: payment.member?.email || ''
+        member_email: payment.member?.email || '',
+        member_plan: payment.member?.membership_plan_name || payment.member?.plan || 'N/A',
+        member_balance: payment.member?.balance_amount || payment.balance_amount || 0,
+        gst_amount: payment.gst_amount || payment.tax_amount || 0,
+        is_balance_payment: payment.is_balance_payment || false,
+        original_invoice_id: payment.original_invoice_id || null
       }));
       
       setPayments(paymentsData);
@@ -116,7 +131,7 @@ const Payments = () => {
         });
       }
 
-      // Calculate summary
+      // Calculate summary with GST and balance payments
       const totalRevenue = filtered.reduce((sum, p) => sum + (p.amount || 0), 0);
       const totalCount = filtered.length;
       const averagePayment = totalCount > 0 ? totalRevenue / totalCount : 0;
@@ -135,6 +150,14 @@ const Payments = () => {
       
       const otherPayments = filtered
         .filter(p => !['cash', 'card', 'upi'].includes(p.payment_method?.toLowerCase()))
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+      // Calculate total GST collected
+      const totalGST = filtered.reduce((sum, p) => sum + (p.gst_amount || 0), 0);
+      
+      // Calculate total balance payments
+      const totalBalancePayments = filtered
+        .filter(p => p.is_balance_payment === true)
         .reduce((sum, p) => sum + (p.amount || 0), 0);
 
       // Calculate growth
@@ -168,7 +191,9 @@ const Payments = () => {
         cardPayments,
         upiPayments,
         otherPayments,
-        growth
+        growth,
+        totalGST,
+        totalBalancePayments
       });
 
       // Sort by date (newest first)
@@ -194,47 +219,233 @@ const Payments = () => {
     return `${currencySymbol} ${formatted}`;
   };
 
-  const handleDateChange = (date) => {
-    if (datePickerType === 'start') {
-      setStartDate(date);
-    } else {
-      setEndDate(date);
+  // ENHANCED EXPORT FUNCTION WITH GST AND BALANCE
+  const handleExport = () => {
+    if (filteredPayments.length === 0) {
+      toast.error('No data to export for the selected date range');
+      return;
     }
-    setShowDatePicker(false);
+
+    try {
+      // Format dates for display
+      const startDateFormatted = startDate ? new Date(startDate).toLocaleDateString('en-IN') : 'N/A';
+      const endDateFormatted = endDate ? new Date(endDate).toLocaleDateString('en-IN') : 'N/A';
+      const exportDate = new Date().toLocaleString('en-IN');
+      
+      // Prepare summary data
+      const totalAmount = summary.totalRevenue;
+      const totalTransactions = filteredPayments.length;
+      const averageAmount = totalAmount / totalTransactions;
+      
+      // Calculate GST summary using current gstRate
+      // Amount stored in DB already includes GST, so:
+      //   taxable = amount / (1 + gstRate/100)
+      //   gst     = amount - taxable  (or use stored gst_amount if available)
+      const halfRate = gstRate / 2;
+      const taxableAmount = summary.totalGST > 0
+        ? totalAmount - summary.totalGST
+        : totalAmount / (1 + gstRate / 100);
+      const gstCollected = summary.totalGST > 0
+        ? summary.totalGST
+        : totalAmount - taxableAmount;
+      const cgstAmount = gstCollected / 2;
+      const sgstAmount = gstCollected / 2;
+      
+      // Prepare CSV data with proper formatting
+      const csvRows = [];
+      
+      // Add header information
+      csvRows.push(['"PAYMENT REPORT"']);
+      csvRows.push(['']);
+      csvRows.push(['"Gym Information:"']);
+      csvRows.push([`"Gym Name:","${gymName.replace(/"/g, '""')}"`]);
+      csvRows.push([`"GST Number:","${gymGST}"`]);
+      csvRows.push(['']);
+      csvRows.push(['"Report Information:"']);
+      csvRows.push([`"Generated On:","${exportDate}"`]);
+      csvRows.push([`"Date Range:","${startDateFormatted} to ${endDateFormatted}"`]);
+      csvRows.push(['']);
+      csvRows.push(['"Financial Summary:"']);
+      csvRows.push([`"Total Revenue:","${formatCurrency(totalAmount)}"`]);
+      csvRows.push([`"Total Transactions:","${totalTransactions}"`]);
+      csvRows.push([`"Average Payment:","${formatCurrency(averageAmount)}"`]);
+      csvRows.push(['']);
+      csvRows.push(['"GST Summary:"']);
+      csvRows.push([`"GST Rate:","${gstRate}% (CGST ${gstRate/2}% + SGST ${gstRate/2}%)"`]);
+      csvRows.push([`"Total GST Collected:","${formatCurrency(gstCollected)}"`]);
+      csvRows.push([`"Taxable Amount (excl. GST):","${formatCurrency(taxableAmount)}"`]);
+      csvRows.push([`"CGST (${gstRate/2}%):","${formatCurrency(cgstAmount)}"`]);
+      csvRows.push([`"SGST (${gstRate/2}%):","${formatCurrency(sgstAmount)}"`]);
+      csvRows.push(['']);
+      csvRows.push(['"Balance Payment Summary:"']);
+      csvRows.push([`"Total Balance Payments:","${formatCurrency(summary.totalBalancePayments)}"`]);
+      csvRows.push([`"Balance Payment Count:","${filteredPayments.filter(p => p.is_balance_payment).length}"`]);
+      csvRows.push(['']);
+      
+      // Add payment method breakdown
+      csvRows.push(['"Payment Method Breakdown"']);
+      csvRows.push(['"Method","Amount","Count","Percentage"']);
+      const methodBreakdown = [
+        { method: 'Cash', amount: summary.cashPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'cash').length },
+        { method: 'Card', amount: summary.cardPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'card').length },
+        { method: 'UPI', amount: summary.upiPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'upi').length },
+        { method: 'Other', amount: summary.otherPayments, count: filteredPayments.filter(p => !['cash', 'card', 'upi'].includes(p.payment_method?.toLowerCase())).length }
+      ];
+      methodBreakdown.forEach(item => {
+        const percentage = totalAmount > 0 ? (item.amount / totalAmount * 100).toFixed(2) : '0';
+        csvRows.push([`"${item.method}"`, `"${formatCurrency(item.amount)}"`, item.count, `"${percentage}%"`]);
+      });
+      csvRows.push(['']);
+      
+      // Add detailed transactions header
+      csvRows.push(['"Detailed Transactions"']);
+      csvRows.push([
+        '"Date"',
+        '"Member Name"',
+        '"Member Phone"',
+        '"Member Email"',
+        '"Member Plan"',
+        '"Amount"',
+        '"Payment Method"',
+        '"Transaction ID"',
+        '"Status"',
+        '"Payment Time"',
+        '"GST Amount"',
+        `"CGST (${gstRate/2}%)"`,
+        `"SGST (${gstRate/2}%)"`,
+        '"Is Balance Payment"',
+        '"Original Invoice ID"',
+        '"Member Balance After"',
+        '"Notes"'
+      ]);
+      
+      // Add each transaction
+      filteredPayments.forEach(payment => {
+        const paymentDate = payment.payment_date ? new Date(payment.payment_date) : null;
+        const dateStr = paymentDate ? paymentDate.toLocaleDateString('en-IN') : 'N/A';
+        const timeStr = paymentDate ? paymentDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+        
+        csvRows.push([
+          `"${dateStr}"`,
+          `"${(payment.member_name || payment.member?.full_name || 'Unknown Member').replace(/"/g, '""')}"`,
+          `"${payment.member_phone || payment.member?.phone || 'N/A'}"`,
+          `"${payment.member_email || payment.member?.email || 'N/A'}"`,
+          `"${payment.member_plan || 'N/A'}"`,
+          `"${payment.amount || 0}"`,
+          `"${(payment.payment_method || 'N/A').toUpperCase()}"`,
+          `"${payment.transaction_id || 'N/A'}"`,
+          `"${payment.status || 'Completed'}"`,
+          `"${timeStr}"`,
+          `"${payment.gst_amount || 0}"`,
+          `"${((payment.gst_amount || 0) / 2).toFixed(2)}"`,
+          `"${((payment.gst_amount || 0) / 2).toFixed(2)}"`,
+          `"${payment.is_balance_payment ? 'Yes' : 'No'}"`,
+          `"${payment.original_invoice_id || 'N/A'}"`,
+          `"${payment.member_balance || 0}"`,
+          `"${(payment.notes || '').replace(/"/g, '""')}"`
+        ]);
+      });
+      
+      // Add footer with detailed summary
+      csvRows.push(['']);
+      csvRows.push(['"Final Summary"']);
+      csvRows.push([`"Total Records:","${filteredPayments.length}"`]);
+      csvRows.push([`"Total Amount:","${formatCurrency(totalAmount)}"`]);
+      csvRows.push([`"Total GST (${gstRate}%):","${formatCurrency(gstCollected)}"`]);
+      csvRows.push([`"Total Balance Payments:","${formatCurrency(summary.totalBalancePayments)}"`]);
+      csvRows.push(['']);
+      csvRows.push(['"Declaration:"']);
+      csvRows.push([`"This report is generated by ${gymName} (GST: ${gymGST})"`]);
+      csvRows.push([`"All payments are recorded as per the selected date range: ${startDateFormatted} to ${endDateFormatted}"`]);
+      
+      // Convert to CSV string
+      const csvString = csvRows.map(row => row.join(',')).join('\n');
+      
+      // Create and download file
+      const blob = new Blob(['\uFEFF' + csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      
+      // Create filename with date range
+      const fileName = `payment_report_${startDate}_to_${endDate}_GST_${gymGST.replace(/[^a-zA-Z0-9]/g, '')}.csv`;
+      link.href = url;
+      link.setAttribute('download', fileName);
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success(`Exported ${filteredPayments.length} transactions with GST details!`);
+    } catch (err) {
+      console.error('Error exporting:', err);
+      toast.error('Failed to export data');
+    }
   };
 
-  const handleExport = () => {
+  // Export as PDF with GST and balance payment details
+  const handleExportAsPDF = async () => {
     if (filteredPayments.length === 0) {
       toast.error('No data to export');
       return;
     }
 
     try {
-      const csvData = filteredPayments.map(p => ({
-        'Date': p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-IN') : 'N/A',
-        'Member Name': p.member_name || p.member?.full_name || 'Unknown',
-        'Amount': p.amount || 0,
-        'Payment Method': p.payment_method?.toUpperCase() || 'N/A',
-        'Transaction ID': p.transaction_id || 'N/A',
-        'Status': p.status || 'Completed'
-      }));
-
-      const csvHeaders = Object.keys(csvData[0]).join(',');
-      const csvRows = csvData.map(row => Object.values(row).join(','));
-      const csvString = [csvHeaders, ...csvRows].join('\n');
+      toast.loading('Generating PDF report...', { id: 'pdf-export' });
       
-      const blob = new Blob([csvString], { type: 'text/csv' });
+      // Prepare data for PDF
+      const pdfData = {
+        gym_name: gymName,
+        gym_gst: gymGST,
+        start_date: startDate,
+        end_date: endDate,
+        payments: filteredPayments,
+        summary: {
+          ...summary,
+          taxable_amount: summary.totalRevenue - summary.totalGST,
+          cgst: summary.totalGST / 2,
+          sgst: summary.totalGST / 2
+        },
+        currency_symbol: currencySymbol,
+        generated_on: new Date().toISOString()
+      };
+      
+      // Call backend PDF generation API
+      const response = await api.post('/gym/payments/export-pdf', pdfData, {
+        responseType: 'blob'
+      });
+      
+      // Download PDF
+      const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `payments_${startDate}_to_${endDate}.csv`;
-      a.click();
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `payment_report_${startDate}_to_${endDate}_GST.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
-      toast.success('Export started!');
+      toast.success('PDF report exported successfully!', { id: 'pdf-export' });
+    } catch (error) {
+      console.error('PDF export failed:', error);
+      toast.error('Failed to generate PDF report', { id: 'pdf-export' });
+    }
+  };
+
+  // Update GST rate via API and reflect in UI immediately
+  const handleUpdateGstRate = async (newRate: number) => {
+    setUpdatingGst(true);
+    try {
+      await api.put('/gym/my-gym/gst-rate', { gst_rate: newRate });
+      setGstRate(newRate);
+      setShowGstModal(false);
+      toast.success(`GST rate updated to ${newRate}% (CGST ${newRate/2}% + SGST ${newRate/2}%)`);
     } catch (err) {
-      console.error('Error exporting:', err);
-      toast.error('Failed to export data');
+      console.error('Failed to update GST rate:', err);
+      toast.error('Failed to update GST rate');
+    } finally {
+      setUpdatingGst(false);
     }
   };
 
@@ -247,6 +458,43 @@ const Payments = () => {
     };
     return icons[method?.toLowerCase()] || '💵';
   };
+
+  const GstRateModal = () => (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setShowGstModal(false)}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-gray-900">GST Rate Setting</h3>
+          <button onClick={() => setShowGstModal(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
+        <p className="text-sm text-gray-500 mb-5">
+          Select the applicable GST rate for your gym. Currently: <span className="font-semibold text-purple-700">{gstRate}%</span>
+        </p>
+        <div className="space-y-3">
+          {[5, 18].map((rate) => (
+            <button
+              key={rate}
+              disabled={updatingGst}
+              onClick={() => handleUpdateGstRate(rate)}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${
+                gstRate === rate
+                  ? 'border-purple-500 bg-purple-50 text-purple-700'
+                  : 'border-gray-200 hover:border-purple-300 text-gray-700'
+              }`}
+            >
+              <div className="text-left">
+                <p className="font-semibold">{rate}% GST</p>
+                <p className="text-xs text-gray-500">CGST {rate/2}% + SGST {rate/2}%</p>
+              </div>
+              {gstRate === rate && <CheckCircle className="h-5 w-5 text-purple-600" />}
+            </button>
+          ))}
+        </div>
+        {updatingGst && <p className="text-center text-sm text-gray-400 mt-4">Updating...</p>}
+      </div>
+    </div>
+  );
 
   const DatePickerModal = () => (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setShowDatePicker(false)}>
@@ -308,6 +556,15 @@ const Payments = () => {
     </div>
   );
 
+  const handleDateChange = (date) => {
+    if (datePickerType === 'start') {
+      setStartDate(date);
+    } else {
+      setEndDate(date);
+    }
+    setShowDatePicker(false);
+  };
+
   const renderSummaryCards = () => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
       <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all">
@@ -326,14 +583,25 @@ const Payments = () => {
 
       <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all">
         <div className="flex items-center justify-between mb-3">
-          <TrendingUp className="h-8 w-8 opacity-80" />
+          <Building className="h-8 w-8 opacity-80" />
         </div>
-        <p className="text-sm opacity-80 mb-1">Average Payment</p>
-        <p className="text-3xl font-bold">{formatCurrency(summary.averagePayment)}</p>
-        <p className="text-xs opacity-70 mt-2">per transaction</p>
+        <p className="text-sm opacity-80 mb-1">GST Collected</p>
+        <p className="text-3xl font-bold">{formatCurrency(summary.totalGST)}</p>
+        <p className="text-xs opacity-70 mt-2">CGST + SGST</p>
       </div>
 
       <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all">
+        <div className="flex items-center justify-between mb-3">
+          <DollarSign className="h-8 w-8 opacity-80" />
+        </div>
+        <p className="text-sm opacity-80 mb-1">Balance Payments</p>
+        <p className="text-3xl font-bold">{formatCurrency(summary.totalBalancePayments)}</p>
+        <p className="text-xs opacity-70 mt-2">
+          {filteredPayments.filter(p => p.is_balance_payment).length} transactions
+        </p>
+      </div>
+
+      <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all">
         <div className="flex items-center justify-between mb-3">
           <CreditCard className="h-8 w-8 opacity-80" />
         </div>
@@ -353,34 +621,11 @@ const Payments = () => {
           </div>
         </div>
       </div>
-
-      <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all">
-        <div className="flex items-center justify-between mb-3">
-          <Users className="h-8 w-8 opacity-80" />
-        </div>
-        <p className="text-sm opacity-80 mb-1">Date Range</p>
-        <p className="text-lg font-semibold">
-          {startDate ? new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Start'} - 
-          {endDate ? new Date(endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'End'}
-        </p>
-        <button
-          onClick={() => {
-            const today = new Date();
-            const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-            setStartDate(firstDayOfMonth.toISOString().split('T')[0]);
-            setEndDate(today.toISOString().split('T')[0]);
-          }}
-          className="mt-2 text-xs bg-white/20 px-2 py-1 rounded-lg hover:bg-white/30 transition-colors"
-        >
-          Reset to current month
-        </button>
-      </div>
     </div>
   );
 
   const renderPaymentCard = (payment) => {
     const isExpanded = expandedPayment === payment.id;
-    // Get member name from multiple possible sources
     const memberName = payment.member_name || 
                       payment.member?.full_name || 
                       payment.member?.name || 
@@ -415,6 +660,22 @@ const Payments = () => {
                   <span className="text-xs text-gray-500 flex items-center gap-1">
                     {getPaymentMethodIcon(payment.payment_method)} {payment.payment_method?.toUpperCase() || 'N/A'}
                   </span>
+                  {payment.is_balance_payment && (
+                    <>
+                      <span className="text-xs text-gray-400">•</span>
+                      <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
+                        Balance Payment
+                      </span>
+                    </>
+                  )}
+                  {payment.gst_amount > 0 && (
+                    <>
+                      <span className="text-xs text-gray-400">•</span>
+                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                        GST: {formatCurrency(payment.gst_amount)}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -454,6 +715,20 @@ const Payments = () => {
                   }) : 'N/A'}
                 </p>
               </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">GST Amount</p>
+                <p className="text-sm text-gray-700">{formatCurrency(payment.gst_amount || 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Member Balance</p>
+                <p className="text-sm text-gray-700">{formatCurrency(payment.member_balance || 0)}</p>
+              </div>
+              {payment.is_balance_payment && payment.original_invoice_id && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Original Invoice ID</p>
+                  <p className="text-sm font-mono text-gray-700">{payment.original_invoice_id}</p>
+                </div>
+              )}
             </div>
             
             {payment.notes && (
@@ -505,16 +780,36 @@ const Payments = () => {
               <CreditCard className="h-8 w-8" />
               Payment Transactions
             </h1>
-            <p className="text-blue-100 mt-2">View and manage all payment transactions</p>
+            <p className="text-blue-100 mt-2">
+              GST: {gymGST} ({gstRate}% — CGST {gstRate/2}% + SGST {gstRate/2}%) | {gymName}
+            </p>
           </div>
-          <button
-            onClick={handleExport}
-            disabled={filteredPayments.length === 0}
-            className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Download className="h-5 w-5" />
-            Export CSV
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowGstModal(true)}
+              className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-all"
+              title="Change GST Rate"
+            >
+              <Building className="h-5 w-5" />
+              GST {gstRate}%
+            </button>
+            <button
+              onClick={handleExport}
+              disabled={filteredPayments.length === 0}
+              className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download className="h-5 w-5" />
+              Export CSV
+            </button>
+            {/* <button
+              onClick={handleExportAsPDF}
+              disabled={filteredPayments.length === 0}
+              className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <FileText className="h-5 w-5" />
+              Export PDF
+            </button> */}
+          </div>
         </div>
       </div>
 
@@ -692,6 +987,7 @@ const Payments = () => {
 
       {/* Date Picker Modal */}
       {showDatePicker && <DatePickerModal />}
+      {showGstModal && <GstRateModal />}
     </div>
   );
 };
