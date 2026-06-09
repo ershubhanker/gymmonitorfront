@@ -25,7 +25,9 @@ import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useAttendance } from '../context/AttendanceContext';
-import { generateMemberInvoice } from '../services/invoiceGenerator';
+
+// Import the invoice functions
+import { generateInvoicePDF, generateBulkInvoices } from '../services/api';
 
 // Debounce hook to prevent excessive API calls
 function useDebounce(value, delay) {
@@ -59,6 +61,7 @@ const Members = () => {
   const [stats, setStats] = useState({ total: 0, active: 0, newThisMonth: 0 });
   const [filters, setFilters] = useState({ status: 'all', plan: 'all', gender: 'all' });
   const [downloadingInvoice, setDownloadingInvoice] = useState(null);
+  const [downloadingBulk, setDownloadingBulk] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
   const [showDeviceSyncModal, setShowDeviceSyncModal] = useState(false);
   const [selectedMemberForSync, setSelectedMemberForSync] = useState(null);
@@ -86,7 +89,6 @@ const Members = () => {
         api.get(`/gym/members?${params.toString()}`),
         api.get('/gym/memberships?limit=1000'),
         api.get('/gym/payments?limit=1000'),
-        // Fetch device IDs from attendance routes (not gym_routes) so schema gap doesn't matter
         api.get('/attendance/members/device-ids').catch(() => ({ data: [] })),
       ]);
 
@@ -194,57 +196,39 @@ const Members = () => {
   const handleDownloadInvoice = async (member) => {
     setDownloadingInvoice(member.id);
     try {
-      const invoiceData = {
-        id: member.id,
-        full_name: member.fullName,
-        phone: member.phone,
-        email: member.email || '',
-        gender: member.gender,
-        joined_date: member.joinDate,
-        plan_name: member.membership !== 'No Plan' ? member.membership : 'No Active Plan',
-        plan_price: 0,
-        amount_paid: 0,
-        discount_applied: 0,
-        start_date: null,
-        end_date: null,
-        membership_status: member.membershipStatus || 'inactive',
-        payments: [],
-      };
-  
-      if (member.activeMembership && member.activeMembership.plan) {
-        const plan = member.activeMembership.plan;
-        invoiceData.plan_name = plan.name || member.membership;
-        invoiceData.plan_price = plan.discounted_price || plan.price || 0;
-        invoiceData.amount_paid = member.activeMembership.amount_paid || 0;
-        invoiceData.discount_applied = member.activeMembership.discount_applied || 0;
-        invoiceData.start_date = member.activeMembership.start_date;
-        invoiceData.end_date = member.activeMembership.end_date;
-        invoiceData.plan_type = plan.plan_type;
-        invoiceData.duration_days = plan.duration_days;
-        invoiceData.membership_status = member.activeMembership.status || 'active';
-      }
-  
-      if (member.memberPayments && member.memberPayments.length > 0) {
-        invoiceData.payments = member.memberPayments.map(p => ({
-          payment_date: p.payment_date,
-          payment_method: p.payment_method,
-          amount: p.amount,
-          status: p.status || 'completed',
-        }));
-        
-        if (!invoiceData.amount_paid || invoiceData.amount_paid === 0) {
-          const totalPaid = member.memberPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-          invoiceData.amount_paid = totalPaid;
-        }
-      }
-  
-      await generateMemberInvoice(invoiceData, gymDetails);
-      toast.success('Invoice downloaded successfully!');
+      await generateInvoicePDF(member.id);
+      // Success toast is already shown in generateInvoicePDF
     } catch (error) {
       console.error('Error generating invoice:', error);
-      toast.error(error.message || 'Failed to generate invoice. Please try again.');
+      // Error toast is already shown in generateInvoicePDF
+      // Just log additional details if needed
+      if (error.response?.data?.detail) {
+        console.error('Server error detail:', error.response.data.detail);
+      }
     } finally {
       setDownloadingInvoice(null);
+    }
+  };
+  
+  const handleBulkInvoice = async () => {
+    if (selectedMembers.length === 0) {
+      toast.error('Please select members to generate invoices');
+      return;
+    }
+    
+    setDownloadingBulk(true);
+    try {
+      toast.loading(`Generating ${selectedMembers.length} invoices...`, { id: 'bulk-invoice' });
+      await generateBulkInvoices(selectedMembers);
+      toast.dismiss('bulk-invoice');
+      toast.success(`${selectedMembers.length} invoices downloaded as ZIP!`);
+      setSelectedMembers([]); // Clear selection after download
+    } catch (error) {
+      toast.dismiss('bulk-invoice');
+      console.error('Error generating bulk invoices:', error);
+      toast.error(error.response?.data?.detail || 'Failed to generate bulk invoices');
+    } finally {
+      setDownloadingBulk(false);
     }
   };
 
@@ -467,36 +451,21 @@ const Members = () => {
     }
   };
 
-  // Updated handleExport function with balance information
   const handleExport = async () => {
     try {
-      // Fetch balances for all members
       const balancesResponse = await api.get('/gym/members/balances');
       const balancesMap = new Map();
       balancesResponse.data.forEach(balance => {
         balancesMap.set(balance.member_id, balance);
       });
 
-      // Prepare CSV data with all required fields
       const csvRows = [
         [
-          'Member ID',
-          'Name', 
-          'Email', 
-          'Phone', 
-          'Gender',
-          'Membership Plan', 
-          'Status', 
-          'Join Date', 
-          'Payments Count',
-          'Plan Amount (₹)',
-          'Amount Paid (₹)',
-          'Pending Balance (₹)',
-          'Payment Status',
-          'Next Payment Date',
-          'Last Payment Date',
-          'Device User ID', 
-          'Synced to Device'
+          'Member ID', 'Name', 'Email', 'Phone', 'Gender',
+          'Membership Plan', 'Status', 'Join Date', 'Payments Count',
+          'Plan Amount (₹)', 'Amount Paid (₹)', 'Pending Balance (₹)',
+          'Payment Status', 'Next Payment Date', 'Last Payment Date',
+          'Device User ID', 'Synced to Device'
         ]
       ];
 
@@ -504,29 +473,20 @@ const Members = () => {
         const balance = balancesMap.get(member.id);
         
         csvRows.push([
-          member.id,
-          member.fullName,
-          member.email,
-          member.phone,
-          member.gender || 'Not specified',
-          member.membership,
-          member.status,
-          member.joinDate,
-          member.payments,
+          member.id, member.fullName, member.email, member.phone,
+          member.gender || 'Not specified', member.membership, member.status,
+          member.joinDate, member.payments,
           balance ? balance.total_amount : '0',
           balance ? balance.amount_paid : '0',
           balance ? balance.balance_due : '0',
           balance ? balance.payment_status : 'N/A',
           balance?.next_payment_date ? new Date(balance.next_payment_date).toLocaleDateString() : '',
           balance?.last_payment_date ? new Date(balance.last_payment_date).toLocaleDateString() : '',
-          member.deviceUserId || '',
-          member.syncedToDevice ? 'Yes' : 'No'
+          member.deviceUserId || '', member.syncedToDevice ? 'Yes' : 'No'
         ]);
       }
 
-      // Create and download CSV with proper encoding
       const csv = csvRows.map(row => {
-        // Wrap fields containing commas or quotes in quotes
         return row.map(cell => {
           const stringCell = String(cell || '');
           if (stringCell.includes(',') || stringCell.includes('"') || stringCell.includes('\n')) {
@@ -536,7 +496,6 @@ const Members = () => {
         }).join(',');
       }).join('\n');
 
-      // Add BOM for UTF-8 encoding to handle special characters properly
       const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -579,7 +538,6 @@ const Members = () => {
     const targetId = memberId;
     
     if (targetId) {
-      // Immediately update the UI
       setMembers(prevMembers => {
         const updatedMembers = prevMembers.map(m =>
           m.id === targetId
@@ -595,7 +553,6 @@ const Members = () => {
       });
     }
     
-    // Also do a full refresh to sync with server
     setTimeout(() => {
       fetchMembers();
     }, 1000);
@@ -609,14 +566,10 @@ const Members = () => {
     setShowBulkDeviceSelect(true);
   };
 
-  // Case-insensitive search filter (fallback for frontend filtering)
   const filteredMembers = members.filter(member => {
     const searchLower = searchTerm.toLowerCase().trim();
-    
-    // If search term is empty, show all members
     if (!searchLower) return true;
     
-    // Check each field with case-insensitive comparison
     const matchesSearch =
       member.fullName?.toLowerCase().includes(searchLower) ||
       member.email?.toLowerCase().includes(searchLower) ||
@@ -664,7 +617,6 @@ const Members = () => {
   };
 
   const onlineDevices = devices.filter(d => d.is_online);
-
   const copyDeviceIdToClipboard = (deviceUserId) => {
     if (deviceUserId) {
       navigator.clipboard.writeText(deviceUserId);
@@ -727,6 +679,18 @@ const Members = () => {
             {selectedMembers.length > 0 && (
               <>
                 <button 
+                  onClick={handleBulkInvoice}
+                  disabled={downloadingBulk}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {downloadingBulk ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileText className="h-4 w-4" />
+                  )}
+                  Invoices ({selectedMembers.length})
+                </button>
+                <button 
                   onClick={openBulkDeviceSelect}
                   disabled={syncingAll || onlineDevices.length === 0}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
@@ -736,10 +700,10 @@ const Members = () => {
                   ) : (
                     <Wifi className="h-4 w-4" />
                   )}
-                  Sync Selected ({selectedMembers.length})
+                  Sync ({selectedMembers.length})
                 </button>
                 <button onClick={handleBulkDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
-                  Delete Selected ({selectedMembers.length})
+                  Delete ({selectedMembers.length})
                 </button>
                 <button onClick={() => setSelectedMembers([])} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50">
                   <X className="h-5 w-5" />
@@ -810,7 +774,7 @@ const Members = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="9" className="px-6 py-4 text-center">
+                  <td colSpan="8" className="px-6 py-4 text-center">
                     <div className="flex justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
@@ -818,7 +782,7 @@ const Members = () => {
                 </tr>
               ) : paginatedMembers.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="px-6 py-4 text-center text-gray-500">No members found</td>
+                  <td colSpan="8" className="px-6 py-4 text-center text-gray-500">No members found</td>
                 </tr>
               ) : (
                 paginatedMembers.map((member) => (
@@ -893,9 +857,9 @@ const Members = () => {
                           className="group relative inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors cursor-pointer"
                           title="Click to copy Device User ID"
                         >
-                          {member.deviceUserId}
+                          {member.deviceUserId.substring(0, 8)}...
                           <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                            Click to copy
+                            Click to copy full ID
                           </span>
                         </button>
                       ) : (
@@ -928,12 +892,12 @@ const Members = () => {
                       <button onClick={() => handleDeleteMember(member.id)} className="text-red-600 hover:text-red-900">
                         <Trash2 className="h-4 w-4" />
                       </button>
-                     </td>
-                   </tr>
+                    </td>
+                  </tr>
                 ))
               )}
             </tbody>
-          </table>
+           </table>
         </div>
 
         {/* Pagination */}

@@ -1,10 +1,9 @@
 import axios from 'axios';
-import toast from 'react-hot-toast'; // ✅ FIX: was missing — caused interceptor crash → redirect to /login
+import toast from 'react-hot-toast';
 
-const API_BASE_URL = 'https://api.gymmonitor.in';
-// const API_BASE_URL = 'http://localhost:8001'; // for local host
+// const API_BASE_URL = 'https://api.gymmonitor.in';
+const API_BASE_URL = 'http://localhost:8001'; // for local host
 
-// Export this so other components can use it
 export { API_BASE_URL };
 
 const api = axios.create({
@@ -14,8 +13,39 @@ const api = axios.create({
   },
 });
 
+// Helper function to extract filename from Content-Disposition header
+function getFilename(response, defaultName) {
+  const contentDisposition = response.headers['content-disposition'];
+  if (contentDisposition) {
+    const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    if (filenameMatch && filenameMatch[1]) {
+      let filename = filenameMatch[1].replace(/['"]/g, '');
+      // Ensure .pdf extension
+      if (!filename.toLowerCase().endsWith('.pdf')) {
+        filename += '.pdf';
+      }
+      return filename;
+    }
+  }
+  return `invoice_${defaultName || Date.now()}.pdf`;
+}
 
-// ── Attach access token to every request ──────────────────────────────────────
+// Helper function to handle invoice errors
+function handleInvoiceError(error) {
+  if (error.response?.status === 404) {
+    toast.error('Member not found');
+  } else if (error.response?.status === 403) {
+    toast.error('You do not have permission to generate this invoice');
+  } else if (error.response?.status === 500) {
+    toast.error('Server error while generating PDF. Please try again later.');
+  } else if (error.message) {
+    toast.error(error.message);
+  } else {
+    toast.error('Failed to generate invoice. Please try again.');
+  }
+}
+
+// Attach access token to every request
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
@@ -27,8 +57,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-
-// ── Auto-refresh on 401, but ONLY log out when refresh itself fails ────────────
+// Auto-refresh on 401
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -71,9 +100,6 @@ api.interceptors.response.use(
       }
     }
 
-    // ✅ FIX: toast was used here but never imported — this crashed the interceptor
-    // on every 403, which caused unhandled promise rejections that could break
-    // the entire request pipeline and appear as a logout.
     if (error.response?.status === 403) {
       console.error('Access forbidden:', error.response?.data);
       toast.error('You do not have permission to perform this action');
@@ -81,12 +107,123 @@ api.interceptors.response.use(
 
     if (error.response?.status === 422) {
       console.error('Validation error:', error.response.data);
-      // Don't redirect, just show validation errors
       return Promise.reject(error);
     }
 
     return Promise.reject(error);
   }
 );
+
+// FIXED: Working PDF download function
+export const generateInvoicePDF = async (memberId) => {
+  try {
+    console.log('Generating invoice for member:', memberId);
+    
+    const response = await api.post(`/gym/members/${memberId}/invoice`, {}, {
+      responseType: 'blob',
+      timeout: 30000
+    });
+    
+    if (!response.data || response.data.size === 0) {
+      throw new Error('Received empty response from server');
+    }
+    
+    // Validate PDF BEFORE creating download link
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const blobText = await blob.slice(0, 4).text();
+    
+    if (blobText !== '%PDF') {
+      console.error('Not a valid PDF. First 4 bytes:', blobText);
+      // Try to parse as JSON error
+      try {
+        const errorText = await blob.text();
+        const errorJson = JSON.parse(errorText);
+        throw new Error(errorJson.detail || 'Server returned error instead of PDF');
+      } catch (jsonError) {
+        throw new Error('Server returned invalid PDF format');
+      }
+    }
+    
+    // Only create download link if PDF is valid
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = getFilename(response, memberId);
+    
+    document.body.appendChild(link);
+    link.click();
+    
+    setTimeout(() => {
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    }, 100);
+    
+    toast.success('Invoice downloaded successfully');
+    return { success: true, filename: link.download };
+    
+  } catch (error) {
+    console.error('Error generating invoice:', error);
+    handleInvoiceError(error);
+    throw error;
+  }
+};
+
+// Bulk invoice download
+export const generateBulkInvoices = async (memberIds) => {
+  try {
+    console.log('Generating bulk invoices for members:', memberIds);
+    
+    const response = await api.post('/gym/members/invoices/bulk', memberIds, {
+      responseType: 'blob',
+      timeout: 60000 // 60 second timeout for bulk
+    });
+    
+    let filename = `invoices_${new Date().toISOString().split('T')[0]}.zip`;
+    const contentDisposition = response.headers['content-disposition'];
+    
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1].replace(/['"]/g, '');
+      }
+    }
+    
+    const blob = new Blob([response.data], { type: 'application/zip' });
+    
+    // Validate it's a zip file (starts with PK)
+    const blobText = await blob.slice(0, 2).text();
+    if (blobText !== 'PK') {
+      console.error('Not a valid ZIP file. First 2 bytes:', blobText);
+      try {
+        const errorText = await blob.text();
+        const errorJson = JSON.parse(errorText);
+        throw new Error(errorJson.detail || 'Server returned error instead of ZIP');
+      } catch (jsonError) {
+        throw new Error('Server returned invalid ZIP format');
+      }
+    }
+    
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    
+    document.body.appendChild(link);
+    link.click();
+    
+    setTimeout(() => {
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    }, 100);
+    
+    toast.success('Bulk invoices downloaded successfully');
+    return { success: true, filename };
+    
+  } catch (error) {
+    console.error('Error generating bulk invoices:', error);
+    toast.error(error.message || 'Failed to generate bulk invoices');
+    throw error;
+  }
+};
 
 export default api;
