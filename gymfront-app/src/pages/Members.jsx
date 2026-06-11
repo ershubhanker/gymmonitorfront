@@ -295,8 +295,8 @@ const Members = () => {
       toast.success('Member added successfully!');
       
       // Ask if user wants to sync to device
-      const onlineDevices = devices.filter(d => d.is_online);
-      if (onlineDevices.length > 0) {
+      const activeDevices = devices.filter(d => d.is_active);
+      if (activeDevices.length > 0) {
         setTimeout(() => {
           if (window.confirm(`Would you like to sync "${createdMember.full_name}" to the attendance device?`)) {
             setSelectedMemberForSync({
@@ -380,14 +380,41 @@ const Members = () => {
   };
 
   const handleDeleteMember = async (memberId) => {
-    if (!window.confirm('Are you sure you want to delete this member?')) return;
+    if (!window.confirm('Are you sure you want to delete this member? This will also remove them from all attendance devices.')) return;
+    
+    setLoading(true);
     try {
-      await api.delete(`/gym/members/${memberId}`);
+      const response = await api.delete(`/gym/members/${memberId}`);
+      
+      // Show detailed success message
+      if (response.data.removed_from_devices > 0) {
+        toast.success(
+          `✅ Member deleted successfully!\n\n` +
+          `Removed from ${response.data.removed_from_devices} device(s).\n` +
+          `The device will sync within 3 seconds.`,
+          { duration: 5000 }
+        );
+      } else if (response.data.device_user_id) {
+        toast.warning(
+          `⚠️ Member deleted but not removed from devices.\n\n` +
+          `The member had a device ID (${response.data.device_user_id}) but no active devices were found.`,
+          { duration: 5000 }
+        );
+      } else {
+        toast.success('Member deleted successfully! (No device sync needed)');
+      }
+      
+      // Update local state
       setMembers(members.filter(m => m.id !== memberId));
+      setSelectedMembers(selectedMembers.filter(id => id !== memberId));
       fetchStats();
-      toast.success('Member deleted successfully!');
+      refreshAllData(); // Refresh device data if needed
+      
     } catch (error) {
+      console.error('Delete error:', error);
       toast.error(error.response?.data?.detail || 'Failed to delete member');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -616,7 +643,9 @@ const Members = () => {
     setIsModalOpen(true);
   };
 
-  const onlineDevices = devices.filter(d => d.is_online);
+  // Use ALL active devices, not just online ones
+  const activeDevices = devices.filter(d => d.is_active);
+  
   const copyDeviceIdToClipboard = (deviceUserId) => {
     if (deviceUserId) {
       navigator.clipboard.writeText(deviceUserId);
@@ -692,7 +721,7 @@ const Members = () => {
                 </button>
                 <button 
                   onClick={openBulkDeviceSelect}
-                  disabled={syncingAll || onlineDevices.length === 0}
+                  disabled={syncingAll || activeDevices.length === 0}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
                 >
                   {syncingAll ? (
@@ -778,7 +807,7 @@ const Members = () => {
                     <div className="flex justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
-                  </td>
+                   </td>
                 </tr>
               ) : paginatedMembers.length === 0 ? (
                 <tr>
@@ -897,7 +926,7 @@ const Members = () => {
                 ))
               )}
             </tbody>
-           </table>
+          </table>
         </div>
 
         {/* Pagination */}
@@ -946,7 +975,7 @@ const Members = () => {
         refreshMemberList={fetchMembers}
       />
 
-      {/* Bulk Device Selection Modal */}
+      {/* Bulk Device Selection Modal - FIXED VERSION */}
       {showBulkDeviceSelect && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
@@ -969,19 +998,19 @@ const Members = () => {
             </div>
 
             <div className="p-4">
-              {onlineDevices.length === 0 ? (
+              {activeDevices.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <WifiOff className="h-12 w-12 mx-auto mb-3 text-orange-300" />
-                  <p>No online devices</p>
-                  <p className="text-sm mt-1">Please ensure the bridge is running</p>
+                  <p>No devices registered</p>
+                  <p className="text-sm mt-1">Please register a device first</p>
                 </div>
               ) : (
                 <>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Select Device
                   </label>
-                  <div className="space-y-2 mb-6">
-                    {onlineDevices.map(device => (
+                  <div className="space-y-2 mb-6 max-h-64 overflow-y-auto">
+                    {activeDevices.map(device => (
                       <button
                         key={device.id}
                         onClick={() => setSelectedBulkDevice(device)}
@@ -995,11 +1024,14 @@ const Members = () => {
                           <div>
                             <p className="font-medium text-gray-900">{device.device_name}</p>
                             <p className="text-xs text-gray-500">{device.device_ip}:{device.device_port}</p>
+                            {!device.is_online && (
+                              <p className="text-xs text-orange-500 mt-1">⚠️ Bridge offline - commands will queue</p>
+                            )}
                           </div>
                           {device.is_online ? (
                             <Wifi className="h-4 w-4 text-green-500" />
                           ) : (
-                            <WifiOff className="h-4 w-4 text-gray-400" />
+                            <WifiOff className="h-4 w-4 text-orange-400" />
                           )}
                         </div>
                       </button>

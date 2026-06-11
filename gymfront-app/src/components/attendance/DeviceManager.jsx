@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Trash2, Wifi, WifiOff, Copy, RefreshCw, 
-  Eye, EyeOff, Edit, Check, X, AlertCircle
+  Eye, EyeOff, Edit, Check, X, AlertCircle, Loader2
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -13,6 +13,7 @@ const DeviceManager = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingDevice, setEditingDevice] = useState(null);
   const [showApiKey, setShowApiKey] = useState(null);
+  const [testingDevice, setTestingDevice] = useState(null); // ADD THIS LINE
   const [formData, setFormData] = useState({
     device_name: '',
     device_ip: '',
@@ -128,6 +129,21 @@ const DeviceManager = () => {
     }
   };
 
+  const isDeviceOnline = (device) => {
+    if (!device.is_online) return false;
+    
+    // If last_seen is more than 2 minutes ago, consider offline
+    if (device.last_seen) {
+      const lastSeen = new Date(device.last_seen);
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+      if (lastSeen < twoMinutesAgo) {
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
   // Regenerate API key
   const handleRegenerateKey = async (deviceId, deviceName) => {
     if (!window.confirm(`⚠️ WARNING: Regenerating API key for "${deviceName}" will immediately invalidate the old key. The bridge will stop working until you update the configuration. Continue?`)) {
@@ -157,24 +173,81 @@ const DeviceManager = () => {
   };
 
   // Test device connection
-  const handleTestConnection = async (deviceIp, devicePort) => {
-    toast.loading('Testing connection...', { id: 'test' });
-    try {
-      const response = await api.post('/attendance/devices/test-connection', {
-        device_ip: deviceIp,
-        device_port: devicePort
-      });
-      toast.dismiss('test');
-      if (response.data.success) {
-        toast.success(`Connection test initiated for ${deviceIp}:${devicePort}`);
+ // Simplified test connection - just shows device status
+ const handleTestConnection = async (deviceIp, devicePort, deviceSerial) => {
+  const toastId = toast.loading(`Checking device status...`);
+  
+  try {
+    // First check via bridge (checks registration status)
+    const response = await api.post('/attendance/devices/test-via-bridge', {
+      device_ip: deviceIp,
+      device_port: devicePort,
+      device_serial: deviceSerial
+    });
+    
+    toast.dismiss(toastId);
+    
+    if (response.data.success) {
+      const info = response.data.device_info || {};
+      
+      if (response.data.via_bridge) {
+        // Device is registered
+        toast.success(
+          <div className="p-2">
+            <p className="font-bold text-green-800 mb-1">✅ Device Connected!</p>
+            <p className="text-sm text-gray-600">{response.data.message}</p>
+            <div className="mt-2 text-xs text-gray-500 space-y-1">
+              <p>🔌 Device: {info.device_name}</p>
+              <p>📟 Serial: {info.device_serial}</p>
+              <p>🟢 Status: {info.is_online ? 'Online' : 'Offline'}</p>
+              {info.last_seen && (
+                <p>🕐 Last seen: {new Date(info.last_seen).toLocaleString()}</p>
+              )}
+            </div>
+          </div>,
+          { duration: 6000 }
+        );
       } else {
-        toast.error('Connection test failed');
+        // Device not registered but reachable
+        toast.success(
+          <div className="p-2">
+            <p className="font-bold text-blue-800 mb-1">ℹ️ Device Reachable</p>
+            <p className="text-sm text-gray-600">{response.data.message}</p>
+            <p className="text-xs text-gray-500 mt-2">Click "Register" to add this device to your system.</p>
+          </div>,
+          { duration: 5000 }
+        );
       }
-    } catch (error) {
-      toast.dismiss('test');
-      toast.error('Failed to test connection');
+    } else {
+      toast.error(
+        <div className="p-2">
+          <p className="font-bold text-red-800 mb-1">❌ Connection Failed</p>
+          <p className="text-sm text-gray-600">{response.data.message}</p>
+          <p className="text-xs text-gray-500 mt-2">Troubleshooting tips:</p>
+          <ul className="text-xs text-gray-500 list-disc list-inside">
+            <li>Is the device powered on?</li>
+            <li>Is the bridge application running?</li>
+            <li>Check the IP address on device screen</li>
+            <li>Ensure device is on same network</li>
+          </ul>
+        </div>,
+        { duration: 8000 }
+      );
     }
-  };
+  } catch (error) {
+    toast.dismiss(toastId);
+    console.error('Test connection error:', error);
+    
+    const errorMsg = error.response?.data?.detail || error.message || 'Failed to test connection';
+    toast.error(
+      <div className="p-2">
+        <p className="font-bold text-red-800 mb-1">❌ Test Error</p>
+        <p className="text-sm text-gray-600">{errorMsg}</p>
+        <p className="text-xs text-gray-500 mt-2">Make sure the backend server is running.</p>
+      </div>
+    );
+  }
+};
 
   // Copy to clipboard
   const copyToClipboard = (text) => {
@@ -263,17 +336,17 @@ const DeviceManager = () => {
                     <p className="text-sm text-gray-500">{device.location || 'No location set'}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {device.is_online ? (
-                      <span className="flex items-center gap-1 text-green-600 text-sm bg-green-50 px-2 py-1 rounded-full">
-                        <Wifi className="h-3 w-3" />
-                        Online
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-gray-400 text-sm bg-gray-50 px-2 py-1 rounded-full">
-                        <WifiOff className="h-3 w-3" />
-                        Offline
-                      </span>
-                    )}
+                  {isDeviceOnline(device) ? (
+                    <span className="flex items-center gap-1 text-green-600 text-sm bg-green-50 px-2 py-1 rounded-full">
+                      <Wifi className="h-3 w-3" />
+                      Online
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-gray-400 text-sm bg-gray-50 px-2 py-1 rounded-full">
+                      <WifiOff className="h-3 w-3" />
+                      Offline
+                    </span>
+                  )}
                   </div>
                 </div>
 
@@ -326,13 +399,22 @@ const DeviceManager = () => {
                 </div>
 
                 <div className="flex gap-2 pt-4 border-t">
-                  <button
-                    onClick={() => handleTestConnection(device.device_ip, device.device_port)}
-                    className="flex-1 px-3 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors text-sm"
-                  >
-                    <Wifi className="h-4 w-4 inline mr-1" />
-                    Test
-                  </button>
+                <button
+                onClick={() => {
+                  setTestingDevice(device.id);
+                  handleTestConnection(device.device_ip, device.device_port, device.device_serial)
+                    .finally(() => setTestingDevice(null));
+                }}
+                disabled={testingDevice === device.id}
+                className="flex-1 px-3 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors text-sm disabled:opacity-50"
+              >
+                {testingDevice === device.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
+                ) : (
+                  <Wifi className="h-4 w-4 inline mr-1" />
+                )}
+                Test
+              </button>
                   <button
                     onClick={() => openEditModal(device)}
                     className="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm"

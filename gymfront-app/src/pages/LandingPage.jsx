@@ -371,7 +371,7 @@ export default function LandingPage() {
             Gym Monitor
           </div>
         </div>
-        <p>© {new Date().getFullYear()} 1111111Gym Monitor by Maskottchen Technology. All rights reserved.</p>
+        <p>© {new Date().getFullYear()} Gym Monitor by Maskottchen Technology. All rights reserved.</p>
         <p className="mt-1 text-gray-500">
           Support:{' '}
           <a href="mailto:info@maskottchentechnology.com" className="text-blue-400 hover:underline">
