@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Bell, UserCheck, Users, Wifi, WifiOff, CheckCircle, XCircle, 
   RefreshCw, Trash2, AlertTriangle, X, Filter, Calendar,
-  UserPlus, Search, Clock
+  UserPlus, Search, Clock, Briefcase, User
 } from 'lucide-react';
 import { useAttendance } from '../../context/AttendanceContext';
 import api from '../../services/api';
@@ -21,6 +21,7 @@ const LiveMonitoring = () => {
     clearAllEvents
   } = useAttendance();
   
+  const [activeTab, setActiveTab] = useState('members'); // 'members' or 'staff'
   const [filter, setFilter] = useState('all');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -29,19 +30,40 @@ const LiveMonitoring = () => {
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [dateFilter, setDateFilter] = useState('');
   
+  // Staff Stats
+  const [staffStats, setStaffStats] = useState({ total_checkins: 0, unique_staff: 0 });
+  
   // Manual Attendance States
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualSearch, setManualSearch] = useState('');
   const [manualMembers, setManualMembers] = useState([]);
-  const [loadingMembers, setLoadingMembers] = useState(false);
-  const [selectedMember, setSelectedMember] = useState(null);
+  const [manualStaff, setManualStaff] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
   const [manualEventType, setManualEventType] = useState('check_in');
   const [manualDateTime, setManualDateTime] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Fetch staff stats
+  const fetchStaffStats = async () => {
+    try {
+        const response = await api.get('/attendance/stats/by-type');
+        setStaffStats(response.data?.staff || { total_checkins: 0, unique_staff: 0 });
+    } catch (error) {
+        console.error('Error fetching staff stats:', error);
+        // Don't show error toast, just set default values
+        setStaffStats({ total_checkins: 0, unique_staff: 0 });
+    }
+};
+
+  useEffect(() => {
+    fetchStaffStats();
+  }, [liveEvents]);
+
   // Manual refresh
   const handleRefresh = () => {
     refreshAllData();
+    fetchStaffStats();
     toast.success('Data refreshed');
   };
 
@@ -55,6 +77,7 @@ const LiveMonitoring = () => {
       setShowDeleteModal(false);
       setSelectedEvent(null);
       refreshAllData();
+      fetchStaffStats();
     } else {
       toast.error(result.error || 'Failed to delete event');
     }
@@ -68,31 +91,38 @@ const LiveMonitoring = () => {
       setShowClearAllModal(false);
       setSelectedDate('');
       refreshAllData();
+      fetchStaffStats();
     } else {
       toast.error(result.error || 'Failed to clear events');
     }
   };
 
-  // Search members for manual attendance - FIXED to search by ID as well
-  const searchMembers = async (searchTerm) => {
+  // Search users (members or staff) for manual attendance
+  const searchUsers = async (searchTerm, type) => {
     if (!searchTerm || searchTerm.length < 1) {
-      setManualMembers([]);
+      if (type === 'members') setManualMembers([]);
+      else setManualStaff([]);
       return;
     }
     
-    setLoadingMembers(true);
+    setLoadingUsers(true);
     try {
-      // Use the same endpoint as members page with search parameter
-      const response = await api.get('/gym/members', {
-        params: { search: searchTerm, limit: 20 }
-      });
-      console.log('Search results:', response.data);
-      setManualMembers(response.data || []);
+      if (type === 'members') {
+        const response = await api.get('/gym/members', {
+          params: { search: searchTerm, limit: 20 }
+        });
+        setManualMembers(response.data || []);
+      } else {
+        const response = await api.get('/gym/staff', {
+          params: { search: searchTerm }
+        });
+        setManualStaff(response.data || []);
+      }
     } catch (error) {
-      console.error('Error searching members:', error);
-      toast.error('Failed to search members');
+      console.error(`Error searching ${type}:`, error);
+      toast.error(`Failed to search ${type}`);
     } finally {
-      setLoadingMembers(false);
+      setLoadingUsers(false);
     }
   };
 
@@ -100,18 +130,19 @@ const LiveMonitoring = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       if (manualSearch) {
-        searchMembers(manualSearch);
+        searchUsers(manualSearch, activeTab === 'members' ? 'members' : 'staff');
       } else {
-        setManualMembers([]);
+        if (activeTab === 'members') setManualMembers([]);
+        else setManualStaff([]);
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [manualSearch]);
+  }, [manualSearch, activeTab]);
 
-  // Submit manual attendance - FIXED to work without API key
+  // Submit manual attendance
   const handleSubmitManualAttendance = async () => {
-    if (!selectedMember) {
-      toast.error('Please select a member');
+    if (!selectedUser) {
+      toast.error(`Please select a ${activeTab === 'members' ? 'member' : 'staff member'}`);
       return;
     }
     
@@ -119,37 +150,53 @@ const LiveMonitoring = () => {
     try {
       const timestamp = manualDateTime ? new Date(manualDateTime) : new Date();
       
-      const payload = {
-        user_id: String(selectedMember.id),  // Use member ID as user_id
-        user_name: selectedMember.full_name,
-        timestamp: timestamp.toISOString(),
-        status: "0",
-        event_type: manualEventType,
-        device_serial: "MANUAL_ENTRY",
-        verified: true
-      };
+      let payload;
+      if (activeTab === 'members') {
+        payload = {
+          user_id: String(selectedUser.id),
+          user_name: selectedUser.full_name,
+          timestamp: timestamp.toISOString(),
+          status: "0",
+          event_type: manualEventType,
+          device_serial: "MANUAL_ENTRY",
+          verified: true
+        };
+      } else {
+        // For staff, use 'S' prefix to differentiate
+        payload = {
+          user_id: `S${selectedUser.id}`,
+          user_name: selectedUser.user?.full_name || selectedUser.full_name,
+          timestamp: timestamp.toISOString(),
+          status: "0",
+          event_type: manualEventType,
+          device_serial: "MANUAL_ENTRY",
+          verified: true
+        };
+      }
       
       console.log('Sending manual attendance:', payload);
       
-      // Send to backend with special header for manual entry
       const response = await api.post('/attendance/live', payload, {
         headers: { 'X-API-Key': 'MANUAL_ENTRY' }
       });
       
       if (response.status === 200) {
-        toast.success(`Manual ${manualEventType === 'check_in' ? 'check-in' : 'check-out'} recorded for ${selectedMember.full_name}`);
+        const userType = activeTab === 'members' ? 'member' : 'staff member';
+        toast.success(`Manual ${manualEventType === 'check_in' ? 'check-in' : 'check-out'} recorded for ${selectedUser.user?.full_name || selectedUser.full_name}`);
         
         // Reset form
         setShowManualModal(false);
         setManualSearch('');
         setManualMembers([]);
-        setSelectedMember(null);
+        setManualStaff([]);
+        setSelectedUser(null);
         setManualEventType('check_in');
         setManualDateTime('');
         
         // Refresh data after a short delay
         setTimeout(() => {
           refreshAllData();
+          fetchStaffStats();
         }, 500);
       } else {
         toast.error('Failed to record attendance');
@@ -163,16 +210,25 @@ const LiveMonitoring = () => {
     }
   };
 
-  // Filter events by date and type
+  // Filter events by date, type, and user type
   const getFilteredEvents = () => {
     let filtered = [...liveEvents];
     
-    if (filter === 'check_in') {
-      filtered = filtered.filter(event => event?.event_type === 'check_in');
-    } else if (filter === 'check_out') {
-      filtered = filtered.filter(event => event?.event_type === 'check_out');
+    // Filter by user type (member vs staff)
+    if (activeTab === 'members') {
+      filtered = filtered.filter(event => !event?.user_id?.startsWith('S'));
+    } else {
+      filtered = filtered.filter(event => event?.user_id?.startsWith('S'));
     }
     
+    // Filter by event type
+    if (filter === 'check_in') {
+      filtered = filtered.filter(event => event?.event_type === 'check_in' || event?.event_type === 'staff_check_in');
+    } else if (filter === 'check_out') {
+      filtered = filtered.filter(event => event?.event_type === 'check_out' || event?.event_type === 'staff_check_out');
+    }
+    
+    // Filter by date
     if (dateFilter) {
       filtered = filtered.filter(event => {
         const eventDate = event?.timestamp?.split('T')[0];
@@ -183,11 +239,28 @@ const LiveMonitoring = () => {
     return filtered;
   };
 
+  // Get stats based on active tab
+  const getStats = () => {
+    if (activeTab === 'members') {
+      return {
+        total_checkins: todayStats?.total_checkins || 0,
+        unique_members: todayStats?.unique_members || 0
+      };
+    } else {
+      return {
+        total_checkins: staffStats?.total_checkins || 0,
+        unique_members: staffStats?.unique_staff || 0
+      };
+    }
+  };
+
   const filteredEvents = getFilteredEvents();
+  const stats = getStats();
   const onlineDevices = (devices || []).filter(d => d?.is_online).length || 0;
 
   const uniqueDates = [...new Set(
     (liveEvents || [])
+      .filter(event => activeTab === 'members' ? !event?.user_id?.startsWith('S') : event?.user_id?.startsWith('S'))
       .map(event => event?.timestamp?.split('T')[0])
       .filter(date => date)
   )].sort().reverse();
@@ -205,6 +278,40 @@ const LiveMonitoring = () => {
 
   return (
     <div className="p-6">
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 mb-6">
+        <button
+          onClick={() => {
+            setActiveTab('members');
+            setFilter('all');
+            setDateFilter('');
+          }}
+          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-all ${
+            activeTab === 'members'
+              ? 'border-b-2 border-blue-500 text-blue-600'
+              : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          <Users className="h-4 w-4" />
+          Member Attendance
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('staff');
+            setFilter('all');
+            setDateFilter('');
+          }}
+          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-all ${
+            activeTab === 'staff'
+              ? 'border-b-2 border-purple-500 text-purple-600'
+              : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          <Briefcase className="h-4 w-4" />
+          Staff Attendance
+        </button>
+      </div>
+
       {/* Delete Modal */}
       {showDeleteModal && selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -223,15 +330,15 @@ const LiveMonitoring = () => {
             <p className="text-gray-600 mb-6">Are you sure you want to delete this attendance event?</p>
             <div className="bg-gray-50 rounded-lg p-3 mb-6">
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <span className="text-gray-500">Member:</span>
+                <span className="text-gray-500">{activeTab === 'members' ? 'Member:' : 'Staff:'}</span>
                 <span className="font-medium text-gray-900">{selectedEvent.user_name}</span>
                 <span className="text-gray-500">Time:</span>
                 <span className="font-medium text-gray-900">
                   {selectedEvent.timestamp ? new Date(selectedEvent.timestamp).toLocaleString() : 'N/A'}
                 </span>
                 <span className="text-gray-500">Event:</span>
-                <span className={`font-medium ${selectedEvent.event_type === 'check_in' ? 'text-green-600' : 'text-orange-600'}`}>
-                  {selectedEvent.event_type?.toUpperCase()}
+                <span className={`font-medium ${selectedEvent.event_type === 'check_in' || selectedEvent.event_type === 'staff_check_in' ? 'text-green-600' : 'text-orange-600'}`}>
+                  {selectedEvent.event_type?.replace('staff_', '').toUpperCase()}
                 </span>
               </div>
             </div>
@@ -287,35 +394,37 @@ const LiveMonitoring = () => {
         </div>
       )}
 
-      {/* Manual Attendance Modal - FIXED */}
+      {/* Manual Attendance Modal */}
       {showManualModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b px-6 py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="bg-blue-100 p-2 rounded-full">
-                    <UserPlus className="h-5 w-5 text-blue-600" />
+                  <div className={`p-2 rounded-full ${activeTab === 'members' ? 'bg-blue-100' : 'bg-purple-100'}`}>
+                    <UserPlus className={`h-5 w-5 ${activeTab === 'members' ? 'text-blue-600' : 'text-purple-600'}`} />
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900">Manual Attendance Entry</h3>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    Manual {activeTab === 'members' ? 'Member' : 'Staff'} Attendance
+                  </h3>
                 </div>
-                <button onClick={() => { setShowManualModal(false); setManualSearch(''); setManualMembers([]); setSelectedMember(null); }} className="text-gray-400 hover:text-gray-600">
+                <button onClick={() => { setShowManualModal(false); setManualSearch(''); setManualMembers([]); setManualStaff([]); setSelectedUser(null); }} className="text-gray-400 hover:text-gray-600">
                   <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
             
             <div className="p-6 space-y-4">
-              {/* Search Member */}
+              {/* Search User */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Search Member (by Name, Phone, or ID)
+                  Search {activeTab === 'members' ? 'Member' : 'Staff'} (by Name, Phone, or ID)
                 </label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Search by name, phone, or member ID..."
+                    placeholder={`Search by name, phone, or ${activeTab === 'members' ? 'member' : 'staff'} ID...`}
                     value={manualSearch}
                     onChange={(e) => setManualSearch(e.target.value)}
                     className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -323,46 +432,60 @@ const LiveMonitoring = () => {
                   />
                 </div>
                 
-                {/* Member search results */}
+                {/* Search results */}
                 {manualSearch && (
                   <div className="mt-2 border rounded-lg max-h-48 overflow-y-auto">
-                    {loadingMembers ? (
+                    {loadingUsers ? (
                       <div className="p-4 text-center">
                         <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mx-auto"></div>
                       </div>
-                    ) : manualMembers.length === 0 ? (
+                    ) : (activeTab === 'members' ? manualMembers : manualStaff).length === 0 ? (
                       <div className="p-4 text-center text-gray-500">
-                        No members found. Try searching by ID (e.g., "1") or name.
+                        No {activeTab === 'members' ? 'members' : 'staff'} found.
                       </div>
                     ) : (
-                      manualMembers.map(member => (
+                      (activeTab === 'members' ? manualMembers : manualStaff).map(user => (
                         <button
-                          key={member.id}
+                          key={user.id}
                           onClick={() => {
-                            setSelectedMember(member);
+                            setSelectedUser(user);
                             setManualSearch('');
-                            setManualMembers([]);
+                            if (activeTab === 'members') setManualMembers([]);
+                            else setManualStaff([]);
                           }}
                           className="w-full text-left p-3 hover:bg-gray-50 border-b last:border-b-0 transition-colors"
                         >
-                          <div className="font-medium text-gray-900">#{member.id} - {member.full_name}</div>
-                          <div className="text-sm text-gray-500">{member.phone}</div>
-                          {member.email && <div className="text-xs text-gray-400">{member.email}</div>}
+                          <div className="font-medium text-gray-900">
+                            #{user.id} - {activeTab === 'members' ? user.full_name : (user.user?.full_name || 'Unknown')}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {activeTab === 'members' ? user.phone : (user.user?.phone || 'No phone')}
+                          </div>
+                          {activeTab === 'members' && user.email && (
+                            <div className="text-xs text-gray-400">{user.email}</div>
+                          )}
+                          {activeTab === 'staff' && user.position && (
+                            <div className="text-xs text-gray-400">{user.position}</div>
+                          )}
                         </button>
                       ))
                     )}
                   </div>
                 )}
                 
-                {/* Selected member display */}
-                {selectedMember && (
-                  <div className="mt-3 bg-blue-50 rounded-lg p-3">
+                {/* Selected user display */}
+                {selectedUser && (
+                  <div className={`mt-3 rounded-lg p-3 ${activeTab === 'members' ? 'bg-blue-50' : 'bg-purple-50'}`}>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-medium text-gray-900">#{selectedMember.id} - {selectedMember.full_name}</p>
-                        <p className="text-sm text-gray-600">{selectedMember.phone}</p>
+                        <p className="font-medium text-gray-900">
+                          #{selectedUser.id} - {activeTab === 'members' ? selectedUser.full_name : (selectedUser.user?.full_name || 'Unknown')}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {activeTab === 'members' ? selectedUser.phone : (selectedUser.user?.phone || 'No phone')}
+                        </p>
                       </div>
-                      <button onClick={() => setSelectedMember(null)} className="text-red-500 hover:text-red-700">
+                      <button onClick={() => setSelectedUser(null)} className="text-red-500 hover:text-red-700">
                         <X className="h-4 w-4" />
                       </button>
                     </div>
@@ -407,7 +530,7 @@ const LiveMonitoring = () => {
                   <div>
                     <p className="text-xs text-yellow-800 font-medium">Note</p>
                     <p className="text-xs text-yellow-700">
-                      Manual entries will appear in attendance records with "MANUAL_ENTRY" as device serial.
+                      Manual entries will appear in {activeTab} attendance records with "MANUAL_ENTRY" as device serial.
                     </p>
                   </div>
                 </div>
@@ -416,10 +539,10 @@ const LiveMonitoring = () => {
             
             <div className="sticky bottom-0 bg-white border-t px-6 py-4">
               <div className="flex gap-3">
-                <button onClick={() => { setShowManualModal(false); setManualSearch(''); setManualMembers([]); setSelectedMember(null); }} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+                <button onClick={() => { setShowManualModal(false); setManualSearch(''); setManualMembers([]); setManualStaff([]); setSelectedUser(null); }} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
                   Cancel
                 </button>
-                <button onClick={handleSubmitManualAttendance} disabled={!selectedMember || submitting} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                <button onClick={handleSubmitManualAttendance} disabled={!selectedUser || submitting} className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg disabled:opacity-50 ${activeTab === 'members' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-purple-600 hover:bg-purple-700'} text-white`}>
                   {submitting ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div> : <CheckCircle className="h-4 w-4" />}
                   Save Attendance
                 </button>
@@ -442,7 +565,7 @@ const LiveMonitoring = () => {
           <span className="text-gray-600 text-sm">
             Devices: <strong className={onlineDevices > 0 ? 'text-green-600' : 'text-gray-400'}>{onlineDevices}/{devices?.length || 0} online</strong>
           </span>
-          <button onClick={() => setShowManualModal(true)} className="flex items-center gap-1 px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm">
+          <button onClick={() => setShowManualModal(true)} className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm ${activeTab === 'members' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-purple-600 hover:bg-purple-700'} text-white`}>
             <UserPlus className="h-3.5 w-3.5" />
             Manual Entry
           </button>
@@ -458,53 +581,59 @@ const LiveMonitoring = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-6 text-white">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div className={`rounded-xl p-6 text-white ${activeTab === 'members' ? 'bg-gradient-to-r from-blue-500 to-blue-600' : 'bg-gradient-to-r from-purple-500 to-purple-600'}`}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-blue-100 text-sm">Total Check-ins Today</p>
-              <p className="text-3xl font-bold mt-1">{todayStats?.total_checkins || 0}</p>
+              <p className="text-white/80 text-sm">Total {activeTab === 'members' ? 'Check-ins' : 'Staff Check-ins'} Today</p>
+              <p className="text-3xl font-bold mt-1">{stats.total_checkins || 0}</p>
             </div>
-            <UserCheck className="h-8 w-8 text-blue-200" />
+            {activeTab === 'members' ? (
+              <UserCheck className="h-8 w-8 text-white/70" />
+            ) : (
+              <Briefcase className="h-8 w-8 text-white/70" />
+            )}
           </div>
         </div>
         
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl p-6 text-white">
+        <div className={`rounded-xl p-6 text-white ${activeTab === 'members' ? 'bg-gradient-to-r from-green-500 to-green-600' : 'bg-gradient-to-r from-indigo-500 to-indigo-600'}`}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-green-100 text-sm">Unique Members</p>
-              <p className="text-3xl font-bold mt-1">{todayStats?.unique_members || 0}</p>
+              <p className="text-white/80 text-sm">Unique {activeTab === 'members' ? 'Members' : 'Staff'}</p>
+              <p className="text-3xl font-bold mt-1">{stats.unique_members || 0}</p>
             </div>
-            <Users className="h-8 w-8 text-green-200" />
-          </div>
-        </div>
-        
-        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-6 text-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-purple-100 text-sm">Recent Events</p>
-              <p className="text-3xl font-bold mt-1">{filteredEvents.length}</p>
-            </div>
-            <Bell className="h-8 w-8 text-purple-200" />
+            {activeTab === 'members' ? (
+              <Users className="h-8 w-8 text-white/70" />
+            ) : (
+              <User className="h-8 w-8 text-white/70" />
+            )}
           </div>
         </div>
       </div>
 
       {/* Filter Controls */}
       <div className="flex flex-wrap gap-2 mb-6">
-        <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-          All Events ({liveEvents?.length || 0})
+        <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'all' ? (activeTab === 'members' ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white') : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+          All Events ({filteredEvents.length})
         </button>
         <button onClick={() => setFilter('check_in')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'check_in' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-          Check-ins ({(liveEvents || []).filter(e => e?.event_type === 'check_in').length})
+          Check-ins ({(liveEvents || []).filter(e => 
+            activeTab === 'members' 
+              ? (e?.event_type === 'check_in' && !e?.user_id?.startsWith('S'))
+              : (e?.event_type === 'staff_check_in' && e?.user_id?.startsWith('S'))
+          ).length})
         </button>
         <button onClick={() => setFilter('check_out')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'check_out' ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-          Check-outs ({(liveEvents || []).filter(e => e?.event_type === 'check_out').length})
+          Check-outs ({(liveEvents || []).filter(e => 
+            activeTab === 'members' 
+              ? (e?.event_type === 'check_out' && !e?.user_id?.startsWith('S'))
+              : (e?.event_type === 'staff_check_out' && e?.user_id?.startsWith('S'))
+          ).length})
         </button>
         
         <div className="flex-1"></div>
         
-        <button onClick={() => setShowDateFilter(!showDateFilter)} className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${dateFilter ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+        <button onClick={() => setShowDateFilter(!showDateFilter)} className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${dateFilter ? (activeTab === 'members' ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white') : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
           <Calendar className="h-4 w-4" />
           {dateFilter ? `Date: ${dateFilter}` : 'Filter by Date'}
           {dateFilter && <X className="h-3 w-3 cursor-pointer hover:text-white" onClick={(e) => { e.stopPropagation(); setDateFilter(''); }} />}
@@ -535,7 +664,9 @@ const LiveMonitoring = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {activeTab === 'members' ? 'Member' : 'Staff'}
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Event</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verified</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device</th>
@@ -547,12 +678,15 @@ const LiveMonitoring = () => {
                 <tr>
                   <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
                     <Bell className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                    <p>No attendance events found</p>
+                    <p>No {activeTab} attendance events found</p>
                     <p className="text-sm text-gray-400 mt-1">
-                      {dateFilter ? `No events on ${new Date(dateFilter).toLocaleDateString()}` : 'Scan a fingerprint on the device or use "Manual Entry" to add attendance'}
+                      {dateFilter ? `No events on ${new Date(dateFilter).toLocaleDateString()}` : 
+                        activeTab === 'members' 
+                          ? 'Scan a fingerprint on the device or use "Manual Entry" to add member attendance'
+                          : 'Staff member needs to scan fingerprint on device or use "Manual Entry"'}
                     </p>
-                   </td>
-                 </tr>
+                  </td>
+                </tr>
               ) : (
                 filteredEvents.map((event, index) => (
                   <tr key={event?.id || index} className="hover:bg-gray-50 transition-colors group">
@@ -560,19 +694,36 @@ const LiveMonitoring = () => {
                       {event?.timestamp ? new Date(event.timestamp).toLocaleString() : 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{event?.user_name || 'Unknown'}</div>
-                      <div className="text-xs text-gray-500">ID: {event?.user_id}</div>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${activeTab === 'members' ? 'bg-blue-100' : 'bg-purple-100'}`}>
+                          {activeTab === 'members' ? (
+                            <User className="h-4 w-4 text-blue-600" />
+                          ) : (
+                            <Briefcase className="h-4 w-4 text-purple-600" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">{event?.user_name || 'Unknown'}</div>
+                          <div className="text-xs text-gray-500">
+                            ID: {event?.user_id?.replace('S', '')}
+                          </div>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${event?.event_type === 'check_in' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
-                        {event?.event_type === 'check_in' ? 'CHECK IN' : 'CHECK OUT'}
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        event?.event_type === 'check_in' || event?.event_type === 'staff_check_in'
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-orange-100 text-orange-800'
+                      }`}>
+                        {event?.event_type?.replace('staff_', '').toUpperCase()}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {event?.verified ? <CheckCircle className="h-5 w-5 text-green-500" /> : <XCircle className="h-5 w-5 text-red-500" />}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {event?.device_serial?.slice(-8) || 'N/A'}
+                      {event?.device_serial?.slice(-8) || (event?.device_serial === 'MANUAL_ENTRY' ? 'Manual Entry' : 'N/A')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <button onClick={() => { setSelectedEvent(event); setShowDeleteModal(true); }} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-red-600 hover:bg-red-50 rounded-lg">
@@ -583,7 +734,7 @@ const LiveMonitoring = () => {
                 ))
               )}
             </tbody>
-           </table>
+          </table>
         </div>
       </div>
     </div>

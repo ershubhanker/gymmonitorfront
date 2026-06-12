@@ -1,28 +1,33 @@
 // src/components/attendance/AttendanceHistory.jsx
 import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Filter, ChevronLeft, ChevronRight, User, Loader2 } from 'lucide-react';
+import { Calendar, Download, Filter, ChevronLeft, ChevronRight, User, Loader2, Users, Briefcase, AlertCircle } from 'lucide-react';
 import { useAttendance } from '../../context/AttendanceContext';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 
 const AttendanceHistory = () => {
   const { attendanceApi } = useAttendance();
-  const [records, setRecords] = useState([]);
-  const [total, setTotal] = useState(0);
+  const [activeTab, setActiveTab] = useState('members'); // 'members' or 'staff'
+  const [memberRecords, setMemberRecords] = useState([]);
+  const [staffRecords, setStaffRecords] = useState([]);
+  const [memberTotal, setMemberTotal] = useState(0);
+  const [staffTotal, setStaffTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState({
     start_date: '',
     end_date: '',
     member_id: '',
+    staff_id: '',
   });
   const [showFilters, setShowFilters] = useState(false);
   const [members, setMembers] = useState([]);
+  const [staffList, setStaffList] = useState([]);
   const [error, setError] = useState(null);
 
   const itemsPerPage = 20;
 
-  const fetchAttendance = async () => {
+  const fetchMemberAttendance = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -35,16 +40,42 @@ const AttendanceHistory = () => {
       if (filters.member_id) params.member_id = filters.member_id;
       
       const data = await attendanceApi.getAttendanceRecords(params);
-      setRecords(data?.records || []);
-      setTotal(data?.total || 0);
+      setMemberRecords(data?.records || []);
+      setMemberTotal(data?.total || 0);
     } catch (error) {
-      console.error('Error fetching attendance:', error);
-      setError('Failed to load attendance records');
-      toast.error('Failed to load attendance records');
+      console.error('Error fetching member attendance:', error);
+      setError('Failed to load member attendance records');
+      toast.error('Failed to load member attendance records');
     } finally {
       setLoading(false);
     }
   };
+
+  const fetchStaffAttendance = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+        const params = {};
+        
+        // Only add params if they have values
+        if (filters.start_date) params.start_date = filters.start_date;
+        if (filters.end_date) params.end_date = filters.end_date;
+        if (filters.staff_id) params.staff_id = filters.staff_id;
+        
+        params.limit = itemsPerPage;
+        params.offset = (currentPage - 1) * itemsPerPage;
+        
+        const response = await api.get('/attendance/staff/attendance', { params });
+        setStaffRecords(response.data?.records || []);
+        setStaffTotal(response.data?.total || 0);
+    } catch (error) {
+        console.error('Error fetching staff attendance:', error);
+        setError('Failed to load staff attendance records');
+        toast.error('Failed to load staff attendance records');
+    } finally {
+        setLoading(false);
+    }
+};
 
   const fetchMembers = async () => {
     try {
@@ -55,35 +86,62 @@ const AttendanceHistory = () => {
     }
   };
 
+  const fetchStaff = async () => {
+    try {
+      const response = await api.get('/gym/staff');
+      setStaffList(response?.data || []);
+    } catch (error) {
+      console.error('Error fetching staff:', error);
+    }
+  };
+
   useEffect(() => {
-    fetchAttendance();
-  }, [currentPage, filters]);
+    if (activeTab === 'members') {
+      fetchMemberAttendance();
+    } else {
+      fetchStaffAttendance();
+    }
+  }, [currentPage, filters, activeTab]);
 
   useEffect(() => {
     fetchMembers();
+    fetchStaff();
   }, []);
 
   const handleExport = async () => {
     try {
-      toast.loading('Exporting attendance data...', { id: 'export' });
-      const params = {};
-      if (filters.start_date) params.start_date = filters.start_date;
-      if (filters.end_date) params.end_date = filters.end_date;
-      if (filters.member_id) params.member_id = filters.member_id;
+      toast.loading(`Exporting ${activeTab} attendance data...`, { id: 'export' });
       
-      const data = await attendanceApi.getAttendanceRecords({ limit: 1000, ...params });
+      let recordsToExport = [];
+      if (activeTab === 'members') {
+        const params = {};
+        if (filters.start_date) params.start_date = filters.start_date;
+        if (filters.end_date) params.end_date = filters.end_date;
+        if (filters.member_id) params.member_id = filters.member_id;
+        const data = await attendanceApi.getAttendanceRecords({ limit: 1000, ...params });
+        recordsToExport = data?.records || [];
+      } else {
+        const params = {
+          start_date: filters.start_date,
+          end_date: filters.end_date,
+          staff_id: filters.staff_id,
+          limit: 1000,
+        };
+        const response = await api.get('/attendance/staff/attendance', { params });
+        recordsToExport = response.data?.records || [];
+      }
       
-      if (!data?.records || data.records.length === 0) {
+      if (recordsToExport.length === 0) {
         toast.error('No data to export');
         return;
       }
       
       const csv = [
-        ['Date', 'Time', 'Member Name', 'Event Type', 'Verified', 'Device Serial'],
-        ...data.records.map(r => [
+        ['Date', 'Time', `${activeTab === 'members' ? 'Member' : 'Staff'} Name`, 'Event Type', 'Verified', 'Device Serial'],
+        ...recordsToExport.map(r => [
           r.created_at ? new Date(r.created_at).toLocaleDateString() : 'N/A',
           r.created_at ? new Date(r.created_at).toLocaleTimeString() : 'N/A',
-          r.member_name || 'Unknown',
+          activeTab === 'members' ? (r.member_name || 'Unknown') : (r.staff_name || 'Unknown'),
           r.event_type?.toUpperCase() || 'N/A',
           r.verified ? 'Yes' : 'No',
           r.device_serial || 'N/A'
@@ -94,7 +152,7 @@ const AttendanceHistory = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `attendance_${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `${activeTab}_attendance_${new Date().toISOString().split('T')[0]}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
       toast.success('Export complete!', { id: 'export' });
@@ -104,9 +162,21 @@ const AttendanceHistory = () => {
     }
   };
 
-  const totalPages = Math.ceil(total / itemsPerPage);
+  const handleClearFilters = () => {
+    setFilters({
+      start_date: '',
+      end_date: '',
+      member_id: '',
+      staff_id: '',
+    });
+    setCurrentPage(1);
+  };
 
-  if (loading && records.length === 0) {
+  const currentRecords = activeTab === 'members' ? memberRecords : staffRecords;
+  const currentTotal = activeTab === 'members' ? memberTotal : staffTotal;
+  const totalPages = Math.ceil(currentTotal / itemsPerPage);
+
+  if (loading && currentRecords.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
@@ -124,7 +194,7 @@ const AttendanceHistory = () => {
           <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <p className="text-gray-700 font-medium">{error}</p>
           <button
-            onClick={() => fetchAttendance()}
+            onClick={() => activeTab === 'members' ? fetchMemberAttendance() : fetchStaffAttendance()}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Try Again
@@ -136,10 +206,48 @@ const AttendanceHistory = () => {
 
   return (
     <div className="p-6">
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 mb-6">
+        <button
+          onClick={() => {
+            setActiveTab('members');
+            setCurrentPage(1);
+            setError(null);
+          }}
+          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-all ${
+            activeTab === 'members'
+              ? 'border-b-2 border-blue-500 text-blue-600'
+              : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          <Users className="h-4 w-4" />
+          Member Attendance
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('staff');
+            setCurrentPage(1);
+            setError(null);
+          }}
+          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-all ${
+            activeTab === 'staff'
+              ? 'border-b-2 border-purple-500 text-purple-600'
+              : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          <Briefcase className="h-4 w-4" />
+          Staff Attendance
+        </button>
+      </div>
+
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Attendance History</h1>
-          <p className="text-sm text-gray-500 mt-1">View and export all attendance records</p>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {activeTab === 'members' ? 'Member Attendance History' : 'Staff Attendance History'}
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            View and export all {activeTab === 'members' ? 'member' : 'staff'} attendance records
+          </p>
         </div>
         <div className="flex gap-2">
           <button
@@ -151,7 +259,7 @@ const AttendanceHistory = () => {
           </button>
           <button
             onClick={handleExport}
-            disabled={records.length === 0}
+            disabled={currentRecords.length === 0}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
           >
             <Download className="h-4 w-4" />
@@ -183,22 +291,29 @@ const AttendanceHistory = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Member</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {activeTab === 'members' ? 'Member' : 'Staff'}
+              </label>
               <select
-                value={filters.member_id}
-                onChange={(e) => setFilters({ ...filters, member_id: e.target.value })}
+                value={activeTab === 'members' ? filters.member_id : filters.staff_id}
+                onChange={(e) => setFilters({ 
+                  ...filters, 
+                  [activeTab === 'members' ? 'member_id' : 'staff_id']: e.target.value 
+                })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               >
-                <option value="">All Members</option>
-                {members.map(m => (
-                  <option key={m.id} value={m.id}>{m.full_name}</option>
+                <option value="">All {activeTab === 'members' ? 'Members' : 'Staff'}</option>
+                {(activeTab === 'members' ? members : staffList).map(item => (
+                  <option key={item.id} value={item.id}>
+                    {activeTab === 'members' ? item.full_name : (item.user?.full_name || 'Unknown')}
+                  </option>
                 ))}
               </select>
             </div>
           </div>
           <div className="flex justify-end mt-4">
             <button
-              onClick={() => setFilters({ start_date: '', end_date: '', member_id: '' })}
+              onClick={handleClearFilters}
               className="text-sm text-gray-500 hover:text-gray-700"
             >
               Clear Filters
@@ -212,12 +327,12 @@ const AttendanceHistory = () => {
         <div className="flex justify-between items-center">
           <div>
             <p className="text-sm text-gray-500">Total Records</p>
-            <p className="text-2xl font-bold text-gray-900">{total}</p>
+            <p className="text-2xl font-bold text-gray-900">{currentTotal}</p>
           </div>
           <div>
             <p className="text-sm text-gray-500">Showing</p>
             <p className="text-lg font-semibold text-gray-700">
-              {Math.min((currentPage - 1) * itemsPerPage + 1, total)} - {Math.min(currentPage * itemsPerPage, total)} of {total}
+              {Math.min((currentPage - 1) * itemsPerPage + 1, currentTotal)} - {Math.min(currentPage * itemsPerPage, currentTotal)} of {currentTotal}
             </p>
           </div>
         </div>
@@ -230,45 +345,62 @@ const AttendanceHistory = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {activeTab === 'members' ? 'Member' : 'Staff'}
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Event</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verified</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {records.length === 0 ? (
+              {currentRecords.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="px-6 py-12 text-center text-gray-500">
                     <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                    <p>No attendance records found</p>
-                    <p className="text-sm text-gray-400 mt-1">Try changing filters or sync attendance from device</p>
+                    <p>No {activeTab} attendance records found</p>
+                    <p className="text-sm text-gray-400 mt-1">
+                      Try changing filters or sync attendance from device
+                    </p>
                   </td>
                 </tr>
               ) : (
-                records.map((record) => (
+                currentRecords.map((record) => (
                   <tr key={record.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {record.created_at ? new Date(record.created_at).toLocaleString() : 'N/A'}
+                      {record.created_at ? new Date(record.created_at).toLocaleString() : 
+                       record.check_in_time ? new Date(record.check_in_time).toLocaleString() : 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                          <User className="h-4 w-4 text-blue-600" />
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                          activeTab === 'members' ? 'bg-blue-100' : 'bg-purple-100'
+                        }`}>
+                          {activeTab === 'members' ? (
+                            <User className="h-4 w-4 text-blue-600" />
+                          ) : (
+                            <Briefcase className="h-4 w-4 text-purple-600" />
+                          )}
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{record.member_name || 'Unknown'}</div>
-                          <div className="text-xs text-gray-500">ID: {record.member_id}</div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {activeTab === 'members' 
+                              ? (record.member_name || 'Unknown')
+                              : (record.staff_name || 'Unknown')}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {activeTab === 'members' ? `ID: ${record.member_id}` : `Staff ID: ${record.staff_id}`}
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        record.event_type === 'check_in' 
+                        record.event_type === 'check_in' || record.event_type === 'staff_check_in'
                           ? 'bg-green-100 text-green-800' 
                           : 'bg-orange-100 text-orange-800'
                       }`}>
-                        {record.event_type?.toUpperCase() || 'N/A'}
+                        {(record.event_type || '').replace('staff_', '').toUpperCase()}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -279,7 +411,7 @@ const AttendanceHistory = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {record.device_serial?.slice(-8) || 'N/A'}
+                      {record.device_serial?.slice(-8) || (record.device_serial === 'MANUAL_ENTRY' ? 'Manual Entry' : 'N/A')}
                     </td>
                   </tr>
                 ))

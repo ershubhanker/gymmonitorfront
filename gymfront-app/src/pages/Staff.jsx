@@ -858,41 +858,86 @@ const Staff = () => {
   };
 
   const handleSyncStaffToDevice = async (staffId, deviceId, staffName) => {
+    console.log('Syncing staff to device:', { staffId, deviceId, staffName });
+    
     try {
-      const response = await api.post(`/attendance/devices/${deviceId}/sync-staff`, {
-        id: staffId,
-        full_name: staffName
-      });
-      if (response.data.success) {
-        toast.success(`Staff member synced to device! Device ID: ${response.data.device_user_id}`);
-        fetchStaffDeviceIds();
-        fetchStaff();
-      } else {
-        toast.error('Failed to sync staff member');
-      }
+        const response = await api.post(`/attendance/devices/${deviceId}/sync-staff`, {
+            id: staffId,
+            full_name: staffName
+        });
+        
+        console.log('Sync response:', response.data);
+        
+        if (response.data.success) {
+            toast.success(`Staff member "${staffName}" synced to device! Device ID: ${response.data.device_user_id}`);
+            
+            // Refresh data after successful sync
+            setTimeout(() => {
+                fetchStaff();
+                fetchStaffDeviceIds();
+            }, 1000);
+            
+            return response.data;
+        } else {
+            toast.error('Failed to sync staff member');
+            throw new Error('Sync failed');
+        }
     } catch (error) {
-      console.error('Error syncing staff:', error);
-      toast.error(error.response?.data?.detail || 'Failed to sync staff member');
-      throw error;
+        console.error('Error syncing staff:', error);
+        const errorMsg = error.response?.data?.detail || error.message || 'Failed to sync staff member';
+        toast.error(errorMsg);
+        throw error;
     }
-  };
+};
 
-  const handleSyncSelectedStaff = async (staffIds, deviceId) => {
-    try {
+const handleSyncSelectedStaff = async (staffIds, deviceId) => {
+  console.log('Bulk syncing staff:', { staffIds, deviceId });
+  
+  try {
       const response = await api.post(`/attendance/devices/bulk-sync-staff?device_id=${deviceId}`, staffIds);
+      
+      console.log('Bulk sync response:', response.data);
+      
       if (response.data.success) {
-        toast.success(`Queued ${staffIds.length} staff members for sync`);
-        fetchStaffDeviceIds();
-        fetchStaff();
+          toast.success(`Queued ${staffIds.length} staff members for sync. The device will update within a few seconds.`);
+          
+          // Refresh data after a delay
+          setTimeout(() => {
+              fetchStaff();
+              fetchStaffDeviceIds();
+          }, 2000);
+          
+          return response.data;
       } else {
-        toast.error('Failed to sync staff members');
+          toast.error('Failed to sync staff members');
+          throw new Error('Bulk sync failed');
       }
-    } catch (error) {
+  } catch (error) {
       console.error('Error syncing staff:', error);
-      toast.error(error.response?.data?.detail || 'Failed to sync staff members');
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to sync staff members';
+      toast.error(errorMsg);
       throw error;
-    }
-  };
+  }
+};
+
+const checkDeviceConnection = async () => {
+  try {
+      const response = await api.get('/attendance/devices');
+      const onlineDevices = response.data.filter(d => d.is_online);
+      
+      if (onlineDevices.length === 0) {
+          toast.error('No online devices found. Make sure the bridge is running.');
+      } else {
+          toast.success(`${onlineDevices.length} device(s) online: ${onlineDevices.map(d => d.device_name).join(', ')}`);
+      }
+      
+      return onlineDevices.length > 0;
+  } catch (error) {
+      console.error('Error checking devices:', error);
+      toast.error('Failed to check device status');
+      return false;
+  }
+};
 
   const handleSyncAllStaff = async (deviceId) => {
     const allStaffIds = staffList.map(s => s.id);
@@ -1016,6 +1061,13 @@ const Staff = () => {
               Sync to Device
             </button>
           )}
+          <button
+            onClick={checkDeviceConnection}
+            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+        >
+            <Wifi className="h-4 w-4" />
+            Check Devices
+        </button>
           <button
             onClick={() => { setIsAddModalOpen(true); }}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
