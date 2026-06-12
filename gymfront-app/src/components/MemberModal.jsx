@@ -19,6 +19,104 @@ const PLAN_PRESETS = [
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const ITEM_H = 40;
 
+
+
+const compressImage = (file, maxWidth = 800, maxHeight = 800, quality = 0.8) => {
+  return new Promise((resolve, reject) => {
+    // Check if it's an image
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('Not an image file'));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      
+      img.onload = () => {
+        // Calculate new dimensions while maintaining aspect ratio
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+        
+        // Create canvas and draw compressed image
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Determine output format (keep original format preference)
+        let outputFormat = 'image/jpeg';
+        let outputQuality = quality;
+        
+        // For PNG with transparency, keep PNG but compress with quality
+        if (file.type === 'image/png') {
+          outputFormat = 'image/png';
+          outputQuality = Math.min(quality, 0.9); // PNG quality slightly lower
+        } else if (file.type === 'image/webp') {
+          outputFormat = 'image/webp';
+        }
+        
+        // Convert to blob
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Canvas to Blob conversion failed'));
+              return;
+            }
+            
+            // Create a new file from the compressed blob
+            const compressedFile = new File(
+              [blob],
+              file.name.replace(/\.[^/.]+$/, '') + '.jpg',
+              {
+                type: outputFormat,
+                lastModified: Date.now(),
+              }
+            );
+            
+            // Log compression stats
+            const originalSizeKB = (file.size / 1024).toFixed(2);
+            const compressedSizeKB = (blob.size / 1024).toFixed(2);
+            const compressionRatio = ((1 - blob.size / file.size) * 100).toFixed(1);
+            console.log(`Image compressed: ${originalSizeKB}KB → ${compressedSizeKB}KB (${compressionRatio}% reduction)`);
+            
+            resolve(compressedFile);
+          },
+          outputFormat,
+          outputQuality
+        );
+      };
+      
+      img.onerror = () => {
+        reject(new Error('Failed to load image'));
+      };
+    };
+    
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'));
+    };
+  });
+};
+
+
+
 const ScrollColumn = ({ items, selectedIndex, onChange, label }) => {
   const listRef = useRef(null);
   const isDragging = useRef(false);
@@ -175,6 +273,7 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
+  const [compressionProgress, setCompressionProgress] = useState(false);
 
   useEffect(() => {
     if (getPendingFileRef) {
@@ -196,7 +295,7 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
   }, [currentPhotoUrl, memberId]);
 
   const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-  const MAX_SIZE_MB = 5;
+  const MAX_SIZE_MB = 10; // Allow up to 10MB original, will compress down
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -206,47 +305,76 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
       toast.error('Please upload a JPEG, PNG, or WebP image.');
       return;
     }
+    
+    // Check original file size (allow up to 10MB, will compress)
     if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      toast.error(`Image must be smaller than ${MAX_SIZE_MB} MB.`);
+      toast.error(`Original image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Please choose an image under ${MAX_SIZE_MB}MB.`);
       return;
     }
 
-    const localUrl = URL.createObjectURL(file);
-    setPreview(localUrl);
+    setCompressionProgress(true);
+    toast.loading('Compressing image...', { id: 'compress' });
+    
+    try {
+      // Compress the image
+      const compressedFile = await compressImage(file, 800, 800, 0.8);
+      
+      toast.dismiss('compress');
+      
+      // Create preview from compressed file
+      const localUrl = URL.createObjectURL(compressedFile);
+      setPreview(localUrl);
 
-    if (memberId) {
-      setUploading(true);
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        const res = await api.post(
-          `/gym/members/${memberId}/upload-photo`,
-          formData,
-          { headers: { 'Content-Type': 'multipart/form-data' } }
-        );
-        const fullUrl = res.data.photo_url.startsWith('http') 
-          ? res.data.photo_url 
-          : `${API_BASE_URL}${res.data.photo_url}`;
-        setPreview(fullUrl);
-        setPendingFile(null);
-        if (onPhotoUploaded) onPhotoUploaded(res.data.photo_url);
-        toast.success('Photo uploaded successfully!');
-      } catch (err) {
-        toast.error(err.response?.data?.detail || 'Photo upload failed. Please try again.');
-        if (currentPhotoUrl) {
-          const revertUrl = currentPhotoUrl.startsWith('http') 
-            ? currentPhotoUrl 
-            : `${API_BASE_URL}${currentPhotoUrl}`;
-          setPreview(revertUrl);
-        } else {
-          setPreview(null);
+      if (memberId) {
+        setUploading(true);
+        toast.loading('Uploading compressed image...', { id: 'upload' });
+        
+        try {
+          const formData = new FormData();
+          formData.append('file', compressedFile);
+          
+          const res = await api.post(
+            `/gym/members/${memberId}/upload-photo`,
+            formData,
+            { headers: { 'Content-Type': 'multipart/form-data' } }
+          );
+          
+          const fullUrl = res.data.photo_url.startsWith('http') 
+            ? res.data.photo_url 
+            : `${API_BASE_URL}${res.data.photo_url}`;
+          setPreview(fullUrl);
+          setPendingFile(null);
+          
+          if (onPhotoUploaded) onPhotoUploaded(res.data.photo_url);
+          
+          toast.dismiss('upload');
+          toast.success('Photo uploaded successfully!');
+        } catch (err) {
+          toast.dismiss('upload');
+          toast.error(err.response?.data?.detail || 'Photo upload failed. Please try again.');
+          if (currentPhotoUrl) {
+            const revertUrl = currentPhotoUrl.startsWith('http') 
+              ? currentPhotoUrl 
+              : `${API_BASE_URL}${currentPhotoUrl}`;
+            setPreview(revertUrl);
+          } else {
+            setPreview(null);
+          }
+        } finally {
+          setUploading(false);
         }
-      } finally {
-        setUploading(false);
+      } else {
+        setPendingFile(compressedFile);
+        toast.success('Image compressed and ready!');
       }
-    } else {
-      setPendingFile(file);
+    } catch (err) {
+      toast.dismiss('compress');
+      console.error('Compression error:', err);
+      toast.error('Failed to compress image. Please try a different image.');
+    } finally {
+      setCompressionProgress(false);
     }
+    
     e.target.value = '';
   };
 
@@ -254,6 +382,7 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
     setPreview(null);
     setPendingFile(null);
     if (onPhotoUploaded) onPhotoUploaded(null);
+    toast.success('Photo removed');
   };
 
   return (
@@ -273,31 +402,40 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
+          disabled={uploading || compressionProgress}
           className="absolute -bottom-1 -right-1 bg-blue-600 p-1.5 rounded-full text-white hover:bg-blue-700 shadow transition-colors disabled:opacity-60"
           title="Upload photo"
         >
-          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+          {uploading || compressionProgress ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Camera className="h-3.5 w-3.5" />
+          )}
         </button>
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-gray-800 text-sm">Member Photo</p>
+        {compressionProgress && (
+          <p className="text-xs text-blue-600 mt-0.5 font-medium animate-pulse">
+            🔄 Compressing image...
+          </p>
+        )}
         {pendingFile && !memberId ? (
           <p className="text-xs text-amber-600 mt-0.5 font-medium">
-            📎 {pendingFile.name} — will upload after saving
+            📎 {pendingFile.name} ({Math.round(pendingFile.size / 1024)}KB) — will upload after saving
           </p>
         ) : uploading ? (
-          <p className="text-xs text-blue-600 mt-0.5">Uploading…</p>
+          <p className="text-xs text-blue-600 mt-0.5">Uploading compressed image…</p>
         ) : preview ? (
           <p className="text-xs text-green-600 mt-0.5 font-medium">✓ Photo set</p>
         ) : (
-          <p className="text-xs text-gray-500 mt-0.5">JPEG, PNG, WebP · max 5 MB</p>
+          <p className="text-xs text-gray-500 mt-0.5">Images are automatically compressed</p>
         )}
         <div className="flex items-center gap-2 mt-2">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || compressionProgress}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
           >
             <Upload className="h-3.5 w-3.5" />
@@ -307,6 +445,7 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
             <button
               type="button"
               onClick={handleRemove}
+              disabled={uploading}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -314,6 +453,7 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
             </button>
           )}
         </div>
+        
       </div>
       <input
         ref={fileInputRef}
@@ -474,6 +614,18 @@ const MembershipSelector = ({
   const [deletingPlanId, setDeletingPlanId] = useState(null);
   const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
   const set = (field) => (e) => setFormData(prev => ({ ...prev, [field]: e.target.value }));
+
+  const calculatePriceWithDiscount = () => {
+    if (!selectedPlan) return null;
+    const originalPrice = selectedPlan.discounted_price || selectedPlan.price;
+    const discount = parseFloat(formData.discount_applied) || 0;
+    const finalPrice = Math.max(0, originalPrice - discount);
+    return { originalPrice, discount, finalPrice };
+  };
+
+  const priceInfo = calculatePriceWithDiscount();
+
+
 
   const handlePlanSave = async (planPayload) => {
     if (editingPlan) {
@@ -638,140 +790,213 @@ const MembershipSelector = ({
         />
       )}
 
-      {selectedPlan && !shouldShowPlanCreator && (
-        <div className="space-y-4">
-          <div className="border border-green-200 bg-green-50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <span className="text-sm font-semibold text-green-800">Selected: {selectedPlan.name}</span>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-sm text-green-700">
-              <div><span className="font-medium">Duration:</span> {selectedPlan.duration_days} days</div>
-              <div><span className="font-medium">Price:</span> ₹{selectedPlan.discounted_price || selectedPlan.price}</div>
-              <div>
-                <span className="font-medium">Expires:</span>{' '}
-                {formData.membership_start_date
-                  ? new Date(new Date(formData.membership_start_date).getTime() + selectedPlan.duration_days * 86400000)
-                      .toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-                  : '—'}
-              </div>
-            </div>
-          </div>
+{selectedPlan && !shouldShowPlanCreator && (
+  <div className="space-y-4">
+    <div className="border border-green-200 bg-green-50 rounded-xl p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <CheckCircle className="h-4 w-4 text-green-600" />
+        <span className="text-sm font-semibold text-green-800">Selected: {selectedPlan.name}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-sm text-green-700">
+        <div><span className="font-medium">Duration:</span> {selectedPlan.duration_days} days</div>
+        <div><span className="font-medium">Price:</span> ₹{selectedPlan.discounted_price || selectedPlan.price}</div>
+        <div>
+          <span className="font-medium">Expires:</span>{' '}
+          {formData.membership_start_date
+            ? new Date(new Date(formData.membership_start_date).getTime() + selectedPlan.duration_days * 86400000)
+                .toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+            : '—'}
+        </div>
+      </div>
+    </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={labelCls}>
-                <span className="flex items-center gap-1.5">
-                  <Calendar className="h-4 w-4 text-gray-400" />
-                  Start Date <span className="text-red-500">*</span>
-                </span>
-              </label>
-              <input type="date" value={formData.membership_start_date} onChange={set('membership_start_date')}
-                className={inputCls} style={{ colorScheme: 'light' }} />
-              {formData.membership_start_date && (
-                <p className="text-xs text-gray-500 mt-1">
-                  {new Date(formData.membership_start_date + 'T00:00:00').toLocaleDateString('en-IN', {
-                    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-                  })}
-                </p>
-              )}
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label className={labelCls}>
+          <span className="flex items-center gap-1.5">
+            <Calendar className="h-4 w-4 text-gray-400" />
+            Start Date <span className="text-red-500">*</span>
+          </span>
+        </label>
+        <input type="date" value={formData.membership_start_date} onChange={set('membership_start_date')}
+          className={inputCls} style={{ colorScheme: 'light' }} />
+        {formData.membership_start_date && (
+          <p className="text-xs text-gray-500 mt-1">
+            {new Date(formData.membership_start_date + 'T00:00:00').toLocaleDateString('en-IN', {
+              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+            })}
+          </p>
+        )}
+      </div>
+      <div>
+        <label className={labelCls}>
+          <span className="flex items-center gap-1.5">
+            <CreditCard className="h-4 w-4 text-gray-400" /> Payment Method
+          </span>
+        </label>
+        <select value={formData.payment_method} onChange={set('payment_method')} className={inputCls}>
+          <option value="cash">Cash</option>
+          <option value="card">Card</option>
+          <option value="upi">UPI</option>
+          <option value="bank_transfer">Bank Transfer</option>
+          <option value="online">Online</option>
+        </select>
+      </div>
+      
+      {/* DISCOUNT FIELD - NEW */}
+      <div>
+        <label className={labelCls}>
+          <span className="flex items-center gap-1.5">
+            <span className="text-gray-400 font-bold">₹</span>
+            Discount Amount (Optional)
+          </span>
+        </label>
+        <input 
+          type="number" 
+          min="0" 
+          step="0.01" 
+          value={formData.discount_applied}
+          onChange={(e) => {
+            const discount = parseFloat(e.target.value) || 0;
+            const originalPrice = selectedPlan?.discounted_price || selectedPlan?.price || 0;
+            const maxDiscount = originalPrice;
+            
+            if (discount > maxDiscount) {
+              toast.error(`Discount cannot exceed the plan price of ₹${maxDiscount}`);
+              setFormData(prev => ({ ...prev, discount_applied: String(maxDiscount) }));
+            } else {
+              setFormData(prev => ({ ...prev, discount_applied: e.target.value }));
+            }
+          }}
+          className={inputCls} 
+          placeholder="0.00"
+        />
+        <p className="text-xs text-gray-400 mt-1">
+          Enter discount amount to subtract from plan price
+        </p>
+      </div>
+      
+      {/* Show price breakdown when discount is applied */}
+      {priceInfo && priceInfo.discount > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <p className="text-xs font-semibold text-blue-700 mb-2">Price Breakdown</p>
+          <div className="space-y-1 text-xs">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Original Price:</span>
+              <span className="font-medium">₹{priceInfo.originalPrice}</span>
             </div>
-            <div>
-              <label className={labelCls}>
-                <span className="flex items-center gap-1.5">
-                  <CreditCard className="h-4 w-4 text-gray-400" /> Payment Method
-                </span>
-              </label>
-              <select value={formData.payment_method} onChange={set('payment_method')} className={inputCls}>
-                <option value="cash">Cash</option>
-                <option value="card">Card</option>
-                <option value="upi">UPI</option>
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="online">Online</option>
-              </select>
+            <div className="flex justify-between">
+              <span className="text-red-600">Discount:</span>
+              <span className="text-red-600 font-medium">- ₹{priceInfo.discount}</span>
             </div>
-            <div className="sm:col-span-2">
-              <label className={labelCls}>Amount Paid (₹)</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">₹</span>
-                <input type="number" min="0" step="0.01" value={formData.amount_paid}
-                  onChange={set('amount_paid')} className={`${inputCls} pl-7`} placeholder="0.00" />
-              </div>
-
-              <div className="flex gap-2 mt-2">
-                <button
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, amount_paid: String(selectedPlan.discounted_price || selectedPlan.price) }))}
-                  className="flex-1 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
-                >
-                  Full (₹{selectedPlan.discounted_price || selectedPlan.price})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, amount_paid: String(Math.floor((selectedPlan.discounted_price || selectedPlan.price) / 2)) }))}
-                  className="flex-1 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
-                >
-                  Half (₹{Math.floor((selectedPlan.discounted_price || selectedPlan.price) / 2)})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, amount_paid: '0' }))}
-                  className="flex-1 py-1.5 text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  Pay Later
-                </button>
-              </div>
-
-              {formData.amount_paid !== '' && (() => {
-                const planPrice = Number(selectedPlan.discounted_price || selectedPlan.price);
-                const paid = Number(formData.amount_paid);
-                const balanceDue = Math.max(0, planPrice - paid);
-                if (paid === 0) {
-                  return (
-                    <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                      <p className="text-xs text-gray-600 flex items-center gap-1.5">
-                        <AlertCircle className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
-                        <span>No payment recorded — full amount of <strong>₹{planPrice}</strong> will remain as balance due</span>
-                      </p>
-                    </div>
-                  );
-                } else if (paid >= planPrice) {
-                  return (
-                    <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <p className="text-xs text-green-700 flex items-center gap-1.5 font-medium">
-                        <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                        Full payment — no balance due ✓
-                      </p>
-                    </div>
-                  );
-                } else {
-                  return (
-                    <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1">
-                      <p className="text-xs text-amber-700 flex items-center gap-1.5 font-medium">
-                        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                        Partial payment — balance will be tracked
-                      </p>
-                      <div className="flex justify-between text-xs text-amber-700 pl-5">
-                        <span>Plan price:</span>
-                        <span className="font-medium">₹{planPrice}</span>
-                      </div>
-                      <div className="flex justify-between text-xs text-amber-700 pl-5">
-                        <span>Paying now:</span>
-                        <span className="font-medium text-green-700">₹{paid}</span>
-                      </div>
-                      <div className="flex justify-between text-xs font-bold text-red-600 pl-5 pt-0.5 border-t border-amber-200">
-                        <span>Remaining balance due:</span>
-                        <span>₹{balanceDue}</span>
-                      </div>
-                      <p className="text-xs text-amber-600 pl-5">Member can pay remaining from Balance tab</p>
-                    </div>
-                  );
-                }
-              })()}
+            <div className="flex justify-between pt-1 border-t border-blue-200 font-semibold">
+              <span>Final Price:</span>
+              <span className="text-green-600">₹{priceInfo.finalPrice}</span>
             </div>
           </div>
         </div>
       )}
+      
+      <div className="sm:col-span-2">
+        <label className={labelCls}>Amount Paid (₹)</label>
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">₹</span>
+          <input type="number" min="0" step="0.01" value={formData.amount_paid}
+            onChange={set('amount_paid')} className={`${inputCls} pl-7`} placeholder="0.00" />
+        </div>
+
+        <div className="flex gap-2 mt-2">
+          <button
+            type="button"
+            onClick={() => {
+              const finalPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
+              setFormData(prev => ({ ...prev, amount_paid: String(finalPrice) }));
+            }}
+            className="flex-1 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+          >
+            Full (₹{priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0)})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const finalPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
+              setFormData(prev => ({ ...prev, amount_paid: String(Math.floor(finalPrice / 2)) }));
+            }}
+            className="flex-1 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            Half (₹{Math.floor((priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0)) / 2)})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFormData(prev => ({ ...prev, amount_paid: '0' }))}
+            className="flex-1 py-1.5 text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            Pay Later
+          </button>
+        </div>
+
+        {formData.amount_paid !== '' && (() => {
+          const planPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
+          const paid = Number(formData.amount_paid);
+          const balanceDue = Math.max(0, planPrice - paid);
+          
+          if (priceInfo?.discount > 0 && planPrice !== (selectedPlan?.discounted_price || selectedPlan?.price)) {
+            return (
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-700 flex items-center gap-1.5 font-medium">
+                  <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  Discount of ₹{priceInfo.discount} applied! Final price: ₹{planPrice}
+                </p>
+              </div>
+            );
+          }
+          
+          if (paid === 0) {
+            return (
+              <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                  <AlertCircle className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                  <span>No payment recorded — full amount of <strong>₹{planPrice}</strong> will remain as balance due</span>
+                </p>
+              </div>
+            );
+          } else if (paid >= planPrice) {
+            return (
+              <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-xs text-green-700 flex items-center gap-1.5 font-medium">
+                  <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  Full payment — no balance due ✓
+                </p>
+              </div>
+            );
+          } else {
+            return (
+              <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1">
+                <p className="text-xs text-amber-700 flex items-center gap-1.5 font-medium">
+                  <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  Partial payment — balance will be tracked
+                </p>
+                <div className="flex justify-between text-xs text-amber-700 pl-5">
+                  <span>Final price after discount:</span>
+                  <span className="font-medium">₹{planPrice}</span>
+                </div>
+                <div className="flex justify-between text-xs text-amber-700 pl-5">
+                  <span>Paying now:</span>
+                  <span className="font-medium text-green-700">₹{paid}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold text-red-600 pl-5 pt-0.5 border-t border-amber-200">
+                  <span>Remaining balance due:</span>
+                  <span>₹{balanceDue}</span>
+                </div>
+                <p className="text-xs text-amber-600 pl-5">Member can pay remaining from Balance tab</p>
+              </div>
+            );
+          }
+        })()}
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 };
@@ -801,6 +1026,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
     medical_conditions: '', allergies: '', medications: '',
     id_proof_type: 'aadhar', id_proof_number: '',
     plan_id: '', membership_start_date: today, payment_method: 'cash', amount_paid: '',
+    discount_applied: '', // Add this line
     renew_membership: false,
   });
 
@@ -880,7 +1106,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
+  
     if (!formData.full_name.trim()) {
       toast.error('Full name is required');
       setActiveTab('personal');
@@ -911,7 +1137,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
       setActiveTab('membership');
       return;
     }
-
+  
     if (!isEdit) {
       try {
         const phoneCheck = await api.get(`/gym/members?search=${encodeURIComponent(formData.phone.trim())}`);
@@ -930,7 +1156,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         // ignore
       }
     }
-
+  
     setSaving(true);
     try {
       // Build member data with proper null handling for empty strings
@@ -949,36 +1175,38 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         id_proof_type: formData.id_proof_type || null,
         id_proof_number: formData.id_proof_number?.trim() || null,
       };
-
-      // Build payload for onSave
+  
+      // Build payload for onSave - INCLUDE DISCOUNT
       let payload;
       
       if (isEdit && formData.renew_membership) {
-        // When renewing, include membership data
+        // When renewing, include membership data with discount
         payload = {
           ...memberFields,
           plan_id: formData.plan_id,
           membership_start_date: formData.membership_start_date,
           payment_method: formData.payment_method,
           amount_paid: formData.amount_paid,
+          discount_applied: formData.discount_applied || 0, // Add discount
           renew_membership: true,
         };
       } else if (isEdit) {
         // Just update member details
         payload = memberFields;
       } else {
-        // New member
+        // New member with discount
         payload = {
           ...memberFields,
           plan_id: formData.plan_id,
           membership_start_date: formData.membership_start_date,
           payment_method: formData.payment_method,
           amount_paid: formData.amount_paid,
+          discount_applied: formData.discount_applied || 0, // Add discount
         };
       }
-
+  
       const savedMember = await onSave(payload);
-
+  
       if (!isEdit && savedMember?.id) {
         const pendingFile = getPendingFileRef.current?.();
         if (pendingFile) {

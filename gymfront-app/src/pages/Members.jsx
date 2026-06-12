@@ -29,6 +29,11 @@ import { useAttendance } from '../context/AttendanceContext';
 // Import the invoice functions
 import { generateInvoicePDF, generateBulkInvoices } from '../services/api';
 
+
+
+
+
+
 // Debounce hook to prevent excessive API calls
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -233,8 +238,8 @@ const Members = () => {
   };
 
   const handleAddMember = async (memberData) => {
-    const { plan_id, membership_start_date, payment_method, amount_paid, ...memberFields } = memberData;
-
+    const { plan_id, membership_start_date, payment_method, amount_paid, discount_applied, ...memberFields } = memberData;
+  
     let memberResponse;
     let createdMember = null;
     let hasError = false;
@@ -250,9 +255,9 @@ const Members = () => {
       }
       throw error;
     }
-
+  
     const memberId = createdMember.id;
-
+  
     if (plan_id && membership_start_date && memberId) {
       try {
         const membershipPayload = {
@@ -260,7 +265,7 @@ const Members = () => {
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
           amount_paid: amount_paid ? parseFloat(amount_paid) : 0,
-          discount_applied: 0,
+          discount_applied: discount_applied ? parseFloat(discount_applied) : 0, // Include discount
         };
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
@@ -286,7 +291,7 @@ const Members = () => {
         return createdMember;
       }
     }
-
+  
     await fetchMembers();
     fetchStats();
     setIsModalOpen(false);
@@ -294,7 +299,6 @@ const Members = () => {
     if (!hasError) {
       toast.success('Member added successfully!');
       
-      // Ask if user wants to sync to device
       const activeDevices = devices.filter(d => d.is_active);
       if (activeDevices.length > 0) {
         setTimeout(() => {
@@ -312,19 +316,20 @@ const Members = () => {
     }
     return createdMember;
   };
-
+  
   const handleUpdateMember = async (memberData) => {
     const {
       plan_id, 
       membership_start_date, 
       payment_method, 
       amount_paid,
+      discount_applied, // Add this
       renew_membership,
       ...memberFields
     } = memberData;
-
+  
     let hasError = false;
-
+  
     try {
       await api.put(`/gym/members/${selectedMember.id}`, memberFields);
     } catch (error) {
@@ -332,7 +337,7 @@ const Members = () => {
       toast.error(error.response?.data?.detail || 'Failed to update member details');
       throw error;
     }
-
+  
     if (renew_membership && plan_id && membership_start_date) {
       try {
         const membershipPayload = {
@@ -340,7 +345,7 @@ const Members = () => {
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
           amount_paid: amount_paid ? parseFloat(amount_paid) : 0,
-          discount_applied: 0,
+          discount_applied: discount_applied ? parseFloat(discount_applied) : 0, // Include discount
         };
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
@@ -365,7 +370,7 @@ const Members = () => {
         toast.error(`Details saved but membership renewal failed. Please assign membership manually.`);
       }
     }
-
+  
     await fetchMembers();
     fetchStats();
     setIsModalOpen(false);
