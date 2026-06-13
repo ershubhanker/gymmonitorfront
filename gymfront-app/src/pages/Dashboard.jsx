@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx - Complete with all features restored
+// src/pages/Dashboard.jsx - Updated with Balance and Leads cards
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -44,7 +44,12 @@ import {
   Wallet,
   ChevronLeft,
   ChevronRight,
-  Wifi
+  Wifi,
+  Phone,
+  Mail as MailIcon,
+  Clock,
+  AlertTriangle,
+  Eye
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api, { API_BASE_URL } from '../services/api';
@@ -201,6 +206,8 @@ const Dashboard = () => {
 
   const [recentActivities, setRecentActivities] = useState([]);
   const [upcomingClasses, setUpcomingClasses] = useState([]);
+  const [membersWithBalanceList, setMembersWithBalanceList] = useState([]);
+  const [recentLeads, setRecentLeads] = useState([]);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -244,7 +251,7 @@ const Dashboard = () => {
     if (!silent) setLoading(true);
     
     try {
-      const [statsResponse, membersResponse, paymentsResponse, membershipsResponse, staffResponse, balanceOverviewResponse] = await Promise.all([
+      const [statsResponse, membersResponse, paymentsResponse, membershipsResponse, staffResponse, balanceOverviewResponse, membersWithBalanceResponse, leadsResponse] = await Promise.all([
         api.get('/gym/dashboard/stats').catch(err => {
           console.error('Error fetching stats:', err);
           return { data: null };
@@ -268,6 +275,14 @@ const Dashboard = () => {
         api.get('/gym/balance/overview').catch(err => {
           console.error('Error fetching balance overview:', err);
           return { data: {} };
+        }),
+        api.get('/gym/members/balances?has_balance=true&limit=10').catch(err => {
+          console.error('Error fetching members with balance:', err);
+          return { data: [] };
+        }),
+        api.get('/gym/leads?limit=10').catch(err => {
+          console.error('Error fetching leads:', err);
+          return { data: [] };
         })
       ]);
 
@@ -276,6 +291,8 @@ const Dashboard = () => {
       const memberships = membershipsResponse.data || [];
       const staff = staffResponse.data || [];
       const balanceOverview = balanceOverviewResponse.data || {};
+      const membersWithBalance = membersWithBalanceResponse.data || [];
+      const leads = leadsResponse.data || [];
       
       const today = new Date().toISOString().split('T')[0];
       const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
@@ -397,6 +414,34 @@ const Dashboard = () => {
             method: p.payment_method
           };
         });
+
+      // Process members with balance
+      const processedMembersWithBalance = membersWithBalance.map(m => ({
+        id: m.member_id,
+        memberId: m.member_id,
+        name: m.member_name,
+        phone: m.member_phone,
+        email: m.member_email,
+        balanceDue: m.balance_due,
+        planName: m.plan_name,
+        daysOverdue: m.next_payment_date && new Date(m.next_payment_date) < new Date() 
+          ? Math.ceil((new Date() - new Date(m.next_payment_date)) / (1000 * 60 * 60 * 24))
+          : 0,
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(m.member_name)}&background=EF4444&color=fff`
+      })).slice(0, 5);
+
+      // Process recent leads
+      const processedRecentLeads = leads.slice(0, 5).map(lead => ({
+        id: lead.id,
+        name: lead.full_name,
+        phone: lead.phone,
+        email: lead.email,
+        status: lead.status,
+        leadQuality: lead.lead_quality || 'warm',
+        createdAt: lead.created_at,
+        source: lead.source,
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(lead.full_name)}&background=8B5CF6&color=fff`
+      }));
 
       const activities = [
         ...payments.slice(0, 3).map(p => {
@@ -526,6 +571,8 @@ const Dashboard = () => {
         upcomingBirthdays
       });
 
+      setMembersWithBalanceList(processedMembersWithBalance);
+      setRecentLeads(processedRecentLeads);
       setRecentActivities(activities.length > 0 ? activities : [
         { id: 1, member: 'No activities yet', action: '', time: '', type: 'info', avatar: 'N' }
       ]);
@@ -571,10 +618,12 @@ const Dashboard = () => {
 
     window.addEventListener('memberAdded', handleDataChange);
     window.addEventListener('paymentAdded', handleDataChange);
+    window.addEventListener('leadAdded', handleDataChange);
     
     return () => {
       window.removeEventListener('memberAdded', handleDataChange);
       window.removeEventListener('paymentAdded', handleDataChange);
+      window.removeEventListener('leadAdded', handleDataChange);
     };
   }, [fetchDashboardData]);
 
@@ -585,7 +634,6 @@ const Dashboard = () => {
     { name: 'Devices', icon: Wifi, id: 'devices' },
     { name: 'Live Attendance', icon: Activity, id: 'attendance' },
     { name: 'Attendance History', icon: CalendarIcon, id: 'history' },
-    // { name: 'Staff Hours', icon: Briefcase, id: 'staff-hours' },
     { name: 'Expenses', icon: TrendingDown, id: 'expenses' },
     { name: 'Staff', icon: UserPlus, id: 'staff' },
     { name: 'Classes', icon: CalendarIcon, id: 'classes' },
@@ -603,6 +651,39 @@ const Dashboard = () => {
       info: 'bg-gray-100 text-gray-600'
     };
     return colors[type] || 'bg-gray-100 text-gray-600';
+  };
+
+  const getLeadStatusColor = (status) => {
+    const colors = {
+      new: 'bg-blue-100 text-blue-700',
+      contacted: 'bg-yellow-100 text-yellow-700',
+      interested: 'bg-green-100 text-green-700',
+      not_interested: 'bg-red-100 text-red-700',
+      converted: 'bg-purple-100 text-purple-700',
+      lost: 'bg-gray-100 text-gray-500'
+    };
+    return colors[status] || 'bg-gray-100 text-gray-500';
+  };
+
+  const getLeadQualityColor = (quality) => {
+    const colors = {
+      hot: 'text-red-600 bg-red-100',
+      warm: 'text-orange-600 bg-orange-100',
+      cold: 'text-blue-600 bg-blue-100'
+    };
+    return colors[quality] || 'text-gray-600 bg-gray-100';
+  };
+
+  const getLeadStatusLabel = (status) => {
+    const labels = {
+      new: 'New',
+      contacted: 'Contacted',
+      interested: 'Interested',
+      not_interested: 'Not Interested',
+      converted: 'Converted',
+      lost: 'Lost'
+    };
+    return labels[status] || status;
   };
 
   const currencySymbol = user?.currency_symbol || '₹';
@@ -650,7 +731,7 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
-
+  
       {/* Key Stats Cards - Row 1 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-blue-500">
@@ -675,7 +756,7 @@ const Dashboard = () => {
             </span>
           </div>
         </div>
-
+  
         <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-green-500">
           <div className="flex items-center justify-between mb-4">
             <div className="bg-green-100 p-3 rounded-xl">
@@ -698,8 +779,7 @@ const Dashboard = () => {
             </span>
           </div>
         </div>
-
-        {/* Clickable Monthly Revenue Card */}
+  
         <div 
           className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-purple-500 cursor-pointer group"
           onClick={() => setActiveTab('payments')}
@@ -725,8 +805,7 @@ const Dashboard = () => {
             vs last month
           </p>
         </div>
-
-        {/* Clickable Total Revenue Card */}
+  
         <div 
           className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-orange-500 cursor-pointer group"
           onClick={() => setActiveTab('payments')}
@@ -753,7 +832,7 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
-
+  
       {/* Balance Overview Cards - Row 2 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
@@ -770,7 +849,7 @@ const Dashboard = () => {
             <span>{stats.membersWithBalance} members have dues</span>
           </div>
         </div>
-
+  
         <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
@@ -786,7 +865,7 @@ const Dashboard = () => {
             <span>Need to collect payment</span>
           </div>
         </div>
-
+  
         <div className="bg-gradient-to-r from-red-500 to-pink-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
@@ -801,7 +880,7 @@ const Dashboard = () => {
             <span>Past due date</span>
           </div>
         </div>
-
+  
         <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
@@ -817,8 +896,8 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
-
-      {/* ✅ EXPENSE AND PROFIT CARDS - RESTORED */}
+  
+      {/* Expense and Profit Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-red-500">
           <div className="flex items-center justify-between mb-4">
@@ -844,7 +923,7 @@ const Dashboard = () => {
             </span>
           </div>
         </div>
-
+  
         <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-emerald-500">
           <div className="flex items-center justify-between mb-4">
             <div className="bg-emerald-100 p-3 rounded-xl">
@@ -868,7 +947,7 @@ const Dashboard = () => {
             </span>
           </div>
         </div>
-
+  
         <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-cyan-500">
           <div className="flex items-center justify-between mb-4">
             <div className="bg-cyan-100 p-3 rounded-xl">
@@ -897,7 +976,7 @@ const Dashboard = () => {
             </button>
           </div>
         </div>
-
+  
         <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
           <div className="flex items-center justify-between mb-4">
             <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
@@ -932,8 +1011,8 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
-
-      {/* ✅ MEMBER DEMOGRAPHICS AND EXPIRING MEMBERSHIPS - RESTORED */}
+  
+      {/* Member Demographics and Expiring Memberships Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-1 hover:shadow-xl transition-all">
           <div className="flex items-center justify-between mb-6">
@@ -1014,8 +1093,7 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
-
-        {/* ✅ EXPIRING MEMBERSHIPS SECTION - RESTORED */}
+  
         <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
@@ -1074,8 +1152,17 @@ const Dashboard = () => {
                   </div>
                   <button 
                     onClick={() => {
+                      // Store the complete member information
+                      const renewalData = {
+                        id: member.memberId,
+                        name: member.memberName,
+                        planName: member.planName,
+                        endDate: member.endDate
+                      };
+                      localStorage.setItem('selectedMemberForRenewal', JSON.stringify(renewalData));
+                      console.log('Storing renewal data:', renewalData);
                       setActiveTab('members');
-                      toast.success(`Ready to renew ${member.memberName}'s membership`);
+                      toast.success(`Redirecting to renew ${member.memberName}'s membership`);
                     }}
                     className="opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transform hover:-translate-y-0.5 transition-all"
                   >
@@ -1108,8 +1195,211 @@ const Dashboard = () => {
           )}
         </div>
       </div>
-
-      {/* ✅ BIRTHDAY NOTIFICATIONS SECTION - RESTORED */}
+  
+      {/* Members with Balance & Recent Leads Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Members with Balance Card */}
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all">
+          <div className="bg-gradient-to-r from-red-500 to-orange-500 px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-white/20 p-2 rounded-lg">
+                  <Wallet className="h-5 w-5 text-white" />
+                </div>
+                <h3 className="text-lg font-bold text-white">Members with Balance</h3>
+              </div>
+              <button 
+                onClick={() => setActiveTab('balance')}
+                className="text-white/90 hover:text-white text-sm font-medium flex items-center gap-1 transition-colors"
+              >
+                View All
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-white/80 text-sm mt-1">
+              {stats.membersWithBalance} members have outstanding balance • Total: {formatCurrency(stats.totalBalanceDue)}
+            </p>
+          </div>
+          
+          <div className="p-4 max-h-[400px] overflow-y-auto">
+            {membersWithBalanceList.length > 0 ? (
+              <div className="space-y-3">
+                {membersWithBalanceList.map((member) => (
+                  <div 
+                    key={member.id} 
+                    className="group relative flex items-center gap-4 p-3 rounded-xl hover:bg-red-50 transition-all border border-transparent hover:border-red-200"
+                  >
+                    <img 
+                      src={member.avatar} 
+                      alt={member.name} 
+                      className="w-12 h-12 rounded-full ring-2 ring-red-200 object-cover"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold text-gray-900 truncate">{member.name}</p>
+                        <span className="text-lg font-bold text-red-600">{formatCurrency(member.balanceDue)}</span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {member.phone || 'No phone'}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Dumbbell className="h-3 w-3" />
+                          {member.planName}
+                        </span>
+                      </div>
+                      {member.daysOverdue > 0 && (
+                        <div className="mt-2">
+                          <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit">
+                            <AlertTriangle className="h-3 w-3" />
+                            Overdue by {member.daysOverdue} days
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setActiveTab('balance');
+                        toast.success(`Viewing balance details for ${member.name}`);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-red-500 to-orange-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:shadow-lg"
+                    >
+                      Collect Payment
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+                  <CheckCircle className="h-8 w-8 text-green-600" />
+                </div>
+                <p className="text-gray-900 font-medium">All caught up! 🎉</p>
+                <p className="text-gray-500 text-sm mt-1">No members with outstanding balance</p>
+              </div>
+            )}
+          </div>
+          
+          {membersWithBalanceList.length > 0 && (
+            <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">Total Outstanding:</span>
+                <span className="font-bold text-red-600">{formatCurrency(stats.totalBalanceDue)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+  
+        {/* Recent Leads Card */}
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all">
+          <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-white/20 p-2 rounded-lg">
+                  <Target className="h-5 w-5 text-white" />
+                </div>
+                <h3 className="text-lg font-bold text-white">Recent Leads</h3>
+              </div>
+              <button 
+                onClick={() => setActiveTab('leads')}
+                className="text-white/90 hover:text-white text-sm font-medium flex items-center gap-1 transition-colors"
+              >
+                View All Leads
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-white/80 text-sm mt-1">
+              Track and manage incoming gym inquiries
+            </p>
+          </div>
+          
+          <div className="p-4 max-h-[400px] overflow-y-auto">
+            {recentLeads.length > 0 ? (
+              <div className="space-y-3">
+                {recentLeads.map((lead) => (
+                  <div 
+                    key={lead.id} 
+                    className="group relative flex items-center gap-4 p-3 rounded-xl hover:bg-purple-50 transition-all border border-transparent hover:border-purple-200 cursor-pointer"
+                    onClick={() => {
+                      setActiveTab('leads');
+                      toast.success(`Viewing lead: ${lead.name}`);
+                    }}
+                  >
+                    <img 
+                      src={lead.avatar} 
+                      alt={lead.name} 
+                      className="w-12 h-12 rounded-full ring-2 ring-purple-200 object-cover"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold text-gray-900 truncate">{lead.name}</p>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getLeadQualityColor(lead.leadQuality)}`}>
+                            {lead.leadQuality === 'hot' ? '🔥 Hot' : lead.leadQuality === 'warm' ? '☀️ Warm' : '❄️ Cold'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {lead.phone}
+                        </span>
+                        {lead.email && (
+                          <span className="flex items-center gap-1">
+                            <MailIcon className="h-3 w-3" />
+                            {lead.email}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${getLeadStatusColor(lead.status)}`}>
+                          {getLeadStatusLabel(lead.status)}
+                        </span>
+                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {new Date(lead.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-4">
+                  <Target className="h-8 w-8 text-purple-600" />
+                </div>
+                <p className="text-gray-900 font-medium">No leads yet</p>
+                <p className="text-gray-500 text-sm mt-1">Start tracking your first lead</p>
+                <button 
+                  onClick={() => setActiveTab('leads')}
+                  className="mt-4 inline-flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  Add New Lead
+                </button>
+              </div>
+            )}
+          </div>
+          
+          {recentLeads.length > 0 && (
+            <div className="border-t border-gray-100 px-4 py-3 bg-gray-50 flex items-center justify-between">
+              <span className="text-sm text-gray-600">New leads need attention</span>
+              <button 
+                onClick={() => setActiveTab('leads')}
+                className="text-purple-600 hover:text-purple-700 text-sm font-medium flex items-center gap-1"
+              >
+                Manage Leads
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+  
+      {/* Birthday Notifications Section */}
       {(stats.upcomingBirthdays?.members?.length > 0 || stats.upcomingBirthdays?.staff?.length > 0) && (
         <div className="space-y-4">
           <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -1140,10 +1430,6 @@ const Dashboard = () => {
                         src={member.avatar} 
                         alt={member.name} 
                         className="w-12 h-12 rounded-full ring-2 ring-pink-200 object-cover"
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=0D9488&color=fff`;
-                        }}
                       />
                       <div className="flex-1">
                         <p className="font-semibold text-gray-900">{member.name}</p>
@@ -1222,7 +1508,7 @@ const Dashboard = () => {
           </div>
         </div>
       )}
-
+  
       {/* Recent Members and Recent Payments Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
@@ -1238,7 +1524,7 @@ const Dashboard = () => {
               className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
             >
               View All
-              <ChevronDown className="h-4 w-4 rotate-270" />
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
           
@@ -1250,10 +1536,6 @@ const Dashboard = () => {
                     src={member.avatar} 
                     alt={member.name} 
                     className="w-12 h-12 rounded-full ring-2 ring-gray-100 group-hover:ring-blue-200 transition-all object-cover"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=0D9488&color=fff`;
-                    }}
                   />
                   <div className="flex-1">
                     <p className="font-semibold text-gray-900">{member.name}</p>
@@ -1274,7 +1556,6 @@ const Dashboard = () => {
                 <button 
                   onClick={() => {
                     setActiveTab('members');
-                    window.dispatchEvent(new CustomEvent('openAddMemberModal'));
                   }}
                   className="mt-3 text-blue-600 hover:text-blue-700 text-sm font-medium"
                 >
@@ -1284,7 +1565,7 @@ const Dashboard = () => {
             )}
           </div>
         </div>
-
+  
         <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -1298,7 +1579,7 @@ const Dashboard = () => {
               className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
             >
               View All
-              <ChevronDown className="h-4 w-4 rotate-270" />
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
           
@@ -1343,7 +1624,7 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
-
+  
       {/* Recent Activities and Classes Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
@@ -1377,7 +1658,7 @@ const Dashboard = () => {
             )}
           </div>
         </div>
-
+  
         <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -1436,7 +1717,7 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
-
+  
       {/* Alerts Section */}
       {(stats.expiringThisMonth > 0 || stats.pendingPayments > 0 || stats.overdueCount > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1479,7 +1760,7 @@ const Dashboard = () => {
               </div>
             </div>
           )}
-
+  
           {stats.overdueCount > 0 && (
             <div className="bg-gradient-to-r from-red-600 to-red-800 rounded-2xl p-6 shadow-lg text-white">
               <div className="flex items-start gap-4">
@@ -1503,7 +1784,6 @@ const Dashboard = () => {
       )}
     </div>
   );
-
   // Don't show loading state if already logged in
   if (loading && !user) {
     return (
@@ -1750,7 +2030,6 @@ const Dashboard = () => {
           {activeTab === 'devices' && <DeviceManager />}
           {activeTab === 'attendance' && <LiveMonitoring />}
           {activeTab === 'history' && <AttendanceHistory />}
-          {/* {activeTab === 'staff-hours' && <StaffHours />} */}
           {activeTab === 'expenses' && <Expenses />}
           {activeTab === 'staff' && <Staff />}
           {activeTab === 'profile' && <Profile />}

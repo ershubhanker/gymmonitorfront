@@ -80,6 +80,51 @@ const Members = () => {
     currency_symbol: '₹',
   });
 
+  useEffect(() => {
+    const renewalMemberData = localStorage.getItem('selectedMemberForRenewal');
+    if (renewalMemberData) {
+      try {
+        const memberData = JSON.parse(renewalMemberData);
+        console.log('Member renewal data received:', memberData);
+        console.log('Available members:', members);
+        
+        // Clear the stored data immediately
+        localStorage.removeItem('selectedMemberForRenewal');
+        
+        // Find the member by comparing numeric IDs
+        const memberToRenew = members.find(m => m.id === Number(memberData.id));
+        console.log('Found member to renew:', memberToRenew);
+        
+        if (memberToRenew) {
+          setTimeout(() => {
+            openEditModal(memberToRenew);
+            toast.success(`Ready to renew membership for ${memberToRenew.fullName}`);
+          }, 500);
+        } else {
+          console.log('Member not found, waiting for members to load...');
+          // If member not found yet, wait for members to load
+          const checkInterval = setInterval(() => {
+            const member = members.find(m => m.id === Number(memberData.id));
+            if (member) {
+              console.log('Found member after waiting:', member);
+              clearInterval(checkInterval);
+              openEditModal(member);
+              toast.success(`Ready to renew membership for ${member.fullName}`);
+            }
+          }, 500);
+          
+          setTimeout(() => {
+            clearInterval(checkInterval);
+            console.log('Timeout: Member not found after 10 seconds');
+          }, 10000);
+        }
+      } catch (error) {
+        console.error('Error parsing renewal data:', error);
+        localStorage.removeItem('selectedMemberForRenewal');
+      }
+    }
+  }, [members]);
+
   const itemsPerPage = 10;
 
   // Wrap fetchMembers in useCallback to prevent infinite loops

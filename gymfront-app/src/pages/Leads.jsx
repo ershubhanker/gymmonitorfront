@@ -4,11 +4,12 @@ import {
   MoreVertical, Edit2, Trash2, X, ChevronDown, RefreshCw,
   UserCheck, Clock, AlertCircle, Star, Zap,
   MessageCircle, Instagram, Facebook, Globe, Users, Share2, Copy, Link as LinkIcon, Download, CheckCircle as CheckCircleIcon,
-  Flame, Sun, Snowflake
+  Flame, Sun, Snowflake, MessageSquare, History, ArrowLeft, Target, DollarSign, Building, Tag, UserPlus, TrendingUp, Award
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import MemberModal from '../components/MemberModal';
+import LeadProfileModal from '../components/LeadProfileModal';
 
 // Try to import QRCode, but don't fail if not available
 let QRCode;
@@ -69,6 +70,17 @@ const EMPTY_FORM = {
 const formatDate = (dt) => {
   if (!dt) return '—';
   return new Date(dt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const formatDateTime = (dt) => {
+  if (!dt) return '—';
+  return new Date(dt).toLocaleString('en-IN', { 
+    day: 'numeric', 
+    month: 'short', 
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 };
 
 const formatFollowUp = (dt) => {
@@ -292,8 +304,7 @@ const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
   );
 };
 
-// ── Add / Edit Modal ──────────────────────────────────────────────────────────
-
+// In Leads.jsx
 const LeadModal = ({ lead, onClose, onSave }) => {
   const [form, setForm] = useState(lead
     ? {
@@ -301,6 +312,7 @@ const LeadModal = ({ lead, onClose, onSave }) => {
         age: lead.age ?? '',
         budget: lead.budget ?? '',
         lead_quality: lead.lead_quality ?? 'warm',
+        assigned_to: lead.assigned_to ?? '',
         next_follow_up: lead.next_follow_up
           ? new Date(lead.next_follow_up).toISOString().slice(0, 16)
           : '',
@@ -308,13 +320,52 @@ const LeadModal = ({ lead, onClose, onSave }) => {
     : { ...EMPTY_FORM }
   );
   const [saving, setSaving] = useState(false);
+  const [staffList, setStaffList] = useState([]);
+  const [loadingStaff, setLoadingStaff] = useState(false);
+  const [staffError, setStaffError] = useState(null);
+
+  useEffect(() => {
+    fetchStaffList();
+  }, []);
+
+  const fetchStaffList = async () => {
+    try {
+      setLoadingStaff(true);
+      setStaffError(null);
+      
+      const token = localStorage.getItem('access_token');
+      console.log('Fetching staff list with token:', token ? 'Present' : 'Missing');
+      
+      const response = await api.get('/gym/leads/staff-list');
+      console.log('Staff list response:', response.data);
+      
+      if (response.data && Array.isArray(response.data)) {
+        if (response.data.length === 0) {
+          setStaffError('No staff members found. Please add staff members first.');
+          setStaffList([]);
+        } else {
+          setStaffList(response.data);
+        }
+      } else {
+        setStaffList([]);
+        setStaffError('Invalid response format');
+      }
+    } catch (error) {
+      console.error('Error fetching staff list:', error);
+      console.error('Error details:', error.response?.data);
+      setStaffError(error.response?.data?.detail || 'Failed to load staff list');
+      setStaffList([]);
+    } finally {
+      setLoadingStaff(false);
+    }
+  };
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSubmit = async () => {
     if (!form.full_name.trim()) { toast.error('Name is required'); return; }
     if (!form.phone.trim()) { toast.error('Phone is required'); return; }
-    if (!/^[+]?[\d\s\-]{7,15}$/.test(form.phone.trim())) { toast.error('Enter a valid phone number (e.g. +91-9876543210)'); return; }
+    if (!/^[+]?[\d\s\-]{7,15}$/.test(form.phone.trim())) { toast.error('Enter a valid phone number'); return; }
 
     setSaving(true);
     const payload = {
@@ -337,6 +388,7 @@ const LeadModal = ({ lead, onClose, onSave }) => {
       onSave();
       onClose();
     } catch (err) {
+      console.error('Save error:', err);
       toast.error(err.response?.data?.detail || 'Failed to save lead');
     } finally {
       setSaving(false);
@@ -413,6 +465,43 @@ const LeadModal = ({ lead, onClose, onSave }) => {
           </div>
           
           {select('Lead Source', 'source', Object.entries(SOURCE_CONFIG).map(([v, c]) => ({ value: v, label: c.label })))}
+          
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Assigned Staff (Who took this enquiry?)
+            </label>
+            <select
+              value={form.assigned_to}
+              onChange={e => set('assigned_to', e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+              disabled={loadingStaff}
+            >
+              <option value="">— Select Staff Member —</option>
+              {staffList.map(staff => (
+                <option key={staff.id || staff.user_id} value={staff.user_id}>
+                  {staff.full_name} {staff.position ? `(${staff.position})` : ''}
+                </option>
+              ))}
+            </select>
+            {loadingStaff && (
+              <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400"></div>
+                Loading staff list...
+              </p>
+            )}
+            {staffError && (
+              <p className="text-xs text-red-500 mt-1">{staffError}</p>
+            )}
+            {!loadingStaff && staffList.length === 0 && !staffError && (
+              <p className="text-xs text-yellow-500 mt-1">
+                No staff members found. Please add staff members first in the Staff Management section.
+              </p>
+            )}
+            <p className="text-xs text-gray-400 mt-1">
+              Select which staff member took this enquiry from the customer
+            </p>
+          </div>
+          
           {select('Interest', 'interest', INTEREST_OPTIONS)}
           {select('Preferred Plan', 'preferred_plan', PLAN_OPTIONS)}
           {field('Budget (approx.)', 'budget', 'number', { min: 0, placeholder: '2000' })}
@@ -467,7 +556,7 @@ const LeadModal = ({ lead, onClose, onSave }) => {
 
 // ── Lead Row Actions Menu ────────────────────────────────────────────────────
 
-const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange, onConvert, onQualityChange }) => {
+const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange, onConvert, onQualityChange, onViewProfile }) => {
   const [open, setOpen] = useState(false);
   const ref = React.useRef(null);
 
@@ -490,6 +579,12 @@ const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange, onConvert, onQual
       </button>
       {open && (
         <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-gray-100 z-10 py-1">
+          <button
+            onClick={() => { onViewProfile(); setOpen(false); }}
+            className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            <User className="h-4 w-4" /> View Profile
+          </button>
           <button
             onClick={() => { onEdit(); setOpen(false); }}
             className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
@@ -560,6 +655,7 @@ const Leads = () => {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterSource, setFilterSource] = useState('');
   const [filterQuality, setFilterQuality] = useState('');
+  const [filterStaff, setFilterStaff] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [editLead, setEditLead] = useState(null);
@@ -567,6 +663,10 @@ const Leads = () => {
   const [convertLead, setConvertLead] = useState(null);
   const [shareableLink, setShareableLink] = useState('');
   const [gymSlug, setGymSlug] = useState('');
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [staffList, setStaffList] = useState([]);
+  const [staffStats, setStaffStats] = useState([]);
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -574,6 +674,7 @@ const Leads = () => {
       if (filterStatus) params.append('status', filterStatus);
       if (filterSource) params.append('source', filterSource);
       if (filterQuality) params.append('lead_quality', filterQuality);
+      if (filterStaff) params.append('assigned_to', filterStaff);
       if (search) params.append('search', search);
 
       const [leadsRes, statsRes] = await Promise.all([
@@ -588,7 +689,30 @@ const Leads = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterStatus, filterSource, filterQuality, search]);
+  }, [filterStatus, filterSource, filterQuality, filterStaff, search]);
+
+  const fetchStaffList = async () => {
+    try {
+      const response = await api.get('/gym/leads/staff-list');
+      setStaffList(response.data);
+    } catch (error) {
+      console.error('Error fetching staff list:', error);
+    }
+  };
+
+  const fetchStaffStats = async () => {
+    try {
+      const response = await api.get('/gym/leads/stats/by-staff');
+      setStaffStats(response.data);
+    } catch (error) {
+      console.error('Error fetching staff stats:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchStaffList();
+    fetchStaffStats();
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -625,6 +749,7 @@ const Leads = () => {
       await api.put(`/gym/leads/${lead.id}`, { status: newStatus });
       toast.success(`Marked as ${STATUS_CONFIG[newStatus]?.label}`);
       fetchLeads();
+      fetchStaffStats();
     } catch {
       toast.error('Failed to update status');
     }
@@ -646,6 +771,12 @@ const Leads = () => {
 
   const onConverted = () => {
     fetchLeads();
+    fetchStaffStats();
+  };
+
+  const handleViewProfile = (lead) => {
+    setSelectedLead(lead);
+    setShowProfileModal(true);
   };
 
   // Calculate quality stats
@@ -655,6 +786,14 @@ const Leads = () => {
     cold: leads.filter(l => l.lead_quality === 'cold').length,
   };
 
+
+  const getStaffName = (assignedTo) => {
+    if (!assignedTo) return 'Unassigned';
+    const staff = staffList.find(s => s.user_id === assignedTo);
+    return staff ? staff.full_name : 'Unknown Staff';
+  };
+
+  
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -665,7 +804,7 @@ const Leads = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { setLoading(true); fetchLeads(); }}
+            onClick={() => { setLoading(true); fetchLeads(); fetchStaffStats(); }}
             className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-600"
             title="Refresh"
           >
@@ -695,7 +834,7 @@ const Leads = () => {
         <StatCard label="Converted" value={stats.converted} icon={UserCheck} color="bg-purple-100 text-purple-600" />
       </div>
 
-      {/* Lead Quality Stats Row - Clickable Filters */}
+      {/* Lead Quality Stats Row */}
       <div className="grid grid-cols-3 gap-4">
         <button
           onClick={() => setFilterQuality(filterQuality === 'hot' ? '' : 'hot')}
@@ -746,9 +885,49 @@ const Leads = () => {
         </button>
       </div>
 
+      {/* Staff Performance Stats */}
+      {staffStats.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <Award className="h-4 w-4 text-yellow-500" />
+            Staff Performance
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {staffStats.map(staff => (
+              <div 
+                key={staff.staff_id}
+                onClick={() => setFilterStaff(filterStaff === staff.user_id ? '' : staff.user_id)}
+                className={`p-3 rounded-xl cursor-pointer transition-all ${
+                  filterStaff === staff.user_id ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 hover:bg-gray-100'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-medium text-gray-900 text-sm">{staff.staff_name}</p>
+                  <span className="text-xs text-gray-500">{staff.position || 'Staff'}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <p className="text-lg font-bold text-blue-600">{staff.total_leads}</p>
+                    <p className="text-xs text-gray-500">Total</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-green-600">{staff.converted_leads}</p>
+                    <p className="text-xs text-gray-500">Converted</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-purple-600">{staff.conversion_rate}%</p>
+                    <p className="text-xs text-gray-500">Rate</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-wrap gap-3">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
@@ -778,12 +957,29 @@ const Leads = () => {
             <option key={v} value={v}>{c.label}</option>
           ))}
         </select>
-        {filterQuality && (
+        <select
+          value={filterStaff}
+          onChange={e => setFilterStaff(e.target.value)}
+          className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+        >
+          <option value="">All Staff</option>
+          <option value="unassigned">Unassigned</option>
+          {staffList.map(staff => (
+            <option key={staff.id} value={staff.user_id}>{staff.full_name}</option>
+          ))}
+        </select>
+        {(filterQuality || filterStatus || filterSource || filterStaff || search) && (
           <button
-            onClick={() => setFilterQuality('')}
-            className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+            onClick={() => {
+              setFilterQuality('');
+              setFilterStatus('');
+              setFilterSource('');
+              setFilterStaff('');
+              setSearch('');
+            }}
+            className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1"
           >
-            <X className="h-4 w-4" /> Clear Quality Filter
+            <X className="h-4 w-4" /> Clear All
           </button>
         )}
       </div>
@@ -799,9 +995,9 @@ const Leads = () => {
             <Users className="h-14 w-14 text-gray-200 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-500">No leads found</h3>
             <p className="text-sm text-gray-400 mt-1">
-              {search || filterStatus || filterSource || filterQuality ? 'Try adjusting your filters.' : 'Add your first lead to get started.'}
+              {search || filterStatus || filterSource || filterQuality || filterStaff ? 'Try adjusting your filters.' : 'Add your first lead to get started.'}
             </p>
-            {!search && !filterStatus && !filterSource && !filterQuality && (
+            {!search && !filterStatus && !filterSource && !filterQuality && !filterStaff && (
               <button
                 onClick={() => { setEditLead(null); setShowModal(true); }}
                 className="mt-4 inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-blue-700"
@@ -819,12 +1015,12 @@ const Leads = () => {
                   <th className="text-left px-4 py-3 font-semibold">Contact</th>
                   <th className="text-left px-4 py-3 font-semibold">Quality</th>
                   <th className="text-left px-4 py-3 font-semibold">Source</th>
+                  <th className="text-left px-4 py-3 font-semibold">Assigned To</th>
                   <th className="text-left px-4 py-3 font-semibold">Interest</th>
                   <th className="text-left px-4 py-3 font-semibold">Status</th>
                   <th className="text-left px-4 py-3 font-semibold">Follow-up</th>
-                  <th className="text-left px-4 py-3 font-semibold">Added</th>
                   <th className="px-4 py-3"></th>
-                </tr>
+                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {leads.map(lead => {
@@ -834,7 +1030,10 @@ const Leads = () => {
                   return (
                     <tr key={lead.id} className="hover:bg-gray-50/60 transition-colors group">
                       <td className="px-5 py-3">
-                        <div className="flex items-center gap-3">
+                        <div 
+                          className="flex items-center gap-3 cursor-pointer"
+                          onClick={() => handleViewProfile(lead)}
+                        >
                           <div className={`h-9 w-9 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${
                             lead.lead_quality === 'hot' ? 'bg-gradient-to-br from-red-500 to-orange-500' :
                             lead.lead_quality === 'warm' ? 'bg-gradient-to-br from-orange-400 to-yellow-500' :
@@ -843,13 +1042,13 @@ const Leads = () => {
                             {lead.full_name.charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <p className="font-semibold text-gray-900">{lead.full_name}</p>
+                            <p className="font-semibold text-gray-900 hover:text-blue-600 transition-colors">{lead.full_name}</p>
                             {lead.gender && (
                               <p className="text-xs text-gray-400">{lead.gender}{lead.age ? `, ${lead.age} yrs` : ''}</p>
                             )}
                           </div>
                         </div>
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-1.5 text-gray-700">
@@ -863,19 +1062,27 @@ const Leads = () => {
                             </div>
                           )}
                         </div>
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         <LeadQualityBadge 
                           quality={lead.lead_quality || 'warm'} 
                           onChange={(newQuality) => handleQualityChange(lead, newQuality)}
                         />
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5 text-gray-600">
                           <SrcIcon className="h-4 w-4 text-gray-400" />
                           <span>{SOURCE_CONFIG[lead.source]?.label || lead.source}</span>
                         </div>
-                      </td>
+                       </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 text-gray-600">
+                          <User className="h-3.5 w-3.5 text-gray-400" />
+                          <span className="text-xs font-medium">
+                            {lead.assigned_staff_name || getStaffName(lead.assigned_to) || 'Unassigned'}
+                          </span>
+                        </div>
+                       </td>
                       <td className="px-4 py-3">
                         <div className="space-y-0.5">
                           {lead.interest && <p className="text-gray-700">{lead.interest}</p>}
@@ -883,15 +1090,15 @@ const Leads = () => {
                             <p className="text-xs text-gray-400">{lead.preferred_plan}</p>
                           )}
                           {lead.budget && (
-                            <p className="text-xs text-green-600 font-medium">Budget: ₹{lead.budget.toLocaleString()}</p>
+                            <p className="text-xs text-green-600 font-medium">₹{lead.budget.toLocaleString()}</p>
                           )}
                         </div>
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold border ${STATUS_CONFIG[lead.status]?.color}`}>
                           {STATUS_CONFIG[lead.status]?.label || lead.status}
                         </span>
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         {followUp ? (
                           <span className={`text-xs font-medium ${followUp.color}`}>
@@ -900,10 +1107,7 @@ const Leads = () => {
                         ) : (
                           <span className="text-xs text-gray-300">—</span>
                         )}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-400">
-                        {formatDate(lead.created_at)}
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         <ActionsMenu
                           lead={lead}
@@ -912,13 +1116,14 @@ const Leads = () => {
                           onStatusChange={(s) => handleStatusChange(lead, s)}
                           onConvert={() => handleConvert(lead)}
                           onQualityChange={(q) => handleQualityChange(lead, q)}
+                          onViewProfile={() => handleViewProfile(lead)}
                         />
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
                   );
                 })}
               </tbody>
-            </table>
+             </table>
           </div>
         )}
       </div>
@@ -928,7 +1133,7 @@ const Leads = () => {
         <LeadModal
           lead={editLead}
           onClose={() => { setShowModal(false); setEditLead(null); }}
-          onSave={fetchLeads}
+          onSave={() => { fetchLeads(); fetchStaffStats(); }}
         />
       )}
 
@@ -944,6 +1149,17 @@ const Leads = () => {
           lead={convertLead}
           onClose={() => setConvertLead(null)}
           onConverted={onConverted}
+        />
+      )}
+
+      {showProfileModal && selectedLead && (
+        <LeadProfileModal
+          lead={selectedLead}
+          onClose={() => {
+            setShowProfileModal(false);
+            setSelectedLead(null);
+          }}
+          onUpdate={() => { fetchLeads(); fetchStaffStats(); }}
         />
       )}
 
