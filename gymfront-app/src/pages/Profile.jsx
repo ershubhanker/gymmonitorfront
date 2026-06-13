@@ -70,14 +70,14 @@ const Profile = () => {
     setLoading(true);
     try {
       const response = await api.get('/gym/my-gym');
-      console.log('Gym details fetched:', response.data); // Debug log
+      console.log('Gym details fetched:', response.data);
       setGymData(response.data);
       setGymForm({
         name: response.data.name || '',
         address: response.data.address || '',
         phone: response.data.phone || '',
         email: response.data.email || '',
-        gst_number: response.data.gst_number || '', // Make sure this is being set
+        gst_number: response.data.gst_number || '',
         max_members: response.data.max_members || 100,
         max_staff: response.data.max_staff || 5,
         opening_time: response.data.opening_time || '06:00',
@@ -86,7 +86,6 @@ const Profile = () => {
       });
     } catch (error) {
       if (error.response?.status === 404) {
-        // No gym found, that's ok - user will create one
         console.log('No gym found, will create one on save');
       } else {
         console.error('Error fetching gym details:', error);
@@ -116,10 +115,8 @@ const Profile = () => {
     
     try {
       if (gymData) {
-        // Update existing gym
         const response = await api.put('/gym/my-gym', gymForm);
         setGymData(response.data);
-        // Update the form with the response data to ensure consistency
         setGymForm({
           name: response.data.name || '',
           address: response.data.address || '',
@@ -134,7 +131,6 @@ const Profile = () => {
         });
         toast.success('Gym details updated successfully!');
       } else {
-        // Create new gym
         const response = await api.post('/gym/setup', gymForm);
         setGymData(response.data);
         toast.success('Gym setup completed successfully!');
@@ -149,6 +145,16 @@ const Profile = () => {
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
+    
+    // Validation
+    if (!passwordForm.current_password) {
+      toast.error('Please enter your current password');
+      return;
+    }
+    if (!passwordForm.new_password) {
+      toast.error('Please enter a new password');
+      return;
+    }
     if (passwordForm.new_password !== passwordForm.confirm_password) {
       toast.error('New passwords do not match');
       return;
@@ -157,17 +163,30 @@ const Profile = () => {
       toast.error('Password must be at least 6 characters');
       return;
     }
+    
     setSaving(true);
     try {
       await api.post('/change-password', {
         current_password: passwordForm.current_password,
         new_password: passwordForm.new_password,
       });
-      toast.success('Password changed! Please log in again.');
+      
+      toast.success('Password changed successfully! Please log in again.');
+      
+      // Clear form
       setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
-      setTimeout(() => logout(), 1500);
+      
+      // Logout after 1.5 seconds
+      setTimeout(() => {
+        logout();
+        // Redirect to login page
+        window.location.href = '/login';
+      }, 1500);
+      
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to change password');
+      console.error('Password change error:', error);
+      const errorMsg = error.response?.data?.detail || 'Failed to change password';
+      toast.error(errorMsg);
     } finally {
       setSaving(false);
     }
@@ -225,23 +244,23 @@ const Profile = () => {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">My Profile</h1>
+    <div className="p-4 md:p-6 max-w-4xl mx-auto">
+      <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-4 md:mb-6">My Profile</h1>
 
       {/* Avatar and Role Card */}
-      <div className="bg-white rounded-xl shadow-sm p-6 mb-6 flex items-center gap-6">
+      <div className="bg-white rounded-xl shadow-sm p-4 md:p-6 mb-4 md:mb-6 flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
         <div className="relative">
-          <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold">
+          <div className="h-16 w-16 md:h-20 md:w-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl md:text-3xl font-bold">
             {(user?.full_name || user?.username || 'U').charAt(0).toUpperCase()}
           </div>
-          <button className="absolute bottom-0 right-0 bg-white border border-gray-200 p-1.5 rounded-full shadow hover:bg-gray-50">
-            <Camera className="h-3.5 w-3.5 text-gray-600" />
+          <button className="absolute bottom-0 right-0 bg-white border border-gray-200 p-1 rounded-full shadow hover:bg-gray-50">
+            <Camera className="h-3 w-3 text-gray-600" />
           </button>
         </div>
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900">{user?.full_name || user?.username}</h2>
-          <p className="text-gray-500 text-sm mb-2">{user?.email}</p>
-          <div className="flex items-center gap-2">
+        <div className="text-center sm:text-left">
+          <h2 className="text-lg md:text-xl font-semibold text-gray-900">{user?.full_name || user?.username}</h2>
+          <p className="text-gray-500 text-xs md:text-sm mb-2">{user?.email}</p>
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
             {getRoleBadge(user?.role)}
             {user?.gymId && (
               <span className="inline-flex items-center gap-1 text-xs text-gray-500">
@@ -252,27 +271,35 @@ const Profile = () => {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs - Horizontally Scrollable on Mobile */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div className="border-b border-gray-200 px-6">
-          <nav className="flex space-x-8">
-            {visibleTabs.map(tab => (
-              <button 
-                key={tab.id} 
-                onClick={() => setActiveTab(tab.id)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 transition-colors ${
-                  activeTab === tab.id 
-                    ? 'border-blue-500 text-blue-600' 
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}>
-                <tab.icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            ))}
-          </nav>
+        <div className="border-b border-gray-200">
+          {/* Horizontal scroll container for mobile */}
+          <div className="relative">
+            <div className="overflow-x-auto scrollbar-hide">
+              <nav className="flex min-w-max md:min-w-0 px-4 md:px-6">
+                {visibleTabs.map(tab => (
+                  <button 
+                    key={tab.id} 
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`py-3 md:py-4 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap transition-colors ${
+                      activeTab === tab.id 
+                        ? 'border-blue-500 text-blue-600' 
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}>
+                    <tab.icon className="h-4 w-4" />
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+            {/* Gradient fade indicators on edges for mobile */}
+            <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent pointer-events-none md:hidden" />
+            <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none md:hidden" />
+          </div>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           {/* Profile Tab */}
           {activeTab === 'profile' && (
             <form onSubmit={handleProfileSave} className="space-y-4">
@@ -361,7 +388,7 @@ const Profile = () => {
                 <button 
                   type="submit" 
                   disabled={saving}
-                  className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors">
+                  className="flex items-center gap-2 px-4 md:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors">
                   <Save className="h-4 w-4" />
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -375,7 +402,7 @@ const Profile = () => {
               {/* Gym Status Card */}
               {gymData && (
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="bg-blue-100 p-2 rounded-lg">
                         <CheckCircle className="h-5 w-5 text-blue-600" />
@@ -545,7 +572,7 @@ const Profile = () => {
                     <CreditCard className="h-4 w-4" />
                     Subscription Information
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                     <div>
                       <span className="text-purple-700">Plan:</span>
                       <span className="ml-2 font-medium text-purple-900 capitalize">
@@ -572,7 +599,7 @@ const Profile = () => {
                 <button 
                   type="submit" 
                   disabled={saving}
-                  className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors">
+                  className="flex items-center gap-2 px-4 md:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors">
                   <Save className="h-4 w-4" />
                   {saving ? 'Saving...' : (gymData ? 'Update Gym Details' : 'Complete Gym Setup')}
                 </button>
@@ -583,7 +610,6 @@ const Profile = () => {
           {/* Preferences Tab */}
           {activeTab === 'preferences' && (
             <div className="space-y-6 max-w-2xl">
-              {/* Header */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <IndianRupee className="h-5 w-5 text-blue-600" />
@@ -594,7 +620,6 @@ const Profile = () => {
                 </p>
               </div>
 
-              {/* Current setting banner */}
               <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
                 <span className="text-2xl">
                   {CURRENCIES.find(c => c.symbol === (user?.currency_symbol || '₹'))?.flag || '💰'}
@@ -608,10 +633,9 @@ const Profile = () => {
                 </div>
               </div>
 
-              {/* Currency grid */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">Select Currency</label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {CURRENCIES.map((c) => (
                     <button
                       key={c.symbol}
@@ -639,10 +663,9 @@ const Profile = () => {
                 </div>
               </div>
 
-              {/* Preview */}
               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                 <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Preview</p>
-                <div className="flex gap-4 flex-wrap">
+                <div className="flex flex-wrap gap-3">
                   {[1250, 24500, 128000].map(amt => (
                     <div key={amt} className="bg-white rounded-lg px-4 py-2 shadow-sm border border-gray-100">
                       <span className="text-lg font-bold text-gray-800">
@@ -653,7 +676,6 @@ const Profile = () => {
                 </div>
               </div>
 
-              {/* Save */}
               <div className="flex justify-end pt-2 border-t">
                 <button
                   type="button"
@@ -663,7 +685,7 @@ const Profile = () => {
                     await updateCurrencySymbol(selectedCurrency);
                     setCurrencySaving(false);
                   }}
-                  className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
+                  className="flex items-center gap-2 px-4 md:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
                 >
                   <Save className="h-4 w-4" />
                   {currencySaving ? 'Saving...' : selectedCurrency === user?.currency_symbol ? 'Already Saved' : 'Save Currency Preference'}
@@ -672,40 +694,69 @@ const Profile = () => {
             </div>
           )}
 
-          {/* Security Tab */}
+          {/* Security Tab - FIXED PASSWORD CHANGE */}
           {activeTab === 'security' && (
             <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
-              <p className="text-sm text-gray-500 mb-4">
-                After changing your password you will be logged out and need to sign in again.
-              </p>
-              {[
-                { key: 'current_password', label: 'Current Password' },
-                { key: 'new_password', label: 'New Password' },
-                { key: 'confirm_password', label: 'Confirm New Password' },
-              ].map(({ key, label }) => (
-                <div key={key} className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-                  <div className="relative">
-                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input 
-                      type="password" 
-                      value={passwordForm[key]}
-                      onChange={(e) => setPasswordForm({ ...passwordForm, [key]: e.target.value })}
-                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="••••••••" 
-                      required 
-                      minLength={key !== 'current_password' ? 6 : undefined} 
-                    />
-                  </div>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                <p className="text-xs text-yellow-800 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  After changing your password, you will be logged out and need to sign in again.
+                </p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
+                <div className="relative">
+                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input 
+                    type="password" 
+                    value={passwordForm.current_password}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, current_password: e.target.value })}
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter current password" 
+                    required 
+                  />
                 </div>
-              ))}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                <div className="relative">
+                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input 
+                    type="password" 
+                    value={passwordForm.new_password}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })}
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter new password (min 6 characters)" 
+                    required 
+                    minLength={6}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
+                <div className="relative">
+                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input 
+                    type="password" 
+                    value={passwordForm.confirm_password}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, confirm_password: e.target.value })}
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Confirm new password" 
+                    required 
+                    minLength={6}
+                  />
+                </div>
+              </div>
 
               <div className="flex justify-end pt-2">
                 <button 
                   type="submit" 
                   disabled={saving}
                   className="flex items-center gap-2 px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium transition-colors">
-                  <Key className="h-4 w-4" />
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Key className="h-4 w-4" />}
                   {saving ? 'Changing...' : 'Change Password'}
                 </button>
               </div>
