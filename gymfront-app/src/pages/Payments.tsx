@@ -15,7 +15,11 @@ import {
   ArrowRight,
   FileText,
   Building,
-  DollarSign
+  DollarSign,
+  Trash2,
+  CheckSquare,
+  Square,
+  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -34,6 +38,13 @@ const Payments = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('all');
   const [expandedPayment, setExpandedPayment] = useState(null);
+  
+  // Delete-related state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedPayments, setSelectedPayments] = useState(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  
   const [summary, setSummary] = useState({
     totalRevenue: 0,
     totalCount: 0,
@@ -48,16 +59,13 @@ const Payments = () => {
   });
 
   const currencySymbol = user?.currency_symbol || '₹';
-  // gym_gst_number is now correctly populated from /me endpoint (joined from Gym table)
   const gymGST = user?.gym_gst_number || user?.gst_number || 'Not Available';
   const gymName = user?.gym_name || 'Gym Management System';
-  // GST rate from user context (set in backend, editable by gym owner)
   const [gstRate, setGstRate] = useState<number>(user?.gst_rate || 5.0);
   const [showGstModal, setShowGstModal] = useState(false);
   const [updatingGst, setUpdatingGst] = useState(false);
 
   useEffect(() => {
-    // Set default date range to current month
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     setStartDate(firstDayOfMonth.toISOString().split('T')[0]);
@@ -70,6 +78,12 @@ const Payments = () => {
       filterPayments();
     }
   }, [payments, startDate, endDate, searchTerm, selectedMethod]);
+
+  // Exit selection mode when payments change
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedPayments(new Set());
+  }, [payments]);
 
   const fetchPayments = async () => {
     try {
@@ -107,7 +121,6 @@ const Payments = () => {
     try {
       let filtered = [...payments];
 
-      // Filter by date range
       if (startDate && endDate && filtered.length > 0) {
         filtered = filtered.filter(payment => {
           const paymentDate = payment.payment_date?.split('T')[0];
@@ -115,7 +128,6 @@ const Payments = () => {
         });
       }
 
-      // Filter by search term (member name)
       if (searchTerm && filtered.length > 0) {
         filtered = filtered.filter(payment => {
           const memberName = payment.member_name || payment.member?.full_name || '';
@@ -123,7 +135,6 @@ const Payments = () => {
         });
       }
 
-      // Filter by payment method
       if (selectedMethod !== 'all' && filtered.length > 0) {
         filtered = filtered.filter(payment => {
           const method = payment.payment_method?.toLowerCase() || '';
@@ -131,7 +142,6 @@ const Payments = () => {
         });
       }
 
-      // Calculate summary with GST and balance payments
       const totalRevenue = filtered.reduce((sum, p) => sum + (p.amount || 0), 0);
       const totalCount = filtered.length;
       const averagePayment = totalCount > 0 ? totalRevenue / totalCount : 0;
@@ -152,15 +162,12 @@ const Payments = () => {
         .filter(p => !['cash', 'card', 'upi'].includes(p.payment_method?.toLowerCase()))
         .reduce((sum, p) => sum + (p.amount || 0), 0);
 
-      // Calculate total GST collected
       const totalGST = filtered.reduce((sum, p) => sum + (p.gst_amount || 0), 0);
       
-      // Calculate total balance payments
       const totalBalancePayments = filtered
         .filter(p => p.is_balance_payment === true)
         .reduce((sum, p) => sum + (p.amount || 0), 0);
 
-      // Calculate growth
       let growth = 0;
       if (payments.length > 0 && startDate && endDate) {
         const daysDiff = Math.max(1, Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)));
@@ -196,7 +203,6 @@ const Payments = () => {
         totalBalancePayments
       });
 
-      // Sort by date (newest first)
       const sortedFiltered = [...filtered].sort((a, b) => {
         const dateA = new Date(a.payment_date);
         const dateB = new Date(b.payment_date);
@@ -219,7 +225,80 @@ const Payments = () => {
     return `${currencySymbol} ${formatted}`;
   };
 
-  // ENHANCED EXPORT FUNCTION WITH GST AND BALANCE
+  // Single payment delete handler
+  const handleSingleDelete = async (paymentId, paymentAmount, memberName) => {
+    if (!window.confirm(`Are you sure you want to delete the payment of ${formatCurrency(paymentAmount)} for ${memberName}?\n\nThis action cannot be undone and will update the member's balance.`)) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await api.delete(`/gym/payments/${paymentId}`);
+      toast.success(`Payment of ${formatCurrency(paymentAmount)} deleted successfully`);
+      await fetchPayments(); // Refresh the list
+    } catch (error) {
+      console.error('Error deleting payment:', error);
+      toast.error(error.response?.data?.detail || 'Failed to delete payment');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Bulk delete handler
+  const handleBulkDelete = async () => {
+    const paymentIds = Array.from(selectedPayments);
+    const selectedPaymentsData = filteredPayments.filter(p => selectedPayments.has(p.id));
+    const totalAmount = selectedPaymentsData.reduce((sum, p) => sum + p.amount, 0);
+    
+    setShowDeleteConfirm(false);
+    setDeleting(true);
+    
+    try {
+      const response = await api.delete('/gym/payments/bulk-delete', {
+        data: { payment_ids: paymentIds }
+      });
+      
+      toast.success(response.data.message);
+      setSelectionMode(false);
+      setSelectedPayments(new Set());
+      await fetchPayments(); // Refresh the list
+    } catch (error) {
+      console.error('Error bulk deleting payments:', error);
+      toast.error(error.response?.data?.detail || 'Failed to delete payments');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Toggle selection of a single payment
+  const togglePaymentSelection = (paymentId) => {
+    const newSelected = new Set(selectedPayments);
+    if (newSelected.has(paymentId)) {
+      newSelected.delete(paymentId);
+    } else {
+      newSelected.add(paymentId);
+    }
+    setSelectedPayments(newSelected);
+  };
+
+  // Select all visible payments
+  const selectAllVisible = () => {
+    const allIds = filteredPayments.map(p => p.id);
+    setSelectedPayments(new Set(allIds));
+  };
+
+  // Deselect all
+  const deselectAll = () => {
+    setSelectedPayments(new Set());
+  };
+
+  // Toggle selection mode
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    setSelectedPayments(new Set());
+    setExpandedPayment(null);
+  };
+
   const handleExport = () => {
     if (filteredPayments.length === 0) {
       toast.error('No data to export for the selected date range');
@@ -227,20 +306,14 @@ const Payments = () => {
     }
 
     try {
-      // Format dates for display
       const startDateFormatted = startDate ? new Date(startDate).toLocaleDateString('en-IN') : 'N/A';
       const endDateFormatted = endDate ? new Date(endDate).toLocaleDateString('en-IN') : 'N/A';
       const exportDate = new Date().toLocaleString('en-IN');
       
-      // Prepare summary data
       const totalAmount = summary.totalRevenue;
       const totalTransactions = filteredPayments.length;
       const averageAmount = totalAmount / totalTransactions;
       
-      // Calculate GST summary using current gstRate
-      // Amount stored in DB already includes GST, so:
-      //   taxable = amount / (1 + gstRate/100)
-      //   gst     = amount - taxable  (or use stored gst_amount if available)
       const halfRate = gstRate / 2;
       const taxableAmount = summary.totalGST > 0
         ? totalAmount - summary.totalGST
@@ -251,10 +324,8 @@ const Payments = () => {
       const cgstAmount = gstCollected / 2;
       const sgstAmount = gstCollected / 2;
       
-      // Prepare CSV data with proper formatting
       const csvRows = [];
       
-      // Add header information
       csvRows.push(['"PAYMENT REPORT"']);
       csvRows.push(['']);
       csvRows.push(['"Gym Information:"']);
@@ -282,7 +353,6 @@ const Payments = () => {
       csvRows.push([`"Balance Payment Count:","${filteredPayments.filter(p => p.is_balance_payment).length}"`]);
       csvRows.push(['']);
       
-      // Add payment method breakdown
       csvRows.push(['"Payment Method Breakdown"']);
       csvRows.push(['"Method","Amount","Count","Percentage"']);
       const methodBreakdown = [
@@ -297,7 +367,6 @@ const Payments = () => {
       });
       csvRows.push(['']);
       
-      // Add detailed transactions header
       csvRows.push(['"Detailed Transactions"']);
       csvRows.push([
         '"Date"',
@@ -319,7 +388,6 @@ const Payments = () => {
         '"Notes"'
       ]);
       
-      // Add each transaction
       filteredPayments.forEach(payment => {
         const paymentDate = payment.payment_date ? new Date(payment.payment_date) : null;
         const dateStr = paymentDate ? paymentDate.toLocaleDateString('en-IN') : 'N/A';
@@ -346,7 +414,6 @@ const Payments = () => {
         ]);
       });
       
-      // Add footer with detailed summary
       csvRows.push(['']);
       csvRows.push(['"Final Summary"']);
       csvRows.push([`"Total Records:","${filteredPayments.length}"`]);
@@ -358,15 +425,12 @@ const Payments = () => {
       csvRows.push([`"This report is generated by ${gymName} (GST: ${gymGST})"`]);
       csvRows.push([`"All payments are recorded as per the selected date range: ${startDateFormatted} to ${endDateFormatted}"`]);
       
-      // Convert to CSV string
       const csvString = csvRows.map(row => row.join(',')).join('\n');
       
-      // Create and download file
       const blob = new Blob(['\uFEFF' + csvString], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       
-      // Create filename with date range
       const fileName = `payment_report_${startDate}_to_${endDate}_GST_${gymGST.replace(/[^a-zA-Z0-9]/g, '')}.csv`;
       link.href = url;
       link.setAttribute('download', fileName);
@@ -380,72 +444,6 @@ const Payments = () => {
     } catch (err) {
       console.error('Error exporting:', err);
       toast.error('Failed to export data');
-    }
-  };
-
-  // Export as PDF with GST and balance payment details
-  const handleExportAsPDF = async () => {
-    if (filteredPayments.length === 0) {
-      toast.error('No data to export');
-      return;
-    }
-
-    try {
-      toast.loading('Generating PDF report...', { id: 'pdf-export' });
-      
-      // Prepare data for PDF
-      const pdfData = {
-        gym_name: gymName,
-        gym_gst: gymGST,
-        start_date: startDate,
-        end_date: endDate,
-        payments: filteredPayments,
-        summary: {
-          ...summary,
-          taxable_amount: summary.totalRevenue - summary.totalGST,
-          cgst: summary.totalGST / 2,
-          sgst: summary.totalGST / 2
-        },
-        currency_symbol: currencySymbol,
-        generated_on: new Date().toISOString()
-      };
-      
-      // Call backend PDF generation API
-      const response = await api.post('/gym/payments/export-pdf', pdfData, {
-        responseType: 'blob'
-      });
-      
-      // Download PDF
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `payment_report_${startDate}_to_${endDate}_GST.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      toast.success('PDF report exported successfully!', { id: 'pdf-export' });
-    } catch (error) {
-      console.error('PDF export failed:', error);
-      toast.error('Failed to generate PDF report', { id: 'pdf-export' });
-    }
-  };
-
-  // Update GST rate via API and reflect in UI immediately
-  const handleUpdateGstRate = async (newRate: number) => {
-    setUpdatingGst(true);
-    try {
-      await api.put('/gym/my-gym/gst-rate', { gst_rate: newRate });
-      setGstRate(newRate);
-      setShowGstModal(false);
-      toast.success(`GST rate updated to ${newRate}% (CGST ${newRate/2}% + SGST ${newRate/2}%)`);
-    } catch (err) {
-      console.error('Failed to update GST rate:', err);
-      toast.error('Failed to update GST rate');
-    } finally {
-      setUpdatingGst(false);
     }
   };
 
@@ -476,7 +474,17 @@ const Payments = () => {
             <button
               key={rate}
               disabled={updatingGst}
-              onClick={() => handleUpdateGstRate(rate)}
+              onClick={() => {
+                setUpdatingGst(true);
+                api.put('/gym/my-gym/gst-rate', { gst_rate: rate })
+                  .then(() => {
+                    setGstRate(rate);
+                    setShowGstModal(false);
+                    toast.success(`GST rate updated to ${rate}%`);
+                  })
+                  .catch(() => toast.error('Failed to update GST rate'))
+                  .finally(() => setUpdatingGst(false));
+              }}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${
                 gstRate === rate
                   ? 'border-purple-500 bg-purple-50 text-purple-700'
@@ -515,7 +523,14 @@ const Payments = () => {
           type="date"
           className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           value={datePickerType === 'start' ? startDate : endDate}
-          onChange={(e) => handleDateChange(e.target.value)}
+          onChange={(e) => {
+            if (datePickerType === 'start') {
+              setStartDate(e.target.value);
+            } else {
+              setEndDate(e.target.value);
+            }
+            setShowDatePicker(false);
+          }}
           max={datePickerType === 'start' ? endDate : undefined}
           min={datePickerType === 'end' ? startDate : undefined}
         />
@@ -525,7 +540,12 @@ const Payments = () => {
             onClick={() => {
               const today = new Date();
               const date = today.toISOString().split('T')[0];
-              handleDateChange(date);
+              if (datePickerType === 'start') {
+                setStartDate(date);
+              } else {
+                setEndDate(date);
+              }
+              setShowDatePicker(false);
             }}
             className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
           >
@@ -535,7 +555,13 @@ const Payments = () => {
             onClick={() => {
               const lastWeek = new Date();
               lastWeek.setDate(lastWeek.getDate() - 7);
-              handleDateChange(lastWeek.toISOString().split('T')[0]);
+              const date = lastWeek.toISOString().split('T')[0];
+              if (datePickerType === 'start') {
+                setStartDate(date);
+              } else {
+                setEndDate(date);
+              }
+              setShowDatePicker(false);
             }}
             className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
           >
@@ -545,7 +571,13 @@ const Payments = () => {
             onClick={() => {
               const lastMonth = new Date();
               lastMonth.setMonth(lastMonth.getMonth() - 1);
-              handleDateChange(lastMonth.toISOString().split('T')[0]);
+              const date = lastMonth.toISOString().split('T')[0];
+              if (datePickerType === 'start') {
+                setStartDate(date);
+              } else {
+                setEndDate(date);
+              }
+              setShowDatePicker(false);
             }}
             className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
           >
@@ -556,13 +588,72 @@ const Payments = () => {
     </div>
   );
 
-  const handleDateChange = (date) => {
-    if (datePickerType === 'start') {
-      setStartDate(date);
-    } else {
-      setEndDate(date);
-    }
-    setShowDatePicker(false);
+  const DeleteConfirmModal = () => {
+    const selectedCount = selectedPayments.size;
+    const selectedData = filteredPayments.filter(p => selectedPayments.has(p.id));
+    const totalAmount = selectedData.reduce((sum, p) => sum + p.amount, 0);
+
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setShowDeleteConfirm(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">Confirm Deletion</h3>
+            </div>
+            <button onClick={() => setShowDeleteConfirm(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+              <X className="h-5 w-5 text-gray-500" />
+            </button>
+          </div>
+          
+          <p className="text-gray-600 mb-4">
+            Are you sure you want to delete <strong className="text-red-600">{selectedCount}</strong> payment{selectedCount !== 1 ? 's' : ''}?
+          </p>
+          
+          <div className="bg-red-50 rounded-xl p-4 mb-6">
+            <p className="text-sm text-red-800 mb-2">⚠️ This action will:</p>
+            <ul className="text-sm text-red-700 space-y-1 ml-4">
+              <li>• Permanently remove these payment records</li>
+              <li>• Update member balances (add back the deleted amounts)</li>
+              <li>• Cannot be undone</li>
+            </ul>
+            <div className="mt-3 pt-3 border-t border-red-200">
+              <p className="text-sm font-semibold text-red-800">
+                Total amount to reverse: {formatCurrency(totalAmount)}
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={deleting}
+              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {deleting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  Delete {selectedCount} Payment{selectedCount !== 1 ? 's' : ''}
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderSummaryCards = () => (
@@ -626,6 +717,7 @@ const Payments = () => {
 
   const renderPaymentCard = (payment) => {
     const isExpanded = expandedPayment === payment.id;
+    const isSelected = selectedPayments.has(payment.id);
     const memberName = payment.member_name || 
                       payment.member?.full_name || 
                       payment.member?.name || 
@@ -634,20 +726,35 @@ const Payments = () => {
     return (
       <div 
         key={payment.id} 
-        className="bg-white rounded-xl shadow-md hover:shadow-lg transition-all border border-gray-100 overflow-hidden"
+        className={`bg-white rounded-xl shadow-md hover:shadow-lg transition-all border overflow-hidden ${
+          isSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-100'
+        }`}
       >
-        <div 
-          className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-          onClick={() => setExpandedPayment(isExpanded ? null : payment.id)}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4 flex-1">
+        <div className="p-4">
+          <div className="flex items-center gap-4">
+            {selectionMode && (
+              <button
+                onClick={() => togglePaymentSelection(payment.id)}
+                className="flex-shrink-0"
+              >
+                {isSelected ? (
+                  <CheckSquare className="h-5 w-5 text-blue-600" />
+                ) : (
+                  <Square className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                )}
+              </button>
+            )}
+            
+            <div 
+              className="flex items-center gap-4 flex-1 cursor-pointer"
+              onClick={() => !selectionMode && setExpandedPayment(isExpanded ? null : payment.id)}
+            >
               <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold text-lg">
                 {memberName.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1">
                 <p className="font-semibold text-gray-900">{memberName}</p>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className="text-xs text-gray-500 flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
                     {payment.payment_date ? new Date(payment.payment_date).toLocaleDateString('en-IN', {
@@ -679,66 +786,80 @@ const Payments = () => {
                 </div>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-xl font-bold text-green-600">{formatCurrency(payment.amount)}</p>
-              <p className="text-xs text-gray-400 mt-1">
-                {isExpanded ? 'Tap to collapse' : 'Tap to expand'}
-              </p>
+            
+            <div className="text-right flex items-center gap-3">
+              <div>
+                <p className="text-xl font-bold text-green-600">{formatCurrency(payment.amount)}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {isExpanded ? 'Tap to collapse' : 'Tap to expand'}
+                </p>
+              </div>
+              
+              {!selectionMode && (
+                <button
+                  onClick={() => handleSingleDelete(payment.id, payment.amount, memberName)}
+                  disabled={deleting}
+                  className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                  title="Delete payment"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </div>
-        </div>
-        
-        {isExpanded && (
-          <div className="border-t border-gray-100 p-4 bg-gray-50">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Transaction ID</p>
-                <p className="text-sm font-mono text-gray-700">{payment.transaction_id || 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Payment Status</p>
-                <p className="text-sm flex items-center gap-1">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-green-700 font-medium">{payment.status || 'Completed'}</span>
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Member Phone</p>
-                <p className="text-sm text-gray-700">{payment.member_phone || payment.member?.phone || 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Payment Time</p>
-                <p className="text-sm text-gray-700">
-                  {payment.payment_date ? new Date(payment.payment_date).toLocaleTimeString('en-IN', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  }) : 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">GST Amount</p>
-                <p className="text-sm text-gray-700">{formatCurrency(payment.gst_amount || 0)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Member Balance</p>
-                <p className="text-sm text-gray-700">{formatCurrency(payment.member_balance || 0)}</p>
-              </div>
-              {payment.is_balance_payment && payment.original_invoice_id && (
+          
+          {isExpanded && !selectionMode && (
+            <div className="border-t border-gray-100 mt-4 pt-4 bg-gray-50 rounded-lg p-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Original Invoice ID</p>
-                  <p className="text-sm font-mono text-gray-700">{payment.original_invoice_id}</p>
+                  <p className="text-xs text-gray-500 mb-1">Transaction ID</p>
+                  <p className="text-sm font-mono text-gray-700">{payment.transaction_id || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Payment Status</p>
+                  <p className="text-sm flex items-center gap-1">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="text-green-700 font-medium">{payment.status || 'Completed'}</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Member Phone</p>
+                  <p className="text-sm text-gray-700">{payment.member_phone || payment.member?.phone || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Payment Time</p>
+                  <p className="text-sm text-gray-700">
+                    {payment.payment_date ? new Date(payment.payment_date).toLocaleTimeString('en-IN', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    }) : 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">GST Amount</p>
+                  <p className="text-sm text-gray-700">{formatCurrency(payment.gst_amount || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Member Balance</p>
+                  <p className="text-sm text-gray-700">{formatCurrency(payment.member_balance || 0)}</p>
+                </div>
+                {payment.is_balance_payment && payment.original_invoice_id && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Original Invoice ID</p>
+                    <p className="text-sm font-mono text-gray-700">{payment.original_invoice_id}</p>
+                  </div>
+                )}
+              </div>
+              
+              {payment.notes && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <p className="text-xs text-gray-500 mb-1">Notes</p>
+                  <p className="text-sm text-gray-600">{payment.notes}</p>
                 </div>
               )}
             </div>
-            
-            {payment.notes && (
-              <div className="mt-3 pt-3 border-t border-gray-200">
-                <p className="text-xs text-gray-500 mb-1">Notes</p>
-                <p className="text-sm text-gray-600">{payment.notes}</p>
-              </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   };
@@ -770,6 +891,8 @@ const Payments = () => {
     );
   }
 
+  const selectedCount = selectedPayments.size;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -794,6 +917,26 @@ const Payments = () => {
               GST {gstRate}%
             </button>
             <button
+              onClick={toggleSelectionMode}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+                selectionMode 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-white/20 backdrop-blur-sm hover:bg-white/30'
+              }`}
+            >
+              {selectionMode ? (
+                <>
+                  <CheckSquare className="h-5 w-5" />
+                  Select Mode
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-5 w-5" />
+                  Bulk Delete
+                </>
+              )}
+            </button>
+            <button
               onClick={handleExport}
               disabled={filteredPayments.length === 0}
               className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -801,17 +944,57 @@ const Payments = () => {
               <Download className="h-5 w-5" />
               Export CSV
             </button>
-            {/* <button
-              onClick={handleExportAsPDF}
-              disabled={filteredPayments.length === 0}
-              className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <FileText className="h-5 w-5" />
-              Export PDF
-            </button> */}
           </div>
         </div>
       </div>
+
+      {/* Selection Mode Bar */}
+      {selectionMode && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+              <CheckSquare className="h-4 w-4 text-blue-600" />
+            </div>
+            <div>
+              <p className="font-medium text-blue-900">Selection Mode Active</p>
+              <p className="text-sm text-blue-700">
+                {selectedCount} payment{selectedCount !== 1 ? 's' : ''} selected
+                {selectedCount > 0 && ` • Total: ${formatCurrency(
+                  filteredPayments.filter(p => selectedPayments.has(p.id)).reduce((sum, p) => sum + p.amount, 0)
+                )}`}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={selectAllVisible}
+              className="px-3 py-1.5 text-sm bg-white text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              Select All ({filteredPayments.length})
+            </button>
+            <button
+              onClick={deselectAll}
+              className="px-3 py-1.5 text-sm bg-white text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              Deselect All
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={selectedCount === 0 || deleting}
+              className="px-4 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete Selected ({selectedCount})
+            </button>
+            <button
+              onClick={toggleSelectionMode}
+              className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+            >
+              Exit
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Date Range Selector */}
       <div className="bg-white rounded-2xl shadow-lg p-6">
@@ -985,9 +1168,10 @@ const Payments = () => {
         )}
       </div>
 
-      {/* Date Picker Modal */}
+      {/* Modals */}
       {showDatePicker && <DatePickerModal />}
       {showGstModal && <GstRateModal />}
+      {showDeleteConfirm && <DeleteConfirmModal />}
     </div>
   );
 };
