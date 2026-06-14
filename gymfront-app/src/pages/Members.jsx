@@ -29,11 +29,6 @@ import { useAttendance } from '../context/AttendanceContext';
 // Import the invoice functions
 import { generateInvoicePDF, generateBulkInvoices } from '../services/api';
 
-
-
-
-
-
 // Debounce hook to prevent excessive API calls
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -65,6 +60,7 @@ const Members = () => {
   const [members, setMembers] = useState([]);
   const [stats, setStats] = useState({ total: 0, active: 0, newThisMonth: 0 });
   const [filters, setFilters] = useState({ status: 'all', plan: 'all', gender: 'all' });
+  const [showNewThisMonthOnly, setShowNewThisMonthOnly] = useState(false);
   const [downloadingInvoice, setDownloadingInvoice] = useState(null);
   const [downloadingBulk, setDownloadingBulk] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
@@ -132,7 +128,7 @@ const Members = () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
+      if (debouncedSearchTerm && !showNewThisMonthOnly) params.append('search', debouncedSearchTerm);
       if (filters.status !== 'all') params.append('status', filters.status);
 
       const [membersRes, membershipsRes, paymentsRes, deviceIdsRes] = await Promise.all([
@@ -207,7 +203,7 @@ const Members = () => {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, filters.status]);
+  }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly]);
 
   const fetchStats = async () => {
     try {
@@ -241,7 +237,36 @@ const Members = () => {
     fetchMembers();
     fetchStats();
     fetchGymDetails();
-  }, [fetchMembers]); // Only depend on fetchMembers now
+  }, [fetchMembers]);
+
+  // Filter handlers for stats cards
+  const handleFilterAll = () => {
+    setFilters({ ...filters, status: 'all' });
+    setShowNewThisMonthOnly(false);
+    setSearchTerm('');
+    setCurrentPage(1);
+  };
+
+  const handleFilterActive = () => {
+    setFilters({ ...filters, status: 'active' });
+    setShowNewThisMonthOnly(false);
+    setSearchTerm('');
+    setCurrentPage(1);
+  };
+
+  const handleFilterInactive = () => {
+    setFilters({ ...filters, status: 'inactive' });
+    setShowNewThisMonthOnly(false);
+    setSearchTerm('');
+    setCurrentPage(1);
+  };
+
+  const handleFilterNewThisMonth = () => {
+    setFilters({ ...filters, status: 'all' });
+    setShowNewThisMonthOnly(true);
+    setSearchTerm('');
+    setCurrentPage(1);
+  };
 
   const handleDownloadInvoice = async (member) => {
     setDownloadingInvoice(member.id);
@@ -643,14 +668,26 @@ const Members = () => {
     setShowBulkDeviceSelect(true);
   };
 
+  // Filtered members - including new this month filter
   const filteredMembers = members.filter(member => {
-    const searchLower = searchTerm.toLowerCase().trim();
-    if (!searchLower) return true;
+    // Check if we're filtering by "new this month"
+    if (showNewThisMonthOnly) {
+      const currentDate = new Date();
+      const currentYear = currentDate.getFullYear();
+      const currentMonth = currentDate.getMonth();
+      const joinDate = new Date(member.joinDate);
+      const isNewThisMonth = joinDate.getFullYear() === currentYear && joinDate.getMonth() === currentMonth;
+      return isNewThisMonth;
+    }
     
-    const matchesSearch =
-      member.fullName?.toLowerCase().includes(searchLower) ||
-      member.email?.toLowerCase().includes(searchLower) ||
-      member.phone?.includes(searchTerm);
+    const searchLower = searchTerm.toLowerCase().trim();
+    let matchesSearch = true;
+    if (searchLower) {
+      matchesSearch =
+        member.fullName?.toLowerCase().includes(searchLower) ||
+        member.email?.toLowerCase().includes(searchLower) ||
+        member.phone?.includes(searchTerm);
+    }
     
     const matchesStatus = filters.status === 'all' || member.status === filters.status;
     const matchesGender = filters.gender === 'all' || member.gender === filters.gender;
@@ -703,25 +740,51 @@ const Members = () => {
     }
   };
 
+  const inactiveCount = stats.total - stats.active;
+
   return (
     <div className="p-6">
-      {/* Header Stats */}
+      {/* Header Stats - Clickable Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <div className="bg-white rounded-xl shadow-sm p-6">
+        <div 
+          onClick={handleFilterAll}
+          className={`bg-white rounded-xl shadow-sm p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
+            filters.status === 'all' && !showNewThisMonthOnly ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+          }`}
+        >
           <p className="text-sm text-gray-600">Total Members</p>
           <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+          <p className="text-xs text-gray-400 mt-1">Click to show all</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-6">
+        <div 
+          onClick={handleFilterActive}
+          className={`bg-white rounded-xl shadow-sm p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
+            filters.status === 'active' && !showNewThisMonthOnly ? 'ring-2 ring-green-500 ring-offset-2' : ''
+          }`}
+        >
           <p className="text-sm text-gray-600">Active Members</p>
           <p className="text-2xl font-bold text-green-600">{stats.active}</p>
+          <p className="text-xs text-gray-400 mt-1">Click to show active</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-6">
+        <div 
+          onClick={handleFilterInactive}
+          className={`bg-white rounded-xl shadow-sm p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
+            filters.status === 'inactive' && !showNewThisMonthOnly ? 'ring-2 ring-red-500 ring-offset-2' : ''
+          }`}
+        >
+          <p className="text-sm text-gray-600">Inactive Members</p>
+          <p className="text-2xl font-bold text-gray-600">{inactiveCount}</p>
+          <p className="text-xs text-gray-400 mt-1">Click to show inactive</p>
+        </div>
+        <div 
+          onClick={handleFilterNewThisMonth}
+          className={`bg-white rounded-xl shadow-sm p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
+            showNewThisMonthOnly ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+          }`}
+        >
           <p className="text-sm text-gray-600">New This Month</p>
           <p className="text-2xl font-bold text-blue-600">{stats.newThisMonth}</p>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <p className="text-sm text-gray-600">Inactive Members</p>
-          <p className="text-2xl font-bold text-gray-600">{stats.total - stats.active}</p>
+          <p className="text-xs text-gray-400 mt-1">Click to show new members</p>
         </div>
       </div>
 
@@ -752,6 +815,20 @@ const Members = () => {
             >
               <RefreshCw className="h-5 w-5 text-gray-600" />
             </button>
+            {/* Clear filters button */}
+            {(filters.status !== 'all' || showNewThisMonthOnly || searchTerm) && (
+              <button
+                onClick={() => {
+                  setFilters({ ...filters, status: 'all' });
+                  setShowNewThisMonthOnly(false);
+                  setSearchTerm('');
+                }}
+                className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm flex items-center gap-1"
+              >
+                <X className="h-3 w-3" />
+                Clear Filters
+              </button>
+            )}
           </div>
 
           <div className="flex items-center space-x-2 flex-wrap gap-2">
@@ -808,8 +885,14 @@ const Members = () => {
           <div className="mt-4 pt-4 border-t grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg p-2">
+              <select 
+                value={filters.status} 
+                onChange={(e) => {
+                  setFilters({ ...filters, status: e.target.value });
+                  setShowNewThisMonthOnly(false);
+                }}
+                className="w-full border border-gray-300 rounded-lg p-2"
+              >
                 <option value="all">All Status</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
@@ -825,6 +908,20 @@ const Members = () => {
                 <option value="other">Other</option>
               </select>
             </div>
+            {/* Show active filter indicator when new this month is active */}
+            {showNewThisMonthOnly && (
+              <div className="flex items-center">
+                <span className="inline-flex items-center px-3 py-2 rounded-lg bg-blue-100 text-blue-800 text-sm">
+                  <span className="font-medium">Filter: New Members This Month</span>
+                  <button
+                    onClick={() => setShowNewThisMonthOnly(false)}
+                    className="ml-2 text-blue-600 hover:text-blue-800"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -857,12 +954,16 @@ const Members = () => {
                     <div className="flex justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
-                   </td>
-                </tr>
+                  </td>
+                 </tr>
               ) : paginatedMembers.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-6 py-4 text-center text-gray-500">No members found</td>
-                </tr>
+                  <td colSpan="8" className="px-6 py-4 text-center text-gray-500">
+                    {showNewThisMonthOnly 
+                      ? 'No new members joined this month' 
+                      : 'No members found'}
+                   </td>
+                 </tr>
               ) : (
                 paginatedMembers.map((member) => (
                   <tr key={member.id} className="hover:bg-gray-50">
@@ -871,7 +972,7 @@ const Members = () => {
                         checked={selectedMembers.includes(member.id)}
                         onChange={() => toggleSelectMember(member.id)}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    </td>
+                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <img 
@@ -890,11 +991,11 @@ const Members = () => {
                           </div>
                         </div>
                       </div>
-                    </td>
+                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">{member.email || '—'}</div>
                       <div className="text-sm text-gray-500">{member.phone}</div>
-                    </td>
+                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{member.membership}</div>
                       <div className="text-sm text-gray-500">
@@ -905,10 +1006,10 @@ const Members = () => {
                           </span>
                         )}
                       </div>
-                    </td>
+                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStatusBadge(member.status)}
-                    </td>
+                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {member.syncedToDevice ? (
                         <div className="group relative">
@@ -928,7 +1029,7 @@ const Members = () => {
                           Not Synced
                         </span>
                       )}
-                    </td>
+                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {member.deviceUserId ? (
                         <button
@@ -944,7 +1045,7 @@ const Members = () => {
                       ) : (
                         <span className="text-xs text-gray-400">—</span>
                       )}
-                    </td>
+                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button 
                         onClick={() => handleDownloadInvoice(member)} 
@@ -971,12 +1072,12 @@ const Members = () => {
                       <button onClick={() => handleDeleteMember(member.id)} className="text-red-600 hover:text-red-900">
                         <Trash2 className="h-4 w-4" />
                       </button>
-                    </td>
-                  </tr>
+                     </td>
+                   </tr>
                 ))
               )}
             </tbody>
-          </table>
+           </table>
         </div>
 
         {/* Pagination */}
