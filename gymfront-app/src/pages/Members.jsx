@@ -25,6 +25,7 @@ import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useAttendance } from '../context/AttendanceContext';
+import MemberProfileModal from '../components/MemberProfileModal';
 
 // Import the invoice functions
 import { generateInvoicePDF, generateBulkInvoices } from '../services/api';
@@ -68,6 +69,11 @@ const Members = () => {
   const [selectedMemberForSync, setSelectedMemberForSync] = useState(null);
   const [showBulkDeviceSelect, setShowBulkDeviceSelect] = useState(false);
   const [selectedBulkDevice, setSelectedBulkDevice] = useState(null);
+
+  const [selectedMemberForProfile, setSelectedMemberForProfile] = useState(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+
   const [gymDetails, setGymDetails] = useState({
     name: 'GYM MANAGEMENT SYSTEM',
     address: '',
@@ -283,6 +289,12 @@ const Members = () => {
     } finally {
       setDownloadingInvoice(null);
     }
+  };
+  
+
+  const openProfileModal = (member) => {
+    setSelectedMemberForProfile(member);
+    setShowProfileModal(true);
   };
   
   const handleBulkInvoice = async () => {
@@ -973,8 +985,11 @@ const Members = () => {
                         onChange={() => toggleSelectMember(member.id)}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                      </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
+                     <td className="px-6 py-4 whitespace-nowrap">
+                      <div 
+                        className="flex items-center cursor-pointer hover:bg-gray-50 rounded-lg p-1 -m-1 transition-colors"
+                        onClick={() => openProfileModal(member)}
+                      >
                         <img 
                           className="h-10 w-10 rounded-full object-cover flex-shrink-0" 
                           src={member.avatar} 
@@ -985,13 +1000,15 @@ const Members = () => {
                           }}
                         />
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{member.fullName}</div>
+                          <div className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors">
+                            {member.fullName}
+                          </div>
                           <div className="text-sm text-gray-500">
                             Joined {new Date(member.joinDate).toLocaleDateString()}
                           </div>
                         </div>
                       </div>
-                     </td>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">{member.email || '—'}</div>
                       <div className="text-sm text-gray-500">{member.phone}</div>
@@ -1125,6 +1142,22 @@ const Members = () => {
         onSyncComplete={handleSyncComplete}
         refreshMemberList={fetchMembers}
       />
+
+      {showProfileModal && selectedMemberForProfile && (
+        <MemberProfileModal
+          memberId={selectedMemberForProfile.id}
+          onClose={() => {
+            setShowProfileModal(false);
+            setSelectedMemberForProfile(null);
+            fetchMembers(); // Refresh to get updated data
+          }}
+          onUpdate={() => {
+            fetchMembers();
+            fetchStats();
+          }}
+        />
+      )}
+
 
       {/* Bulk Device Selection Modal - FIXED VERSION */}
       {showBulkDeviceSelect && (
