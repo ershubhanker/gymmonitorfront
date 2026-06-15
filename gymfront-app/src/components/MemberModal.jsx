@@ -548,11 +548,31 @@ const PlanFormModal = ({ plan, onSave, onCancel }) => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Duration (days)</label>
-            <input type="number" min="1" value={formData.duration_days}
-              onChange={e => setFormData({ ...formData, duration_days: parseInt(e.target.value) || 30 })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-          </div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Duration (days)</label>
+          <input 
+            type="number" 
+            min="1" 
+            value={formData.duration_days === 0 ? '' : formData.duration_days}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === '') {
+                setFormData({ ...formData, duration_days: 0 });
+              } else {
+                const numValue = parseInt(value);
+                if (!isNaN(numValue) && numValue >= 1) {
+                  setFormData({ ...formData, duration_days: numValue });
+                }
+              }
+            }}
+            onBlur={() => {
+              if (formData.duration_days === 0 || formData.duration_days === '') {
+                setFormData({ ...formData, duration_days: 30 });
+              }
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
+            placeholder="Enter duration in days"
+          />
+        </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Price (₹) <span className="text-red-500">*</span></label>
             <div className="relative">
