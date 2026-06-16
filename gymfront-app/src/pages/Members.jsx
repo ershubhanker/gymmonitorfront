@@ -17,7 +17,8 @@ import {
   RefreshCw,
   Wifi,
   Loader2,
-  WifiOff
+  WifiOff,
+  FileSpreadsheet  // <-- ADD THIS IMPORT
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
@@ -26,6 +27,7 @@ import api, { API_BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useAttendance } from '../context/AttendanceContext';
 import MemberProfileModal from '../components/MemberProfileModal';
+import BulkImportModal from '../components/BulkImportModal';
 
 // Import the invoice functions
 import { generateInvoicePDF, generateBulkInvoices } from '../services/api';
@@ -69,7 +71,7 @@ const Members = () => {
   const [selectedMemberForSync, setSelectedMemberForSync] = useState(null);
   const [showBulkDeviceSelect, setShowBulkDeviceSelect] = useState(false);
   const [selectedBulkDevice, setSelectedBulkDevice] = useState(null);
-
+  const [showBulkImportModal, setShowBulkImportModal] = useState(false);
   const [selectedMemberForProfile, setSelectedMemberForProfile] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
@@ -130,86 +132,94 @@ const Members = () => {
   const itemsPerPage = 10;
 
   // Wrap fetchMembers in useCallback to prevent infinite loops
-  const fetchMembers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (debouncedSearchTerm && !showNewThisMonthOnly) params.append('search', debouncedSearchTerm);
-      if (filters.status !== 'all') params.append('status', filters.status);
+  // src/pages/Members.jsx - Updated fetchMembers function
 
-      const [membersRes, membershipsRes, paymentsRes, deviceIdsRes] = await Promise.all([
-        api.get(`/gym/members?${params.toString()}`),
-        api.get('/gym/memberships?limit=1000'),
-        api.get('/gym/payments?limit=1000'),
-        api.get('/attendance/members/device-ids').catch(() => ({ data: [] })),
-      ]);
-
-      const membershipsData = membershipsRes.data || [];
-      const paymentsData = paymentsRes.data || [];
-
-      // Build a lookup map: member_id -> device_user_id
-      const deviceIdMap = {};
-      (deviceIdsRes.data || []).forEach(entry => {
-        if (entry.device_user_id) {
-          deviceIdMap[entry.member_id] = entry.device_user_id;
-        }
-      });
-
-      const transformed = membersRes.data.map(member => {
-        const today = new Date().toISOString().split('T')[0];
-        const activeMembership = membershipsData.find(
-          ms => ms.member?.id === member.id &&
-                ms.status === 'active' &&
-                ms.end_date >= today
-        );
-        const memberPayments = paymentsData.filter(p => p.member_id === member.id);
-        const paymentCount = memberPayments.length;
-
-        let avatarUrl;
-        if (member.profile_image) {
-          if (member.profile_image.startsWith('http')) {
-            avatarUrl = member.profile_image;
-          } else {
-            avatarUrl = `${API_BASE_URL}${member.profile_image}`;
-          }
-        } else {
-          avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
-        }
-
-        // Use device_user_id from gym_routes if present, otherwise fall back to deviceIdMap
-        const deviceUserId = member.device_user_id || deviceIdMap[member.id] || null;
-
-        return {
-          id: member.id,
-          fullName: member.full_name,
-          email: member.email || '',
-          phone: member.phone,
-          gender: member.gender || 'male',
-          joinDate: member.joined_date,
-          membership: activeMembership?.plan?.name || 'No Plan',
-          membershipEndDate: activeMembership?.end_date || null,
-          membershipStatus: activeMembership?.status || null,
-          status: member.is_active ? 'active' : 'inactive',
-          lastVisit: member.last_visit || null,
-          payments: paymentCount,
-          avatar: avatarUrl,
-          profile_image: member.profile_image,
-          raw: member,
-          activeMembership: activeMembership,
-          memberPayments: memberPayments,
-          syncedToDevice: !!deviceUserId,
-          deviceUserId: deviceUserId,
-        };
-      });
-
-      setMembers(transformed);
-    } catch (error) {
-      console.error('Error fetching members:', error.response?.data || error.message);
-      toast.error('Failed to fetch members');
-    } finally {
-      setLoading(false);
+const fetchMembers = useCallback(async () => {
+  setLoading(true);
+  try {
+    const params = new URLSearchParams();
+    if (debouncedSearchTerm && !showNewThisMonthOnly) params.append('search', debouncedSearchTerm);
+    
+    // FIX: Only append status filter if it's not 'all'
+    if (filters.status !== 'all') {
+      // For inactive, the API expects 'inactive' but the field in DB is is_active (boolean)
+      // The backend should handle this conversion
+      params.append('status', filters.status);
     }
-  }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly]);
+
+    const [membersRes, membershipsRes, paymentsRes, deviceIdsRes] = await Promise.all([
+      api.get(`/gym/members?${params.toString()}`),
+      api.get('/gym/memberships?limit=1000'),
+      api.get('/gym/payments?limit=1000'),
+      api.get('/attendance/members/device-ids').catch(() => ({ data: [] })),
+    ]);
+
+    const membershipsData = membershipsRes.data || [];
+    const paymentsData = paymentsRes.data || [];
+
+    // Build a lookup map: member_id -> device_user_id
+    const deviceIdMap = {};
+    (deviceIdsRes.data || []).forEach(entry => {
+      if (entry.device_user_id) {
+        deviceIdMap[entry.member_id] = entry.device_user_id;
+      }
+    });
+
+    const transformed = membersRes.data.map(member => {
+      const today = new Date().toISOString().split('T')[0];
+      const activeMembership = membershipsData.find(
+        ms => ms.member?.id === member.id &&
+              ms.status === 'active' &&
+              ms.end_date >= today
+      );
+      const memberPayments = paymentsData.filter(p => p.member_id === member.id);
+      const paymentCount = memberPayments.length;
+
+      let avatarUrl;
+      if (member.profile_image) {
+        if (member.profile_image.startsWith('http')) {
+          avatarUrl = member.profile_image;
+        } else {
+          avatarUrl = `${API_BASE_URL}${member.profile_image}`;
+        }
+      } else {
+        avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
+      }
+
+      // Use device_user_id from gym_routes if present, otherwise fall back to deviceIdMap
+      const deviceUserId = member.device_user_id || deviceIdMap[member.id] || null;
+
+      return {
+        id: member.id,
+        fullName: member.full_name,
+        email: member.email || '',
+        phone: member.phone,
+        gender: member.gender || 'male',
+        joinDate: member.joined_date,
+        membership: activeMembership?.plan?.name || 'No Plan',
+        membershipEndDate: activeMembership?.end_date || null,
+        membershipStatus: activeMembership?.status || null,
+        status: member.is_active ? 'active' : 'inactive',
+        lastVisit: member.last_visit || null,
+        payments: paymentCount,
+        avatar: avatarUrl,
+        profile_image: member.profile_image,
+        raw: member,
+        activeMembership: activeMembership,
+        memberPayments: memberPayments,
+        syncedToDevice: !!deviceUserId,
+        deviceUserId: deviceUserId,
+      };
+    });
+
+    setMembers(transformed);
+  } catch (error) {
+    console.error('Error fetching members:', error.response?.data || error.message);
+    toast.error('Failed to fetch members');
+  } finally {
+    setLoading(false);
+  }
+}, [debouncedSearchTerm, filters.status, showNewThisMonthOnly]);
 
   const fetchStats = async () => {
     try {
@@ -883,6 +893,13 @@ const Members = () => {
               Export CSV
             </button>
             <button
+              onClick={() => setShowBulkImportModal(true)}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Bulk Import
+            </button>
+            <button
               onClick={() => { setSelectedMember(null); setIsModalOpen(true); }}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
             >
@@ -1158,6 +1175,19 @@ const Members = () => {
         />
       )}
 
+      {/* Bulk Import Modal */}
+      <BulkImportModal
+        isOpen={showBulkImportModal}
+        onClose={() => {
+          setShowBulkImportModal(false);
+          fetchMembers();
+          fetchStats();
+        }}
+        onImportComplete={() => {
+          fetchMembers();
+          fetchStats();
+        }}
+      />
 
       {/* Bulk Device Selection Modal - FIXED VERSION */}
       {showBulkDeviceSelect && (

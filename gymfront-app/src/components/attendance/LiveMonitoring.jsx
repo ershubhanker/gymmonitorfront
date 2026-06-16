@@ -9,6 +9,30 @@ import { useAttendance } from '../../context/AttendanceContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
+// Helper function to format time in IST
+const formatInIST = (timestamp) => {
+  if (!timestamp) return 'N/A';
+  try {
+    const date = new Date(timestamp);
+    // Add 5 hours 30 minutes (IST is UTC+5:30)
+    const istTime = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    
+    // Format the IST time
+    const year = istTime.getFullYear();
+    const month = String(istTime.getMonth() + 1).padStart(2, '0');
+    const day = String(istTime.getDate()).padStart(2, '0');
+    let hours = istTime.getHours();
+    const minutes = String(istTime.getMinutes()).padStart(2, '0');
+    const seconds = String(istTime.getSeconds()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    
+    return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds} ${ampm}`;
+  } catch (e) {
+    return timestamp;
+  }
+};
+
 const LiveMonitoring = () => {
   const { 
     liveEvents = [], 
@@ -44,6 +68,35 @@ const LiveMonitoring = () => {
   const [manualDateTime, setManualDateTime] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Helper function to safely get user_id as string
+  const getUserIdAsString = (event) => {
+    if (!event) return '';
+    const userId = event.user_id;
+    if (userId === null || userId === undefined) return '';
+    return String(userId);
+  };
+
+  // Helper function to check if event is staff based on user_id prefix
+  const isStaffUser = (event) => {
+    const userId = getUserIdAsString(event);
+    return userId.startsWith('S');
+  };
+
+  // Helper function to check if event type is staff event
+  const isStaffEventType = (eventType) => {
+    return eventType === 'staff_check_in' || eventType === 'staff_check_out';
+  };
+
+  // Helper function to check if event is staff (either by user_id or event_type)
+  const isStaffEvent = (event) => {
+    if (!event) return false;
+    // Check by user_id prefix
+    if (isStaffUser(event)) return true;
+    // Check by event_type
+    if (isStaffEventType(event?.event_type)) return true;
+    return false;
+  };
+
   // Fetch staff stats
   const fetchStaffStats = async () => {
     try {
@@ -51,10 +104,9 @@ const LiveMonitoring = () => {
         setStaffStats(response.data?.staff || { total_checkins: 0, unique_staff: 0 });
     } catch (error) {
         console.error('Error fetching staff stats:', error);
-        // Don't show error toast, just set default values
         setStaffStats({ total_checkins: 0, unique_staff: 0 });
     }
-};
+  };
 
   useEffect(() => {
     fetchStaffStats();
@@ -148,7 +200,13 @@ const LiveMonitoring = () => {
     
     setSubmitting(true);
     try {
-      const timestamp = manualDateTime ? new Date(manualDateTime) : new Date();
+      let timestamp;
+      if (manualDateTime) {
+        const selectedDate = new Date(manualDateTime);
+        timestamp = selectedDate;
+      } else {
+        timestamp = new Date();
+      }
       
       let payload;
       if (activeTab === 'members') {
@@ -181,7 +239,6 @@ const LiveMonitoring = () => {
       });
       
       if (response.status === 200) {
-        const userType = activeTab === 'members' ? 'member' : 'staff member';
         toast.success(`Manual ${manualEventType === 'check_in' ? 'check-in' : 'check-out'} recorded for ${selectedUser.user?.full_name || selectedUser.full_name}`);
         
         // Reset form
@@ -216,23 +273,41 @@ const LiveMonitoring = () => {
     
     // Filter by user type (member vs staff)
     if (activeTab === 'members') {
-      filtered = filtered.filter(event => !event?.user_id?.startsWith('S'));
+      // Members: exclude staff events (events with 'S' prefix OR staff_* event types)
+      filtered = filtered.filter(event => {
+        if (!event) return false;
+        // Exclude if user_id starts with 'S' OR event_type is staff_*
+        return !isStaffEvent(event);
+      });
     } else {
-      filtered = filtered.filter(event => event?.user_id?.startsWith('S'));
+      // Staff: include staff events (events with 'S' prefix OR staff_* event types)
+      filtered = filtered.filter(event => {
+        if (!event) return false;
+        // Include if user_id starts with 'S' OR event_type is staff_*
+        return isStaffEvent(event);
+      });
     }
     
-    // Filter by event type
+    // Filter by event type (check_in / check_out)
     if (filter === 'check_in') {
-      filtered = filtered.filter(event => event?.event_type === 'check_in' || event?.event_type === 'staff_check_in');
+      filtered = filtered.filter(event => {
+        const eventType = event?.event_type;
+        return eventType === 'check_in' || eventType === 'staff_check_in';
+      });
     } else if (filter === 'check_out') {
-      filtered = filtered.filter(event => event?.event_type === 'check_out' || event?.event_type === 'staff_check_out');
+      filtered = filtered.filter(event => {
+        const eventType = event?.event_type;
+        return eventType === 'check_out' || eventType === 'staff_check_out';
+      });
     }
     
     // Filter by date
     if (dateFilter) {
       filtered = filtered.filter(event => {
-        const eventDate = event?.timestamp?.split('T')[0];
-        return eventDate === dateFilter;
+        if (!event?.timestamp) return false;
+        const date = new Date(event.timestamp);
+        const dateStr = date.toISOString().split('T')[0];
+        return dateStr === dateFilter;
       });
     }
     
@@ -258,12 +333,41 @@ const LiveMonitoring = () => {
   const stats = getStats();
   const onlineDevices = (devices || []).filter(d => d?.is_online).length || 0;
 
+  // Get unique dates for filter - with safe check
   const uniqueDates = [...new Set(
     (liveEvents || [])
-      .filter(event => activeTab === 'members' ? !event?.user_id?.startsWith('S') : event?.user_id?.startsWith('S'))
-      .map(event => event?.timestamp?.split('T')[0])
+      .filter(event => {
+        if (activeTab === 'members') {
+          return !isStaffEvent(event);
+        } else {
+          return isStaffEvent(event);
+        }
+      })
+      .map(event => {
+        if (!event?.timestamp) return null;
+        const date = new Date(event.timestamp);
+        return date.toISOString().split('T')[0];
+      })
       .filter(date => date)
   )].sort().reverse();
+
+  // Count events for filter buttons
+  const getEventCounts = () => {
+    const allEvents = getFilteredEvents();
+    const checkIns = allEvents.filter(e => 
+      e?.event_type === 'check_in' || e?.event_type === 'staff_check_in'
+    );
+    const checkOuts = allEvents.filter(e => 
+      e?.event_type === 'check_out' || e?.event_type === 'staff_check_out'
+    );
+    return { all: allEvents.length, checkIns: checkIns.length, checkOuts: checkOuts.length };
+  };
+
+  const counts = getEventCounts();
+
+  // Debug: Log events to see what's coming from the API
+  console.log('Live Events:', liveEvents);
+  console.log('Staff Events filtered:', liveEvents.filter(e => isStaffEvent(e)));
 
   if (loading && (!liveEvents || liveEvents.length === 0)) {
     return (
@@ -334,7 +438,7 @@ const LiveMonitoring = () => {
                 <span className="font-medium text-gray-900">{selectedEvent.user_name}</span>
                 <span className="text-gray-500">Time:</span>
                 <span className="font-medium text-gray-900">
-                  {selectedEvent.timestamp ? new Date(selectedEvent.timestamp).toLocaleString() : 'N/A'}
+                  {formatInIST(selectedEvent.timestamp)}
                 </span>
                 <span className="text-gray-500">Event:</span>
                 <span className={`font-medium ${selectedEvent.event_type === 'check_in' || selectedEvent.event_type === 'staff_check_in' ? 'text-green-600' : 'text-orange-600'}`}>
@@ -510,7 +614,7 @@ const LiveMonitoring = () => {
               
               {/* Date & Time */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Date & Time</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date & Time (IST)</label>
                 <div className="relative">
                   <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <input
@@ -520,7 +624,7 @@ const LiveMonitoring = () => {
                     className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Leave empty to use current date and time</p>
+                <p className="text-xs text-gray-500 mt-1">Leave empty to use current IST time</p>
               </div>
               
               {/* Info note */}
@@ -558,7 +662,7 @@ const LiveMonitoring = () => {
           <Wifi className="h-4 w-4 text-green-600" />
           <span className="text-sm text-green-700">
             Polling every 30 seconds
-            {lastFetchTime && <span className="text-xs text-green-600 ml-2">Last update: {new Date(lastFetchTime).toLocaleTimeString()}</span>}
+            {lastFetchTime && <span className="text-xs text-green-600 ml-2">Last update: {formatInIST(lastFetchTime)}</span>}
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -613,27 +717,31 @@ const LiveMonitoring = () => {
 
       {/* Filter Controls */}
       <div className="flex flex-wrap gap-2 mb-6">
-        <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'all' ? (activeTab === 'members' ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white') : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-          All Events ({filteredEvents.length})
+        <button 
+          onClick={() => setFilter('all')} 
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'all' ? (activeTab === 'members' ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white') : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+        >
+          All Events ({counts.all})
         </button>
-        <button onClick={() => setFilter('check_in')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'check_in' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-          Check-ins ({(liveEvents || []).filter(e => 
-            activeTab === 'members' 
-              ? (e?.event_type === 'check_in' && !e?.user_id?.startsWith('S'))
-              : (e?.event_type === 'staff_check_in' && e?.user_id?.startsWith('S'))
-          ).length})
+        <button 
+          onClick={() => setFilter('check_in')} 
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'check_in' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+        >
+          Check-ins ({counts.checkIns})
         </button>
-        <button onClick={() => setFilter('check_out')} className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'check_out' ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-          Check-outs ({(liveEvents || []).filter(e => 
-            activeTab === 'members' 
-              ? (e?.event_type === 'check_out' && !e?.user_id?.startsWith('S'))
-              : (e?.event_type === 'staff_check_out' && e?.user_id?.startsWith('S'))
-          ).length})
+        <button 
+          onClick={() => setFilter('check_out')} 
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'check_out' ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+        >
+          Check-outs ({counts.checkOuts})
         </button>
         
         <div className="flex-1"></div>
         
-        <button onClick={() => setShowDateFilter(!showDateFilter)} className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${dateFilter ? (activeTab === 'members' ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white') : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+        <button 
+          onClick={() => setShowDateFilter(!showDateFilter)} 
+          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${dateFilter ? (activeTab === 'members' ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white') : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+        >
           <Calendar className="h-4 w-4" />
           {dateFilter ? `Date: ${dateFilter}` : 'Filter by Date'}
           {dateFilter && <X className="h-3 w-3 cursor-pointer hover:text-white" onClick={(e) => { e.stopPropagation(); setDateFilter(''); }} />}
@@ -649,8 +757,16 @@ const LiveMonitoring = () => {
           </div>
           <div className="flex flex-wrap gap-2">
             {uniqueDates.map(date => (
-              <button key={date} onClick={() => { setDateFilter(date); setShowDateFilter(false); }} className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm hover:bg-blue-50 hover:border-blue-300">
-                {new Date(date).toLocaleDateString()}
+              <button 
+                key={date} 
+                onClick={() => { setDateFilter(date); setShowDateFilter(false); }} 
+                className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm hover:bg-blue-50 hover:border-blue-300"
+              >
+                {new Date(date).toLocaleDateString('en-IN', { 
+                  day: '2-digit', 
+                  month: 'short', 
+                  year: 'numeric' 
+                })}
               </button>
             ))}
           </div>
@@ -663,7 +779,7 @@ const LiveMonitoring = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time (IST)</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {activeTab === 'members' ? 'Member' : 'Staff'}
                 </th>
@@ -680,7 +796,7 @@ const LiveMonitoring = () => {
                     <Bell className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                     <p>No {activeTab} attendance events found</p>
                     <p className="text-sm text-gray-400 mt-1">
-                      {dateFilter ? `No events on ${new Date(dateFilter).toLocaleDateString()}` : 
+                      {dateFilter ? `No events on ${new Date(dateFilter).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : 
                         activeTab === 'members' 
                           ? 'Scan a fingerprint on the device or use "Manual Entry" to add member attendance'
                           : 'Staff member needs to scan fingerprint on device or use "Manual Entry"'}
@@ -691,7 +807,7 @@ const LiveMonitoring = () => {
                 filteredEvents.map((event, index) => (
                   <tr key={event?.id || index} className="hover:bg-gray-50 transition-colors group">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {event?.timestamp ? new Date(event.timestamp).toLocaleString() : 'N/A'}
+                      {formatInIST(event?.timestamp)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
@@ -705,7 +821,7 @@ const LiveMonitoring = () => {
                         <div>
                           <div className="text-sm font-medium text-gray-900">{event?.user_name || 'Unknown'}</div>
                           <div className="text-xs text-gray-500">
-                            ID: {event?.user_id?.replace('S', '')}
+                            ID: {getUserIdAsString(event).replace('S', '')}
                           </div>
                         </div>
                       </div>

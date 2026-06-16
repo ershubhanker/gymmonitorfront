@@ -5,6 +5,30 @@ import { useAttendance } from '../../context/AttendanceContext';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 
+// Helper function to format time in IST
+const formatInIST = (timestamp) => {
+  if (!timestamp) return 'N/A';
+  try {
+    const date = new Date(timestamp);
+    // Add 5 hours 30 minutes (IST is UTC+5:30)
+    const istTime = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    
+    // Format the IST time
+    const year = istTime.getFullYear();
+    const month = String(istTime.getMonth() + 1).padStart(2, '0');
+    const day = String(istTime.getDate()).padStart(2, '0');
+    let hours = istTime.getHours();
+    const minutes = String(istTime.getMinutes()).padStart(2, '0');
+    const seconds = String(istTime.getSeconds()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    
+    return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds} ${ampm}`;
+  } catch (e) {
+    return timestamp;
+  }
+};
+
 const AttendanceHistory = () => {
   const { attendanceApi } = useAttendance();
   const [activeTab, setActiveTab] = useState('members'); // 'members' or 'staff'
@@ -57,7 +81,6 @@ const AttendanceHistory = () => {
     try {
         const params = {};
         
-        // Only add params if they have values
         if (filters.start_date) params.start_date = filters.start_date;
         if (filters.end_date) params.end_date = filters.end_date;
         if (filters.staff_id) params.staff_id = filters.staff_id;
@@ -75,7 +98,7 @@ const AttendanceHistory = () => {
     } finally {
         setLoading(false);
     }
-};
+  };
 
   const fetchMembers = async () => {
     try {
@@ -136,23 +159,43 @@ const AttendanceHistory = () => {
         return;
       }
       
+      // Format dates in IST for CSV export
+      const formatDateForCSV = (timestamp) => {
+        if (!timestamp) return 'N/A';
+        try {
+          const date = new Date(timestamp);
+          return date.toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+          });
+        } catch (e) {
+          return timestamp;
+        }
+      };
+      
       const csv = [
         ['Date', 'Time', `${activeTab === 'members' ? 'Member' : 'Staff'} Name`, 'Event Type', 'Verified', 'Device Serial'],
         ...recordsToExport.map(r => [
-          r.created_at ? new Date(r.created_at).toLocaleDateString() : 'N/A',
-          r.created_at ? new Date(r.created_at).toLocaleTimeString() : 'N/A',
+          formatDateForCSV(r.created_at || r.check_in_time).split(',')[0] || 'N/A',
+          formatDateForCSV(r.created_at || r.check_in_time).split(',')[1]?.trim() || 'N/A',
           activeTab === 'members' ? (r.member_name || 'Unknown') : (r.staff_name || 'Unknown'),
-          r.event_type?.toUpperCase() || 'N/A',
+          (r.event_type || '').replace('staff_', '').toUpperCase() || 'N/A',
           r.verified ? 'Yes' : 'No',
           r.device_serial || 'N/A'
         ])
       ].map(row => row.join(',')).join('\n');
       
-      const blob = new Blob([csv], { type: 'text/csv' });
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${activeTab}_attendance_${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `${activeTab}_attendance_${new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }).replace(/\//g, '-')}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
       toast.success('Export complete!', { id: 'export' });
@@ -344,7 +387,7 @@ const AttendanceHistory = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time (IST)</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {activeTab === 'members' ? 'Member' : 'Staff'}
                 </th>
@@ -365,56 +408,59 @@ const AttendanceHistory = () => {
                   </td>
                 </tr>
               ) : (
-                currentRecords.map((record) => (
-                  <tr key={record.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {record.created_at ? new Date(record.created_at).toLocaleString() : 
-                       record.check_in_time ? new Date(record.check_in_time).toLocaleString() : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          activeTab === 'members' ? 'bg-blue-100' : 'bg-purple-100'
+                currentRecords.map((record) => {
+                  // Use created_at for display, fallback to check_in_time
+                  const timestamp = record.created_at || record.check_in_time;
+                  return (
+                    <tr key={record.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatInIST(timestamp)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                            activeTab === 'members' ? 'bg-blue-100' : 'bg-purple-100'
+                          }`}>
+                            {activeTab === 'members' ? (
+                              <User className="h-4 w-4 text-blue-600" />
+                            ) : (
+                              <Briefcase className="h-4 w-4 text-purple-600" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {activeTab === 'members' 
+                                ? (record.member_name || 'Unknown')
+                                : (record.staff_name || 'Unknown')}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {activeTab === 'members' ? `ID: ${record.member_id}` : `Staff ID: ${record.staff_id}`}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          record.event_type === 'check_in' || record.event_type === 'staff_check_in'
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-orange-100 text-orange-800'
                         }`}>
-                          {activeTab === 'members' ? (
-                            <User className="h-4 w-4 text-blue-600" />
-                          ) : (
-                            <Briefcase className="h-4 w-4 text-purple-600" />
-                          )}
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {activeTab === 'members' 
-                              ? (record.member_name || 'Unknown')
-                              : (record.staff_name || 'Unknown')}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {activeTab === 'members' ? `ID: ${record.member_id}` : `Staff ID: ${record.staff_id}`}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        record.event_type === 'check_in' || record.event_type === 'staff_check_in'
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-orange-100 text-orange-800'
-                      }`}>
-                        {(record.event_type || '').replace('staff_', '').toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {record.verified ? (
-                        <span className="text-green-600">✓ Verified</span>
-                      ) : (
-                        <span className="text-red-600">✗ Not verified</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {record.device_serial?.slice(-8) || (record.device_serial === 'MANUAL_ENTRY' ? 'Manual Entry' : 'N/A')}
-                    </td>
-                  </tr>
-                ))
+                          {(record.event_type || '').replace('staff_', '').toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {record.verified ? (
+                          <span className="text-green-600">✓ Verified</span>
+                        ) : (
+                          <span className="text-red-600">✗ Not verified</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {record.device_serial?.slice(-8) || (record.device_serial === 'MANUAL_ENTRY' ? 'Manual Entry' : 'N/A')}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
