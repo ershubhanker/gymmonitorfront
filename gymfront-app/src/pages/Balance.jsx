@@ -553,14 +553,14 @@ const Balance = () => {
         )}
         
         {/* Show total count when only one page */}
-        {!loading && members.length > 0 && totalPages <= 1 && (
+        {/* {!loading && members.length > 0 && totalPages <= 1 && (
           <div className="px-6 py-4 border-t">
             <div className="text-sm text-gray-700">
               Showing all <span className="font-medium">{members.length}</span> members
               <span className="text-gray-400 ml-2">(showing {itemsPerPage} per page)</span>
             </div>
           </div>
-        )}
+        )} */}
       </div>
 
       {/* Payment Modal with Next Payment Date */}

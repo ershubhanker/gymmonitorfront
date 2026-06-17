@@ -15,6 +15,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import LandingPage from './pages/LandingPage';
 import { AttendanceProvider } from './context/AttendanceContext';
 import LeadCaptureForm from './components/LeadCaptureForm';
+import WhatsAppLogs from './components/WhatsAppLogs';
 
 function AdminRoute({ children }) {
   const { user, initialLoading } = useAuth();
@@ -80,6 +81,13 @@ function App() {
                 <Route path="/admin" element={
                   <AdminRoute>
                     <AdminDashboard />
+                  </AdminRoute>
+                } />
+                
+                {/* WhatsApp Logs Route - Only for Super Admin */}
+                <Route path="/admin/whatsapp-logs" element={
+                  <AdminRoute>
+                    <WhatsAppLogs />
                   </AdminRoute>
                 } />
                 

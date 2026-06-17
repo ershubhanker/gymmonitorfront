@@ -204,10 +204,10 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     setImportProgress({ current: 0, total: previewData.length });
     const results = { success: 0, failed: 0, errors: [], plansCreated: [] };
     const createdPlans = [];
-
+  
     // Create abort controller for cancellation
     abortControllerRef.current = new AbortController();
-
+  
     try {
       // Step 1: Get existing plans
       let existingPlans = [];
@@ -217,25 +217,24 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       } catch (planError) {
         console.warn('Could not fetch existing plans:', planError);
       }
-
+  
       const existingPlanMap = {};
       existingPlans.forEach(p => {
         existingPlanMap[p.name?.toLowerCase().trim()] = p.id;
       });
-
+  
       // Step 2: Find unique plan names from Excel that don't exist
       const uniquePlans = [...new Set(previewData.map(m => m.plan_name).filter(Boolean))];
       const plansToCreate = uniquePlans.filter(name => {
         const cleanName = name.toLowerCase().trim();
         return !existingPlanMap[cleanName];
       });
-
+  
       // Step 3: Create missing plans
       if (plansToCreate.length > 0 && !isCancelledRef.current) {
         toast.loading(`Creating ${plansToCreate.length} missing plans...`, { id: 'create-plans' });
         
         for (const planName of plansToCreate) {
-          // Check if cancelled
           if (isCancelledRef.current) {
             toast.dismiss('create-plans');
             toast.info('Import cancelled during plan creation.');
@@ -257,7 +256,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               is_active: true,
               features: JSON.stringify([`${durationDays} days membership`])
             };
-
+  
             const newPlanResponse = await api.post('/gym/plans', planData);
             const newPlan = newPlanResponse.data;
             
@@ -280,14 +279,13 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           toast.success(`Created ${createdPlans.length} new plans`);
         }
       }
-
-      // Check cancellation after plan creation
+  
       if (isCancelledRef.current) {
         setUploading(false);
         setStep(2);
         return;
       }
-
+  
       // Step 4: Get updated plan list
       let allPlans = [];
       try {
@@ -296,27 +294,28 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       } catch (error) {
         console.warn('Could not fetch updated plans:', error);
       }
-
+  
       const planIdMap = {};
       allPlans.forEach(p => {
         planIdMap[p.name?.toLowerCase().trim()] = p.id;
       });
-
+  
       const defaultPlan = allPlans.find(p => p.is_active) || allPlans[0];
-
+  
       // Step 5: Import members
       for (let i = 0; i < previewData.length; i++) {
-        // Check if cancelled - use ref for immediate check
         if (isCancelledRef.current) {
           toast.info('Import cancelled.');
           setUploading(false);
           setStep(2);
           return;
         }
-
+  
         const member = previewData[i];
         setImportProgress({ current: i + 1, total: previewData.length });
-
+  
+        let membershipCreated = false;
+  
         try {
           // Check if member already exists by phone
           const existingResponse = await api.get(`/gym/members?phone=${member.phone}`);
@@ -330,19 +329,25 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             });
             continue;
           }
-
+  
+          // Determine if member should be active based on Excel status
+          // If status is explicitly 'inactive' in Excel, set is_active to false
+          // Otherwise, set to true (will be overridden by membership later)
+          const shouldBeActive = member.status !== false;
+          
           // Prepare member data
           const memberData = {
             full_name: member.full_name,
             phone: member.phone,
             gender: member.gender || 'male',
-            is_active: member.status !== false,
+            // Set is_active based on Excel status, but backend will override based on membership
+            is_active: shouldBeActive,
           };
-
+  
           if (member.email && member.email.includes('@')) {
             memberData.email = member.email;
           }
-
+  
           if (member.address) memberData.address = member.address;
           if (member.date_of_birth) {
             const dob = parseDate(member.date_of_birth);
@@ -359,11 +364,11 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           } else {
             memberData.joined_date = new Date().toISOString().split('T')[0];
           }
-
+  
           // Create member
           const memberResponse = await api.post('/gym/members', memberData);
           const newMember = memberResponse.data;
-
+  
           // Find plan ID
           let planId = null;
           let planName = member.plan_name;
@@ -386,9 +391,10 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             planId = defaultPlan.id;
             planName = defaultPlan.name;
           }
-
-          // Create membership
-          if (planId) {
+  
+          // Create membership ONLY if member should be active
+          // If Excel status is 'inactive', don't create membership
+          if (shouldBeActive && planId) {
             try {
               let startDate = member.joined_date;
               if (!startDate) {
@@ -418,6 +424,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 };
                 
                 await api.post('/gym/memberships', membershipPayload);
+                membershipCreated = true;
+                console.log(`✅ Created membership for ${member.full_name} with plan ${planName}`);
               } else {
                 results.errors.push({
                   member: member.full_name,
@@ -432,10 +440,19 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 error: `Membership assignment failed: ${membershipError.response?.data?.detail || membershipError.message}`
               });
             }
+          } else if (shouldBeActive && !planId) {
+            // Member should be active but no plan found
+            results.errors.push({
+              member: member.full_name,
+              error: 'No plan found for membership'
+            });
+          } else {
+            // Member is intentionally inactive - log it
+            console.log(`ℹ️ Member ${member.full_name} imported as inactive (no membership created)`);
           }
-
+  
           results.success++;
-
+  
         } catch (error) {
           console.error('Error importing member:', error);
           results.failed++;
@@ -444,18 +461,17 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             error: error.response?.data?.detail || error.message || 'Unknown error'
           });
         }
-
+  
         await new Promise(resolve => setTimeout(resolve, 200));
       }
-
-      // If cancelled during processing, don't show results
+  
       if (isCancelledRef.current) {
         toast.info('Import cancelled.');
         setUploading(false);
         setStep(2);
         return;
       }
-
+  
       setResults(results);
       setPlansCreated(createdPlans);
       setStep(3);
@@ -470,7 +486,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       toast.success(summaryMessage);
       
     } catch (error) {
-      // Check if it was a cancellation error
       if (error.name === 'AbortError' || isCancelledRef.current) {
         toast.info('Import cancelled.');
         setStep(2);
