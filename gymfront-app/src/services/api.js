@@ -1,3 +1,5 @@
+// src/services/api.js
+
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
@@ -114,6 +116,48 @@ api.interceptors.response.use(
   }
 );
 
+// ============================================================
+// NEW OPTIMIZED ENDPOINTS - ADD THESE WITHOUT CHANGING ANYTHING ELSE
+// ============================================================
+
+/**
+ * OPTIMIZED: Fetch members with pagination, search, and status filter
+ * Uses the new optimized endpoint that reduces database queries
+ */
+export const fetchMembersOptimized = async (params = {}) => {
+  const { search = '', status = 'all', page = 1, limit = 50 } = params;
+  
+  const queryParams = new URLSearchParams({
+    skip: (page - 1) * limit,
+    limit: Math.min(limit, 100),
+    ...(search && search.trim() && { search: search.trim() }),
+    ...(status !== 'all' && { status }),
+  });
+
+  const response = await api.get(`/gym/members/optimized?${queryParams}`);
+  return response.data;
+};
+
+/**
+ * OPTIMIZED: Fetch member statistics (total, active, new this month)
+ */
+export const fetchMemberStatsOptimized = async () => {
+  const response = await api.get('/gym/dashboard/stats/optimized');
+  return response.data;
+};
+
+/**
+ * OPTIMIZED: Fetch balance overview with single aggregated query
+ */
+export const fetchBalanceOverviewOptimized = async () => {
+  const response = await api.get('/gym/balance/overview');
+  return response.data;
+};
+
+// ============================================================
+// ORIGINAL ENDPOINTS - KEPT EXACTLY AS THEY WERE
+// ============================================================
+
 // FIXED: Working PDF download function
 export const generateInvoicePDF = async (memberId) => {
   try {
@@ -226,4 +270,12 @@ export const generateBulkInvoices = async (memberIds) => {
   }
 };
 
+// ============================================================
+// KEEP ALL YOUR EXISTING EXPORTS AS THEY WERE
+// ============================================================
+
+// Default export - keep this as it was in your working version
 export default api;
+
+// Also export the api instance for direct use if needed
+export { api };

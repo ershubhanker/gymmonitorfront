@@ -1,5 +1,5 @@
 // src/pages/Members.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Search, 
   Filter, 
@@ -23,7 +23,7 @@ import {
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
 import toast from 'react-hot-toast';
-import api, { API_BASE_URL } from '../services/api';
+import api, { API_BASE_URL, fetchMembersOptimized, fetchMemberStatsOptimized } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useAttendance } from '../context/AttendanceContext';
 import MemberProfileModal from '../components/MemberProfileModal';
@@ -74,6 +74,7 @@ const Members = () => {
   const [showBulkImportModal, setShowBulkImportModal] = useState(false);
   const [selectedMemberForProfile, setSelectedMemberForProfile] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [totalMembersCount, setTotalMembersCount] = useState(0);
 
   // FIX: Increase items per page from 10 to 50
   const itemsPerPage = 50;
@@ -123,16 +124,104 @@ const Members = () => {
     }
   }, [members]);
 
-  // FIX: Fetch members with increased limit and proper pagination
-  const fetchMembers = useCallback(async () => {
+  // ============================================================
+  // OPTIMIZED: Fetch members using the new optimized endpoint
+  // ============================================================
+  const fetchMembersOptimizedFn = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = {
+        search: debouncedSearchTerm,
+        status: filters.status === 'all' ? 'all' : filters.status,
+        page: currentPage,
+        limit: itemsPerPage
+      };
+      
+      console.log('Fetching members with optimized endpoint:', params);
+      const data = await fetchMembersOptimized(params);
+      
+      // Transform the data to match your existing format
+      const transformed = data.items.map(item => ({
+        id: item.id,
+        fullName: item.full_name,
+        email: item.email || '',
+        phone: item.phone,
+        gender: item.gender || 'male',
+        joinDate: item.join_date,
+        membership: item.membership?.plan_name || 'No Plan',
+        membershipEndDate: item.membership?.end_date || null,
+        membershipStatus: item.membership?.status || null,
+        status: item.status || 'inactive',
+        lastVisit: null,
+        payments: 0,
+        avatar: item.avatar,
+        profile_image: item.profile_image,
+        raw: {
+          id: item.id,
+          full_name: item.full_name,
+          email: item.email || '',
+          phone: item.phone,
+          gender: item.gender || 'male',
+          joined_date: item.join_date,
+          is_active: item.is_active,
+          profile_image: item.profile_image,
+        },
+        activeMembership: item.membership ? {
+          plan: { name: item.membership.plan_name },
+          end_date: item.membership.end_date,
+          status: item.membership.status,
+        } : null,
+        memberPayments: [],
+        syncedToDevice: item.synced_to_device || false,
+        deviceUserId: item.device_user_id || null,
+      }));
+
+      setMembers(transformed);
+      setTotalMembersCount(data.total || 0);
+      
+    } catch (error) {
+      console.error('Error fetching members (optimized):', error);
+      toast.error('Failed to fetch members');
+    } finally {
+      setLoading(false);
+    }
+  }, [debouncedSearchTerm, filters.status, currentPage, itemsPerPage]);
+
+  // ============================================================
+  // OPTIMIZED: Fetch stats using the new optimized endpoint
+  // ============================================================
+  const fetchStatsOptimizedFn = useCallback(async () => {
+    try {
+      const statsData = await fetchMemberStatsOptimized();
+      setStats({
+        total: statsData.total_members || 0,
+        active: statsData.active_members || 0,
+        newThisMonth: statsData.new_this_month || 0,
+      });
+    } catch (error) {
+      console.error('Error fetching stats (optimized):', error);
+      // Fallback to old stats endpoint if optimized fails
+      try {
+        const response = await api.get('/gym/dashboard/stats');
+        setStats({
+          total: response.data.total_members,
+          active: response.data.active_members,
+          newThisMonth: response.data.new_members_this_month,
+        });
+      } catch (fallbackError) {
+        console.error('Error fetching stats (fallback):', fallbackError);
+      }
+    }
+  }, []);
+
+  // ============================================================
+  // LEGACY: Fetch members (kept for backward compatibility)
+  // ============================================================
+  const fetchMembersLegacy = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      
-      // FIX: Increase limit to fetch ALL members or use a very large number
-      // Since we're doing client-side pagination, fetch all members at once
-      // but use a larger limit (e.g., 10000 or -1 for all)
-      params.append('limit', '10000'); // Fetch all members
+      params.append('limit', '10000');
       
       if (debouncedSearchTerm && !showNewThisMonthOnly) {
         params.append('search', debouncedSearchTerm);
@@ -152,7 +241,6 @@ const Members = () => {
       const membershipsData = membershipsRes.data || [];
       const paymentsData = paymentsRes.data || [];
 
-      // Build a lookup map: member_id -> device_user_id
       const deviceIdMap = {};
       (deviceIdsRes.data || []).forEach(entry => {
         if (entry.device_user_id) {
@@ -207,6 +295,7 @@ const Members = () => {
       });
 
       setMembers(transformed);
+      setTotalMembersCount(transformed.length);
     } catch (error) {
       console.error('Error fetching members:', error.response?.data || error.message);
       toast.error('Failed to fetch members');
@@ -215,18 +304,36 @@ const Members = () => {
     }
   }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly]);
 
-  const fetchStats = async () => {
+  // ============================================================
+  // Main fetch function - uses optimized endpoint by default
+  // ============================================================
+  const fetchMembers = useCallback(async () => {
+    // Try optimized endpoint first, fallback to legacy if it fails
     try {
-      const response = await api.get('/gym/dashboard/stats');
-      setStats({
-        total: response.data.total_members,
-        active: response.data.active_members,
-        newThisMonth: response.data.new_members_this_month,
-      });
+      await fetchMembersOptimizedFn();
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      console.log('Optimized fetch failed, falling back to legacy...');
+      await fetchMembersLegacy();
     }
-  };
+  }, [fetchMembersOptimizedFn, fetchMembersLegacy]);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      await fetchStatsOptimizedFn();
+    } catch (error) {
+      console.log('Optimized stats fetch failed, falling back to legacy...');
+      try {
+        const response = await api.get('/gym/dashboard/stats');
+        setStats({
+          total: response.data.total_members,
+          active: response.data.active_members,
+          newThisMonth: response.data.new_members_this_month,
+        });
+      } catch (fallbackError) {
+        console.error('Error fetching stats (fallback):', fallbackError);
+      }
+    }
+  }, [fetchStatsOptimizedFn]);
 
   const fetchGymDetails = async () => {
     try {
@@ -247,7 +354,7 @@ const Members = () => {
     fetchMembers();
     fetchStats();
     fetchGymDetails();
-  }, [fetchMembers]);
+  }, [fetchMembers, fetchStats]);
 
   // Filter handlers for stats cards
   const handleFilterAll = () => {
@@ -677,30 +784,32 @@ const Members = () => {
   };
 
   // Filtered members
-  const filteredMembers = members.filter(member => {
-    if (showNewThisMonthOnly) {
-      const currentDate = new Date();
-      const currentYear = currentDate.getFullYear();
-      const currentMonth = currentDate.getMonth();
-      const joinDate = new Date(member.joinDate);
-      const isNewThisMonth = joinDate.getFullYear() === currentYear && joinDate.getMonth() === currentMonth;
-      return isNewThisMonth;
-    }
-    
-    const searchLower = searchTerm.toLowerCase().trim();
-    let matchesSearch = true;
-    if (searchLower) {
-      matchesSearch =
-        member.fullName?.toLowerCase().includes(searchLower) ||
-        member.email?.toLowerCase().includes(searchLower) ||
-        member.phone?.includes(searchTerm);
-    }
-    
-    const matchesStatus = filters.status === 'all' || member.status === filters.status;
-    const matchesGender = filters.gender === 'all' || member.gender === filters.gender;
-    
-    return matchesSearch && matchesStatus && matchesGender;
-  });
+  const filteredMembers = useMemo(() => {
+    return members.filter(member => {
+      if (showNewThisMonthOnly) {
+        const currentDate = new Date();
+        const currentYear = currentDate.getFullYear();
+        const currentMonth = currentDate.getMonth();
+        const joinDate = new Date(member.joinDate);
+        const isNewThisMonth = joinDate.getFullYear() === currentYear && joinDate.getMonth() === currentMonth;
+        return isNewThisMonth;
+      }
+      
+      const searchLower = searchTerm.toLowerCase().trim();
+      let matchesSearch = true;
+      if (searchLower) {
+        matchesSearch =
+          member.fullName?.toLowerCase().includes(searchLower) ||
+          member.email?.toLowerCase().includes(searchLower) ||
+          member.phone?.includes(searchTerm);
+      }
+      
+      const matchesStatus = filters.status === 'all' || member.status === filters.status;
+      const matchesGender = filters.gender === 'all' || member.gender === filters.gender;
+      
+      return matchesSearch && matchesStatus && matchesGender;
+    });
+  }, [members, searchTerm, filters.status, filters.gender, showNewThisMonthOnly]);
 
   // Pagination calculations - now with 50 items per page
   const totalPages = Math.ceil(filteredMembers.length / itemsPerPage);
@@ -1098,7 +1207,7 @@ const Members = () => {
           </table>
         </div>
 
-        {/* Pagination - FIX: Show pagination info with total count */}
+        {/* Pagination */}
         {totalPages > 1 && (
           <div className="px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-sm text-gray-700">
