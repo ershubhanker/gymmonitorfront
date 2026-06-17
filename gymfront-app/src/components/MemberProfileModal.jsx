@@ -5,7 +5,7 @@ import {
   MessageCircle, User, Clock, CheckCircle, AlertCircle,
   Send, MessageSquare, History, CreditCard, Activity,
   Award, Calendar as CalendarIcon, FileText, Users,
-  Edit, RefreshCw, Loader2
+  Edit, RefreshCw, Loader2, Trash2
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -22,6 +22,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [membershipHistory, setMembershipHistory] = useState([]);
   const [attendanceHistory, setAttendanceHistory] = useState([]);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [deletingComment, setDeletingComment] = useState(null);
 
   useEffect(() => {
     fetchMemberDetails();
@@ -38,7 +39,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setMember(response.data);
     } catch (error) {
       console.error('Error fetching member details:', error);
-      toast.error('Failed to load member details');
+      if (error.response?.status === 404) {
+        toast.error('Member not found');
+        onClose();
+      } else {
+        toast.error('Failed to load member details');
+      }
     } finally {
       setLoading(false);
     }
@@ -114,6 +120,27 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       toast.error(error.response?.data?.detail || 'Failed to add comment');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    // Confirm before deleting
+    if (!window.confirm('Are you sure you want to delete this comment?')) {
+      return;
+    }
+
+    setDeletingComment(commentId);
+    try {
+      await api.delete(`/gym/members/${memberId}/comments/${commentId}`);
+      toast.success('Comment deleted successfully');
+      // Remove the comment from the list
+      setComments(prev => prev.filter(c => c.id !== commentId));
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      toast.error(error.response?.data?.detail || 'Failed to delete comment');
+    } finally {
+      setDeletingComment(null);
     }
   };
 
@@ -547,7 +574,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 </div>
               ) : comments.length > 0 ? (
                 comments.map((comment) => (
-                  <div key={comment.id} className="bg-gray-50 rounded-xl p-4">
+                  <div key={comment.id} className="bg-gray-50 rounded-xl p-4 group">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
@@ -558,7 +585,21 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                           <p className="text-xs text-gray-400">{formatDateTime(comment.created_at)}</p>
                         </div>
                       </div>
-                      <span className="text-xs text-gray-400 capitalize">{comment.user_role?.replace('_', ' ')}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 capitalize">{comment.user_role?.replace('_', ' ')}</span>
+                        <button
+                          onClick={() => handleDeleteComment(comment.id)}
+                          disabled={deletingComment === comment.id}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-red-100 text-red-500 disabled:opacity-50"
+                          title="Delete comment"
+                        >
+                          {deletingComment === comment.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3 w-3" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                     <p className="text-sm text-gray-700 ml-10">{comment.comment}</p>
                   </div>
