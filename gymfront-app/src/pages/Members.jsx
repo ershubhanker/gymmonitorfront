@@ -581,42 +581,70 @@ const Members = () => {
     }
   };
 
-  const handleDeleteMember = async (memberId) => {
-    if (!window.confirm('Are you sure you want to delete this member? This will also remove them from all attendance devices.')) return;
+  // src/pages/Members.jsx - Updated Delete Function
+
+const handleDeleteMember = async (memberId) => {
+  if (!window.confirm('Are you sure you want to delete this member? This will also remove them from all attendance devices.')) return;
+  
+  setLoading(true);
+  try {
+    console.log('Deleting member with ID:', memberId);
     
-    setLoading(true);
-    try {
-      const response = await api.delete(`/gym/members/${memberId}`);
-      
-      if (response.data.removed_from_devices > 0) {
-        toast.success(
-          `✅ Member deleted successfully!\n\n` +
-          `Removed from ${response.data.removed_from_devices} device(s).\n` +
-          `The device will sync within 3 seconds.`,
-          { duration: 5000 }
-        );
-      } else if (response.data.device_user_id) {
-        toast.warning(
-          `⚠️ Member deleted but not removed from devices.\n\n` +
-          `The member had a device ID (${response.data.device_user_id}) but no active devices were found.`,
-          { duration: 5000 }
-        );
-      } else {
-        toast.success('Member deleted successfully! (No device sync needed)');
-      }
-      
-      setMembers(members.filter(m => m.id !== memberId));
-      setSelectedMembers(selectedMembers.filter(id => id !== memberId));
-      fetchStats();
-      refreshAllData();
-      
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to delete member');
-    } finally {
-      setLoading(false);
+    // FIX: Use the correct DELETE endpoint
+    const response = await api.delete(`/gym/members/${memberId}`);
+    
+    console.log('Delete response:', response.data);
+    
+    if (response.data.removed_from_devices > 0) {
+      toast.success(
+        `✅ Member deleted successfully!\n\n` +
+        `Removed from ${response.data.removed_from_devices} device(s).\n` +
+        `The device will sync within 3 seconds.`,
+        { duration: 5000 }
+      );
+    } else if (response.data.device_user_id) {
+      toast.warning(
+        `⚠️ Member deleted but not removed from devices.\n\n` +
+        `The member had a device ID (${response.data.device_user_id}) but no active devices were found.`,
+        { duration: 5000 }
+      );
+    } else {
+      toast.success('Member deleted successfully! (No device sync needed)');
     }
-  };
+    
+    // Remove from local state
+    setMembers(prev => prev.filter(m => m.id !== memberId));
+    setSelectedMembers(prev => prev.filter(id => id !== memberId));
+    fetchStats();
+    refreshAllData();
+    
+  } catch (error) {
+    console.error('Delete error:', error);
+    
+    // Better error handling
+    if (error.response) {
+      console.error('Error response:', error.response.data);
+      console.error('Error status:', error.response.status);
+      
+      if (error.response.status === 405) {
+        toast.error('API endpoint not found. Please check the server configuration.');
+      } else if (error.response.status === 403) {
+        toast.error('You do not have permission to delete members.');
+      } else if (error.response.status === 404) {
+        toast.error('Member not found. It may have been already deleted.');
+      } else {
+        toast.error(error.response?.data?.detail || 'Failed to delete member');
+      }
+    } else if (error.request) {
+      toast.error('Network error. Please check your connection.');
+    } else {
+      toast.error('Failed to delete member. Please try again.');
+    }
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handleBulkDelete = async () => {
     if (selectedMembers.length === 0) return;

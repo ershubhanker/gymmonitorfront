@@ -1,16 +1,38 @@
-// src/pages/Staff.jsx - COMPLETE FIXED VERSION
+// src/pages/Staff.jsx - COMPLETE WITH PERMISSIONS MANAGEMENT
 import React, { useState, useEffect } from 'react';
 import {
   Search, UserPlus, Edit, Trash2, Phone, Mail,
   Briefcase, ChevronLeft, ChevronRight, X, RefreshCw, Calendar,
   ChevronUp, ChevronDown, AlertCircle, Crown, Clock, Coffee,
   Wifi, WifiOff, Database, Smartphone, CheckCircle, XCircle,
-  Loader2, Cloud, Server
+  Loader2, Cloud, Server, Eye, User, MapPin, Award, BookOpen,
+  DollarSign, Calendar as CalendarIcon, Users, Settings, Copy,
+  Shield
 } from 'lucide-react';
 import { X as CloseIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
 import StaffUserSetup from '../components/StaffUserSetup';
+import StaffPermissionsModal from '../components/StaffPermissionsModal';
+
+// ─── ALL POSITIONS CONSTANT ─────────────────────────────────────────────────────
+const ALL_POSITIONS = [
+  'Head Trainer',
+  'Trainer', 
+  'Personal Trainer', 
+  'Yoga Instructor', 
+  'Spin Instructor',
+  'Group Fitness Instructor', 
+  'Nutritionist', 
+  'Physiotherapist',
+  'Manager', 
+  'Receptionist', 
+  'Cleanliness Staff', 
+  'Zumba Instructor',
+  'Martial Arts Coach', 
+  'Swimming Coach',
+  'Sales Executive',
+];
 
 // ─── DOB Scroll Picker Component ─────────────────────────────────────────────
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -307,7 +329,438 @@ const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }
   );
 };
 
-// ─── Staff Edit Modal with Shift Timing and Device Sync ─────────────────────────
+// ─── STAFF PROFILE MODAL ──────────────────────────────────────────────────────
+const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDevice }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [selectedDeviceId, setSelectedDeviceId] = useState('');
+  const today = new Date().toISOString().split('T')[0];
+
+  useEffect(() => {
+    if (staff) {
+      setFormData({
+        position: staff.position || '',
+        hireDate: staff.hire_date || '',
+        salary: staff.salary?.toString() || '',
+        specializations: staff.specializations || '',
+        date_of_birth: staff.date_of_birth || '',
+        status: staff.is_active ? 'active' : 'inactive',
+        shift_start_time: staff.shift_start_time || '',
+        shift_end_time: staff.shift_end_time || '',
+        shift_days: staff.shift_days || '',
+        break_duration: staff.break_duration?.toString() || '',
+      });
+    }
+  }, [staff]);
+
+  if (!staff) return null;
+
+  const handleShiftChange = ({ startTime, endTime, days, breakDuration }) => {
+    setFormData(prev => ({
+      ...prev,
+      shift_start_time: startTime !== undefined ? startTime : prev.shift_start_time,
+      shift_end_time: endTime !== undefined ? endTime : prev.shift_end_time,
+      shift_days: days !== undefined ? days : prev.shift_days,
+      break_duration: breakDuration !== undefined ? breakDuration : prev.break_duration,
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const isActive = formData.status === 'active' ? true : false;
+      
+      await api.put(`/gym/staff/${staff.id}`, {
+        position: formData.position,
+        salary: formData.salary ? parseFloat(formData.salary) : null,
+        specializations: formData.specializations,
+        is_active: isActive,
+        hire_date: formData.hireDate,
+        date_of_birth: formData.date_of_birth || null,
+        shift_start_time: formData.shift_start_time || null,
+        shift_end_time: formData.shift_end_time || null,
+        shift_days: formData.shift_days || null,
+        break_duration: formData.break_duration ? parseInt(formData.break_duration) : null,
+      });
+      
+      toast.success('Staff updated successfully!');
+      setIsEditing(false);
+      onUpdate();
+    } catch (error) {
+      console.error('Error updating staff:', error);
+      toast.error(error.response?.data?.detail || 'Failed to update staff');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSyncToDevice = async () => {
+    if (!selectedDeviceId) {
+      toast.error('Please select a device');
+      return;
+    }
+    setSyncing(true);
+    try {
+      await onSyncToDevice(staff.id, selectedDeviceId, staff.user?.full_name || staff.user?.username);
+    } catch (error) {
+      console.error('Error syncing to device:', error);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const formatTime = (time) => {
+    if (!time) return '—';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${minutes} ${ampm}`;
+  };
+
+  const getShiftDisplay = () => {
+    if (!formData.shift_start_time || !formData.shift_end_time) return 'Not set';
+    const days = formData.shift_days ? formData.shift_days.split(',').length : 0;
+    const daysText = days === 7 ? 'Daily' : days === 0 ? '' : ` (${days}d)`;
+    return `${formatTime(formData.shift_start_time)} - ${formatTime(formData.shift_end_time)}${daysText}`;
+  };
+
+  const getPositionBadgeColor = (position) => {
+    if (position === 'Head Trainer') return 'bg-purple-100 text-purple-800';
+    if (position === 'Trainer' || position === 'Personal Trainer') return 'bg-blue-100 text-blue-800';
+    if (position === 'Yoga Instructor') return 'bg-green-100 text-green-800';
+    if (position === 'Manager') return 'bg-yellow-100 text-yellow-800';
+    if (position === 'Sales Executive') return 'bg-orange-100 text-orange-800';
+    return 'bg-gray-100 text-gray-800';
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    return new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  const copyDeviceId = (deviceId) => {
+    if (deviceId) {
+      navigator.clipboard.writeText(deviceId);
+      toast.success('Device ID copied to clipboard!');
+    }
+  };
+
+  const hasShift = formData.shift_start_time && formData.shift_end_time;
+  const deviceUserId = staff.device_user_id;
+  const salaryValue = staff.salary || staff.salary_amount || staff.monthly_salary || 0;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white z-10 border-b px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`h-12 w-12 rounded-full flex items-center justify-center ${
+              staff.position === 'Head Trainer' ? 'bg-purple-100' : 
+              staff.position === 'Sales Executive' ? 'bg-orange-100' : 'bg-indigo-100'
+            }`}>
+              <span className={`text-xl font-bold ${
+                staff.position === 'Head Trainer' ? 'text-purple-700' : 
+                staff.position === 'Sales Executive' ? 'text-orange-700' : 'text-indigo-700'
+              }`}>
+                {(staff.user?.full_name || 'S').charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">{staff.user?.full_name || '—'}</h2>
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionBadgeColor(staff.position)}`}>
+                  {staff.position || '—'}
+                </span>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  staff.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {staff.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {!isEditing && (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              >
+                <Edit className="h-4 w-4" />
+                Edit
+              </button>
+            )}
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6">
+          {isEditing ? (
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Position *</label>
+                  <select
+                    required
+                    value={formData.position}
+                    onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Select Position</option>
+                    {ALL_POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select
+                    value={formData.status}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Hire Date</label>
+                  <input
+                    type="date"
+                    value={formData.hireDate}
+                    onChange={(e) => setFormData({ ...formData, hireDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+                  <DOBPicker
+                    value={formData.date_of_birth}
+                    onChange={(val) => setFormData({ ...formData, date_of_birth: val })}
+                    maxDate={today}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Salary (Monthly ₹)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₹</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      value={formData.salary}
+                      onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
+                      className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Enter salary"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Shift Timing</label>
+                  <ShiftTimingPicker
+                    startTime={formData.shift_start_time}
+                    endTime={formData.shift_end_time}
+                    days={formData.shift_days}
+                    breakDuration={formData.break_duration}
+                    onChange={handleShiftChange}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Specializations</label>
+                  <textarea
+                    value={formData.specializations}
+                    onChange={(e) => setFormData({ ...formData, specializations: e.target.value })}
+                    rows="2"
+                    placeholder="e.g., HIIT, Yoga, Strength Training, Nutrition"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setFormData({
+                      position: staff.position || '',
+                      hireDate: staff.hire_date || '',
+                      salary: staff.salary?.toString() || '',
+                      specializations: staff.specializations || '',
+                      date_of_birth: staff.date_of_birth || '',
+                      status: staff.is_active ? 'active' : 'inactive',
+                      shift_start_time: staff.shift_start_time || '',
+                      shift_end_time: staff.shift_end_time || '',
+                      shift_days: staff.shift_days || '',
+                      break_duration: staff.break_duration?.toString() || '',
+                    });
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                >
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Position</p>
+                  <p className="text-lg font-semibold text-gray-900 mt-1">{staff.position || '—'}</p>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Hire Date</p>
+                  <p className="text-lg font-semibold text-gray-900 mt-1">{formatDate(staff.hire_date)}</p>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Salary</p>
+                  <p className="text-lg font-semibold text-gray-900 mt-1">
+                    {salaryValue ? `₹${Number(salaryValue).toLocaleString()}` : '—'}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Status</p>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 ${
+                    staff.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {staff.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-blue-50 rounded-xl p-4">
+                  <p className="text-xs text-blue-600 uppercase tracking-wider flex items-center gap-1">
+                    <Clock className="h-3 w-3" /> Shift Timing
+                  </p>
+                  <p className="text-base font-semibold text-gray-900 mt-1">
+                    {hasShift ? `${formatTime(formData.shift_start_time)} - ${formatTime(formData.shift_end_time)}` : 'Not set'}
+                  </p>
+                </div>
+                <div className="bg-blue-50 rounded-xl p-4">
+                  <p className="text-xs text-blue-600 uppercase tracking-wider flex items-center gap-1">
+                    <CalendarIcon className="h-3 w-3" /> Working Days
+                  </p>
+                  <p className="text-base font-semibold text-gray-900 mt-1">
+                    {formData.shift_days ? formData.shift_days.split(',').length : '—'} days/week
+                  </p>
+                </div>
+                <div className="bg-blue-50 rounded-xl p-4">
+                  <p className="text-xs text-blue-600 uppercase tracking-wider flex items-center gap-1">
+                    <Coffee className="h-3 w-3" /> Break Duration
+                  </p>
+                  <p className="text-base font-semibold text-gray-900 mt-1">
+                    {formData.break_duration ? `${formData.break_duration} min` : '—'}
+                  </p>
+                </div>
+              </div>
+
+              {staff.specializations && (
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                    <Award className="h-3 w-3" /> Specializations
+                  </p>
+                  <p className="text-sm text-gray-700 mt-1">{staff.specializations}</p>
+                </div>
+              )}
+
+              <div className="bg-gray-50 rounded-xl p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                  <User className="h-3 w-3" /> User Account Details
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                  <div>
+                    <p className="text-xs text-gray-400">Username</p>
+                    <p className="text-sm font-medium text-gray-900">@{staff.user?.username || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Email</p>
+                    <p className="text-sm font-medium text-gray-900">{staff.user?.email || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Phone</p>
+                    <p className="text-sm font-medium text-gray-900">{staff.user?.phone || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Date of Birth</p>
+                    <p className="text-sm font-medium text-gray-900">{formatDate(staff.date_of_birth)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                  <Smartphone className="h-3 w-3" /> Device Sync
+                </p>
+                <div className="flex items-center justify-between mt-2">
+                  <div>
+                    {deviceUserId ? (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <span className="text-sm font-medium text-green-600">Synced to Device</span>
+                        <button
+                          onClick={() => copyDeviceId(deviceUserId)}
+                          className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                        >
+                          <Copy className="h-3 w-3" />
+                          {deviceUserId}
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-400">Not synced to any device</span>
+                    )}
+                  </div>
+                  {devices.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={selectedDeviceId}
+                        onChange={(e) => setSelectedDeviceId(e.target.value)}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">Select Device</option>
+                        {devices.map(device => (
+                          <option key={device.id} value={device.id}>
+                            {device.device_name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={handleSyncToDevice}
+                        disabled={syncing || !selectedDeviceId}
+                        className="px-4 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1"
+                      >
+                        {syncing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Database className="h-3 w-3" />}
+                        Sync
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Staff Edit Modal ─────────────────────────────────────────────────────────
 const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], onSyncToDevice }) => {
   const [formData, setFormData] = useState({
     position: '',
@@ -327,7 +780,6 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const today = new Date().toISOString().split('T')[0];
 
-  // Populate form when staff data changes
   useEffect(() => {
     if (staff) {
       setFormData({
@@ -385,13 +837,6 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
     }
   };
 
-  const positions = [
-    'Head Trainer', 'Trainer', 'Personal Trainer', 'Yoga Instructor', 'Spin Instructor',
-    'Group Fitness Instructor', 'Nutritionist', 'Physiotherapist',
-    'Manager', 'Receptionist', 'Cleanliness Staff', 'Zumba Instructor',
-    'Martial Arts Coach', 'Swimming Coach',
-  ];
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -426,7 +871,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="">Select Position</option>
-              {positions.map(p => <option key={p} value={p}>{p}</option>)}
+              {ALL_POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
 
@@ -497,7 +942,6 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
             </select>
           </div>
 
-          {/* Device Sync Section */}
           {devices.length > 0 && (
             <div className="pt-4 border-t">
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -733,7 +1177,6 @@ const StaffDeviceSyncModal = ({ isOpen, onClose, staffList, devices, onSyncSelec
             <div className="bg-blue-50 rounded-lg p-4">
               <p className="text-sm text-blue-700">
                 This will sync all {staffList.length} staff members to the selected device.
-                Staff members already synced will be updated if their information has changed.
               </p>
             </div>
           )}
@@ -770,6 +1213,8 @@ const Staff = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeviceSyncModalOpen, setIsDeviceSyncModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [devices, setDevices] = useState([]);
@@ -858,68 +1303,54 @@ const Staff = () => {
     }
   };
 
-  // FIXED: Staff sync functions with correct API calls
   const handleSyncStaffToDevice = async (staffId, deviceId, staffName) => {
-    console.log('Syncing staff to device:', { staffId, deviceId, staffName });
-    
     try {
-        const response = await api.post(`/attendance/devices/${deviceId}/sync-staff`, {
-            id: staffId,
-            full_name: staffName
-        });
-        
-        console.log('Sync response:', response.data);
-        
-        if (response.data.success) {
-            toast.success(`Staff member "${staffName}" synced to device! Device ID: ${response.data.device_user_id}`);
-            
-            setTimeout(() => {
-                fetchStaff();
-                fetchStaffDeviceIds();
-            }, 1000);
-            
-            return response.data;
-        } else {
-            toast.error('Failed to sync staff member');
-            throw new Error('Sync failed');
-        }
+      const response = await api.post(`/attendance/devices/${deviceId}/sync-staff`, {
+        id: staffId,
+        full_name: staffName
+      });
+      
+      if (response.data.success) {
+        toast.success(`Staff member "${staffName}" synced to device! Device ID: ${response.data.device_user_id}`);
+        setTimeout(() => {
+          fetchStaff();
+          fetchStaffDeviceIds();
+        }, 1000);
+        return response.data;
+      } else {
+        toast.error('Failed to sync staff member');
+        throw new Error('Sync failed');
+      }
     } catch (error) {
-        console.error('Error syncing staff:', error);
-        const errorMsg = error.response?.data?.detail || error.message || 'Failed to sync staff member';
-        toast.error(errorMsg);
-        throw error;
+      console.error('Error syncing staff:', error);
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to sync staff member';
+      toast.error(errorMsg);
+      throw error;
     }
   };
 
   const handleSyncSelectedStaff = async (staffIds, deviceId) => {
-    console.log('Bulk syncing staff:', { staffIds, deviceId });
-    
     try {
-        // FIXED: Use correct endpoint with query parameter
-        const response = await api.post(`/attendance/devices/bulk-sync-staff`, staffIds, {
-            params: { device_id: deviceId }
-        });
-        
-        console.log('Bulk sync response:', response.data);
-        
-        if (response.data.success) {
-            toast.success(`Queued ${staffIds.length} staff members for sync. The device will update within a few seconds.`);
-            
-            setTimeout(() => {
-                fetchStaff();
-                fetchStaffDeviceIds();
-            }, 2000);
-            
-            return response.data;
-        } else {
-            toast.error('Failed to sync staff members');
-            throw new Error('Bulk sync failed');
-        }
+      const response = await api.post(`/attendance/devices/bulk-sync-staff`, staffIds, {
+        params: { device_id: deviceId }
+      });
+      
+      if (response.data.success) {
+        toast.success(`Queued ${staffIds.length} staff members for sync.`);
+        setTimeout(() => {
+          fetchStaff();
+          fetchStaffDeviceIds();
+        }, 2000);
+        return response.data;
+      } else {
+        toast.error('Failed to sync staff members');
+        throw new Error('Bulk sync failed');
+      }
     } catch (error) {
-        console.error('Error syncing staff:', error);
-        const errorMsg = error.response?.data?.detail || error.message || 'Failed to sync staff members';
-        toast.error(errorMsg);
-        throw error;
+      console.error('Error syncing staff:', error);
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to sync staff members';
+      toast.error(errorMsg);
+      throw error;
     }
   };
 
@@ -930,20 +1361,19 @@ const Staff = () => {
 
   const checkDeviceConnection = async () => {
     try {
-        const response = await api.get('/attendance/devices');
-        const onlineDevices = response.data.filter(d => d.is_online);
-        
-        if (onlineDevices.length === 0) {
-            toast.error('No online devices found. Make sure the bridge is running.');
-        } else {
-            toast.success(`${onlineDevices.length} device(s) online: ${onlineDevices.map(d => d.device_name).join(', ')}`);
-        }
-        
-        return onlineDevices.length > 0;
+      const response = await api.get('/attendance/devices');
+      const onlineDevices = response.data.filter(d => d.is_online);
+      
+      if (onlineDevices.length === 0) {
+        toast.error('No online devices found. Make sure the bridge is running.');
+      } else {
+        toast.success(`${onlineDevices.length} device(s) online: ${onlineDevices.map(d => d.device_name).join(', ')}`);
+      }
+      return onlineDevices.length > 0;
     } catch (error) {
-        console.error('Error checking devices:', error);
-        toast.error('Failed to check device status');
-        return false;
+      console.error('Error checking devices:', error);
+      toast.error('Failed to check device status');
+      return false;
     }
   };
 
@@ -970,11 +1400,27 @@ const Staff = () => {
     }
   };
 
+  const openProfileModal = (staff) => {
+    setSelectedStaff(staff);
+    setIsProfileModalOpen(true);
+  };
+
+  const openEditModal = (staff) => {
+    setSelectedStaff(staff);
+    setIsEditModalOpen(true);
+  };
+
+  const openPermissionsModal = (staff) => {
+    setSelectedStaff(staff);
+    setIsPermissionsModalOpen(true);
+  };
+
   const getPositionBadgeColor = (position) => {
     if (position === 'Head Trainer') return 'bg-purple-100 text-purple-800';
     if (position === 'Trainer' || position === 'Personal Trainer') return 'bg-blue-100 text-blue-800';
     if (position === 'Yoga Instructor') return 'bg-green-100 text-green-800';
     if (position === 'Manager') return 'bg-yellow-100 text-yellow-800';
+    if (position === 'Sales Executive') return 'bg-orange-100 text-orange-800';
     return 'bg-gray-100 text-gray-800';
   };
 
@@ -1048,7 +1494,7 @@ const Staff = () => {
             className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button
             onClick={handleSearch}
             className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -1140,18 +1586,25 @@ const Staff = () => {
                   return (
                     <tr key={s.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-3">
+                        <div 
+                          className="flex items-center gap-3 cursor-pointer"
+                          onClick={() => openProfileModal(s)}
+                        >
                           <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                            s.position === 'Head Trainer' ? 'bg-purple-100' : 'bg-indigo-100'
+                            s.position === 'Head Trainer' ? 'bg-purple-100' : 
+                            s.position === 'Sales Executive' ? 'bg-orange-100' : 'bg-indigo-100'
                           }`}>
                             <span className={`font-semibold text-sm ${
-                              s.position === 'Head Trainer' ? 'text-purple-700' : 'text-indigo-700'
+                              s.position === 'Head Trainer' ? 'text-purple-700' : 
+                              s.position === 'Sales Executive' ? 'text-orange-700' : 'text-indigo-700'
                             }`}>
                               {(s.user?.full_name || 'S').charAt(0).toUpperCase()}
                             </span>
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-gray-900">{s.user?.full_name || '—'}</p>
+                            <p className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors">
+                              {s.user?.full_name || '—'}
+                            </p>
                             <p className="text-xs text-gray-500">@{s.user?.username || ''}</p>
                           </div>
                         </div>
@@ -1218,10 +1671,21 @@ const Staff = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button
-                          onClick={() => {
-                            setSelectedStaff(s);
-                            setIsEditModalOpen(true);
-                          }}
+                          onClick={() => openPermissionsModal(s)}
+                          className="text-purple-600 hover:text-purple-900 mr-2"
+                          title="Manage Permissions"
+                        >
+                          <Shield className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => openProfileModal(s)}
+                          className="text-indigo-600 hover:text-indigo-900 mr-2"
+                          title="View Profile"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => openEditModal(s)}
                           className="text-blue-600 hover:text-blue-900 mr-2"
                           title="Edit"
                         >
@@ -1283,7 +1747,24 @@ const Staff = () => {
         onSuccess={handleAddSuccess}
       />
 
-      {/* Edit Staff Modal with Device Sync */}
+      {/* Staff Profile Modal */}
+      {isProfileModalOpen && selectedStaff && (
+        <StaffProfileModal
+          staff={selectedStaff}
+          onClose={() => {
+            setIsProfileModalOpen(false);
+            setSelectedStaff(null);
+          }}
+          onUpdate={() => {
+            fetchStaff();
+            fetchStaffDeviceIds();
+          }}
+          devices={devices.filter(d => d.is_online)}
+          onSyncToDevice={handleSyncStaffToDevice}
+        />
+      )}
+
+      {/* Edit Staff Modal */}
       <StaffEditModal
         isOpen={isEditModalOpen}
         onClose={() => {
@@ -1304,6 +1785,19 @@ const Staff = () => {
         devices={devices.filter(d => d.is_online)}
         onSyncSelected={handleSyncSelectedStaff}
         onSyncAll={handleSyncAllStaff}
+      />
+
+      {/* Staff Permissions Modal */}
+      <StaffPermissionsModal
+        isOpen={isPermissionsModalOpen}
+        onClose={() => {
+          setIsPermissionsModalOpen(false);
+          setSelectedStaff(null);
+        }}
+        staff={selectedStaff}
+        onUpdate={() => {
+          fetchStaff();
+        }}
       />
     </div>
   );
