@@ -75,6 +75,7 @@ const Members = () => {
   const [selectedMemberForProfile, setSelectedMemberForProfile] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [totalMembersCount, setTotalMembersCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
 
   // FIX: Increase items per page from 10 to 50
   const itemsPerPage = 50;
@@ -178,6 +179,7 @@ const Members = () => {
 
       setMembers(transformed);
       setTotalMembersCount(data.total || 0);
+      setTotalPages(data.total_pages || 0);
       
     } catch (error) {
       console.error('Error fetching members (optimized):', error);
@@ -296,19 +298,19 @@ const Members = () => {
 
       setMembers(transformed);
       setTotalMembersCount(transformed.length);
+      setTotalPages(Math.ceil(transformed.length / itemsPerPage));
     } catch (error) {
       console.error('Error fetching members:', error.response?.data || error.message);
       toast.error('Failed to fetch members');
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly]);
+  }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly, itemsPerPage]);
 
   // ============================================================
   // Main fetch function - uses optimized endpoint by default
   // ============================================================
   const fetchMembers = useCallback(async () => {
-    // Try optimized endpoint first, fallback to legacy if it fails
     try {
       await fetchMembersOptimizedFn();
     } catch (error) {
@@ -350,11 +352,17 @@ const Members = () => {
     }
   };
 
+  // Initial load
   useEffect(() => {
     fetchMembers();
     fetchStats();
     fetchGymDetails();
-  }, [fetchMembers, fetchStats]);
+  }, []);
+
+  // Trigger fetch when search, filters, or page changes
+  useEffect(() => {
+    fetchMembers();
+  }, [debouncedSearchTerm, filters.status, currentPage]);
 
   // Filter handlers for stats cards
   const handleFilterAll = () => {
@@ -783,43 +791,13 @@ const Members = () => {
     setShowBulkDeviceSelect(true);
   };
 
-  // Filtered members
-  const filteredMembers = useMemo(() => {
-    return members.filter(member => {
-      if (showNewThisMonthOnly) {
-        const currentDate = new Date();
-        const currentYear = currentDate.getFullYear();
-        const currentMonth = currentDate.getMonth();
-        const joinDate = new Date(member.joinDate);
-        const isNewThisMonth = joinDate.getFullYear() === currentYear && joinDate.getMonth() === currentMonth;
-        return isNewThisMonth;
-      }
-      
-      const searchLower = searchTerm.toLowerCase().trim();
-      let matchesSearch = true;
-      if (searchLower) {
-        matchesSearch =
-          member.fullName?.toLowerCase().includes(searchLower) ||
-          member.email?.toLowerCase().includes(searchLower) ||
-          member.phone?.includes(searchTerm);
-      }
-      
-      const matchesStatus = filters.status === 'all' || member.status === filters.status;
-      const matchesGender = filters.gender === 'all' || member.gender === filters.gender;
-      
-      return matchesSearch && matchesStatus && matchesGender;
-    });
-  }, [members, searchTerm, filters.status, filters.gender, showNewThisMonthOnly]);
-
-  // Pagination calculations - now with 50 items per page
-  const totalPages = Math.ceil(filteredMembers.length / itemsPerPage);
-  const paginatedMembers = filteredMembers.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  // Members are already filtered and paginated from the server
+  // We just display what the server returns
+  const paginatedMembers = members;
+  const displayTotalPages = totalPages;
 
   const toggleSelectAll = () => {
-    if (selectedMembers.length === paginatedMembers.length) {
+    if (selectedMembers.length === paginatedMembers.length && paginatedMembers.length > 0) {
       setSelectedMembers([]);
     } else {
       setSelectedMembers(paginatedMembers.map(m => m.id));
@@ -858,6 +836,19 @@ const Members = () => {
   };
 
   const inactiveCount = stats.total - stats.active;
+
+  // Pagination handlers
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < displayTotalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
 
   return (
     <div className="p-6">
@@ -915,7 +906,10 @@ const Members = () => {
                 type="text"
                 placeholder="Search members..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
@@ -938,6 +932,7 @@ const Members = () => {
                   setFilters({ ...filters, status: 'all' });
                   setShowNewThisMonthOnly(false);
                   setSearchTerm('');
+                  setCurrentPage(1);
                 }}
                 className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm flex items-center gap-1"
               >
@@ -1013,6 +1008,7 @@ const Members = () => {
                 onChange={(e) => {
                   setFilters({ ...filters, status: e.target.value });
                   setShowNewThisMonthOnly(false);
+                  setCurrentPage(1);
                 }}
                 className="w-full border border-gray-300 rounded-lg p-2"
               >
@@ -1023,8 +1019,14 @@ const Members = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
-              <select value={filters.gender} onChange={(e) => setFilters({ ...filters, gender: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg p-2">
+              <select 
+                value={filters.gender} 
+                onChange={(e) => {
+                  setFilters({ ...filters, gender: e.target.value });
+                  setCurrentPage(1);
+                }}
+                className="w-full border border-gray-300 rounded-lg p-2"
+              >
                 <option value="all">All Genders</option>
                 <option value="male">Male</option>
                 <option value="female">Female</option>
@@ -1036,7 +1038,10 @@ const Members = () => {
                 <span className="inline-flex items-center px-3 py-2 rounded-lg bg-blue-100 text-blue-800 text-sm">
                   <span className="font-medium">Filter: New Members This Month</span>
                   <button
-                    onClick={() => setShowNewThisMonthOnly(false)}
+                    onClick={() => {
+                      setShowNewThisMonthOnly(false);
+                      setCurrentPage(1);
+                    }}
                     className="ml-2 text-blue-600 hover:text-blue-800"
                   >
                     <X className="h-3 w-3" />
@@ -1208,43 +1213,33 @@ const Members = () => {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {displayTotalPages > 0 && (
           <div className="px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-sm text-gray-700">
-              Showing <span className="font-medium">{((currentPage - 1) * itemsPerPage) + 1}</span> to{' '}
-              <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredMembers.length)}</span> of{' '}
-              <span className="font-medium">{filteredMembers.length}</span> members
+              Showing <span className="font-medium">{members.length > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0}</span> to{' '}
+              <span className="font-medium">{members.length > 0 ? ((currentPage - 1) * itemsPerPage) + members.length : 0}</span> of{' '}
+              <span className="font-medium">{totalMembersCount}</span> members
               <span className="text-gray-400 ml-2">(showing {itemsPerPage} per page)</span>
             </div>
             <div className="flex items-center space-x-2">
               <button 
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handlePrevPage}
+                disabled={currentPage === 1 || loading}
+                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <span className="text-sm text-gray-700">
                 Page <span className="font-medium">{currentPage}</span> of{' '}
-                <span className="font-medium">{totalPages}</span>
+                <span className="font-medium">{displayTotalPages}</span>
               </span>
               <button 
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleNextPage}
+                disabled={currentPage === displayTotalPages || loading}
+                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
-            </div>
-          </div>
-        )}
-        
-        {/* Show total count even when only one page */}
-        {totalPages <= 1 && filteredMembers.length > 0 && (
-          <div className="px-6 py-4 border-t">
-            <div className="text-sm text-gray-700">
-              Showing all <span className="font-medium">{filteredMembers.length}</span> members
-              <span className="text-gray-400 ml-2">(showing {itemsPerPage} per page)</span>
             </div>
           </div>
         )}
