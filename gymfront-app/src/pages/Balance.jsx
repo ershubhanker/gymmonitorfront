@@ -14,6 +14,7 @@ import {
   Wallet,
   CreditCard,
   ChevronRight,
+  ChevronLeft,
   Loader2,
   Eye,
   Plus,
@@ -39,6 +40,11 @@ const Balance = () => {
   const [nextPaymentDate, setNextPaymentDate] = useState('');
   const [processingPayment, setProcessingPayment] = useState(false);
   const [errorDetails, setErrorDetails] = useState(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  
   const [overview, setOverview] = useState({
     total_balance_due: 0,
     members_with_balance: 0,
@@ -74,8 +80,26 @@ const Balance = () => {
         api.get('/gym/balance/overview')
       ]);
       
-      setMembers(membersRes.data || []);
+      // Sort members by balance (highest first) or by member_id (newest first)
+      // Let's sort by member_id descending to show latest entries at top
+      const sortedMembers = (membersRes.data || []).sort((a, b) => {
+        // If there's a next_payment_date, sort by that (overdue first)
+        if (a.balance_due > 0 && b.balance_due > 0) {
+          // Sort by balance due (highest first)
+          return b.balance_due - a.balance_due;
+        }
+        // If one has balance and other doesn't, put the one with balance first
+        if (a.balance_due > 0 && b.balance_due === 0) return -1;
+        if (a.balance_due === 0 && b.balance_due > 0) return 1;
+        // If both have no balance, sort by member_id (newest first)
+        return b.member_id - a.member_id;
+      });
+      
+      setMembers(sortedMembers);
       setOverview(overviewRes.data);
+      
+      // Reset to first page when data changes
+      setCurrentPage(1);
     } catch (error) {
       console.error('Error fetching balance data:', error);
       toast.error('Failed to load balance data');
@@ -291,6 +315,12 @@ const Balance = () => {
     return suggestions;
   };
 
+  // Pagination calculations
+  const totalPages = Math.ceil(members.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, members.length);
+  const currentMembers = members.slice(startIndex, endIndex);
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -412,14 +442,14 @@ const Balance = () => {
                     <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto" />
                   </td>
                 </tr>
-              ) : members.length === 0 ? (
+              ) : currentMembers.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="px-6 py-4 text-center text-gray-500">
-                    No members found
+                    {searchTerm ? 'No members found matching your search' : 'No members with balance due'}
                   </td>
                 </tr>
               ) : (
-                members.map((member) => (
+                currentMembers.map((member) => (
                   <tr key={member.member_id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div>
@@ -489,6 +519,48 @@ const Balance = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {!loading && members.length > 0 && (
+          <div className="px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm text-gray-700">
+              Showing <span className="font-medium">{startIndex + 1}</span> to{' '}
+              <span className="font-medium">{endIndex}</span> of{' '}
+              <span className="font-medium">{members.length}</span> members
+              <span className="text-gray-400 ml-2">(showing {itemsPerPage} per page)</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-sm text-gray-700">
+                Page <span className="font-medium">{currentPage}</span> of{' '}
+                <span className="font-medium">{totalPages}</span>
+              </span>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {/* Show total count when only one page */}
+        {!loading && members.length > 0 && totalPages <= 1 && (
+          <div className="px-6 py-4 border-t">
+            <div className="text-sm text-gray-700">
+              Showing all <span className="font-medium">{members.length}</span> members
+              <span className="text-gray-400 ml-2">(showing {itemsPerPage} per page)</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Payment Modal with Next Payment Date */}
@@ -631,7 +703,7 @@ const Balance = () => {
                   {/* Suggested dates */}
                   <div className="mt-2">
                     <p className="text-xs text-gray-500 mb-1.5">Suggested dates:</p>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       {getSuggestedDates().map((date, index) => (
                         <button
                           key={index}
