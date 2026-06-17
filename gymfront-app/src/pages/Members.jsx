@@ -18,7 +18,7 @@ import {
   Wifi,
   Loader2,
   WifiOff,
-  FileSpreadsheet  // <-- ADD THIS IMPORT
+  FileSpreadsheet
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
@@ -75,6 +75,8 @@ const Members = () => {
   const [selectedMemberForProfile, setSelectedMemberForProfile] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
+  // FIX: Increase items per page from 10 to 50
+  const itemsPerPage = 50;
 
   const [gymDetails, setGymDetails] = useState({
     name: 'GYM MANAGEMENT SYSTEM',
@@ -90,14 +92,10 @@ const Members = () => {
       try {
         const memberData = JSON.parse(renewalMemberData);
         console.log('Member renewal data received:', memberData);
-        console.log('Available members:', members);
         
-        // Clear the stored data immediately
         localStorage.removeItem('selectedMemberForRenewal');
         
-        // Find the member by comparing numeric IDs
         const memberToRenew = members.find(m => m.id === Number(memberData.id));
-        console.log('Found member to renew:', memberToRenew);
         
         if (memberToRenew) {
           setTimeout(() => {
@@ -105,12 +103,9 @@ const Members = () => {
             toast.success(`Ready to renew membership for ${memberToRenew.fullName}`);
           }, 500);
         } else {
-          console.log('Member not found, waiting for members to load...');
-          // If member not found yet, wait for members to load
           const checkInterval = setInterval(() => {
             const member = members.find(m => m.id === Number(memberData.id));
             if (member) {
-              console.log('Found member after waiting:', member);
               clearInterval(checkInterval);
               openEditModal(member);
               toast.success(`Ready to renew membership for ${member.fullName}`);
@@ -119,7 +114,6 @@ const Members = () => {
           
           setTimeout(() => {
             clearInterval(checkInterval);
-            console.log('Timeout: Member not found after 10 seconds');
           }, 10000);
         }
       } catch (error) {
@@ -129,97 +123,97 @@ const Members = () => {
     }
   }, [members]);
 
-  const itemsPerPage = 10;
-
-  // Wrap fetchMembers in useCallback to prevent infinite loops
-  // src/pages/Members.jsx - Updated fetchMembers function
-
-const fetchMembers = useCallback(async () => {
-  setLoading(true);
-  try {
-    const params = new URLSearchParams();
-    if (debouncedSearchTerm && !showNewThisMonthOnly) params.append('search', debouncedSearchTerm);
-    
-    // FIX: Only append status filter if it's not 'all'
-    if (filters.status !== 'all') {
-      // For inactive, the API expects 'inactive' but the field in DB is is_active (boolean)
-      // The backend should handle this conversion
-      params.append('status', filters.status);
-    }
-
-    const [membersRes, membershipsRes, paymentsRes, deviceIdsRes] = await Promise.all([
-      api.get(`/gym/members?${params.toString()}`),
-      api.get('/gym/memberships?limit=1000'),
-      api.get('/gym/payments?limit=1000'),
-      api.get('/attendance/members/device-ids').catch(() => ({ data: [] })),
-    ]);
-
-    const membershipsData = membershipsRes.data || [];
-    const paymentsData = paymentsRes.data || [];
-
-    // Build a lookup map: member_id -> device_user_id
-    const deviceIdMap = {};
-    (deviceIdsRes.data || []).forEach(entry => {
-      if (entry.device_user_id) {
-        deviceIdMap[entry.member_id] = entry.device_user_id;
+  // FIX: Fetch members with increased limit and proper pagination
+  const fetchMembers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      
+      // FIX: Increase limit to fetch ALL members or use a very large number
+      // Since we're doing client-side pagination, fetch all members at once
+      // but use a larger limit (e.g., 10000 or -1 for all)
+      params.append('limit', '10000'); // Fetch all members
+      
+      if (debouncedSearchTerm && !showNewThisMonthOnly) {
+        params.append('search', debouncedSearchTerm);
       }
-    });
+      
+      if (filters.status !== 'all') {
+        params.append('status', filters.status);
+      }
 
-    const transformed = membersRes.data.map(member => {
-      const today = new Date().toISOString().split('T')[0];
-      const activeMembership = membershipsData.find(
-        ms => ms.member?.id === member.id &&
-              ms.status === 'active' &&
-              ms.end_date >= today
-      );
-      const memberPayments = paymentsData.filter(p => p.member_id === member.id);
-      const paymentCount = memberPayments.length;
+      const [membersRes, membershipsRes, paymentsRes, deviceIdsRes] = await Promise.all([
+        api.get(`/gym/members?${params.toString()}`),
+        api.get('/gym/memberships?limit=10000'),
+        api.get('/gym/payments?limit=10000'),
+        api.get('/attendance/members/device-ids').catch(() => ({ data: [] })),
+      ]);
 
-      let avatarUrl;
-      if (member.profile_image) {
-        if (member.profile_image.startsWith('http')) {
-          avatarUrl = member.profile_image;
-        } else {
-          avatarUrl = `${API_BASE_URL}${member.profile_image}`;
+      const membershipsData = membershipsRes.data || [];
+      const paymentsData = paymentsRes.data || [];
+
+      // Build a lookup map: member_id -> device_user_id
+      const deviceIdMap = {};
+      (deviceIdsRes.data || []).forEach(entry => {
+        if (entry.device_user_id) {
+          deviceIdMap[entry.member_id] = entry.device_user_id;
         }
-      } else {
-        avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
-      }
+      });
 
-      // Use device_user_id from gym_routes if present, otherwise fall back to deviceIdMap
-      const deviceUserId = member.device_user_id || deviceIdMap[member.id] || null;
+      const transformed = membersRes.data.map(member => {
+        const today = new Date().toISOString().split('T')[0];
+        const activeMembership = membershipsData.find(
+          ms => ms.member?.id === member.id &&
+                ms.status === 'active' &&
+                ms.end_date >= today
+        );
+        const memberPayments = paymentsData.filter(p => p.member_id === member.id);
+        const paymentCount = memberPayments.length;
 
-      return {
-        id: member.id,
-        fullName: member.full_name,
-        email: member.email || '',
-        phone: member.phone,
-        gender: member.gender || 'male',
-        joinDate: member.joined_date,
-        membership: activeMembership?.plan?.name || 'No Plan',
-        membershipEndDate: activeMembership?.end_date || null,
-        membershipStatus: activeMembership?.status || null,
-        status: member.is_active ? 'active' : 'inactive',
-        lastVisit: member.last_visit || null,
-        payments: paymentCount,
-        avatar: avatarUrl,
-        profile_image: member.profile_image,
-        raw: member,
-        activeMembership: activeMembership,
-        memberPayments: memberPayments,
-        syncedToDevice: !!deviceUserId,
-        deviceUserId: deviceUserId,
-      };
-    });
+        let avatarUrl;
+        if (member.profile_image) {
+          if (member.profile_image.startsWith('http')) {
+            avatarUrl = member.profile_image;
+          } else {
+            avatarUrl = `${API_BASE_URL}${member.profile_image}`;
+          }
+        } else {
+          avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
+        }
 
-    setMembers(transformed);
-  } catch (error) {
-    console.error('Error fetching members:', error.response?.data || error.message);
-    toast.error('Failed to fetch members');
-  } finally {
-    setLoading(false);
-  }
-}, [debouncedSearchTerm, filters.status, showNewThisMonthOnly]);
+        const deviceUserId = member.device_user_id || deviceIdMap[member.id] || null;
+
+        return {
+          id: member.id,
+          fullName: member.full_name,
+          email: member.email || '',
+          phone: member.phone,
+          gender: member.gender || 'male',
+          joinDate: member.joined_date,
+          membership: activeMembership?.plan?.name || 'No Plan',
+          membershipEndDate: activeMembership?.end_date || null,
+          membershipStatus: activeMembership?.status || null,
+          status: member.is_active ? 'active' : 'inactive',
+          lastVisit: member.last_visit || null,
+          payments: paymentCount,
+          avatar: avatarUrl,
+          profile_image: member.profile_image,
+          raw: member,
+          activeMembership: activeMembership,
+          memberPayments: memberPayments,
+          syncedToDevice: !!deviceUserId,
+          deviceUserId: deviceUserId,
+        };
+      });
+
+      setMembers(transformed);
+    } catch (error) {
+      console.error('Error fetching members:', error.response?.data || error.message);
+      toast.error('Failed to fetch members');
+    } finally {
+      setLoading(false);
+    }
+  }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly]);
 
   const fetchStats = async () => {
     try {
@@ -288,11 +282,8 @@ const fetchMembers = useCallback(async () => {
     setDownloadingInvoice(member.id);
     try {
       await generateInvoicePDF(member.id);
-      // Success toast is already shown in generateInvoicePDF
     } catch (error) {
       console.error('Error generating invoice:', error);
-      // Error toast is already shown in generateInvoicePDF
-      // Just log additional details if needed
       if (error.response?.data?.detail) {
         console.error('Server error detail:', error.response.data.detail);
       }
@@ -300,13 +291,12 @@ const fetchMembers = useCallback(async () => {
       setDownloadingInvoice(null);
     }
   };
-  
 
   const openProfileModal = (member) => {
     setSelectedMemberForProfile(member);
     setShowProfileModal(true);
   };
-  
+
   const handleBulkInvoice = async () => {
     if (selectedMembers.length === 0) {
       toast.error('Please select members to generate invoices');
@@ -319,7 +309,7 @@ const fetchMembers = useCallback(async () => {
       await generateBulkInvoices(selectedMembers);
       toast.dismiss('bulk-invoice');
       toast.success(`${selectedMembers.length} invoices downloaded as ZIP!`);
-      setSelectedMembers([]); // Clear selection after download
+      setSelectedMembers([]);
     } catch (error) {
       toast.dismiss('bulk-invoice');
       console.error('Error generating bulk invoices:', error);
@@ -357,7 +347,7 @@ const fetchMembers = useCallback(async () => {
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
           amount_paid: amount_paid ? parseFloat(amount_paid) : 0,
-          discount_applied: discount_applied ? parseFloat(discount_applied) : 0, // Include discount
+          discount_applied: discount_applied ? parseFloat(discount_applied) : 0,
         };
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
@@ -408,14 +398,14 @@ const fetchMembers = useCallback(async () => {
     }
     return createdMember;
   };
-  
+
   const handleUpdateMember = async (memberData) => {
     const {
       plan_id, 
       membership_start_date, 
       payment_method, 
       amount_paid,
-      discount_applied, // Add this
+      discount_applied,
       renew_membership,
       ...memberFields
     } = memberData;
@@ -437,7 +427,7 @@ const fetchMembers = useCallback(async () => {
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
           amount_paid: amount_paid ? parseFloat(amount_paid) : 0,
-          discount_applied: discount_applied ? parseFloat(discount_applied) : 0, // Include discount
+          discount_applied: discount_applied ? parseFloat(discount_applied) : 0,
         };
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
@@ -483,7 +473,6 @@ const fetchMembers = useCallback(async () => {
     try {
       const response = await api.delete(`/gym/members/${memberId}`);
       
-      // Show detailed success message
       if (response.data.removed_from_devices > 0) {
         toast.success(
           `✅ Member deleted successfully!\n\n` +
@@ -501,11 +490,10 @@ const fetchMembers = useCallback(async () => {
         toast.success('Member deleted successfully! (No device sync needed)');
       }
       
-      // Update local state
       setMembers(members.filter(m => m.id !== memberId));
       setSelectedMembers(selectedMembers.filter(id => id !== memberId));
       fetchStats();
-      refreshAllData(); // Refresh device data if needed
+      refreshAllData();
       
     } catch (error) {
       console.error('Delete error:', error);
@@ -548,7 +536,6 @@ const fetchMembers = useCallback(async () => {
       if (result.success) {
         toast.success(`Syncing ${memberIds.length} members to device ${selectedBulkDevice.device_name}`);
         
-        // Update local state immediately
         setMembers(prevMembers => 
           prevMembers.map(m => 
             memberIds.includes(m.id) 
@@ -562,7 +549,6 @@ const fetchMembers = useCallback(async () => {
         setSelectedBulkDevice(null);
         refreshAllData();
         
-        // Full refresh to sync with server
         setTimeout(() => fetchMembers(), 2000);
       } else {
         toast.error(result.error || 'Bulk sync failed');
@@ -690,9 +676,8 @@ const fetchMembers = useCallback(async () => {
     setShowBulkDeviceSelect(true);
   };
 
-  // Filtered members - including new this month filter
+  // Filtered members
   const filteredMembers = members.filter(member => {
-    // Check if we're filtering by "new this month"
     if (showNewThisMonthOnly) {
       const currentDate = new Date();
       const currentYear = currentDate.getFullYear();
@@ -717,6 +702,7 @@ const fetchMembers = useCallback(async () => {
     return matchesSearch && matchesStatus && matchesGender;
   });
 
+  // Pagination calculations - now with 50 items per page
   const totalPages = Math.ceil(filteredMembers.length / itemsPerPage);
   const paginatedMembers = filteredMembers.slice(
     (currentPage - 1) * itemsPerPage,
@@ -752,7 +738,7 @@ const fetchMembers = useCallback(async () => {
     setIsModalOpen(true);
   };
 
-  // Use ALL active devices, not just online ones
+  // Use ALL active devices
   const activeDevices = devices.filter(d => d.is_active);
   
   const copyDeviceIdToClipboard = (deviceUserId) => {
@@ -837,7 +823,6 @@ const fetchMembers = useCallback(async () => {
             >
               <RefreshCw className="h-5 w-5 text-gray-600" />
             </button>
-            {/* Clear filters button */}
             {(filters.status !== 'all' || showNewThisMonthOnly || searchTerm) && (
               <button
                 onClick={() => {
@@ -937,7 +922,6 @@ const fetchMembers = useCallback(async () => {
                 <option value="other">Other</option>
               </select>
             </div>
-            {/* Show active filter indicator when new this month is active */}
             {showNewThisMonthOnly && (
               <div className="flex items-center">
                 <span className="inline-flex items-center px-3 py-2 rounded-lg bg-blue-100 text-blue-800 text-sm">
@@ -984,15 +968,15 @@ const fetchMembers = useCallback(async () => {
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
                   </td>
-                 </tr>
+                </tr>
               ) : paginatedMembers.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="px-6 py-4 text-center text-gray-500">
                     {showNewThisMonthOnly 
                       ? 'No new members joined this month' 
                       : 'No members found'}
-                   </td>
-                 </tr>
+                  </td>
+                </tr>
               ) : (
                 paginatedMembers.map((member) => (
                   <tr key={member.id} className="hover:bg-gray-50">
@@ -1001,8 +985,8 @@ const fetchMembers = useCallback(async () => {
                         checked={selectedMembers.includes(member.id)}
                         onChange={() => toggleSelectMember(member.id)}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                     </td>
-                     <td className="px-6 py-4 whitespace-nowrap">
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <div 
                         className="flex items-center cursor-pointer hover:bg-gray-50 rounded-lg p-1 -m-1 transition-colors"
                         onClick={() => openProfileModal(member)}
@@ -1029,7 +1013,7 @@ const fetchMembers = useCallback(async () => {
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">{member.email || '—'}</div>
                       <div className="text-sm text-gray-500">{member.phone}</div>
-                     </td>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{member.membership}</div>
                       <div className="text-sm text-gray-500">
@@ -1040,10 +1024,10 @@ const fetchMembers = useCallback(async () => {
                           </span>
                         )}
                       </div>
-                     </td>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStatusBadge(member.status)}
-                     </td>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {member.syncedToDevice ? (
                         <div className="group relative">
@@ -1063,7 +1047,7 @@ const fetchMembers = useCallback(async () => {
                           Not Synced
                         </span>
                       )}
-                     </td>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {member.deviceUserId ? (
                         <button
@@ -1079,7 +1063,7 @@ const fetchMembers = useCallback(async () => {
                       ) : (
                         <span className="text-xs text-gray-400">—</span>
                       )}
-                     </td>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button 
                         onClick={() => handleDownloadInvoice(member)} 
@@ -1106,34 +1090,52 @@ const fetchMembers = useCallback(async () => {
                       <button onClick={() => handleDeleteMember(member.id)} className="text-red-600 hover:text-red-900">
                         <Trash2 className="h-4 w-4" />
                       </button>
-                     </td>
-                   </tr>
+                    </td>
+                  </tr>
                 ))
               )}
             </tbody>
-           </table>
+          </table>
         </div>
 
-        {/* Pagination */}
+        {/* Pagination - FIX: Show pagination info with total count */}
         {totalPages > 1 && (
-          <div className="px-6 py-4 border-t flex items-center justify-between">
+          <div className="px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-sm text-gray-700">
-              Showing {((currentPage - 1) * itemsPerPage) + 1} to{' '}
-              {Math.min(currentPage * itemsPerPage, filteredMembers.length)} of{' '}
-              {filteredMembers.length} results
+              Showing <span className="font-medium">{((currentPage - 1) * itemsPerPage) + 1}</span> to{' '}
+              <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredMembers.length)}</span> of{' '}
+              <span className="font-medium">{filteredMembers.length}</span> members
+              <span className="text-gray-400 ml-2">(showing {itemsPerPage} per page)</span>
             </div>
             <div className="flex items-center space-x-2">
-              <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
-                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="text-sm text-gray-700">Page {currentPage} of {totalPages}</span>
-              <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              <span className="text-sm text-gray-700">
+                Page <span className="font-medium">{currentPage}</span> of{' '}
+                <span className="font-medium">{totalPages}</span>
+              </span>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages}
-                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <ChevronRight className="h-4 w-4" />
               </button>
+            </div>
+          </div>
+        )}
+        
+        {/* Show total count even when only one page */}
+        {totalPages <= 1 && filteredMembers.length > 0 && (
+          <div className="px-6 py-4 border-t">
+            <div className="text-sm text-gray-700">
+              Showing all <span className="font-medium">{filteredMembers.length}</span> members
+              <span className="text-gray-400 ml-2">(showing {itemsPerPage} per page)</span>
             </div>
           </div>
         )}
@@ -1166,7 +1168,7 @@ const fetchMembers = useCallback(async () => {
           onClose={() => {
             setShowProfileModal(false);
             setSelectedMemberForProfile(null);
-            fetchMembers(); // Refresh to get updated data
+            fetchMembers();
           }}
           onUpdate={() => {
             fetchMembers();
@@ -1189,7 +1191,7 @@ const fetchMembers = useCallback(async () => {
         }}
       />
 
-      {/* Bulk Device Selection Modal - FIXED VERSION */}
+      {/* Bulk Device Selection Modal */}
       {showBulkDeviceSelect && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
