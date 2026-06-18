@@ -1,11 +1,11 @@
 // src/hooks/usePermissions.js
-
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 
 export const usePermissions = () => {
   const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchMyPermissions();
@@ -13,12 +13,15 @@ export const usePermissions = () => {
 
   const fetchMyPermissions = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const response = await api.get('/auth/my-permissions');
+      const response = await api.get('/gym/staff/my-permissions');
       setPermissions(response.data.permissions || []);
     } catch (error) {
       console.error('Error fetching permissions:', error);
+      // If endpoint doesn't exist, default to empty permissions (no access)
       setPermissions([]);
+      setError(error.response?.data?.detail || 'Failed to fetch permissions');
     } finally {
       setLoading(false);
     }
@@ -39,6 +42,7 @@ export const usePermissions = () => {
   return {
     permissions,
     loading,
+    error,
     hasPermission,
     hasAnyPermission,
     hasAllPermissions,

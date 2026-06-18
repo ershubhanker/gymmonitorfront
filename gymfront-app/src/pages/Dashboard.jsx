@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx - Updated with Balance and Leads cards
+// src/pages/Dashboard.jsx - Updated with Proper Permission Handling
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -49,11 +49,13 @@ import {
   Mail as MailIcon,
   Clock,
   AlertTriangle,
-  Eye
+  Eye,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api, { API_BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
+import { usePermissions } from '../hooks/usePermissions';
 
 // Import your page components
 import Members from './Members';
@@ -151,6 +153,7 @@ const CurrencyPickerModal = ({ onSelect }) => {
 
 const Dashboard = () => {
   const { user, logout, updateCurrencySymbol } = useAuth();
+  const { permissions, hasPermission, loading: permissionsLoading } = usePermissions();
   const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -158,10 +161,46 @@ const Dashboard = () => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
+  const [userRole, setUserRole] = useState(null);
   
   const userMenuRef = useRef(null);
   const userButtonRef = useRef(null);
+
+  // Check if user has specific permissions
+  const canViewDashboard = hasPermission('view_dashboard');
+  const canViewMembers = hasPermission('view_members');
+  const canViewPayments = hasPermission('view_payments');
+  const canViewMemberships = hasPermission('view_memberships');
+  const canViewBalances = hasPermission('view_balances');
+  const canViewStaff = hasPermission('view_staff');
+  const canViewExpenses = hasPermission('view_expenses');
+  const canViewAttendance = hasPermission('view_attendance');
+  const canViewDevices = hasPermission('view_devices');
+  const canViewLeads = hasPermission('view_leads');
   
+  // Admin check (gym owners and super admins have all permissions)
+  const isAdmin = userRole === 'gym_owner' || userRole === 'super_admin';
+
+  // Determine what the user can see
+  const canSeeDashboard = isAdmin || canViewDashboard;
+  const canSeeMembers = isAdmin || canViewMembers;
+  const canSeePayments = isAdmin || canViewPayments;
+  const canSeeMemberships = isAdmin || canViewMemberships;
+  const canSeeBalances = isAdmin || canViewBalances;
+  const canSeeStaff = isAdmin || canViewStaff;
+  const canSeeExpenses = isAdmin || canViewExpenses;
+  const canSeeAttendance = isAdmin || canViewAttendance;
+  const canSeeDevices = isAdmin || canViewDevices;
+  const canSeeLeads = isAdmin || canViewLeads;
+
+  useEffect(() => {
+    // Get user role from localStorage
+    const storedRole = localStorage.getItem('userRole');
+    if (storedRole) {
+      setUserRole(storedRole);
+    }
+  }, []);
+
   const [stats, setStats] = useState({
     totalMembers: 0,
     activeMembers: 0,
@@ -247,52 +286,96 @@ const Dashboard = () => {
     }
   }, [user, loading]);
 
+  // Silent fetch function - doesn't show errors on 403
+  const fetchSilently = async (url, options = {}) => {
+    try {
+      const response = await api.get(url, options);
+      return { data: response.data, success: true };
+    } catch (error) {
+      // Silently handle 403 errors - user just doesn't have permission
+      if (error.response?.status === 403) {
+        return { data: null, success: false, forbidden: true };
+      }
+      // For other errors, return null but don't show toast
+      return { data: null, success: false };
+    }
+  };
+
   const fetchDashboardData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     
     try {
-      const [statsResponse, membersResponse, paymentsResponse, membershipsResponse, staffResponse, balanceOverviewResponse, membersWithBalanceResponse, leadsResponse] = await Promise.all([
-        api.get('/gym/dashboard/stats').catch(err => {
-          console.error('Error fetching stats:', err);
-          return { data: null };
-        }),
-        api.get('/gym/members?limit=1000').catch(err => {
-          console.error('Error fetching members:', err);
-          return { data: [] };
-        }),
-        api.get('/gym/payments?limit=100').catch(err => {
-          console.error('Error fetching payments:', err);
-          return { data: [] };
-        }),
-        api.get('/gym/memberships?limit=1000').catch(err => {
-          console.error('Error fetching memberships:', err);
-          return { data: [] };
-        }),
-        api.get('/gym/staff').catch(err => {
-          console.error('Error fetching staff:', err);
-          return { data: [] };
-        }),
-        api.get('/gym/balance/overview').catch(err => {
-          console.error('Error fetching balance overview:', err);
-          return { data: {} };
-        }),
-        api.get('/gym/members/balances?has_balance=true&limit=10').catch(err => {
-          console.error('Error fetching members with balance:', err);
-          return { data: [] };
-        }),
-        api.get('/gym/leads?limit=10').catch(err => {
-          console.error('Error fetching leads:', err);
-          return { data: [] };
-        })
-      ]);
+      // Only fetch endpoints the user has permission for
+      const promises = [];
+      const endpointMap = {};
 
-      const members = membersResponse.data || [];
-      const payments = paymentsResponse.data || [];
-      const memberships = membershipsResponse.data || [];
-      const staff = staffResponse.data || [];
-      const balanceOverview = balanceOverviewResponse.data || {};
-      const membersWithBalance = membersWithBalanceResponse.data || [];
-      const leads = leadsResponse.data || [];
+      // Stats - only if user can view dashboard
+      if (canSeeDashboard) {
+        promises.push(fetchSilently('/gym/dashboard/stats'));
+        endpointMap.stats = promises.length - 1;
+      }
+
+      // Members - only if user can view members
+      if (canSeeMembers) {
+        promises.push(fetchSilently('/gym/members?limit=1000'));
+        endpointMap.members = promises.length - 1;
+      }
+
+      // Payments - only if user can view payments
+      if (canSeePayments) {
+        promises.push(fetchSilently('/gym/payments?limit=100'));
+        endpointMap.payments = promises.length - 1;
+      }
+
+      // Memberships - only if user can view memberships
+      if (canSeeMemberships) {
+        promises.push(fetchSilently('/gym/memberships?limit=1000'));
+        endpointMap.memberships = promises.length - 1;
+      }
+
+      // Staff - only if user can view staff
+      if (canSeeStaff) {
+        promises.push(fetchSilently('/gym/staff'));
+        endpointMap.staff = promises.length - 1;
+      }
+
+      // Balance overview - only if user can view balances
+      if (canSeeBalances) {
+        promises.push(fetchSilently('/gym/balance/overview'));
+        endpointMap.balance = promises.length - 1;
+      }
+
+      // Members with balance - only if user can view balances
+      if (canSeeBalances) {
+        promises.push(fetchSilently('/gym/members/balances?has_balance=true&limit=10'));
+        endpointMap.balanceMembers = promises.length - 1;
+      }
+
+      // Leads - only if user can view leads
+      if (canSeeLeads) {
+        promises.push(fetchSilently('/gym/leads?limit=10'));
+        endpointMap.leads = promises.length - 1;
+      }
+
+      const results = await Promise.all(promises);
+
+      // Extract data from results
+      const statsData = endpointMap.stats !== undefined ? results[endpointMap.stats] : { data: null };
+      const membersData = endpointMap.members !== undefined ? results[endpointMap.members] : { data: [] };
+      const paymentsData = endpointMap.payments !== undefined ? results[endpointMap.payments] : { data: [] };
+      const membershipsData = endpointMap.memberships !== undefined ? results[endpointMap.memberships] : { data: [] };
+      const staffData = endpointMap.staff !== undefined ? results[endpointMap.staff] : { data: [] };
+      const balanceData = endpointMap.balance !== undefined ? results[endpointMap.balance] : { data: {} };
+      const balanceMembersData = endpointMap.balanceMembers !== undefined ? results[endpointMap.balanceMembers] : { data: [] };
+      const leadsData = endpointMap.leads !== undefined ? results[endpointMap.leads] : { data: [] };
+
+      const members = membersData.data || [];
+      const payments = paymentsData.data || [];
+      const memberships = membershipsData.data || [];
+      const staff = staffData.data || [];
+      const balanceOverview = balanceData.data || {};
+      const membersWithBalance = balanceMembersData.data || [];
+      const leads = leadsData.data || [];
       
       const today = new Date().toISOString().split('T')[0];
       const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
@@ -399,7 +482,9 @@ const Dashboard = () => {
         .sort((a, b) => a.daysLeft - b.daysLeft)
         .slice(0, 5);
 
-      const todayCheckins = statsResponse.data?.today_checkins || 0;
+      // Use stats from API response if available, otherwise calculate
+      const statsApiData = statsData.data || {};
+      const todayCheckins = statsApiData.today_checkins || 0;
 
       const recentPayments = payments
         .sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date))
@@ -443,27 +528,38 @@ const Dashboard = () => {
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(lead.full_name)}&background=8B5CF6&color=fff`
       }));
 
-      const activities = [
-        ...payments.slice(0, 3).map(p => {
+      // Build activities from available data
+      const activities = [];
+      
+      if (canSeePayments) {
+        payments.slice(0, 3).forEach(p => {
           const member = members.find(m => m.id === p.member_id);
-          return {
+          activities.push({
             id: `payment-${p.id}`,
             member: member?.full_name || 'Unknown',
             action: 'Made a payment',
             time: new Date(p.payment_date).toLocaleString('en-IN', { hour: 'numeric', minute: 'numeric', hour12: true }),
             type: 'payment',
             avatar: member?.full_name?.charAt(0) || 'U'
-          };
-        }),
-        ...members.slice(0, 3).map(m => ({
-          id: `member-${m.id}`,
-          member: m.full_name,
-          action: 'Joined the gym',
-          time: new Date(m.joined_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
-          type: 'signup',
-          avatar: m.full_name.charAt(0)
-        }))
-      ].sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 5);
+          });
+        });
+      }
+      
+      if (canSeeMembers) {
+        members.slice(0, 3).forEach(m => {
+          activities.push({
+            id: `member-${m.id}`,
+            member: m.full_name,
+            action: 'Joined the gym',
+            time: new Date(m.joined_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+            type: 'signup',
+            avatar: m.full_name.charAt(0)
+          });
+        });
+      }
+
+      activities.sort((a, b) => new Date(b.time) - new Date(a.time));
+      const sortedActivities = activities.slice(0, 5);
 
       const membershipDistribution = memberships.reduce((acc, m) => {
         const planName = m.plan?.name || 'No Plan';
@@ -478,60 +574,64 @@ const Dashboard = () => {
         staff: []
       };
 
-      members.forEach(member => {
-        if (member.date_of_birth) {
-          const dob = new Date(member.date_of_birth);
-          const thisYearBirthday = new Date(today_date.getFullYear(), dob.getMonth(), dob.getDate());
-          const nextYearBirthday = new Date(today_date.getFullYear() + 1, dob.getMonth(), dob.getDate());
-          
-          let birthdayDate = thisYearBirthday;
-          if (thisYearBirthday < today_date) {
-            birthdayDate = nextYearBirthday;
+      if (canSeeMembers) {
+        members.forEach(member => {
+          if (member.date_of_birth) {
+            const dob = new Date(member.date_of_birth);
+            const thisYearBirthday = new Date(today_date.getFullYear(), dob.getMonth(), dob.getDate());
+            const nextYearBirthday = new Date(today_date.getFullYear() + 1, dob.getMonth(), dob.getDate());
+            
+            let birthdayDate = thisYearBirthday;
+            if (thisYearBirthday < today_date) {
+              birthdayDate = nextYearBirthday;
+            }
+            
+            if (birthdayDate <= next7Days) {
+              const daysUntil = Math.ceil((birthdayDate - today_date) / (1000 * 60 * 60 * 24));
+              upcomingBirthdays.members.push({
+                id: member.id,
+                name: member.full_name,
+                date_of_birth: member.date_of_birth,
+                daysUntil,
+                birthdayDate: birthdayDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' }),
+                avatar: member.profile_image 
+                  ? (member.profile_image.startsWith('http') ? member.profile_image : `${API_BASE_URL}${member.profile_image}`)
+                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff`,
+                type: 'member'
+              });
+            }
           }
-          
-          if (birthdayDate <= next7Days) {
-            const daysUntil = Math.ceil((birthdayDate - today_date) / (1000 * 60 * 60 * 24));
-            upcomingBirthdays.members.push({
-              id: member.id,
-              name: member.full_name,
-              date_of_birth: member.date_of_birth,
-              daysUntil,
-              birthdayDate: birthdayDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' }),
-              avatar: member.profile_image 
-                ? (member.profile_image.startsWith('http') ? member.profile_image : `${API_BASE_URL}${member.profile_image}`)
-                : `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff`,
-              type: 'member'
-            });
-          }
-        }
-      });
+        });
+      }
 
-      staff.forEach(staffMember => {
-        if (staffMember.date_of_birth) {
-          const dob = new Date(staffMember.date_of_birth);
-          const thisYearBirthday = new Date(today_date.getFullYear(), dob.getMonth(), dob.getDate());
-          const nextYearBirthday = new Date(today_date.getFullYear() + 1, dob.getMonth(), dob.getDate());
-          
-          let birthdayDate = thisYearBirthday;
-          if (thisYearBirthday < today_date) {
-            birthdayDate = nextYearBirthday;
+      if (canSeeStaff) {
+        staff.forEach(staffMember => {
+          if (staffMember.date_of_birth) {
+            const dob = new Date(staffMember.date_of_birth);
+            const thisYearBirthday = new Date(today_date.getFullYear(), dob.getMonth(), dob.getDate());
+            const nextYearBirthday = new Date(today_date.getFullYear() + 1, dob.getMonth(), dob.getDate());
+            
+            let birthdayDate = thisYearBirthday;
+            if (thisYearBirthday < today_date) {
+              birthdayDate = nextYearBirthday;
+            }
+            
+            if (birthdayDate <= next7Days) {
+              const daysUntil = Math.ceil((birthdayDate - today_date) / (1000 * 60 * 60 * 24));
+              upcomingBirthdays.staff.push({
+                id: staffMember.id,
+                name: staffMember.user?.full_name || 'Staff Member',
+                position: staffMember.position,
+                date_of_birth: staffMember.date_of_birth,
+                daysUntil,
+                birthdayDate: birthdayDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' }),
+                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(staffMember.user?.full_name || 'S')}&background=8B5CF6&color=fff`,
+                type: 'staff'
+              });
+            }
           }
-          
-          if (birthdayDate <= next7Days) {
-            const daysUntil = Math.ceil((birthdayDate - today_date) / (1000 * 60 * 60 * 24));
-            upcomingBirthdays.staff.push({
-              id: staffMember.id,
-              name: staffMember.user?.full_name || 'Staff Member',
-              position: staffMember.position,
-              date_of_birth: staffMember.date_of_birth,
-              daysUntil,
-              birthdayDate: birthdayDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' }),
-              avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(staffMember.user?.full_name || 'S')}&background=8B5CF6&color=fff`,
-              type: 'staff'
-            });
-          }
-        }
-      });
+        });
+      }
 
       upcomingBirthdays.members.sort((a, b) => a.daysUntil - b.daysUntil);
       upcomingBirthdays.staff.sort((a, b) => a.daysUntil - b.daysUntil);
@@ -548,21 +648,21 @@ const Dashboard = () => {
         expiringSoon,
         totalRevenue,
         revenueGrowth: parseFloat(revenueGrowth),
-        totalExpenses: statsResponse.data?.total_expenses || 0,
-        monthlyExpenses: statsResponse.data?.monthly_expenses || 0,
-        expenseGrowth: statsResponse.data?.expense_growth || 0,
-        netProfit: statsResponse.data?.net_profit || 0,
-        profitMargin: statsResponse.data?.profit_margin || 0,
-        expenseByCategory: statsResponse.data?.expense_by_category || {},
+        totalExpenses: statsApiData.total_expenses || 0,
+        monthlyExpenses: statsApiData.monthly_expenses || 0,
+        expenseGrowth: statsApiData.expense_growth || 0,
+        netProfit: statsApiData.net_profit || 0,
+        profitMargin: statsApiData.profit_margin || 0,
+        expenseByCategory: statsApiData.expense_by_category || {},
         totalBalanceDue: balanceOverview.total_balance_due || 0,
         membersWithBalance: balanceOverview.members_with_balance || 0,
         overdueCount: balanceOverview.overdue_count || 0,
         upcomingPayments: balanceOverview.upcoming_payments || 0,
-        averageAttendance: statsResponse.data?.average_attendance || Math.round(todayCheckins / 2) || 0,
-        peakHour: statsResponse.data?.peak_hour || "5:00 PM - 7:00 PM",
-        popularClass: statsResponse.data?.popular_class || "HIIT Training",
-        memberRetention: statsResponse.data?.member_retention || 87,
-        trainerCount: statsResponse.data?.trainer_count || 0,
+        averageAttendance: statsApiData.average_attendance || Math.round(todayCheckins / 2) || 0,
+        peakHour: statsApiData.peak_hour || "5:00 PM - 7:00 PM",
+        popularClass: statsApiData.popular_class || "HIIT Training",
+        memberRetention: statsApiData.member_retention || 87,
+        trainerCount: statsApiData.trainer_count || 0,
         membersByGender,
         recentMembers,
         recentPayments,
@@ -573,23 +673,28 @@ const Dashboard = () => {
 
       setMembersWithBalanceList(processedMembersWithBalance);
       setRecentLeads(processedRecentLeads);
-      setRecentActivities(activities.length > 0 ? activities : [
+      setRecentActivities(sortedActivities.length > 0 ? sortedActivities : [
         { id: 1, member: 'No activities yet', action: '', time: '', type: 'info', avatar: 'N' }
       ]);
 
-      setUpcomingClasses(statsResponse.data?.upcoming_classes || []);
+      setUpcomingClasses(statsApiData.upcoming_classes || []);
       
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      if (!silent) toast.error('Failed to load dashboard data');
+      // Only show error toast if not a 403 and not silent mode
+      if (!silent && error.response?.status !== 403) {
+        console.error('Error fetching dashboard data:', error);
+        toast.error('Failed to load dashboard data');
+      }
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [canSeeDashboard, canSeeMembers, canSeePayments, canSeeMemberships, canSeeStaff, canSeeBalances, canSeeLeads]);
 
   useEffect(() => {
-    fetchDashboardData(false);
-  }, [fetchDashboardData]);
+    if (!permissionsLoading) {
+      fetchDashboardData(false);
+    }
+  }, [fetchDashboardData, permissionsLoading]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -627,19 +732,43 @@ const Dashboard = () => {
     };
   }, [fetchDashboardData]);
 
-  const navigation = [
-    { name: 'Dashboard', icon: Home, id: 'dashboard' },
-    { name: 'Members', icon: UsersIcon, id: 'members' },
-    { name: 'Balance', icon: Wallet, id: 'balance' },
-    { name: 'Devices', icon: Wifi, id: 'devices' },
-    { name: 'Live Attendance', icon: Activity, id: 'attendance' },
-    { name: 'Attendance History', icon: CalendarIcon, id: 'history' },
-    { name: 'Expenses', icon: TrendingDown, id: 'expenses' },
-    { name: 'Staff', icon: UserPlus, id: 'staff' },
-    { name: 'Classes', icon: CalendarIcon, id: 'classes' },
-    { name: 'Payments', icon: CreditCardIcon, id: 'payments' },
-    { name: 'Leads', icon: Target, id: 'leads' },
-  ];
+  // Navigation items based on permissions
+  const getNavigation = () => {
+    const nav = [];
+    
+    if (canSeeDashboard) {
+      nav.push({ name: 'Dashboard', icon: Home, id: 'dashboard' });
+    }
+    if (canSeeMembers) {
+      nav.push({ name: 'Members', icon: UsersIcon, id: 'members' });
+    }
+    if (canSeeBalances) {
+      nav.push({ name: 'Balance', icon: Wallet, id: 'balance' });
+    }
+    if (canSeeDevices) {
+      nav.push({ name: 'Devices', icon: Wifi, id: 'devices' });
+    }
+    if (canSeeAttendance) {
+      nav.push({ name: 'Live Attendance', icon: Activity, id: 'attendance' });
+      nav.push({ name: 'Attendance History', icon: CalendarIcon, id: 'history' });
+    }
+    if (canSeeExpenses) {
+      nav.push({ name: 'Expenses', icon: TrendingDown, id: 'expenses' });
+    }
+    if (canSeeStaff) {
+      nav.push({ name: 'Staff', icon: UserPlus, id: 'staff' });
+    }
+    if (canSeePayments) {
+      nav.push({ name: 'Payments', icon: CreditCardIcon, id: 'payments' });
+    }
+    if (canSeeLeads) {
+      nav.push({ name: 'Leads', icon: Target, id: 'leads' });
+    }
+    
+    return nav;
+  };
+
+  const navigation = getNavigation();
 
   const getActivityColor = (type) => {
     const colors = {
@@ -696,6 +825,31 @@ const Dashboard = () => {
     return `${currencySymbol} ${formatted}`;
   };
 
+  // If user doesn't have permission to view dashboard
+  if (!permissionsLoading && !canSeeDashboard && !isAdmin) {
+    return (
+      <div className="p-6 min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-white rounded-2xl shadow-xl p-12 text-center max-w-md">
+          <div className="bg-red-100 rounded-full p-4 w-20 h-20 mx-auto mb-6 flex items-center justify-center">
+            <Shield className="h-10 w-10 text-red-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">Access Denied</h2>
+          <p className="text-gray-600 mb-6">You don't have permission to view the dashboard. Please contact your gym administrator.</p>
+          <div className="bg-gray-50 rounded-lg p-4 text-left">
+            <p className="text-sm text-gray-500">Your role: <span className="font-medium text-gray-700">{user?.role || 'Unknown'}</span></p>
+            <p className="text-sm text-gray-500 mt-1">Required permission: <span className="font-medium text-gray-700">view_dashboard</span></p>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="mt-6 px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const renderDashboard = () => (
     <div className="space-y-6">
       {/* Welcome Header */}
@@ -721,395 +875,415 @@ const Dashboard = () => {
             <Calendar className="h-4 w-4" />
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            {stats.todayCheckins} check-ins today
-          </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
-            <TrendUp className="h-4 w-4" />
-            {stats.monthlyRevenue > 0 ? formatCurrency(stats.monthlyRevenue) : 'No revenue yet'} this month
-          </div>
+          {canSeeAttendance && (
+            <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              {stats.todayCheckins} check-ins today
+            </div>
+          )}
+          {canSeePayments && (
+            <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
+              <TrendUp className="h-4 w-4" />
+              {stats.monthlyRevenue > 0 ? formatCurrency(stats.monthlyRevenue) : 'No revenue yet'} this month
+            </div>
+          )}
         </div>
       </div>
   
       {/* Key Stats Cards - Row 1 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-blue-500">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-blue-100 p-3 rounded-xl">
-              <Users className="h-6 w-6 text-blue-600" />
+        {canSeeMembers && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-blue-500">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-blue-100 p-3 rounded-xl">
+                <Users className="h-6 w-6 text-blue-600" />
+              </div>
+              <span className="text-sm font-medium text-green-600 bg-green-100 px-3 py-1 rounded-full">
+                {stats.totalMembers > 0 ? ((stats.activeMembers / stats.totalMembers) * 100).toFixed(1) : 0}% active
+              </span>
             </div>
-            <span className="text-sm font-medium text-green-600 bg-green-100 px-3 py-1 rounded-full">
-              {stats.totalMembers > 0 ? ((stats.activeMembers / stats.totalMembers) * 100).toFixed(1) : 0}% active
-            </span>
+            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Members</h3>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{stats.totalMembers?.toLocaleString() || 0}</p>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+              <span className="text-green-600 flex items-center text-sm">
+                <UserCheck className="h-4 w-4 mr-1" />
+                {stats.activeMembers || 0} active
+              </span>
+              <span className="text-gray-500 flex items-center text-sm">
+                <UserMinus className="h-4 w-4 mr-1" />
+                {stats.inactiveMembers || 0} inactive
+              </span>
+            </div>
           </div>
-          <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Members</h3>
-          <p className="text-4xl font-bold text-gray-900 mt-1">{stats.totalMembers?.toLocaleString() || 0}</p>
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-            <span className="text-green-600 flex items-center text-sm">
-              <UserCheck className="h-4 w-4 mr-1" />
-              {stats.activeMembers || 0} active
-            </span>
-            <span className="text-gray-500 flex items-center text-sm">
-              <UserMinus className="h-4 w-4 mr-1" />
-              {stats.inactiveMembers || 0} inactive
-            </span>
+        )}
+
+        {canSeeMembers && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-green-500">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-green-100 p-3 rounded-xl">
+                <UserPlus className="h-6 w-6 text-green-600" />
+              </div>
+              <span className="text-sm font-medium text-green-600 bg-green-100 px-3 py-1 rounded-full">
+                +{stats.newMembersThisMonth || 0} new
+              </span>
+            </div>
+            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">New Members</h3>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{stats.newMembersThisMonth || 0}</p>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+              <span className="text-gray-600 flex items-center text-sm">
+                <Calendar className="h-4 w-4 mr-1" />
+                This month
+              </span>
+              <span className="text-blue-600 font-medium text-sm flex items-center">
+                <Flame className="h-4 w-4 mr-1" />
+                {stats.expiringThisMonth || 0} expiring
+              </span>
+            </div>
           </div>
-        </div>
+        )}
   
-        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-green-500">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-green-100 p-3 rounded-xl">
-              <UserPlus className="h-6 w-6 text-green-600" />
+        {canSeePayments && (
+          <div 
+            className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-purple-500 cursor-pointer group"
+            onClick={() => setActiveTab('payments')}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-purple-100 p-3 rounded-xl group-hover:bg-purple-200 transition-colors">
+                <IndianRupee className="h-6 w-6 text-purple-600" />
+              </div>
+              <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+                stats.revenueGrowth >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+              }`}>
+                {stats.revenueGrowth >= 0 ? '↑' : '↓'} {Math.abs(stats.revenueGrowth || 0)}%
+              </span>
             </div>
-            <span className="text-sm font-medium text-green-600 bg-green-100 px-3 py-1 rounded-full">
-              +{stats.newMembersThisMonth || 0} new
-            </span>
+            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Revenue</h3>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrency(stats.monthlyRevenue || 0)}</p>
+            <p className="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100 flex items-center">
+              {stats.revenueGrowth >= 0 ? (
+                <TrendingUp className="h-4 w-4 mr-1 text-green-500" />
+              ) : (
+                <TrendingDown className="h-4 w-4 mr-1 text-red-500" />
+              )}
+              vs last month
+            </p>
           </div>
-          <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">New Members</h3>
-          <p className="text-4xl font-bold text-gray-900 mt-1">{stats.newMembersThisMonth || 0}</p>
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-            <span className="text-gray-600 flex items-center text-sm">
-              <Calendar className="h-4 w-4 mr-1" />
-              This month
-            </span>
-            <span className="text-blue-600 font-medium text-sm flex items-center">
-              <Flame className="h-4 w-4 mr-1" />
-              {stats.expiringThisMonth || 0} expiring
-            </span>
-          </div>
-        </div>
+        )}
   
-        <div 
-          className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-purple-500 cursor-pointer group"
-          onClick={() => setActiveTab('payments')}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-purple-100 p-3 rounded-xl group-hover:bg-purple-200 transition-colors">
-              <IndianRupee className="h-6 w-6 text-purple-600" />
+        {canSeePayments && (
+          <div 
+            className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-orange-500 cursor-pointer group"
+            onClick={() => setActiveTab('payments')}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-orange-100 p-3 rounded-xl group-hover:bg-orange-200 transition-colors">
+                <CreditCard className="h-6 w-6 text-orange-600" />
+              </div>
+              <span className="text-sm font-medium text-orange-600 bg-orange-100 px-3 py-1 rounded-full">
+                {stats.pendingPayments || 0} pending
+              </span>
             </div>
-            <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-              stats.revenueGrowth >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-            }`}>
-              {stats.revenueGrowth >= 0 ? '↑' : '↓'} {Math.abs(stats.revenueGrowth || 0)}%
-            </span>
-          </div>
-          <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Revenue</h3>
-          <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrency(stats.monthlyRevenue || 0)}</p>
-          <p className="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100 flex items-center">
-            {stats.revenueGrowth >= 0 ? (
-              <TrendingUp className="h-4 w-4 mr-1 text-green-500" />
-            ) : (
-              <TrendingDown className="h-4 w-4 mr-1 text-red-500" />
-            )}
-            vs last month
-          </p>
-        </div>
-  
-        <div 
-          className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-orange-500 cursor-pointer group"
-          onClick={() => setActiveTab('payments')}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-orange-100 p-3 rounded-xl group-hover:bg-orange-200 transition-colors">
-              <CreditCard className="h-6 w-6 text-orange-600" />
+            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Revenue</h3>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrency(stats.totalRevenue || 0)}</p>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+              {canSeeAttendance && (
+                <span className="text-gray-600 flex items-center text-sm">
+                  <Activity className="h-4 w-4 mr-1" />
+                  {stats.todayCheckins || 0} check-ins
+                </span>
+              )}
+              <span className="text-orange-600 font-medium text-sm flex items-center">
+                <ClockIcon className="h-4 w-4 mr-1" />
+                {stats.expiringSoon || 0} expiring
+              </span>
             </div>
-            <span className="text-sm font-medium text-orange-600 bg-orange-100 px-3 py-1 rounded-full">
-              {stats.pendingPayments || 0} pending
-            </span>
           </div>
-          <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Revenue</h3>
-          <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrency(stats.totalRevenue || 0)}</p>
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-            <span className="text-gray-600 flex items-center text-sm">
-              <Activity className="h-4 w-4 mr-1" />
-              {stats.todayCheckins || 0} check-ins
-            </span>
-            <span className="text-orange-600 font-medium text-sm flex items-center">
-              <ClockIcon className="h-4 w-4 mr-1" />
-              {stats.expiringSoon || 0} expiring
-            </span>
-          </div>
-        </div>
+        )}
       </div>
   
       {/* Balance Overview Cards - Row 2 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-white/80 text-sm font-medium">Total Balance Due</p>
-              <p className="text-3xl font-bold text-white mt-1">{formatCurrency(stats.totalBalanceDue)}</p>
+      {canSeeBalances && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/80 text-sm font-medium">Total Balance Due</p>
+                <p className="text-3xl font-bold text-white mt-1">{formatCurrency(stats.totalBalanceDue)}</p>
+              </div>
+              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
+                <Wallet className="h-8 w-8 text-white" />
+              </div>
             </div>
-            <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-              <Wallet className="h-8 w-8 text-white" />
+            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+              <span>{stats.membersWithBalance} members have dues</span>
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
-            <span>{stats.membersWithBalance} members have dues</span>
-          </div>
-        </div>
   
-        <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-white/80 text-sm font-medium">Members with Balance</p>
-              <p className="text-3xl font-bold text-white mt-1">{stats.membersWithBalance}</p>
+          <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/80 text-sm font-medium">Members with Balance</p>
+                <p className="text-3xl font-bold text-white mt-1">{stats.membersWithBalance}</p>
+              </div>
+              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
+                <Users className="h-8 w-8 text-white" />
+              </div>
             </div>
-            <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-              <Users className="h-8 w-8 text-white" />
+            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+              <AlertCircle className="h-4 w-4" />
+              <span>Need to collect payment</span>
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
-            <AlertCircle className="h-4 w-4" />
-            <span>Need to collect payment</span>
-          </div>
-        </div>
   
-        <div className="bg-gradient-to-r from-red-500 to-pink-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-white/80 text-sm font-medium">Overdue Payments</p>
-              <p className="text-3xl font-bold text-white mt-1">{stats.overdueCount}</p>
+          <div className="bg-gradient-to-r from-red-500 to-pink-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/80 text-sm font-medium">Overdue Payments</p>
+                <p className="text-3xl font-bold text-white mt-1">{stats.overdueCount}</p>
+              </div>
+              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
+                <AlertCircle className="h-8 w-8 text-white" />
+              </div>
             </div>
-            <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-              <AlertCircle className="h-8 w-8 text-white" />
+            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+              <span>Past due date</span>
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
-            <span>Past due date</span>
-          </div>
-        </div>
   
-        <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-white/80 text-sm font-medium">Upcoming Payments</p>
-              <p className="text-3xl font-bold text-white mt-1">{stats.upcomingPayments}</p>
+          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/80 text-sm font-medium">Upcoming Payments</p>
+                <p className="text-3xl font-bold text-white mt-1">{stats.upcomingPayments}</p>
+              </div>
+              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
+                <Calendar className="h-8 w-8 text-white" />
+              </div>
             </div>
-            <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-              <Calendar className="h-8 w-8 text-white" />
+            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+              <span>Due in next 7 days</span>
             </div>
-          </div>
-          <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
-            <span>Due in next 7 days</span>
           </div>
         </div>
-      </div>
+      )}
   
       {/* Expense and Profit Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-red-500">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-red-100 p-3 rounded-xl">
-              <Wallet className="h-6 w-6 text-red-600" />
+      {canSeeExpenses && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-red-500">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-red-100 p-3 rounded-xl">
+                <Wallet className="h-6 w-6 text-red-600" />
+              </div>
+              <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+                stats.expenseGrowth <= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+              }`}>
+                {stats.expenseGrowth <= 0 ? '↓' : '↑'} {Math.abs(stats.expenseGrowth || 0)}%
+              </span>
             </div>
-            <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-              stats.expenseGrowth <= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-            }`}>
-              {stats.expenseGrowth <= 0 ? '↓' : '↑'} {Math.abs(stats.expenseGrowth || 0)}%
-            </span>
+            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Expenses</h3>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrency(stats.monthlyExpenses || 0)}</p>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+              <span className="text-gray-600 flex items-center text-sm">
+                <Calendar className="h-4 w-4 mr-1" />
+                This month
+              </span>
+              <span className="text-red-600 font-medium text-sm flex items-center">
+                <TrendingDown className="h-4 w-4 mr-1" />
+                Total: {formatCurrency(stats.totalExpenses || 0)}
+              </span>
+            </div>
           </div>
-          <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Expenses</h3>
-          <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrency(stats.monthlyExpenses || 0)}</p>
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-            <span className="text-gray-600 flex items-center text-sm">
-              <Calendar className="h-4 w-4 mr-1" />
-              This month
-            </span>
-            <span className="text-red-600 font-medium text-sm flex items-center">
-              <TrendingDown className="h-4 w-4 mr-1" />
-              Total: {formatCurrency(stats.totalExpenses || 0)}
-            </span>
-          </div>
-        </div>
   
-        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-emerald-500">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-emerald-100 p-3 rounded-xl">
-              <TrendingUp className="h-6 w-6 text-emerald-600" />
+          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-emerald-500">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-emerald-100 p-3 rounded-xl">
+                <TrendingUp className="h-6 w-6 text-emerald-600" />
+              </div>
+              <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+                stats.profitMargin >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+              }`}>
+                {stats.profitMargin >= 0 ? '↑' : '↓'} {Math.abs(stats.profitMargin || 0)}% margin
+              </span>
             </div>
-            <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-              stats.profitMargin >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-            }`}>
-              {stats.profitMargin >= 0 ? '↑' : '↓'} {Math.abs(stats.profitMargin || 0)}% margin
-            </span>
-          </div>
-          <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Net Profit</h3>
-          <p className="text-4xl font-bold text-emerald-600 mt-1">{formatCurrency(stats.netProfit || 0)}</p>
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-            <span className="text-gray-600 flex items-center text-sm">
-              Revenue: {formatCurrency(stats.monthlyRevenue || 0)}
-            </span>
-            <span className="text-emerald-600 font-medium text-sm flex items-center">
-              <CheckCircle className="h-4 w-4 mr-1" />
-              Profit: {stats.profitMargin || 0}%
-            </span>
-          </div>
-        </div>
-  
-        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-cyan-500">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-cyan-100 p-3 rounded-xl">
-              <BarChart3 className="h-6 w-6 text-cyan-600" />
-            </div>
-            <span className="text-sm font-medium text-cyan-600 bg-cyan-100 px-3 py-1 rounded-full">
-              {Object.keys(stats.expenseByCategory).length} categories
-            </span>
-          </div>
-          <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Top Expense Category</h3>
-          <p className="text-2xl font-bold text-gray-900 mt-1 truncate">
-            {Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0]?.[0] || 'None'}
-          </p>
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-            <span className="text-gray-600 flex items-center text-sm">
-              <Wallet className="h-4 w-4 mr-1" />
-              {Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0]?.[1] 
-                ? formatCurrency(Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0][1]) 
-                : '₹0'}
-            </span>
-            <button 
-              onClick={() => setActiveTab('expenses')}
-              className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1"
-            >
-              View Details →
-            </button>
-          </div>
-        </div>
-  
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
-              <DollarSign className="h-6 w-6 text-white" />
-            </div>
-            <span className="text-sm font-medium bg-white/20 text-white px-3 py-1 rounded-full backdrop-blur-sm">
-              Financial Health
-            </span>
-          </div>
-          <h3 className="text-white/80 text-sm font-medium uppercase tracking-wider">Profit vs Expenses</h3>
-          <div className="mt-3 space-y-2">
-            <div className="flex justify-between text-sm text-white">
-              <span>Profit</span>
-              <span className="font-semibold">{stats.profitMargin || 0}%</span>
-            </div>
-            <div className="w-full bg-white/30 rounded-full h-2 overflow-hidden">
-              <div 
-                className="bg-green-400 rounded-full h-2 transition-all duration-500" 
-                style={{ width: `${Math.min(Math.max(stats.profitMargin || 0, 0), 100)}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-sm text-white/80 mt-2">
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Net Profit</h3>
+            <p className="text-4xl font-bold text-emerald-600 mt-1">{formatCurrency(stats.netProfit || 0)}</p>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+              <span className="text-gray-600 flex items-center text-sm">
                 Revenue: {formatCurrency(stats.monthlyRevenue || 0)}
               </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 bg-red-400 rounded-full"></span>
-                Expenses: {formatCurrency(stats.monthlyExpenses || 0)}
+              <span className="text-emerald-600 font-medium text-sm flex items-center">
+                <CheckCircle className="h-4 w-4 mr-1" />
+                Profit: {stats.profitMargin || 0}%
               </span>
             </div>
           </div>
+  
+          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-cyan-500">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-cyan-100 p-3 rounded-xl">
+                <BarChart3 className="h-6 w-6 text-cyan-600" />
+              </div>
+              <span className="text-sm font-medium text-cyan-600 bg-cyan-100 px-3 py-1 rounded-full">
+                {Object.keys(stats.expenseByCategory).length} categories
+              </span>
+            </div>
+            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Top Expense Category</h3>
+            <p className="text-2xl font-bold text-gray-900 mt-1 truncate">
+              {Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0]?.[0] || 'None'}
+            </p>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+              <span className="text-gray-600 flex items-center text-sm">
+                <Wallet className="h-4 w-4 mr-1" />
+                {Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0]?.[1] 
+                  ? formatCurrency(Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0][1]) 
+                  : '₹0'}
+              </span>
+              <button 
+                onClick={() => setActiveTab('expenses')}
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1"
+              >
+                View Details →
+              </button>
+            </div>
+          </div>
+  
+          <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                <DollarSign className="h-6 w-6 text-white" />
+              </div>
+              <span className="text-sm font-medium bg-white/20 text-white px-3 py-1 rounded-full backdrop-blur-sm">
+                Financial Health
+              </span>
+            </div>
+            <h3 className="text-white/80 text-sm font-medium uppercase tracking-wider">Profit vs Expenses</h3>
+            <div className="mt-3 space-y-2">
+              <div className="flex justify-between text-sm text-white">
+                <span>Profit</span>
+                <span className="font-semibold">{stats.profitMargin || 0}%</span>
+              </div>
+              <div className="w-full bg-white/30 rounded-full h-2 overflow-hidden">
+                <div 
+                  className="bg-green-400 rounded-full h-2 transition-all duration-500" 
+                  style={{ width: `${Math.min(Math.max(stats.profitMargin || 0, 0), 100)}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-sm text-white/80 mt-2">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                  Revenue: {formatCurrency(stats.monthlyRevenue || 0)}
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 bg-red-400 rounded-full"></span>
+                  Expenses: {formatCurrency(stats.monthlyExpenses || 0)}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
   
       {/* Member Demographics and Expiring Memberships Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-1 hover:shadow-xl transition-all">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <div className="bg-blue-100 p-2 rounded-lg">
-                <Users className="h-5 w-5 text-blue-600" />
-              </div>
-              Member Demographics
-            </h3>
-            <span className="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full">
-              {stats.totalMembers} total
-            </span>
-          </div>
-          
-          <div className="space-y-5">
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-600 font-medium">Male</span>
-                <span className="font-semibold text-blue-600">{stats.membersByGender?.male || 0}</span>
-              </div>
-              <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
-                <div 
-                  className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-full h-3 transition-all duration-500" 
-                  style={{ width: `${stats.totalMembers > 0 ? ((stats.membersByGender?.male || 0) / stats.totalMembers) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-            
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-600 font-medium">Female</span>
-                <span className="font-semibold text-pink-600">{stats.membersByGender?.female || 0}</span>
-              </div>
-              <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
-                <div 
-                  className="bg-gradient-to-r from-pink-500 to-pink-600 rounded-full h-3 transition-all duration-500" 
-                  style={{ width: `${stats.totalMembers > 0 ? ((stats.membersByGender?.female || 0) / stats.totalMembers) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-            
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-600 font-medium">Other</span>
-                <span className="font-semibold text-purple-600">{stats.membersByGender?.other || 0}</span>
-              </div>
-              <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
-                <div 
-                  className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-full h-3 transition-all duration-500" 
-                  style={{ width: `${stats.totalMembers > 0 ? ((stats.membersByGender?.other || 0) / stats.totalMembers) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-          </div>
-          
-          <div className="mt-8">
-            <h4 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-              <Award className="h-4 w-4 text-yellow-500" />
-              Top Membership Plans
-            </h4>
-            <div className="space-y-3">
-              {Object.entries(stats.membershipDistribution)
-                .sort(([,a], [,b]) => b - a)
-                .slice(0, 3)
-                .map(([plan, count]) => (
-                <div key={plan} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                  <span className="text-sm text-gray-700 font-medium truncate max-w-[150px]">{plan}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-semibold">
-                      {count} members
-                    </span>
-                  </div>
+        {canSeeMembers && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-1 hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <div className="bg-blue-100 p-2 rounded-lg">
+                  <Users className="h-5 w-5 text-blue-600" />
                 </div>
-              ))}
-              {Object.keys(stats.membershipDistribution).length === 0 && (
-                <p className="text-gray-400 text-sm text-center py-2">No plans assigned yet</p>
+                Member Demographics
+              </h3>
+              <span className="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full">
+                {stats.totalMembers} total
+              </span>
+            </div>
+            
+            <div className="space-y-5">
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-gray-600 font-medium">Male</span>
+                  <span className="font-semibold text-blue-600">{stats.membersByGender?.male || 0}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-full h-3 transition-all duration-500" 
+                    style={{ width: `${stats.totalMembers > 0 ? ((stats.membersByGender?.male || 0) / stats.totalMembers) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-gray-600 font-medium">Female</span>
+                  <span className="font-semibold text-pink-600">{stats.membersByGender?.female || 0}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-pink-500 to-pink-600 rounded-full h-3 transition-all duration-500" 
+                    style={{ width: `${stats.totalMembers > 0 ? ((stats.membersByGender?.female || 0) / stats.totalMembers) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-gray-600 font-medium">Other</span>
+                  <span className="font-semibold text-purple-600">{stats.membersByGender?.other || 0}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-full h-3 transition-all duration-500" 
+                    style={{ width: `${stats.totalMembers > 0 ? ((stats.membersByGender?.other || 0) / stats.totalMembers) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-8">
+              <h4 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                <Award className="h-4 w-4 text-yellow-500" />
+                Top Membership Plans
+              </h4>
+              <div className="space-y-3">
+                {Object.entries(stats.membershipDistribution)
+                  .sort(([,a], [,b]) => b - a)
+                  .slice(0, 3)
+                  .map(([plan, count]) => (
+                  <div key={plan} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-700 font-medium truncate max-w-[150px]">{plan}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-semibold">
+                        {count} members
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {Object.keys(stats.membershipDistribution).length === 0 && (
+                  <p className="text-gray-400 text-sm text-center py-2">No plans assigned yet</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+  
+        {canSeeMembers && stats.expiringMembers.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="bg-gradient-to-r from-orange-400 to-red-400 p-2 rounded-lg">
+                  <ClockIcon className="h-5 w-5 text-white" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-800">Memberships Expiring Soon</h3>
+              </div>
+              {stats.expiringMembers.length > 0 && (
+                <span className="bg-red-100 text-red-600 text-sm font-bold px-4 py-2 rounded-full animate-pulse">
+                  {stats.expiringMembers.length} {stats.expiringMembers.length === 1 ? 'member' : 'members'} need attention
+                </span>
               )}
             </div>
-          </div>
-        </div>
-  
-        <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="bg-gradient-to-r from-orange-400 to-red-400 p-2 rounded-lg">
-                <ClockIcon className="h-5 w-5 text-white" />
-              </div>
-              <h3 className="text-lg font-bold text-gray-800">Memberships Expiring Soon</h3>
-            </div>
-            {stats.expiringMembers.length > 0 && (
-              <span className="bg-red-100 text-red-600 text-sm font-bold px-4 py-2 rounded-full animate-pulse">
-                {stats.expiringMembers.length} {stats.expiringMembers.length === 1 ? 'member' : 'members'} need attention
-              </span>
-            )}
-          </div>
-          
-          {stats.expiringMembers.length > 0 ? (
+            
             <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
               {stats.expiringMembers.map((member) => (
                 <div 
@@ -1152,7 +1326,6 @@ const Dashboard = () => {
                   </div>
                   <button 
                     onClick={() => {
-                      // Store the complete member information
                       const renewalData = {
                         id: member.memberId,
                         name: member.memberName,
@@ -1160,7 +1333,6 @@ const Dashboard = () => {
                         endDate: member.endDate
                       };
                       localStorage.setItem('selectedMemberForRenewal', JSON.stringify(renewalData));
-                      console.log('Storing renewal data:', renewalData);
                       setActiveTab('members');
                       toast.success(`Redirecting to renew ${member.memberName}'s membership`);
                     }}
@@ -1171,18 +1343,7 @@ const Dashboard = () => {
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="text-center py-16">
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full mb-6 shadow-lg">
-                <Gift className="h-10 w-10 text-white" />
-              </div>
-              <p className="text-gray-900 font-bold text-xl mb-2">All Memberships Active! 🎉</p>
-              <p className="text-gray-500">No memberships expiring in the next 7 days.</p>
-              <p className="text-sm text-gray-400 mt-2">You're doing great! Keep up the good work.</p>
-            </div>
-          )}
-          
-          {stats.expiringMembers.length > 0 && (
+            
             <div className="mt-6 pt-4 border-t border-gray-100">
               <button 
                 onClick={() => setActiveTab('members')}
@@ -1192,211 +1353,234 @@ const Dashboard = () => {
                 <ChevronDown className="h-4 w-4 ml-1 rotate-270" />
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+  
+        {canSeeMembers && stats.expiringMembers.length === 0 && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="bg-gradient-to-r from-orange-400 to-red-400 p-2 rounded-lg">
+                  <ClockIcon className="h-5 w-5 text-white" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-800">Memberships Expiring Soon</h3>
+              </div>
+            </div>
+            <div className="text-center py-12">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full mb-6 shadow-lg">
+                <Gift className="h-10 w-10 text-white" />
+              </div>
+              <p className="text-gray-900 font-bold text-xl mb-2">All Memberships Active! 🎉</p>
+              <p className="text-gray-500">No memberships expiring in the next 7 days.</p>
+              <p className="text-sm text-gray-400 mt-2">You're doing great! Keep up the good work.</p>
+            </div>
+          </div>
+        )}
       </div>
   
       {/* Members with Balance & Recent Leads Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Members with Balance Card */}
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all">
-          <div className="bg-gradient-to-r from-red-500 to-orange-500 px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="bg-white/20 p-2 rounded-lg">
-                  <Wallet className="h-5 w-5 text-white" />
+        {canSeeBalances && (
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all">
+            <div className="bg-gradient-to-r from-red-500 to-orange-500 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white/20 p-2 rounded-lg">
+                    <Wallet className="h-5 w-5 text-white" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white">Members with Balance</h3>
                 </div>
-                <h3 className="text-lg font-bold text-white">Members with Balance</h3>
+                <button 
+                  onClick={() => setActiveTab('balance')}
+                  className="text-white/90 hover:text-white text-sm font-medium flex items-center gap-1 transition-colors"
+                >
+                  View All
+                  <ChevronRight className="h-4 w-4" />
+                </button>
               </div>
-              <button 
-                onClick={() => setActiveTab('balance')}
-                className="text-white/90 hover:text-white text-sm font-medium flex items-center gap-1 transition-colors"
-              >
-                View All
-                <ChevronRight className="h-4 w-4" />
-              </button>
+              <p className="text-white/80 text-sm mt-1">
+                {stats.membersWithBalance} members have outstanding balance • Total: {formatCurrency(stats.totalBalanceDue)}
+              </p>
             </div>
-            <p className="text-white/80 text-sm mt-1">
-              {stats.membersWithBalance} members have outstanding balance • Total: {formatCurrency(stats.totalBalanceDue)}
-            </p>
-          </div>
-          
-          <div className="p-4 max-h-[400px] overflow-y-auto">
-            {membersWithBalanceList.length > 0 ? (
-              <div className="space-y-3">
-                {membersWithBalanceList.map((member) => (
-                  <div 
-                    key={member.id} 
-                    className="group relative flex items-center gap-4 p-3 rounded-xl hover:bg-red-50 transition-all border border-transparent hover:border-red-200"
-                  >
-                    <img 
-                      src={member.avatar} 
-                      alt={member.name} 
-                      className="w-12 h-12 rounded-full ring-2 ring-red-200 object-cover"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <p className="font-semibold text-gray-900 truncate">{member.name}</p>
-                        <span className="text-lg font-bold text-red-600">{formatCurrency(member.balanceDue)}</span>
-                      </div>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {member.phone || 'No phone'}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Dumbbell className="h-3 w-3" />
-                          {member.planName}
-                        </span>
-                      </div>
-                      {member.daysOverdue > 0 && (
-                        <div className="mt-2">
-                          <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit">
-                            <AlertTriangle className="h-3 w-3" />
-                            Overdue by {member.daysOverdue} days
+            
+            <div className="p-4 max-h-[400px] overflow-y-auto">
+              {membersWithBalanceList.length > 0 ? (
+                <div className="space-y-3">
+                  {membersWithBalanceList.map((member) => (
+                    <div 
+                      key={member.id} 
+                      className="group relative flex items-center gap-4 p-3 rounded-xl hover:bg-red-50 transition-all border border-transparent hover:border-red-200"
+                    >
+                      <img 
+                        src={member.avatar} 
+                        alt={member.name} 
+                        className="w-12 h-12 rounded-full ring-2 ring-red-200 object-cover"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold text-gray-900 truncate">{member.name}</p>
+                          <span className="text-lg font-bold text-red-600">{formatCurrency(member.balanceDue)}</span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {member.phone || 'No phone'}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Dumbbell className="h-3 w-3" />
+                            {member.planName}
                           </span>
                         </div>
-                      )}
+                        {member.daysOverdue > 0 && (
+                          <div className="mt-2">
+                            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit">
+                              <AlertTriangle className="h-3 w-3" />
+                              Overdue by {member.daysOverdue} days
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setActiveTab('balance');
+                          toast.success(`Viewing balance details for ${member.name}`);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-red-500 to-orange-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:shadow-lg"
+                      >
+                        Collect Payment
+                      </button>
                     </div>
-                    <button 
-                      onClick={() => {
-                        setActiveTab('balance');
-                        toast.success(`Viewing balance details for ${member.name}`);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-red-500 to-orange-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:shadow-lg"
-                    >
-                      Collect Payment
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-                  <CheckCircle className="h-8 w-8 text-green-600" />
+                  ))}
                 </div>
-                <p className="text-gray-900 font-medium">All caught up! 🎉</p>
-                <p className="text-gray-500 text-sm mt-1">No members with outstanding balance</p>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+                    <CheckCircle className="h-8 w-8 text-green-600" />
+                  </div>
+                  <p className="text-gray-900 font-medium">All caught up! 🎉</p>
+                  <p className="text-gray-500 text-sm mt-1">No members with outstanding balance</p>
+                </div>
+              )}
+            </div>
+            
+            {membersWithBalanceList.length > 0 && (
+              <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Total Outstanding:</span>
+                  <span className="font-bold text-red-600">{formatCurrency(stats.totalBalanceDue)}</span>
+                </div>
               </div>
             )}
           </div>
-          
-          {membersWithBalanceList.length > 0 && (
-            <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Total Outstanding:</span>
-                <span className="font-bold text-red-600">{formatCurrency(stats.totalBalanceDue)}</span>
-              </div>
-            </div>
-          )}
-        </div>
+        )}
   
-        {/* Recent Leads Card */}
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all">
-          <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="bg-white/20 p-2 rounded-lg">
-                  <Target className="h-5 w-5 text-white" />
+        {canSeeLeads && (
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all">
+            <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white/20 p-2 rounded-lg">
+                    <Target className="h-5 w-5 text-white" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white">Recent Leads</h3>
                 </div>
-                <h3 className="text-lg font-bold text-white">Recent Leads</h3>
+                <button 
+                  onClick={() => setActiveTab('leads')}
+                  className="text-white/90 hover:text-white text-sm font-medium flex items-center gap-1 transition-colors"
+                >
+                  View All Leads
+                  <ChevronRight className="h-4 w-4" />
+                </button>
               </div>
-              <button 
-                onClick={() => setActiveTab('leads')}
-                className="text-white/90 hover:text-white text-sm font-medium flex items-center gap-1 transition-colors"
-              >
-                View All Leads
-                <ChevronRight className="h-4 w-4" />
-              </button>
+              <p className="text-white/80 text-sm mt-1">
+                Track and manage incoming gym inquiries
+              </p>
             </div>
-            <p className="text-white/80 text-sm mt-1">
-              Track and manage incoming gym inquiries
-            </p>
-          </div>
-          
-          <div className="p-4 max-h-[400px] overflow-y-auto">
-            {recentLeads.length > 0 ? (
-              <div className="space-y-3">
-                {recentLeads.map((lead) => (
-                  <div 
-                    key={lead.id} 
-                    className="group relative flex items-center gap-4 p-3 rounded-xl hover:bg-purple-50 transition-all border border-transparent hover:border-purple-200 cursor-pointer"
-                    onClick={() => {
-                      setActiveTab('leads');
-                      toast.success(`Viewing lead: ${lead.name}`);
-                    }}
-                  >
-                    <img 
-                      src={lead.avatar} 
-                      alt={lead.name} 
-                      className="w-12 h-12 rounded-full ring-2 ring-purple-200 object-cover"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <p className="font-semibold text-gray-900 truncate">{lead.name}</p>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getLeadQualityColor(lead.leadQuality)}`}>
-                            {lead.leadQuality === 'hot' ? '🔥 Hot' : lead.leadQuality === 'warm' ? '☀️ Warm' : '❄️ Cold'}
+            
+            <div className="p-4 max-h-[400px] overflow-y-auto">
+              {recentLeads.length > 0 ? (
+                <div className="space-y-3">
+                  {recentLeads.map((lead) => (
+                    <div 
+                      key={lead.id} 
+                      className="group relative flex items-center gap-4 p-3 rounded-xl hover:bg-purple-50 transition-all border border-transparent hover:border-purple-200 cursor-pointer"
+                      onClick={() => {
+                        setActiveTab('leads');
+                        toast.success(`Viewing lead: ${lead.name}`);
+                      }}
+                    >
+                      <img 
+                        src={lead.avatar} 
+                        alt={lead.name} 
+                        className="w-12 h-12 rounded-full ring-2 ring-purple-200 object-cover"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold text-gray-900 truncate">{lead.name}</p>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getLeadQualityColor(lead.leadQuality)}`}>
+                              {lead.leadQuality === 'hot' ? '🔥 Hot' : lead.leadQuality === 'warm' ? '☀️ Warm' : '❄️ Cold'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {lead.phone}
+                          </span>
+                          {lead.email && (
+                            <span className="flex items-center gap-1">
+                              <MailIcon className="h-3 w-3" />
+                              {lead.email}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${getLeadStatusColor(lead.status)}`}>
+                            {getLeadStatusLabel(lead.status)}
+                          </span>
+                          <span className="text-xs text-gray-400 flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {new Date(lead.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {lead.phone}
-                        </span>
-                        {lead.email && (
-                          <span className="flex items-center gap-1">
-                            <MailIcon className="h-3 w-3" />
-                            {lead.email}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${getLeadStatusColor(lead.status)}`}>
-                          {getLeadStatusLabel(lead.status)}
-                        </span>
-                        <span className="text-xs text-gray-400 flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {new Date(lead.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                        </span>
-                      </div>
+                      <ChevronRight className="h-5 w-5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
-                    <ChevronRight className="h-5 w-5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-4">
-                  <Target className="h-8 w-8 text-purple-600" />
+                  ))}
                 </div>
-                <p className="text-gray-900 font-medium">No leads yet</p>
-                <p className="text-gray-500 text-sm mt-1">Start tracking your first lead</p>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-4">
+                    <Target className="h-8 w-8 text-purple-600" />
+                  </div>
+                  <p className="text-gray-900 font-medium">No leads yet</p>
+                  <p className="text-gray-500 text-sm mt-1">Start tracking your first lead</p>
+                  <button 
+                    onClick={() => setActiveTab('leads')}
+                    className="mt-4 inline-flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    Add New Lead
+                  </button>
+                </div>
+              )}
+            </div>
+            
+            {recentLeads.length > 0 && (
+              <div className="border-t border-gray-100 px-4 py-3 bg-gray-50 flex items-center justify-between">
+                <span className="text-sm text-gray-600">New leads need attention</span>
                 <button 
                   onClick={() => setActiveTab('leads')}
-                  className="mt-4 inline-flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
+                  className="text-purple-600 hover:text-purple-700 text-sm font-medium flex items-center gap-1"
                 >
-                  <UserPlus className="h-4 w-4" />
-                  Add New Lead
+                  Manage Leads
+                  <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
             )}
           </div>
-          
-          {recentLeads.length > 0 && (
-            <div className="border-t border-gray-100 px-4 py-3 bg-gray-50 flex items-center justify-between">
-              <span className="text-sm text-gray-600">New leads need attention</span>
-              <button 
-                onClick={() => setActiveTab('leads')}
-                className="text-purple-600 hover:text-purple-700 text-sm font-medium flex items-center gap-1"
-              >
-                Manage Leads
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </div>
   
       {/* Birthday Notifications Section */}
@@ -1408,7 +1592,6 @@ const Dashboard = () => {
           </h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Member Birthdays */}
             {stats.upcomingBirthdays?.members?.length > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all border-l-4 border-pink-500">
                 <div className="flex items-center justify-between mb-4">
@@ -1455,7 +1638,6 @@ const Dashboard = () => {
               </div>
             )}
             
-            {/* Staff Birthdays */}
             {stats.upcomingBirthdays?.staff?.length > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all border-l-4 border-purple-500">
                 <div className="flex items-center justify-between mb-4">
@@ -1511,118 +1693,122 @@ const Dashboard = () => {
   
       {/* Recent Members and Recent Payments Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <div className="bg-green-100 p-2 rounded-lg">
-                <UserPlus className="h-5 w-5 text-green-600" />
-              </div>
-              Recent Members
-            </h3>
-            <button 
-              onClick={() => setActiveTab('members')}
-              className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-            >
-              View All
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-          
-          <div className="space-y-3">
-            {stats.recentMembers?.length > 0 ? (
-              stats.recentMembers.map((member) => (
-                <div key={member.id} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-all group">
-                  <img 
-                    src={member.avatar} 
-                    alt={member.name} 
-                    className="w-12 h-12 rounded-full ring-2 ring-gray-100 group-hover:ring-blue-200 transition-all object-cover"
-                  />
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-900">{member.name}</p>
-                    <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                      <Calendar className="h-3 w-3" />
-                      Joined {member.joinedDate}
-                    </p>
-                  </div>
-                  <span className="text-xs bg-blue-100 text-blue-600 px-3 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                    View Profile
-                  </span>
+        {canSeeMembers && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <div className="bg-green-100 p-2 rounded-lg">
+                  <UserPlus className="h-5 w-5 text-green-600" />
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-8">
-                <UserPlus className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-400">No members yet</p>
-                <button 
-                  onClick={() => {
-                    setActiveTab('members');
-                  }}
-                  className="mt-3 text-blue-600 hover:text-blue-700 text-sm font-medium"
-                >
-                  Add your first member →
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-  
-        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <div className="bg-purple-100 p-2 rounded-lg">
-                <CreditCard className="h-5 w-5 text-purple-600" />
-              </div>
-              Recent Payments
-            </h3>
-            <button 
-              onClick={() => setActiveTab('payments')}
-              className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-            >
-              View All
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-          
-          <div className="space-y-3">
-            {stats.recentPayments?.length > 0 ? (
-              stats.recentPayments.map((payment) => (
-                <div key={payment.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-all group">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center text-white font-bold">
-                      {payment.memberName.charAt(0)}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-900">{payment.memberName}</p>
-                      <p className="text-xs text-gray-500 flex items-center gap-2 mt-1">
+                Recent Members
+              </h3>
+              <button 
+                onClick={() => setActiveTab('members')}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+              >
+                View All
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              {stats.recentMembers?.length > 0 ? (
+                stats.recentMembers.map((member) => (
+                  <div key={member.id} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-all group">
+                    <img 
+                      src={member.avatar} 
+                      alt={member.name} 
+                      className="w-12 h-12 rounded-full ring-2 ring-gray-100 group-hover:ring-blue-200 transition-all object-cover"
+                    />
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900">{member.name}</p>
+                      <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
                         <Calendar className="h-3 w-3" />
-                        {payment.date}
-                        <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                        <span className="capitalize">{payment.method}</span>
+                        Joined {member.joinedDate}
+                      </p>
+                    </div>
+                    <span className="text-xs bg-blue-100 text-blue-600 px-3 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                      View Profile
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <UserPlus className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-400">No members yet</p>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('members');
+                    }}
+                    className="mt-3 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                  >
+                    Add your first member →
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+  
+        {canSeePayments && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <div className="bg-purple-100 p-2 rounded-lg">
+                  <CreditCard className="h-5 w-5 text-purple-600" />
+                </div>
+                Recent Payments
+              </h3>
+              <button 
+                onClick={() => setActiveTab('payments')}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+              >
+                View All
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              {stats.recentPayments?.length > 0 ? (
+                stats.recentPayments.map((payment) => (
+                  <div key={payment.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-all group">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center text-white font-bold">
+                        {payment.memberName.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900">{payment.memberName}</p>
+                        <p className="text-xs text-gray-500 flex items-center gap-2 mt-1">
+                          <Calendar className="h-3 w-3" />
+                          {payment.date}
+                          <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                          <span className="capitalize">{payment.method}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-green-600">{formatCurrency(payment.amount)}</p>
+                      <p className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                        Transaction #{payment.id}
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-green-600">{formatCurrency(payment.amount)}</p>
-                    <p className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                      Transaction #{payment.id}
-                    </p>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <CreditCard className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-400">No payments yet</p>
+                  <button 
+                    onClick={() => setActiveTab('payments')}
+                    className="mt-3 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                  >
+                    Record first payment →
+                  </button>
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-8">
-                <CreditCard className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-400">No payments yet</p>
-                <button 
-                  onClick={() => setActiveTab('payments')}
-                  className="mt-3 text-blue-600 hover:text-blue-700 text-sm font-medium"
-                >
-                  Record first payment →
-                </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
   
       {/* Recent Activities and Classes Row */}
@@ -1638,7 +1824,7 @@ const Dashboard = () => {
           </div>
           
           <div className="space-y-4">
-            {recentActivities.length > 0 ? (
+            {recentActivities.length > 0 && recentActivities[0]?.member !== 'No activities yet' ? (
               recentActivities.map((activity) => (
                 <div key={activity.id} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-all">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold ${getActivityColor(activity.type)}`}>
@@ -1721,7 +1907,7 @@ const Dashboard = () => {
       {/* Alerts Section */}
       {(stats.expiringThisMonth > 0 || stats.pendingPayments > 0 || stats.overdueCount > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {stats.expiringThisMonth > 0 && (
+          {canSeeMembers && stats.expiringThisMonth > 0 && (
             <div className="bg-gradient-to-r from-yellow-400 to-orange-400 rounded-2xl p-6 shadow-lg text-white">
               <div className="flex items-start gap-4">
                 <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
@@ -1741,7 +1927,7 @@ const Dashboard = () => {
             </div>
           )}
           
-          {stats.pendingPayments > 0 && (
+          {canSeePayments && stats.pendingPayments > 0 && (
             <div className="bg-gradient-to-r from-red-400 to-pink-500 rounded-2xl p-6 shadow-lg text-white">
               <div className="flex items-start gap-4">
                 <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
@@ -1761,7 +1947,7 @@ const Dashboard = () => {
             </div>
           )}
   
-          {stats.overdueCount > 0 && (
+          {canSeeBalances && stats.overdueCount > 0 && (
             <div className="bg-gradient-to-r from-red-600 to-red-800 rounded-2xl p-6 shadow-lg text-white">
               <div className="flex items-start gap-4">
                 <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
@@ -1784,6 +1970,7 @@ const Dashboard = () => {
       )}
     </div>
   );
+
   // Don't show loading state if already logged in
   if (loading && !user) {
     return (
@@ -2025,16 +2212,16 @@ const Dashboard = () => {
         {/* Page Content */}
         <div className="p-6">
           {activeTab === 'dashboard' && renderDashboard()}
-          {activeTab === 'members' && <Members />}
-          {activeTab === 'balance' && <Balance />}
-          {activeTab === 'devices' && <DeviceManager />}
-          {activeTab === 'attendance' && <LiveMonitoring />}
-          {activeTab === 'history' && <AttendanceHistory />}
-          {activeTab === 'expenses' && <Expenses />}
-          {activeTab === 'staff' && <Staff />}
+          {activeTab === 'members' && canSeeMembers && <Members />}
+          {activeTab === 'balance' && canSeeBalances && <Balance />}
+          {activeTab === 'devices' && canSeeDevices && <DeviceManager />}
+          {activeTab === 'attendance' && canSeeAttendance && <LiveMonitoring />}
+          {activeTab === 'history' && canSeeAttendance && <AttendanceHistory />}
+          {activeTab === 'expenses' && canSeeExpenses && <Expenses />}
+          {activeTab === 'staff' && canSeeStaff && <Staff />}
           {activeTab === 'profile' && <Profile />}
-          {activeTab === 'payments' && <Payments />}
-          {activeTab === 'leads' && <Leads />}
+          {activeTab === 'payments' && canSeePayments && <Payments />}
+          {activeTab === 'leads' && canSeeLeads && <Leads />}
           {activeTab === 'classes' && (
             <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
               <CalendarIcon className="h-16 w-16 text-blue-300 mx-auto mb-4" />
@@ -2047,6 +2234,14 @@ const Dashboard = () => {
               <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
               <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
               <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
+            </div>
+          )}
+          {/* Access denied for tabs user doesn't have permission for */}
+          {activeTab === 'members' && !canSeeMembers && (
+            <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+              <Shield className="h-16 w-16 text-red-300 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
+              <p className="text-gray-500 mt-2">You don't have permission to view this page.</p>
             </div>
           )}
         </div>

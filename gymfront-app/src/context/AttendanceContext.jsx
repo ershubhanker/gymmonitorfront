@@ -25,48 +25,84 @@ export const AttendanceProvider = ({ children }) => {
   });
   const [loading, setLoading] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState(null);
+  const [hasAttendancePermission, setHasAttendancePermission] = useState(true);
   
   const intervalRef = useRef(null);
   const isInitialized = useRef(false);
-  const isActive = useRef(true); // ✅ Track if component is active
+  const isActive = useRef(true);
 
-  // Fetch devices
+  // Helper to check if error is 403 (permission denied)
+  const isPermissionDenied = (error) => {
+    return error?.response?.status === 403 || error?.status === 403;
+  };
+
+  // Helper to safely get error message
+  const getErrorMessage = (error) => {
+    return error?.response?.data?.detail || error?.message || 'An error occurred';
+  };
+
+  // Fetch devices - SILENT on 403
   const fetchDevices = useCallback(async () => {
     if (!isActive.current) return;
     try {
       const data = await attendanceApi.getDevices();
       setDevices(data);
+      return data;
     } catch (error) {
+      if (isPermissionDenied(error)) {
+        console.debug('Permission denied for fetching devices');
+        setDevices([]);
+        return [];
+      }
       console.error('Failed to fetch devices:', error);
+      return [];
     }
   }, []);
 
-  // Fetch today's stats
+  // Fetch today's stats - SILENT on 403
   const fetchTodayStats = useCallback(async () => {
     if (!isActive.current) return;
     try {
       const data = await attendanceApi.getTodayStats();
       setTodayStats(data || { total_checkins: 0, unique_members: 0, recent_activity: [] });
+      setHasAttendancePermission(true);
+      return data;
     } catch (error) {
+      if (isPermissionDenied(error)) {
+        console.debug('Permission denied for attendance stats');
+        setTodayStats({ total_checkins: 0, unique_members: 0, recent_activity: [] });
+        setHasAttendancePermission(false);
+        return null;
+      }
       console.error('Failed to fetch stats:', error);
       setTodayStats({ total_checkins: 0, unique_members: 0, recent_activity: [] });
+      return null;
     }
   }, []);
 
-  // Fetch recent attendance
+  // Fetch recent attendance - SILENT on 403
   const fetchRecentAttendance = useCallback(async () => {
     if (!isActive.current) return;
     try {
       const data = await attendanceApi.getAttendanceRecords({ limit: 50 });
       setRecentAttendance(data.records || []);
       setLastFetchTime(new Date());
+      setHasAttendancePermission(true);
+      return data;
     } catch (error) {
+      if (isPermissionDenied(error)) {
+        console.debug('Permission denied for attendance records');
+        setRecentAttendance([]);
+        setHasAttendancePermission(false);
+        return { records: [] };
+      }
       console.error('Failed to fetch attendance:', error);
       setRecentAttendance([]);
+      return { records: [] };
     }
   }, []);
 
-  // Fetch new events
+  // Fetch new events - SILENT on 403
   const fetchNewEvents = useCallback(async () => {
     if (!isActive.current) return;
     try {
@@ -94,13 +130,21 @@ export const AttendanceProvider = ({ children }) => {
           const uniqueNewEvents = newEvents.filter(e => !existingIds.has(e.id));
           return [...uniqueNewEvents, ...prev].slice(0, 100);
         });
+        setHasAttendancePermission(true);
       }
+      return data;
     } catch (error) {
+      if (isPermissionDenied(error)) {
+        console.debug('Permission denied for new events');
+        setHasAttendancePermission(false);
+        return { records: [] };
+      }
       console.error('Failed to fetch new events:', error);
+      return { records: [] };
     }
   }, []);
 
-  // Register new device
+  // Register new device - SHOW ERROR on 403
   const registerDevice = async (deviceData) => {
     setLoading(true);
     try {
@@ -109,15 +153,19 @@ export const AttendanceProvider = ({ children }) => {
       toast.success('Device registered successfully!');
       return { success: true, device };
     } catch (error) {
-      const errorMsg = error.response?.data?.detail || 'Registration failed';
-      toast.error(errorMsg);
+      const errorMsg = getErrorMessage(error);
+      if (isPermissionDenied(error)) {
+        toast.error('You don\'t have permission to register devices');
+      } else {
+        toast.error(errorMsg);
+      }
       return { success: false, error: errorMsg };
     } finally {
       setLoading(false);
     }
   };
 
-  // Delete device
+  // Delete device - SHOW ERROR on 403
   const deleteDevice = async (deviceId) => {
     setLoading(true);
     try {
@@ -125,35 +173,42 @@ export const AttendanceProvider = ({ children }) => {
       const result = await attendanceApi.deleteDevice(deviceId);
       console.log('Delete result:', result);
       
-      // Update local state
       setDevices(prev => prev.filter(d => d.id !== deviceId));
       
       toast.success(result.message || 'Device deleted successfully');
       return { success: true, data: result };
     } catch (error) {
       console.error('Delete device error:', error);
-      const errorMsg = error.response?.data?.detail || error.message || 'Delete failed';
-      toast.error(errorMsg);
+      const errorMsg = getErrorMessage(error);
+      if (isPermissionDenied(error)) {
+        toast.error('You don\'t have permission to delete devices');
+      } else {
+        toast.error(errorMsg);
+      }
       return { success: false, error: errorMsg };
     } finally {
       setLoading(false);
     }
   };
 
-  // Send command to device
+  // Send command to device - SHOW ERROR on 403
   const sendCommand = async (command, params = {}) => {
     try {
       const result = await attendanceApi.sendDeviceCommand(command, params);
       toast.success(`Command sent: ${command}`);
       return { success: true, data: result };
     } catch (error) {
-      const errorMsg = error.response?.data?.detail || 'Command failed';
-      toast.error(errorMsg);
+      const errorMsg = getErrorMessage(error);
+      if (isPermissionDenied(error)) {
+        toast.error('You don\'t have permission to send device commands');
+      } else {
+        toast.error(errorMsg);
+      }
       return { success: false, error: errorMsg };
     }
   };
 
-  // Sync members to device
+  // Sync members to device - SHOW ERROR on 403
   const syncMembersToDevice = async (deviceId) => {
     toast.loading('Syncing members to device...', { id: 'sync' });
     try {
@@ -163,13 +218,17 @@ export const AttendanceProvider = ({ children }) => {
       return { success: true, data: result };
     } catch (error) {
       toast.dismiss('sync');
-      const errorMsg = error.response?.data?.detail || 'Sync failed';
-      toast.error(errorMsg);
+      const errorMsg = getErrorMessage(error);
+      if (isPermissionDenied(error)) {
+        toast.error('You don\'t have permission to sync members to devices');
+      } else {
+        toast.error(errorMsg);
+      }
       return { success: false, error: errorMsg };
     }
   };
 
-  // Delete single attendance event
+  // Delete single attendance event - SHOW ERROR on 403
   const deleteAttendanceEvent = async (eventId) => {
     try {
       setLoading(true);
@@ -184,15 +243,19 @@ export const AttendanceProvider = ({ children }) => {
       return { success: false, error: 'Failed to delete event' };
     } catch (error) {
       console.error('Error deleting event:', error);
-      const errorMsg = error.response?.data?.detail || 'Delete failed';
-      toast.error(errorMsg);
+      const errorMsg = getErrorMessage(error);
+      if (isPermissionDenied(error)) {
+        toast.error('You don\'t have permission to delete attendance events');
+      } else {
+        toast.error(errorMsg);
+      }
       return { success: false, error: errorMsg };
     } finally {
       setLoading(false);
     }
   };
 
-  // Clear all events
+  // Clear all events - SHOW ERROR on 403
   const clearAllEvents = async (date = null) => {
     try {
       setLoading(true);
@@ -224,14 +287,19 @@ export const AttendanceProvider = ({ children }) => {
       return { success: false, error: 'Failed to clear events' };
     } catch (error) {
       console.error('Error clearing events:', error);
-      const errorMsg = error.response?.data?.detail || 'Clear failed';
-      toast.error(errorMsg);
+      const errorMsg = getErrorMessage(error);
+      if (isPermissionDenied(error)) {
+        toast.error('You don\'t have permission to clear attendance events');
+      } else {
+        toast.error(errorMsg);
+      }
       return { success: false, error: errorMsg };
     } finally {
       setLoading(false);
     }
   };
 
+  // Sync member to device - SHOW ERROR on 403
   const syncMemberToDevice = async (deviceId, member) => {
     try {
       const response = await api.post(`/attendance/devices/${deviceId}/sync-member`, {
@@ -241,10 +309,8 @@ export const AttendanceProvider = ({ children }) => {
         email: member.email || '',
       });
       
-      // Log the response to see what's coming back
       console.log('Sync response:', response.data);
       
-      // Return the full response including device_user_id
       return {
         success: true,
         device_user_id: response.data.device_user_id || String(member.id),
@@ -254,14 +320,20 @@ export const AttendanceProvider = ({ children }) => {
       };
     } catch (error) {
       console.error('Error syncing member to device:', error);
+      const errorMsg = getErrorMessage(error);
+      if (isPermissionDenied(error)) {
+        toast.error('You don\'t have permission to sync members to devices');
+      } else {
+        toast.error(errorMsg);
+      }
       return {
         success: false,
-        error: error.response?.data?.detail || 'Failed to sync member'
+        error: errorMsg
       };
     }
   };
   
-  // Remove member from device
+  // Remove member from device - SHOW ERROR on 403
   const removeMemberFromDevice = async (deviceId, memberData) => {
     setLoading(true);
     try {
@@ -269,34 +341,44 @@ export const AttendanceProvider = ({ children }) => {
       toast.success(`Member removed from device`);
       return { success: true, data: result };
     } catch (error) {
-      const errorMsg = error.response?.data?.detail || 'Removal failed';
-      toast.error(errorMsg);
+      const errorMsg = getErrorMessage(error);
+      if (isPermissionDenied(error)) {
+        toast.error('You don\'t have permission to remove members from devices');
+      } else {
+        toast.error(errorMsg);
+      }
       return { success: false, error: errorMsg };
     } finally {
       setLoading(false);
     }
   };
-  
 
-  // Manual refresh all data
+  // Manual refresh all data - SILENT on 403
   const refreshAllData = useCallback(async () => {
-    await Promise.all([
+    // Don't show toast for refresh - it's automatic
+    await Promise.allSettled([
       fetchDevices(),
       fetchTodayStats(),
       fetchRecentAttendance(),
       fetchNewEvents()
     ]);
-    toast.success('Data refreshed');
+    // Only show toast if user initiated refresh (not automatic)
   }, [fetchDevices, fetchTodayStats, fetchRecentAttendance, fetchNewEvents]);
 
-  // ✅ Start/Stop polling based on page visibility and authentication
+  // Manual refresh with toast (user initiated)
+  const manualRefresh = useCallback(async () => {
+    await refreshAllData();
+    toast.success('Attendance data refreshed');
+  }, [refreshAllData]);
+
+  // Start/Stop polling based on page visibility and authentication
   useEffect(() => {
-    // Don't start polling on login page or if not authenticated
     const shouldPoll = () => {
       const token = localStorage.getItem('access_token');
       const isLoginPage = window.location.pathname === '/login' || 
                           window.location.pathname === '/signup' ||
-                          window.location.pathname === '/';
+                          window.location.pathname === '/' ||
+                          window.location.pathname === '/forgot-password';
       return token && !isLoginPage;
     };
 
@@ -305,7 +387,7 @@ export const AttendanceProvider = ({ children }) => {
     isInitialized.current = true;
     isActive.current = true;
     
-    // Initial data load
+    // Initial data load - silent
     refreshAllData();
     
     // Set up polling only if not on login page
@@ -327,7 +409,7 @@ export const AttendanceProvider = ({ children }) => {
     };
   }, [refreshAllData, fetchNewEvents, fetchTodayStats]);
 
-  // ✅ Listen for route changes to stop polling on login page
+  // Listen for route changes to stop polling on login page
   useEffect(() => {
     const handleRouteChange = () => {
       const token = localStorage.getItem('access_token');
@@ -337,14 +419,12 @@ export const AttendanceProvider = ({ children }) => {
                           window.location.pathname === '/forgot-password';
       
       if (isLoginPage || !token) {
-        // Stop polling on login/unauthorized pages
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
         }
         isActive.current = false;
       } else if (!intervalRef.current && token) {
-        // Restart polling on protected pages
         isActive.current = true;
         intervalRef.current = setInterval(() => {
           if (isActive.current) {
@@ -362,7 +442,6 @@ export const AttendanceProvider = ({ children }) => {
     
     observer.observe(document.body, { childList: true, subtree: true });
     
-    // Initial check
     handleRouteChange();
     
     return () => observer.disconnect();
@@ -375,11 +454,12 @@ export const AttendanceProvider = ({ children }) => {
     todayStats,
     loading,
     lastFetchTime,
+    hasAttendancePermission,
     registerDevice,
     deleteDevice,
     sendCommand,
     syncMembersToDevice,
-    refreshAllData,
+    refreshAllData: manualRefresh,
     fetchDevices,
     fetchTodayStats,
     fetchRecentAttendance,

@@ -37,7 +37,8 @@ function handleInvoiceError(error) {
   if (error.response?.status === 404) {
     toast.error('Member not found');
   } else if (error.response?.status === 403) {
-    toast.error('You do not have permission to generate this invoice');
+    // Don't show toast for 403 on invoice - handled silently
+    console.debug('Permission denied for invoice generation');
   } else if (error.response?.status === 500) {
     toast.error('Server error while generating PDF. Please try again later.');
   } else if (error.message) {
@@ -102,14 +103,64 @@ api.interceptors.response.use(
       }
     }
 
+    // ============================================================
+    // FIX: Handle 403 (Permission Denied) - DON'T show toast
+    // ============================================================
     if (error.response?.status === 403) {
-      console.error('Access forbidden:', error.response?.data);
-      toast.error('You do not have permission to perform this action');
+      // Only log for debugging, don't show toast
+      console.debug('Access forbidden (permission denied):', {
+        url: originalRequest?.url,
+        method: originalRequest?.method,
+        detail: error.response?.data?.detail || 'Permission denied'
+      });
+      
+      // Don't show toast - permissions are handled gracefully in UI
+      // Just return the error so components can handle it silently
+      return Promise.reject(error);
     }
 
+    // Handle 422 (Validation Error) - don't show toast for permissions endpoint
     if (error.response?.status === 422) {
-      console.error('Validation error:', error.response.data);
+      // Don't show toast for permissions endpoint validation errors
+      if (originalRequest?.url?.includes('/my-permissions')) {
+        console.debug('Validation error on permissions endpoint (ignoring)');
+        return Promise.reject(error);
+      }
+      // For other 422 errors, log but don't show toast unless it's a user action
+      console.debug('Validation error:', error.response?.data);
+      // Only show toast for 422 if it's not a permissions endpoint
+      if (!originalRequest?.url?.includes('/permissions')) {
+        const detail = error.response?.data?.detail;
+        if (typeof detail === 'string') {
+          toast.error(detail);
+        } else if (Array.isArray(detail)) {
+          const messages = detail.map(d => d.msg || d.message || 'Invalid input').join(', ');
+          toast.error(messages);
+        }
+      }
       return Promise.reject(error);
+    }
+
+    // Handle 500 (Server Error)
+    if (error.response?.status === 500) {
+      console.error('Server error:', error.response?.data);
+      toast.error('Server error. Please try again later.');
+      return Promise.reject(error);
+    }
+
+    // Handle Network Errors
+    if (error.code === 'ECONNABORTED' || error.message?.includes('Network Error')) {
+      toast.error('Network error. Please check your connection.');
+      return Promise.reject(error);
+    }
+
+    // Handle other errors (non-403, non-401)
+    // Only show toast for errors that are not 403 or 401
+    if (error.response?.status && error.response.status !== 403 && error.response.status !== 401) {
+      const message = error.response?.data?.detail || error.response?.data?.message || error.message || 'Something went wrong';
+      if (typeof message === 'string' && !message.startsWith('<!DOCTYPE')) {
+        toast.error(message);
+      }
     }
 
     return Promise.reject(error);

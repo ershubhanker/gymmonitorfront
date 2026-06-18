@@ -1,15 +1,18 @@
+// src/pages/Leads.jsx - Updated with proper permission handling
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Search, Phone, Mail, User, Calendar,
   MoreVertical, Edit2, Trash2, X, ChevronDown, RefreshCw,
   UserCheck, Clock, AlertCircle, Star, Zap,
-  MessageCircle, Instagram, Facebook, Globe, Users, Share2, Copy, Link as LinkIcon, Download, CheckCircle as CheckCircleIcon,
-  Flame, Sun, Snowflake, MessageSquare, History, ArrowLeft, Target, DollarSign, Building, Tag, UserPlus, TrendingUp, Award
+  MessageCircle, Instagram, Facebook, Globe, Users, Share2, Copy, LinkIcon, Download, CheckCircle as CheckCircleIcon,
+  Flame, Sun, Snowflake, MessageSquare, History, ArrowLeft, Target, DollarSign, Building, Tag, UserPlus, TrendingUp, Award,
+  Shield
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import MemberModal from '../components/MemberModal';
 import LeadProfileModal from '../components/LeadProfileModal';
+import { usePermissions } from '../hooks/usePermissions';
 
 // Try to import QRCode, but don't fail if not available
 let QRCode;
@@ -304,7 +307,7 @@ const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
   );
 };
 
-// In Leads.jsx
+// ── Lead Modal ──────────────────────────────────────────────────────────────
 const LeadModal = ({ lead, onClose, onSave }) => {
   const [form, setForm] = useState(lead
     ? {
@@ -333,9 +336,6 @@ const LeadModal = ({ lead, onClose, onSave }) => {
       setLoadingStaff(true);
       setStaffError(null);
       
-      const token = localStorage.getItem('access_token');
-      console.log('Fetching staff list with token:', token ? 'Present' : 'Missing');
-      
       const response = await api.get('/gym/leads/staff-list');
       console.log('Staff list response:', response.data);
       
@@ -352,8 +352,13 @@ const LeadModal = ({ lead, onClose, onSave }) => {
       }
     } catch (error) {
       console.error('Error fetching staff list:', error);
-      console.error('Error details:', error.response?.data);
-      setStaffError(error.response?.data?.detail || 'Failed to load staff list');
+      // Only show error if not 403 (permission denied)
+      if (error.response?.status !== 403) {
+        setStaffError(error.response?.data?.detail || 'Failed to load staff list');
+      } else {
+        console.debug('Permission denied for staff list');
+        setStaffError('You don\'t have permission to view staff list');
+      }
       setStaffList([]);
     } finally {
       setLoadingStaff(false);
@@ -389,7 +394,11 @@ const LeadModal = ({ lead, onClose, onSave }) => {
       onClose();
     } catch (err) {
       console.error('Save error:', err);
-      toast.error(err.response?.data?.detail || 'Failed to save lead');
+      if (err.response?.status === 403) {
+        toast.error('You don\'t have permission to save leads');
+      } else {
+        toast.error(err.response?.data?.detail || 'Failed to save lead');
+      }
     } finally {
       setSaving(false);
     }
@@ -497,9 +506,6 @@ const LeadModal = ({ lead, onClose, onSave }) => {
                 No staff members found. Please add staff members first in the Staff Management section.
               </p>
             )}
-            <p className="text-xs text-gray-400 mt-1">
-              Select which staff member took this enquiry from the customer
-            </p>
           </div>
           
           {select('Interest', 'interest', INTEREST_OPTIONS)}
@@ -556,7 +562,7 @@ const LeadModal = ({ lead, onClose, onSave }) => {
 
 // ── Lead Row Actions Menu ────────────────────────────────────────────────────
 
-const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange, onConvert, onQualityChange, onViewProfile }) => {
+const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange, onConvert, onQualityChange, onViewProfile, canEdit, canDelete, canConvert }) => {
   const [open, setOpen] = useState(false);
   const ref = React.useRef(null);
 
@@ -585,12 +591,14 @@ const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange, onConvert, onQual
           >
             <User className="h-4 w-4" /> View Profile
           </button>
-          <button
-            onClick={() => { onEdit(); setOpen(false); }}
-            className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            <Edit2 className="h-4 w-4" /> Edit Lead
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => { onEdit(); setOpen(false); }}
+              className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <Edit2 className="h-4 w-4" /> Edit Lead
+            </button>
+          )}
           
           <div className="border-t border-gray-100 my-1" />
           <p className="px-4 py-1 text-xs text-gray-400 font-semibold uppercase tracking-wide">Change Quality</p>
@@ -621,7 +629,7 @@ const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange, onConvert, onQual
               {STATUS_CONFIG[s]?.label}
             </button>
           ))}
-          {lead.status !== 'converted' && (
+          {lead.status !== 'converted' && canConvert && (
             <>
               <div className="border-t border-gray-100 my-1" />
               <button
@@ -632,13 +640,17 @@ const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange, onConvert, onQual
               </button>
             </>
           )}
-          <div className="border-t border-gray-100 my-1" />
-          <button
-            onClick={() => { onDelete(); setOpen(false); }}
-            className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-          >
-            <Trash2 className="h-4 w-4" /> Delete
-          </button>
+          {canDelete && (
+            <>
+              <div className="border-t border-gray-100 my-1" />
+              <button
+                onClick={() => { onDelete(); setOpen(false); }}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4" /> Delete
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -648,6 +660,7 @@ const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange, onConvert, onQual
 // ── Main Leads Component ──────────────────────────────────────────────────────
 
 const Leads = () => {
+  const { hasPermission, loading: permissionsLoading } = usePermissions();
   const [leads, setLeads] = useState([]);
   const [stats, setStats] = useState({ total: 0, new: 0, contacted: 0, interested: 0, converted: 0 });
   const [loading, setLoading] = useState(true);
@@ -668,7 +681,15 @@ const Leads = () => {
   const [staffList, setStaffList] = useState([]);
   const [staffStats, setStaffStats] = useState([]);
 
+  // Permission checks
+  const canViewLeads = hasPermission('view_leads');
+  const canAddLead = hasPermission('add_lead');
+  const canEditLead = hasPermission('edit_lead');
+  const canDeleteLead = hasPermission('delete_lead');
+  const canConvertLead = hasPermission('convert_lead');
+
   const fetchLeads = useCallback(async () => {
+    if (!canViewLeads) return;
     try {
       const params = new URLSearchParams();
       if (filterStatus) params.append('status', filterStatus);
@@ -685,40 +706,54 @@ const Leads = () => {
       setStats(statsRes.data || {});
     } catch (err) {
       console.error('Failed to load leads:', err);
-      toast.error('Failed to load leads');
+      if (err.response?.status !== 403) {
+        toast.error('Failed to load leads');
+      }
     } finally {
       setLoading(false);
     }
-  }, [filterStatus, filterSource, filterQuality, filterStaff, search]);
+  }, [filterStatus, filterSource, filterQuality, filterStaff, search, canViewLeads]);
 
   const fetchStaffList = async () => {
+    if (!canViewLeads) return;
     try {
       const response = await api.get('/gym/leads/staff-list');
-      setStaffList(response.data);
+      setStaffList(response.data || []);
     } catch (error) {
       console.error('Error fetching staff list:', error);
+      if (error.response?.status !== 403) {
+        toast.error('Failed to load staff list');
+      }
     }
   };
 
   const fetchStaffStats = async () => {
+    if (!canViewLeads) return;
     try {
       const response = await api.get('/gym/leads/stats/by-staff');
-      setStaffStats(response.data);
+      setStaffStats(response.data || []);
     } catch (error) {
       console.error('Error fetching staff stats:', error);
+      if (error.response?.status !== 403) {
+        toast.error('Failed to load staff statistics');
+      }
     }
   };
 
   useEffect(() => {
     fetchStaffList();
     fetchStaffStats();
-  }, []);
+  }, [canViewLeads]);
 
   useEffect(() => {
+    if (!canViewLeads) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const t = setTimeout(fetchLeads, 300);
     return () => clearTimeout(t);
-  }, [fetchLeads]);
+  }, [fetchLeads, canViewLeads]);
 
   const fetchShareableLink = async () => {
     try {
@@ -729,43 +764,79 @@ const Leads = () => {
       toast.success('Shareable link generated!');
     } catch (error) {
       console.error('Error fetching shareable link:', error);
-      toast.error(error.response?.data?.detail || 'Failed to generate shareable link. Make sure you have a gym setup.');
+      if (error.response?.status === 403) {
+        toast.error('You don\'t have permission to generate shareable links');
+      } else {
+        toast.error(error.response?.data?.detail || 'Failed to generate shareable link. Make sure you have a gym setup.');
+      }
     }
   };
 
   const handleDelete = async (id) => {
+    if (!canDeleteLead) {
+      toast.error('You don\'t have permission to delete leads');
+      return;
+    }
     try {
       await api.delete(`/gym/leads/${id}`);
       toast.success('Lead deleted');
       setDeleteConfirm(null);
       fetchLeads();
-    } catch {
-      toast.error('Failed to delete lead');
+      fetchStaffStats();
+    } catch (error) {
+      console.error('Delete error:', error);
+      if (error.response?.status === 403) {
+        toast.error('You don\'t have permission to delete leads');
+      } else {
+        toast.error('Failed to delete lead');
+      }
     }
   };
 
   const handleStatusChange = async (lead, newStatus) => {
+    if (!canEditLead) {
+      toast.error('You don\'t have permission to update leads');
+      return;
+    }
     try {
       await api.put(`/gym/leads/${lead.id}`, { status: newStatus });
       toast.success(`Marked as ${STATUS_CONFIG[newStatus]?.label}`);
       fetchLeads();
       fetchStaffStats();
-    } catch {
-      toast.error('Failed to update status');
+    } catch (error) {
+      console.error('Status update error:', error);
+      if (error.response?.status === 403) {
+        toast.error('You don\'t have permission to update leads');
+      } else {
+        toast.error('Failed to update status');
+      }
     }
   };
 
   const handleQualityChange = async (lead, newQuality) => {
+    if (!canEditLead) {
+      toast.error('You don\'t have permission to update leads');
+      return;
+    }
     try {
       await api.put(`/gym/leads/${lead.id}`, { lead_quality: newQuality });
       toast.success(`Lead marked as ${LEAD_QUALITY_CONFIG[newQuality]?.label}`);
       fetchLeads();
-    } catch {
-      toast.error('Failed to update lead quality');
+    } catch (error) {
+      console.error('Quality update error:', error);
+      if (error.response?.status === 403) {
+        toast.error('You don\'t have permission to update leads');
+      } else {
+        toast.error('Failed to update lead quality');
+      }
     }
   };
 
   const handleConvert = (lead) => {
+    if (!canConvertLead) {
+      toast.error('You don\'t have permission to convert leads to members');
+      return;
+    }
     setConvertLead(lead);
   };
 
@@ -786,14 +857,34 @@ const Leads = () => {
     cold: leads.filter(l => l.lead_quality === 'cold').length,
   };
 
-
   const getStaffName = (assignedTo) => {
     if (!assignedTo) return 'Unassigned';
     const staff = staffList.find(s => s.user_id === assignedTo);
     return staff ? staff.full_name : 'Unknown Staff';
   };
 
-  
+  // If permissions are still loading, show loading state
+  if (permissionsLoading) {
+    return (
+      <div className="p-6 flex justify-center items-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600" />
+      </div>
+    );
+  }
+
+  // If user doesn't have view_leads permission, show access denied
+  if (!canViewLeads) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center">
+          <Shield className="h-12 w-12 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-red-700">Access Denied</h2>
+          <p className="text-red-600">You don't have permission to view leads.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -816,12 +907,14 @@ const Leads = () => {
           >
             <Share2 className="h-4 w-4" /> Share Lead Form
           </button>
-          <button
-            onClick={() => { setEditLead(null); setShowModal(true); }}
-            className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:shadow-lg hover:scale-[1.02] transition-all"
-          >
-            <Plus className="h-4 w-4" /> Add Lead
-          </button>
+          {canAddLead && (
+            <button
+              onClick={() => { setEditLead(null); setShowModal(true); }}
+              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:shadow-lg hover:scale-[1.02] transition-all"
+            >
+              <Plus className="h-4 w-4" /> Add Lead
+            </button>
+          )}
         </div>
       </div>
 
@@ -886,7 +979,7 @@ const Leads = () => {
       </div>
 
       {/* Staff Performance Stats */}
-      {staffStats.length > 0 && (
+      {staffStats.length > 0 && canViewLeads && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
           <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
             <Award className="h-4 w-4 text-yellow-500" />
@@ -997,7 +1090,7 @@ const Leads = () => {
             <p className="text-sm text-gray-400 mt-1">
               {search || filterStatus || filterSource || filterQuality || filterStaff ? 'Try adjusting your filters.' : 'Add your first lead to get started.'}
             </p>
-            {!search && !filterStatus && !filterSource && !filterQuality && !filterStaff && (
+            {!search && !filterStatus && !filterSource && !filterQuality && !filterStaff && canAddLead && (
               <button
                 onClick={() => { setEditLead(null); setShowModal(true); }}
                 className="mt-4 inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-blue-700"
@@ -1066,7 +1159,7 @@ const Leads = () => {
                       <td className="px-4 py-3">
                         <LeadQualityBadge 
                           quality={lead.lead_quality || 'warm'} 
-                          onChange={(newQuality) => handleQualityChange(lead, newQuality)}
+                          onChange={canEditLead ? (newQuality) => handleQualityChange(lead, newQuality) : null}
                         />
                        </td>
                       <td className="px-4 py-3">
@@ -1117,6 +1210,9 @@ const Leads = () => {
                           onConvert={() => handleConvert(lead)}
                           onQualityChange={(q) => handleQualityChange(lead, q)}
                           onViewProfile={() => handleViewProfile(lead)}
+                          canEdit={canEditLead}
+                          canDelete={canDeleteLead}
+                          canConvert={canConvertLead}
                         />
                        </td>
                      </tr>

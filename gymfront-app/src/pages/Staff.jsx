@@ -11,9 +11,10 @@ import {
 } from 'lucide-react';
 import { X as CloseIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api, { API_BASE_URL } from '../services/api';
+import api from '../services/api';
 import StaffUserSetup from '../components/StaffUserSetup';
 import StaffPermissionsModal from '../components/StaffPermissionsModal';
+import { usePermissions } from '../hooks/usePermissions';
 
 // ─── ALL POSITIONS CONSTANT ─────────────────────────────────────────────────────
 const ALL_POSITIONS = [
@@ -330,7 +331,7 @@ const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }
 };
 
 // ─── STAFF PROFILE MODAL ──────────────────────────────────────────────────────
-const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDevice }) => {
+const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDevice, canEditStaff, canSyncToDevice }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({});
   const [saving, setSaving] = useState(false);
@@ -484,7 +485,7 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {!isEditing && (
+            {!isEditing && canEditStaff && (
               <button
                 onClick={() => setIsEditing(true)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
@@ -704,54 +705,56 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                 </div>
               </div>
 
-              <div className="bg-gray-50 rounded-xl p-4">
-                <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                  <Smartphone className="h-3 w-3" /> Device Sync
-                </p>
-                <div className="flex items-center justify-between mt-2">
-                  <div>
-                    {deviceUserId ? (
+              {canSyncToDevice && (
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                    <Smartphone className="h-3 w-3" /> Device Sync
+                  </p>
+                  <div className="flex items-center justify-between mt-2">
+                    <div>
+                      {deviceUserId ? (
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                          <span className="text-sm font-medium text-green-600">Synced to Device</span>
+                          <button
+                            onClick={() => copyDeviceId(deviceUserId)}
+                            className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                          >
+                            <Copy className="h-3 w-3" />
+                            {deviceUserId}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">Not synced to any device</span>
+                      )}
+                    </div>
+                    {devices.length > 0 && (
                       <div className="flex items-center gap-2">
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                        <span className="text-sm font-medium text-green-600">Synced to Device</span>
-                        <button
-                          onClick={() => copyDeviceId(deviceUserId)}
-                          className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                        <select
+                          value={selectedDeviceId}
+                          onChange={(e) => setSelectedDeviceId(e.target.value)}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                         >
-                          <Copy className="h-3 w-3" />
-                          {deviceUserId}
+                          <option value="">Select Device</option>
+                          {devices.map(device => (
+                            <option key={device.id} value={device.id}>
+                              {device.device_name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={handleSyncToDevice}
+                          disabled={syncing || !selectedDeviceId}
+                          className="px-4 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {syncing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Database className="h-3 w-3" />}
+                          Sync
                         </button>
                       </div>
-                    ) : (
-                      <span className="text-sm text-gray-400">Not synced to any device</span>
                     )}
                   </div>
-                  {devices.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={selectedDeviceId}
-                        onChange={(e) => setSelectedDeviceId(e.target.value)}
-                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        <option value="">Select Device</option>
-                        {devices.map(device => (
-                          <option key={device.id} value={device.id}>
-                            {device.device_name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={handleSyncToDevice}
-                        disabled={syncing || !selectedDeviceId}
-                        className="px-4 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1"
-                      >
-                        {syncing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Database className="h-3 w-3" />}
-                        Sync
-                      </button>
-                    </div>
-                  )}
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -761,7 +764,7 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
 };
 
 // ─── Staff Edit Modal ─────────────────────────────────────────────────────────
-const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], onSyncToDevice }) => {
+const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], onSyncToDevice, canSyncToDevice }) => {
   const [formData, setFormData] = useState({
     position: '',
     hireDate: '',
@@ -942,7 +945,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
             </select>
           </div>
 
-          {devices.length > 0 && (
+          {canSyncToDevice && devices.length > 0 && (
             <div className="pt-4 border-t">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 <Smartphone className="inline h-4 w-4 mr-1" />
@@ -1207,6 +1210,8 @@ const StaffDeviceSyncModal = ({ isOpen, onClose, staffList, devices, onSyncSelec
 
 // ─── Main Staff Page ─────────────────────────────────────────────────────────────
 const Staff = () => {
+  const { permissions, hasPermission, loading: permissionsLoading } = usePermissions();
+  const [userRole, setUserRole] = useState(null);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1222,11 +1227,34 @@ const Staff = () => {
   const [staffDeviceIds, setStaffDeviceIds] = useState({});
   const itemsPerPage = 10;
 
+
   useEffect(() => {
-    fetchStaff();
-    fetchDevices();
-    fetchStaffDeviceIds();
+    // Get user role from localStorage or from the permissions response
+    const storedRole = localStorage.getItem('userRole');
+    if (storedRole) {
+      setUserRole(storedRole);
+    }
   }, []);
+
+
+  // Permission checks - Gym owners and Super Admins have all permissions
+  const isAdmin = userRole === 'gym_owner' || userRole === 'super_admin';
+
+  // Permission checks
+  const canViewStaff = hasPermission('view_staff');
+  const canAddStaff = hasPermission('add_staff');
+  const canEditStaff = hasPermission('edit_staff');
+  const canDeleteStaff = hasPermission('delete_staff');
+  const canManagePermissions = hasPermission('manage_staff_permissions');
+  const canSyncToDevice = hasPermission('sync_to_device');
+
+  useEffect(() => {
+    if (canViewStaff) {
+      fetchStaff();
+      fetchDevices();
+      fetchStaffDeviceIds();
+    }
+  }, [canViewStaff]);
 
   const fetchStaff = async () => {
     setLoading(true);
@@ -1440,6 +1468,28 @@ const Staff = () => {
     return `${formatShiftTime(staff.shift_start_time)} - ${formatShiftTime(staff.shift_end_time)}${daysText}`;
   };
 
+  // If permissions are still loading, show loading state
+  if (permissionsLoading) {
+    return (
+      <div className="p-6 flex justify-center items-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  // If user doesn't have view_staff permission, show access denied
+  if (!canViewStaff) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center">
+          <Shield className="h-12 w-12 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-red-700">Access Denied</h2>
+          <p className="text-red-600">You don't have permission to view staff members.</p>
+        </div>
+      </div>
+    );
+  }
+
   const filteredStaff = staffList.filter(s => {
     const name = s.user?.full_name || '';
     const email = s.user?.email || '';
@@ -1501,7 +1551,8 @@ const Staff = () => {
           >
             Search
           </button>
-          {hasDevices && (
+          
+          {canSyncToDevice && hasDevices && (
             <button
               onClick={() => setIsDeviceSyncModalOpen(true)}
               className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
@@ -1510,6 +1561,7 @@ const Staff = () => {
               Sync to Device
             </button>
           )}
+          
           <button
             onClick={checkDeviceConnection}
             className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
@@ -1517,13 +1569,16 @@ const Staff = () => {
             <Wifi className="h-4 w-4" />
             Check Devices
           </button>
-          <button
-            onClick={() => { setIsAddModalOpen(true); }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-          >
-            <UserPlus className="h-4 w-4" />
-            Add Staff
-          </button>
+          
+          {canAddStaff && (
+            <button
+              onClick={() => { setIsAddModalOpen(true); }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            >
+              <UserPlus className="h-4 w-4" />
+              Add Staff
+            </button>
+          )}
         </div>
       </div>
 
@@ -1670,13 +1725,16 @@ const Staff = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => openPermissionsModal(s)}
-                          className="text-purple-600 hover:text-purple-900 mr-2"
-                          title="Manage Permissions"
-                        >
-                          <Shield className="h-4 w-4" />
-                        </button>
+                        {canManagePermissions && (
+                          <button
+                            onClick={() => openPermissionsModal(s)}
+                            className="text-purple-600 hover:text-purple-900 mr-2"
+                            title="Manage Permissions"
+                          >
+                            <Shield className="h-4 w-4" />
+                          </button>
+                        )}
+                        
                         <button
                           onClick={() => openProfileModal(s)}
                           className="text-indigo-600 hover:text-indigo-900 mr-2"
@@ -1684,27 +1742,36 @@ const Staff = () => {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => openEditModal(s)}
-                          className="text-blue-600 hover:text-blue-900 mr-2"
-                          title="Edit"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleResetPassword(s.user_id)}
-                          className="text-orange-600 hover:text-orange-900 mr-2"
-                          title="Reset Password"
-                        >
-                          <RefreshCw className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteStaff(s.id)}
-                          className="text-red-600 hover:text-red-900"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        
+                        {canEditStaff && (
+                          <button
+                            onClick={() => openEditModal(s)}
+                            className="text-blue-600 hover:text-blue-900 mr-2"
+                            title="Edit"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                        )}
+                        
+                        {canEditStaff && (
+                          <button
+                            onClick={() => handleResetPassword(s.user_id)}
+                            className="text-orange-600 hover:text-orange-900 mr-2"
+                            title="Reset Password"
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                          </button>
+                        )}
+                        
+                        {canDeleteStaff && (
+                          <button
+                            onClick={() => handleDeleteStaff(s.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -1761,6 +1828,8 @@ const Staff = () => {
           }}
           devices={devices.filter(d => d.is_online)}
           onSyncToDevice={handleSyncStaffToDevice}
+          canEditStaff={canEditStaff}
+          canSyncToDevice={canSyncToDevice}
         />
       )}
 
@@ -1775,6 +1844,7 @@ const Staff = () => {
         staff={selectedStaff}
         devices={devices.filter(d => d.is_online)}
         onSyncToDevice={handleSyncStaffToDevice}
+        canSyncToDevice={canSyncToDevice}
       />
 
       {/* Device Sync Modal */}
