@@ -1,6 +1,6 @@
 // src/components/attendance/AttendanceHistory.jsx
 import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Filter, ChevronLeft, ChevronRight, User, Loader2, Users, Briefcase, AlertCircle } from 'lucide-react';
+import { Calendar, Download, Filter, ChevronLeft, ChevronRight, User, Loader2, Users, Briefcase, AlertCircle, RefreshCw } from 'lucide-react';
 import { useAttendance } from '../../context/AttendanceContext';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -48,6 +48,7 @@ const AttendanceHistory = () => {
   const [members, setMembers] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [error, setError] = useState(null);
+  const [syncing, setSyncing] = useState(false);
 
   const itemsPerPage = 20;
 
@@ -117,6 +118,50 @@ const AttendanceHistory = () => {
       console.error('Error fetching staff:', error);
     }
   };
+
+  // ================================================================
+  // UPDATED: Refresh function that triggers attendance sync
+  // ================================================================
+  const handleRefresh = async () => {
+    setSyncing(true);
+    toast.loading('🔄 Syncing attendance from device...', { id: 'attendance-sync' });
+    
+    try {
+        const syncResponse = await api.post('/attendance/sync-attendance');
+        
+        if (syncResponse.data.success) {
+            console.log('✅ Attendance sync triggered:', syncResponse.data);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // ===== USE EXISTING fetch functions =====
+            if (activeTab === 'members') {
+                await fetchMemberAttendance();  // Uses /attendance/records
+            } else {
+                await fetchStaffAttendance();   // Uses /attendance/staff/attendance
+            }
+            
+            toast.success('📊 Attendance synced and refreshed!', { id: 'attendance-sync' });
+        } else {
+            toast.warning(syncResponse.data.message || 'No devices found to sync', { id: 'attendance-sync' });
+            if (activeTab === 'members') {
+                fetchMemberAttendance();
+            } else {
+                fetchStaffAttendance();
+            }
+        }
+    } catch (error) {
+        console.error('Error syncing attendance:', error);
+        toast.error(error.response?.data?.detail || 'Failed to sync attendance', { id: 'attendance-sync' });
+        if (activeTab === 'members') {
+            fetchMemberAttendance();
+        } else {
+            fetchStaffAttendance();
+        }
+    } finally {
+        setSyncing(false);
+    }
+};
+
 
   useEffect(() => {
     if (activeTab === 'members') {
@@ -293,6 +338,19 @@ const AttendanceHistory = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          {/* ===== UPDATED REFRESH BUTTON - Now triggers sync ===== */}
+          <button
+            onClick={handleRefresh}
+            disabled={syncing}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+          >
+            {syncing ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            {syncing ? 'Syncing...' : 'Sync & Refresh'}
+          </button>
           <button
             onClick={() => setShowFilters(!showFilters)}
             className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -403,13 +461,12 @@ const AttendanceHistory = () => {
                     <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                     <p>No {activeTab} attendance records found</p>
                     <p className="text-sm text-gray-400 mt-1">
-                      Try changing filters or sync attendance from device
+                      Try changing filters or click "Sync & Refresh" to fetch from device
                     </p>
                   </td>
                 </tr>
               ) : (
                 currentRecords.map((record) => {
-                  // Use created_at for display, fallback to check_in_time
                   const timestamp = record.created_at || record.check_in_time;
                   return (
                     <tr key={record.id} className="hover:bg-gray-50">

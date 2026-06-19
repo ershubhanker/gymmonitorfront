@@ -67,6 +67,9 @@ const LiveMonitoring = () => {
   const [manualEventType, setManualEventType] = useState('check_in');
   const [manualDateTime, setManualDateTime] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  
+  // Sync loading state
+  const [syncing, setSyncing] = useState(false);
 
   // Helper function to safely get user_id as string
   const getUserIdAsString = (event) => {
@@ -90,9 +93,7 @@ const LiveMonitoring = () => {
   // Helper function to check if event is staff (either by user_id or event_type)
   const isStaffEvent = (event) => {
     if (!event) return false;
-    // Check by user_id prefix
     if (isStaffUser(event)) return true;
-    // Check by event_type
     if (isStaffEventType(event?.event_type)) return true;
     return false;
   };
@@ -112,12 +113,43 @@ const LiveMonitoring = () => {
     fetchStaffStats();
   }, [liveEvents]);
 
-  // Manual refresh
-  const handleRefresh = () => {
-    refreshAllData();
-    fetchStaffStats();
-    toast.success('Data refreshed');
-  };
+  // ================================================================
+  // UPDATED: Refresh function that triggers attendance sync
+  // ================================================================
+  const handleRefresh = async () => {
+    setSyncing(true);
+    toast.loading('🔄 Syncing attendance from device...', { id: 'attendance-sync' });
+    
+    try {
+        // Step 1: Trigger attendance sync via bridge
+        const syncResponse = await api.post('/attendance/sync-attendance');
+        
+        if (syncResponse.data.success) {
+            console.log('✅ Attendance sync triggered:', syncResponse.data);
+            
+            // Step 2: Wait for bridge to process
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // Step 3: ===== THIS IS THE KEY - Refresh all data =====
+            // refreshAllData() should fetch from /attendance/stats/today and /attendance/records
+            await refreshAllData();
+            await fetchStaffStats();
+            
+            toast.success('📊 Attendance synced and refreshed!', { id: 'attendance-sync' });
+        } else {
+            toast.warning(syncResponse.data.message || 'No devices found to sync', { id: 'attendance-sync' });
+            refreshAllData();
+            fetchStaffStats();
+        }
+    } catch (error) {
+        console.error('Error syncing attendance:', error);
+        toast.error(error.response?.data?.detail || 'Failed to sync attendance', { id: 'attendance-sync' });
+        refreshAllData();
+        fetchStaffStats();
+    } finally {
+        setSyncing(false);
+    }
+};
 
   // Handle delete single event
   const handleDeleteEvent = async () => {
@@ -273,17 +305,13 @@ const LiveMonitoring = () => {
     
     // Filter by user type (member vs staff)
     if (activeTab === 'members') {
-      // Members: exclude staff events (events with 'S' prefix OR staff_* event types)
       filtered = filtered.filter(event => {
         if (!event) return false;
-        // Exclude if user_id starts with 'S' OR event_type is staff_*
         return !isStaffEvent(event);
       });
     } else {
-      // Staff: include staff events (events with 'S' prefix OR staff_* event types)
       filtered = filtered.filter(event => {
         if (!event) return false;
-        // Include if user_id starts with 'S' OR event_type is staff_*
         return isStaffEvent(event);
       });
     }
@@ -333,7 +361,7 @@ const LiveMonitoring = () => {
   const stats = getStats();
   const onlineDevices = (devices || []).filter(d => d?.is_online).length || 0;
 
-  // Get unique dates for filter - with safe check
+  // Get unique dates for filter
   const uniqueDates = [...new Set(
     (liveEvents || [])
       .filter(event => {
@@ -364,10 +392,6 @@ const LiveMonitoring = () => {
   };
 
   const counts = getEventCounts();
-
-  // Debug: Log events to see what's coming from the API
-  console.log('Live Events:', liveEvents);
-  console.log('Staff Events filtered:', liveEvents.filter(e => isStaffEvent(e)));
 
   if (loading && (!liveEvents || liveEvents.length === 0)) {
     return (
@@ -656,7 +680,7 @@ const LiveMonitoring = () => {
         </div>
       )}
 
-      {/* Status Bar */}
+      {/* Status Bar - UPDATED with Sync functionality */}
       <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Wifi className="h-4 w-4 text-green-600" />
@@ -669,15 +693,34 @@ const LiveMonitoring = () => {
           <span className="text-gray-600 text-sm">
             Devices: <strong className={onlineDevices > 0 ? 'text-green-600' : 'text-gray-400'}>{onlineDevices}/{devices?.length || 0} online</strong>
           </span>
-          <button onClick={() => setShowManualModal(true)} className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm ${activeTab === 'members' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-purple-600 hover:bg-purple-700'} text-white`}>
+          
+          <button 
+            onClick={() => setShowManualModal(true)} 
+            className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm ${activeTab === 'members' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-purple-600 hover:bg-purple-700'} text-white`}
+          >
             <UserPlus className="h-3.5 w-3.5" />
             Manual Entry
           </button>
-          <button onClick={handleRefresh} className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
+          
+          {/* ===== UPDATED REFRESH BUTTON - Now triggers sync ===== */}
+          <button 
+            onClick={handleRefresh} 
+            disabled={syncing}
+            className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50"
+          >
+            {syncing ? (
+              <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent"></div>
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {syncing ? 'Syncing...' : 'Refresh'}
           </button>
-          <button onClick={() => setShowClearAllModal(true)} className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm" disabled={liveEvents.length === 0}>
+          
+          <button 
+            onClick={() => setShowClearAllModal(true)} 
+            className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm" 
+            disabled={liveEvents.length === 0}
+          >
             <Trash2 className="h-3.5 w-3.5" />
             Clear All
           </button>
