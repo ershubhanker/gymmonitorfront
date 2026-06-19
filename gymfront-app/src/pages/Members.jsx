@@ -1,4 +1,5 @@
-// src/pages/Members.jsx
+// src/pages/Members.jsx - Updated with Delete Confirmation Modal
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Search, 
@@ -18,7 +19,11 @@ import {
   Wifi,
   Loader2,
   WifiOff,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Link,
+  AlertTriangle,
+  Smartphone,
+  User
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
@@ -49,6 +54,158 @@ function useDebounce(value, delay) {
   return debouncedValue;
 }
 
+// ============================================================
+// DELETE CONFIRMATION MODAL COMPONENT
+// ============================================================
+const DeleteConfirmationModal = ({ 
+  isOpen, 
+  onClose, 
+  onConfirm, 
+  member, 
+  loading 
+}) => {
+  if (!isOpen || !member) return null;
+
+  const hasDeviceSync = member.syncedToDevice || member.deviceUserId;
+  const deviceInfo = member.deviceUserId || 'Unknown Device ID';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all animate-scaleIn">
+        {/* Header */}
+        <div className="flex items-center gap-3 p-6 border-b">
+          <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+            <AlertTriangle className="h-6 w-6 text-red-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Delete Member</h3>
+            <p className="text-sm text-gray-500">This action cannot be undone</p>
+          </div>
+          <button 
+            onClick={onClose} 
+            className="ml-auto p-1 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="h-5 w-5 text-gray-400" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-6 space-y-4">
+          {/* Member Info */}
+          <div className="bg-gray-50 rounded-xl p-4">
+            <div className="flex items-center gap-3">
+              <img 
+                src={member.avatar} 
+                alt={member.fullName}
+                className="h-12 w-12 rounded-full object-cover"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.fullName)}&background=0D9488&color=fff&size=128`;
+                }}
+              />
+              <div>
+                <p className="font-semibold text-gray-900">{member.fullName}</p>
+                <p className="text-sm text-gray-500">{member.email || member.phone}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Warning Messages */}
+          <div className="space-y-3">
+            {/* Device Sync Warning */}
+            {hasDeviceSync && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <Smartphone className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-yellow-800">
+                      ⚠️ This member is synced to attendance device
+                    </p>
+                    <p className="text-sm text-yellow-700 mt-1">
+                      Device ID: <span className="font-mono bg-yellow-100 px-2 py-0.5 rounded">{deviceInfo}</span>
+                    </p>
+                    <p className="text-sm text-yellow-700 mt-1">
+                      Deleting will automatically remove them from all attendance devices.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* General Warning */}
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-red-800">
+                    This will permanently delete:
+                  </p>
+                  <ul className="text-sm text-red-700 mt-1 space-y-1">
+                    <li>• Member profile and personal information</li>
+                    <li>• All membership records</li>
+                    <li>• Payment history</li>
+                    <li>• Attendance records</li>
+                    {hasDeviceSync && <li>• Remove from attendance device</li>}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Confirmation Input */}
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Type <span className="font-bold text-red-600">DELETE</span> to confirm
+            </label>
+            <input
+              type="text"
+              id="deleteConfirmInput"
+              placeholder="Type DELETE here..."
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500 transition-colors"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && e.target.value === 'DELETE') {
+                  onConfirm();
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50 rounded-b-2xl">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Deleting...
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4" />
+                Yes, Delete Member
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// MAIN MEMBERS COMPONENT
+// ============================================================
 const Members = () => {
   const { user } = useAuth(); 
   const { devices, syncMemberToDevice, removeMemberFromDevice, refreshAllData, attendanceApi } = useAttendance();
@@ -76,6 +233,16 @@ const Members = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [totalMembersCount, setTotalMembersCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+
+  // ============================================================
+  // DELETE CONFIRMATION STATE
+  // ============================================================
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [memberToDelete, setMemberToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const [showBulkLinkModal, setShowBulkLinkModal] = useState(false);
+  const [linkingMembers, setLinkingMembers] = useState(false);
 
   // FIX: Increase items per page from 10 to 50
   const itemsPerPage = 50;
@@ -126,6 +293,149 @@ const Members = () => {
   }, [members]);
 
   // ============================================================
+  // DELETE FUNCTION WITH CONFIRMATION
+  // ============================================================
+  const handleDeleteClick = (member) => {
+    setMemberToDelete(member);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!memberToDelete) return;
+    
+    setDeleting(true);
+    try {
+      console.log('Deleting member with ID:', memberToDelete.id);
+      
+      const response = await api.delete(`/gym/members/${memberToDelete.id}`);
+      
+      console.log('Delete response:', response.data);
+      
+      if (response.data.removed_from_devices > 0) {
+        toast.success(
+          `✅ Member deleted successfully!\n\n` +
+          `Removed from ${response.data.removed_from_devices} device(s).\n` +
+          `The device will sync within 3 seconds.`,
+          { duration: 5000 }
+        );
+      } else if (response.data.device_user_id) {
+        toast.warning(
+          `⚠️ Member deleted but not removed from devices.\n\n` +
+          `The member had a device ID (${response.data.device_user_id}) but no active devices were found.`,
+          { duration: 5000 }
+        );
+      } else {
+        toast.success('Member deleted successfully! (No device sync needed)');
+      }
+      
+      // Remove from local state
+      setMembers(prev => prev.filter(m => m.id !== memberToDelete.id));
+      setSelectedMembers(prev => prev.filter(id => id !== memberToDelete.id));
+      fetchStats();
+      refreshAllData();
+      
+      // Close modal
+      setShowDeleteModal(false);
+      setMemberToDelete(null);
+      
+    } catch (error) {
+      console.error('Delete error:', error);
+      
+      if (error.response) {
+        console.error('Error response:', error.response.data);
+        console.error('Error status:', error.response.status);
+        
+        if (error.response.status === 405) {
+          toast.error('API endpoint not found. Please check the server configuration.');
+        } else if (error.response.status === 403) {
+          toast.error('You do not have permission to delete members.');
+        } else if (error.response.status === 404) {
+          toast.error('Member not found. It may have been already deleted.');
+        } else {
+          toast.error(error.response?.data?.detail || 'Failed to delete member');
+        }
+      } else if (error.request) {
+        toast.error('Network error. Please check your connection.');
+      } else {
+        toast.error('Failed to delete member. Please try again.');
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // ============================================================
+  // BULK DELETE WITH CONFIRMATION
+  // ============================================================
+  const handleBulkDelete = async () => {
+    if (selectedMembers.length === 0) return;
+    
+    // Show a confirmation dialog for bulk delete
+    const hasDeviceSync = selectedMembers.some(id => {
+      const member = members.find(m => m.id === id);
+      return member?.syncedToDevice || member?.deviceUserId;
+    });
+    
+    const message = hasDeviceSync
+      ? `⚠️ You are about to delete ${selectedMembers.length} members. Some of them are synced to attendance devices and will be automatically removed.\n\nAre you sure you want to continue?`
+      : `Are you sure you want to delete ${selectedMembers.length} members?`;
+    
+    if (!window.confirm(message)) return;
+    
+    try {
+      await Promise.all(selectedMembers.map(id => api.delete(`/gym/members/${id}`)));
+      setMembers(members.filter(m => !selectedMembers.includes(m.id)));
+      setSelectedMembers([]);
+      fetchStats();
+      toast.success(`${selectedMembers.length} members deleted successfully!`);
+    } catch (error) {
+      toast.error('Failed to delete some members');
+    }
+  };
+
+  // ============================================================
+  // Add function to bulk link members to device
+  // ============================================================
+  const handleBulkLinkToDevice = async () => {
+    if (selectedMembers.length === 0) {
+      toast.error('Please select members to link');
+      return;
+    }
+
+    if (activeDevices.length === 0) {
+      toast.error('No active devices found');
+      return;
+    }
+
+    setLinkingMembers(true);
+    try {
+      const links = selectedMembers.map(memberId => {
+        const member = members.find(m => m.id === memberId);
+        return {
+          device_user_id: member.phone.replace(/\D/g, ''), // Clean phone number
+          member_id: member.id
+        };
+      });
+
+      const response = await api.post('/attendance/devices/batch-link', {
+        links: links,
+        device_id: activeDevices[0]?.id
+      });
+
+      if (response.data.success) {
+        toast.success(`Successfully linked ${response.data.summary.linked} members`);
+        setSelectedMembers([]);
+        fetchMembers();
+      }
+    } catch (error) {
+      console.error('Bulk link error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to link members');
+    } finally {
+      setLinkingMembers(false);
+    }
+  };
+
+  // ============================================================
   // OPTIMIZED: Fetch members using the new optimized endpoint
   // ============================================================
   const fetchMembersOptimizedFn = useCallback(async () => {
@@ -141,7 +451,6 @@ const Members = () => {
       console.log('Fetching members with optimized endpoint:', params);
       const data = await fetchMembersOptimized(params);
       
-      // Transform the data to match your existing format
       const transformed = data.items.map(item => ({
         id: item.id,
         fullName: item.full_name,
@@ -202,7 +511,6 @@ const Members = () => {
       });
     } catch (error) {
       console.error('Error fetching stats (optimized):', error);
-      // Fallback to old stats endpoint if optimized fails
       try {
         const response = await api.get('/gym/dashboard/stats');
         setStats({
@@ -581,128 +889,64 @@ const Members = () => {
     }
   };
 
-  // src/pages/Members.jsx - Updated Delete Function
-
-const handleDeleteMember = async (memberId) => {
-  if (!window.confirm('Are you sure you want to delete this member? This will also remove them from all attendance devices.')) return;
-  
-  setLoading(true);
-  try {
-    console.log('Deleting member with ID:', memberId);
-    
-    // FIX: Use the correct DELETE endpoint
-    const response = await api.delete(`/gym/members/${memberId}`);
-    
-    console.log('Delete response:', response.data);
-    
-    if (response.data.removed_from_devices > 0) {
-      toast.success(
-        `✅ Member deleted successfully!\n\n` +
-        `Removed from ${response.data.removed_from_devices} device(s).\n` +
-        `The device will sync within 3 seconds.`,
-        { duration: 5000 }
-      );
-    } else if (response.data.device_user_id) {
-      toast.warning(
-        `⚠️ Member deleted but not removed from devices.\n\n` +
-        `The member had a device ID (${response.data.device_user_id}) but no active devices were found.`,
-        { duration: 5000 }
-      );
-    } else {
-      toast.success('Member deleted successfully! (No device sync needed)');
-    }
-    
-    // Remove from local state
-    setMembers(prev => prev.filter(m => m.id !== memberId));
-    setSelectedMembers(prev => prev.filter(id => id !== memberId));
-    fetchStats();
-    refreshAllData();
-    
-  } catch (error) {
-    console.error('Delete error:', error);
-    
-    // Better error handling
-    if (error.response) {
-      console.error('Error response:', error.response.data);
-      console.error('Error status:', error.response.status);
-      
-      if (error.response.status === 405) {
-        toast.error('API endpoint not found. Please check the server configuration.');
-      } else if (error.response.status === 403) {
-        toast.error('You do not have permission to delete members.');
-      } else if (error.response.status === 404) {
-        toast.error('Member not found. It may have been already deleted.');
-      } else {
-        toast.error(error.response?.data?.detail || 'Failed to delete member');
-      }
-    } else if (error.request) {
-      toast.error('Network error. Please check your connection.');
-    } else {
-      toast.error('Failed to delete member. Please try again.');
-    }
-  } finally {
-    setLoading(false);
-  }
-};
-
-
-  const handleBulkDelete = async () => {
-    if (selectedMembers.length === 0) return;
-    if (!window.confirm(`Are you sure you want to delete ${selectedMembers.length} members?`)) return;
-    try {
-      await Promise.all(selectedMembers.map(id => api.delete(`/gym/members/${id}`)));
-      setMembers(members.filter(m => !selectedMembers.includes(m.id)));
-      setSelectedMembers([]);
-      fetchStats();
-      toast.success(`${selectedMembers.length} members deleted successfully!`);
-    } catch (error) {
-      toast.error('Failed to delete some members');
-    }
-  };
+  // ============================================================
+  // BULK DELETE FUNCTION
+  // ============================================================
+  // (Already defined above)
 
   const handleBulkSyncToDevice = async () => {
     if (!selectedBulkDevice) {
-      toast.error('Please select a device');
-      return;
+        toast.error('Please select a device');
+        return;
     }
 
     if (selectedMembers.length === 0) {
-      toast.error('Please select members to sync');
-      return;
+        toast.error('Please select members to sync');
+        return;
     }
 
     setSyncingAll(true);
     try {
-      const memberIds = selectedMembers;
-      const result = await attendanceApi.bulkSyncMembersToDevice(selectedBulkDevice.id, memberIds);
-      
-      if (result.success) {
-        toast.success(`Syncing ${memberIds.length} members to device ${selectedBulkDevice.device_name}`);
+        const memberIds = selectedMembers;
+        const result = await attendanceApi.bulkSyncMembersToDevice(selectedBulkDevice.id, memberIds);
         
-        setMembers(prevMembers => 
-          prevMembers.map(m => 
-            memberIds.includes(m.id) 
-              ? { ...m, syncedToDevice: true, deviceUserId: String(m.id) }
-              : m
-          )
-        );
-        
-        setSelectedMembers([]);
-        setShowBulkDeviceSelect(false);
-        setSelectedBulkDevice(null);
-        refreshAllData();
-        
-        setTimeout(() => fetchMembers(), 2000);
-      } else {
-        toast.error(result.error || 'Bulk sync failed');
-      }
+        if (result.success) {
+            toast.success(`Syncing ${memberIds.length} members to device ${selectedBulkDevice.device_name}`);
+            
+            setMembers(prevMembers => 
+                prevMembers.map(m => 
+                    memberIds.includes(m.id) 
+                        ? { ...m, syncedToDevice: true, deviceUserId: String(m.id) }
+                        : m
+                )
+            );
+            
+            setSelectedMembers([]);
+            setShowBulkDeviceSelect(false);
+            setSelectedBulkDevice(null);
+            refreshAllData();
+            
+            // ===== FIX: Trigger immediate sync =====
+            if (result.device_serial) {
+                try {
+                    await api.post(`/attendance/devices/trigger-sync?device_serial=${result.device_serial}`);
+                    console.log('✅ Triggered immediate device sync');
+                } catch (triggerError) {
+                    console.warn('Could not trigger immediate sync, will wait for normal poll:', triggerError);
+                }
+            }
+            
+            setTimeout(() => fetchMembers(), 2000);
+        } else {
+            toast.error(result.error || 'Bulk sync failed');
+        }
     } catch (error) {
-      console.error('Bulk sync error:', error);
-      toast.error(error.response?.data?.detail || 'Bulk sync failed');
+        console.error('Bulk sync error:', error);
+        toast.error(error.response?.data?.detail || 'Bulk sync failed');
     } finally {
-      setSyncingAll(false);
+        setSyncingAll(false);
     }
-  };
+};
 
   const handleExport = async () => {
     try {
@@ -780,10 +1024,34 @@ const handleDeleteMember = async (memberId) => {
     );
   };
 
-  const openDeviceSyncModal = (member) => {
-    setSelectedMemberForSync(member);
-    setShowDeviceSyncModal(true);
+ 
+
+const openDeviceSyncModal = (member) => {
+  // Ensure we have all required fields with proper mapping
+  const memberData = {
+    id: member.id,
+    full_name: member.fullName || member.full_name || '',
+    fullName: member.fullName || member.full_name || '',
+    phone: member.phone || '',
+    email: member.email || '',
+    device_user_id: member.deviceUserId || member.device_user_id || null,
+    deviceUserId: member.deviceUserId || member.device_user_id || null,
+    syncedToDevice: member.syncedToDevice || false,
+    membership: member.membership || '',
+    status: member.status || 'inactive',
+    joinDate: member.joinDate || '',
+    avatar: member.avatar || '',
+    // Include raw data if available
+    raw: member.raw || member
   };
+  
+  console.log('📱 Opening sync modal for member:', memberData);
+  console.log('📞 Phone number:', memberData.phone);
+  console.log('🆔 Device ID from phone:', memberData.phone ? memberData.phone.replace(/\D/g, '') : 'No phone');
+  
+  setSelectedMemberForSync(memberData);
+  setShowDeviceSyncModal(true);
+};
 
   const handleSyncComplete = (deviceUserId, memberId) => {
     console.log('Sync complete called with:', { deviceUserId, memberId });
@@ -820,7 +1088,6 @@ const handleDeleteMember = async (memberId) => {
   };
 
   // Members are already filtered and paginated from the server
-  // We just display what the server returns
   const paginatedMembers = members;
   const displayTotalPages = totalPages;
 
@@ -878,8 +1145,23 @@ const handleDeleteMember = async (memberId) => {
     }
   };
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <div className="p-6">
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setMemberToDelete(null);
+        }}
+        onConfirm={handleConfirmDelete}
+        member={memberToDelete}
+        loading={deleting}
+      />
+
       {/* Header Stats - Clickable Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <div 
@@ -997,8 +1279,24 @@ const handleDeleteMember = async (memberId) => {
                   )}
                   Sync ({selectedMembers.length})
                 </button>
-                <button onClick={handleBulkDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+                <button 
+                  onClick={handleBulkDelete} 
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
                   Delete ({selectedMembers.length})
+                </button>
+                <button 
+                  onClick={handleBulkLinkToDevice}
+                  disabled={linkingMembers || activeDevices.length === 0}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {linkingMembers ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Link className="h-4 w-4" />
+                  )}
+                  Link ({selectedMembers.length})
                 </button>
                 <button onClick={() => setSelectedMembers([])} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50">
                   <X className="h-5 w-5" />
@@ -1207,32 +1505,54 @@ const handleDeleteMember = async (memberId) => {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button 
-                        onClick={() => handleDownloadInvoice(member)} 
-                        className="text-green-600 hover:text-green-900 mr-3 inline-flex items-center"
-                        title="Download Invoice"
-                        disabled={downloadingInvoice === member.id}
-                      >
-                        {downloadingInvoice === member.id ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
-                        ) : (
-                          <FileText className="h-4 w-4" />
-                        )}
-                      </button>
-                      <button 
-                        onClick={() => openDeviceSyncModal(member)} 
-                        className="text-purple-600 hover:text-purple-900 mr-3"
-                        title="Sync to Attendance Device"
-                      >
-                        <Wifi className="h-4 w-4" />
-                      </button>
-                      <button onClick={() => openEditModal(member)} className="text-blue-600 hover:text-blue-900 mr-3">
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button onClick={() => handleDeleteMember(member.id)} className="text-red-600 hover:text-red-900">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
+                    <button 
+                      onClick={() => handleDownloadInvoice(member)} 
+                      className="text-green-600 hover:text-green-900 mr-3 inline-flex items-center"
+                      title="Download Invoice"
+                      disabled={downloadingInvoice === member.id}
+                    >
+                      {downloadingInvoice === member.id ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                    </button>
+                    
+                    {/* Updated Device Sync Button - Pass complete member data */}
+                    <button 
+                      onClick={() => {
+                        // Create a complete member object before opening modal
+                        const memberForSync = {
+                          id: member.id,
+                          full_name: member.fullName,
+                          fullName: member.fullName,
+                          phone: member.phone,
+                          email: member.email || '',
+                          device_user_id: member.deviceUserId || null,
+                          deviceUserId: member.deviceUserId || null,
+                          syncedToDevice: member.syncedToDevice || false,
+                          membership: member.membership,
+                          status: member.status,
+                          joinDate: member.joinDate,
+                          avatar: member.avatar,
+                          raw: member.raw || member
+                        };
+                        openDeviceSyncModal(memberForSync);
+                      }} 
+                      className="text-purple-600 hover:text-purple-900 mr-3"
+                      title="Sync to Attendance Device"
+                    >
+                      <Wifi className="h-4 w-4" />
+                    </button>
+                    
+                    <button onClick={() => openEditModal(member)} className="text-blue-600 hover:text-blue-900 mr-3">
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    
+                    <button onClick={() => handleDeleteClick(member)} className="text-red-600 hover:text-red-900">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </td>
                   </tr>
                 ))
               )}

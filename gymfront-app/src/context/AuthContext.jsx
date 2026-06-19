@@ -8,6 +8,7 @@ const AuthContext = createContext();
 // const API_BASE_URL = 'http://localhost:8001';
 const API_BASE_URL = 'https://api.gymmonitor.in';
 
+
 export const useAuth = () => { 
   const context = useContext(AuthContext);
   if (!context) {
@@ -15,6 +16,7 @@ export const useAuth = () => {
   }
   return context;
 };
+
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);

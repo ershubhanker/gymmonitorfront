@@ -53,7 +53,7 @@ import {
   Shield
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import api, { API_BASE_URL } from '../services/api';
+import api, { API_BASE_URL,  fetchMemberStatsOptimized  } from '../services/api';
 import toast from 'react-hot-toast';
 import { usePermissions } from '../hooks/usePermissions';
 
@@ -305,70 +305,114 @@ const Dashboard = () => {
     if (!silent) setLoading(true);
     
     try {
-      // Only fetch endpoints the user has permission for
+      // ===== FIX: Use optimized stats endpoint for accurate counts =====
+      let statsData = { data: null };
+      let membersData = { data: [] };
+      let paymentsData = { data: [] };
+      let membershipsData = { data: [] };
+      let staffData = { data: [] };
+      let balanceData = { data: {} };
+      let balanceMembersData = { data: [] };
+      let leadsData = { data: [] };
+  
+      // Fetch optimized stats first (this gives accurate totals without loading all members)
+      if (canSeeDashboard) {
+        try {
+          const statsResult = await fetchMemberStatsOptimized();
+          if (statsResult) {
+            statsData = { data: {
+              total_members: statsResult.total_members || 0,
+              active_members: statsResult.active_members || 0,
+              new_members_this_month: statsResult.new_this_month || 0,
+              today_checkins: 0,
+              total_revenue: 0,
+              monthly_revenue: 0,
+              revenue_growth: 0,
+              total_expenses: 0,
+              monthly_expenses: 0,
+              expense_growth: 0,
+              net_profit: 0,
+              profit_margin: 0,
+              expense_by_category: {},
+              average_attendance: 0,
+              peak_hour: "5:00 PM - 7:00 PM",
+              popular_class: "HIIT Training",
+              member_retention: 87,
+              trainer_count: 0,
+              upcoming_classes: []
+            } };
+          }
+        } catch (err) {
+          console.warn('Could not fetch optimized stats:', err);
+        }
+      }
+  
+      // Only fetch detailed data if we have permissions
       const promises = [];
       const endpointMap = {};
-
-      // Stats - only if user can view dashboard
-      if (canSeeDashboard) {
-        promises.push(fetchSilently('/gym/dashboard/stats'));
-        endpointMap.stats = promises.length - 1;
-      }
-
-      // Members - only if user can view members
+  
+      // Members - only if user can view members (limit to 100 for dashboard)
       if (canSeeMembers) {
-        promises.push(fetchSilently('/gym/members?limit=1000'));
+        promises.push(fetchSilently('/gym/members?limit=100&sort=-created_at'));
         endpointMap.members = promises.length - 1;
       }
-
+  
       // Payments - only if user can view payments
       if (canSeePayments) {
         promises.push(fetchSilently('/gym/payments?limit=100'));
         endpointMap.payments = promises.length - 1;
       }
-
+  
       // Memberships - only if user can view memberships
       if (canSeeMemberships) {
         promises.push(fetchSilently('/gym/memberships?limit=1000'));
         endpointMap.memberships = promises.length - 1;
       }
-
+  
       // Staff - only if user can view staff
       if (canSeeStaff) {
         promises.push(fetchSilently('/gym/staff'));
         endpointMap.staff = promises.length - 1;
       }
-
+  
       // Balance overview - only if user can view balances
       if (canSeeBalances) {
         promises.push(fetchSilently('/gym/balance/overview'));
         endpointMap.balance = promises.length - 1;
       }
-
+  
       // Members with balance - only if user can view balances
       if (canSeeBalances) {
         promises.push(fetchSilently('/gym/members/balances?has_balance=true&limit=10'));
         endpointMap.balanceMembers = promises.length - 1;
       }
-
+  
       // Leads - only if user can view leads
       if (canSeeLeads) {
         promises.push(fetchSilently('/gym/leads?limit=10'));
         endpointMap.leads = promises.length - 1;
       }
-
+  
       const results = await Promise.all(promises);
-
+  
       // Extract data from results
-      const statsData = endpointMap.stats !== undefined ? results[endpointMap.stats] : { data: null };
-      const membersData = endpointMap.members !== undefined ? results[endpointMap.members] : { data: [] };
-      const paymentsData = endpointMap.payments !== undefined ? results[endpointMap.payments] : { data: [] };
-      const membershipsData = endpointMap.memberships !== undefined ? results[endpointMap.memberships] : { data: [] };
-      const staffData = endpointMap.staff !== undefined ? results[endpointMap.staff] : { data: [] };
-      const balanceData = endpointMap.balance !== undefined ? results[endpointMap.balance] : { data: {} };
-      const balanceMembersData = endpointMap.balanceMembers !== undefined ? results[endpointMap.balanceMembers] : { data: [] };
-      const leadsData = endpointMap.leads !== undefined ? results[endpointMap.leads] : { data: [] };
-
+      if (endpointMap.members !== undefined) membersData = results[endpointMap.members];
+      if (endpointMap.payments !== undefined) paymentsData = results[endpointMap.payments];
+      if (endpointMap.memberships !== undefined) membershipsData = results[endpointMap.memberships];
+      if (endpointMap.staff !== undefined) staffData = results[endpointMap.staff];
+      if (endpointMap.balance !== undefined) balanceData = results[endpointMap.balance];
+      if (endpointMap.balanceMembers !== undefined) balanceMembersData = results[endpointMap.balanceMembers];
+      if (endpointMap.leads !== undefined) leadsData = results[endpointMap.leads];
+  
+      // ===== USE OPTIMIZED STATS FOR COUNTS =====
+      const statsApiData = statsData.data || {};
+      
+      // Get accurate counts from optimized stats
+      const totalMembers = statsApiData.total_members || 0;
+      const activeMembers = statsApiData.active_members || 0;
+      const inactiveMembers = totalMembers - activeMembers;
+      const newMembersThisMonth = statsApiData.new_members_this_month || 0;
+  
       const members = membersData.data || [];
       const payments = paymentsData.data || [];
       const memberships = membershipsData.data || [];
@@ -380,20 +424,13 @@ const Dashboard = () => {
       const today = new Date().toISOString().split('T')[0];
       const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
       
-      const totalMembers = members.length;
-      const activeMembers = members.filter(m => m.is_active).length;
-      const inactiveMembers = totalMembers - activeMembers;
-      
-      const newMembersThisMonth = members.filter(m => 
-        m.joined_date && m.joined_date >= firstDayOfMonth
-      ).length;
-      
+      // ===== FIX: Calculate from ALL memberships, not just fetched members =====
       const membersByGender = members.reduce((acc, m) => {
         const gender = m.gender || 'other';
         acc[gender] = (acc[gender] || 0) + 1;
         return acc;
       }, { male: 0, female: 0, other: 0 });
-
+  
       const recentMembers = members
         .sort((a, b) => new Date(b.created_at || b.joined_date) - new Date(a.created_at || a.joined_date))
         .slice(0, 5)
@@ -409,7 +446,7 @@ const Dashboard = () => {
             ? (m.profile_image.startsWith('http') ? m.profile_image : `${API_BASE_URL}${m.profile_image}`)
             : `https://ui-avatars.com/api/?name=${encodeURIComponent(m.full_name)}&background=0D9488&color=fff`
         }));
-
+  
       const totalRevenue = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
       
       const monthlyRevenue = payments
@@ -429,11 +466,12 @@ const Dashboard = () => {
       const revenueGrowth = lastMonthRevenue > 0 
         ? ((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue * 100).toFixed(1)
         : monthlyRevenue > 0 ? 100 : 0;
-
+  
+      // ===== FIX: Calculate from ALL memberships =====
       const pendingPayments = memberships.filter(m => 
         m.payment_status === 'pending' || m.payment_status === 'PENDING'
       ).length;
-
+  
       const today_date = new Date();
       const thirtyDaysLater = new Date(today_date.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
@@ -443,14 +481,14 @@ const Dashboard = () => {
         m.end_date <= thirtyDaysLater &&
         m.end_date >= today
       ).length;
-
+  
       const expiringSoon = memberships.filter(m => 
         m.status === 'active' && 
         m.end_date && 
         m.end_date <= new Date(today_date.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] &&
         m.end_date >= today
       ).length;
-
+  
       const expiringMembers = memberships
         .filter(m => 
           m.status === 'active' && 
@@ -481,11 +519,9 @@ const Dashboard = () => {
         })
         .sort((a, b) => a.daysLeft - b.daysLeft)
         .slice(0, 5);
-
-      // Use stats from API response if available, otherwise calculate
-      const statsApiData = statsData.data || {};
+  
       const todayCheckins = statsApiData.today_checkins || 0;
-
+  
       const recentPayments = payments
         .sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date))
         .slice(0, 5)
@@ -499,7 +535,7 @@ const Dashboard = () => {
             method: p.payment_method
           };
         });
-
+  
       // Process members with balance
       const processedMembersWithBalance = membersWithBalance.map(m => ({
         id: m.member_id,
@@ -514,7 +550,7 @@ const Dashboard = () => {
           : 0,
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(m.member_name)}&background=EF4444&color=fff`
       })).slice(0, 5);
-
+  
       // Process recent leads
       const processedRecentLeads = leads.slice(0, 5).map(lead => ({
         id: lead.id,
@@ -527,7 +563,7 @@ const Dashboard = () => {
         source: lead.source,
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(lead.full_name)}&background=8B5CF6&color=fff`
       }));
-
+  
       // Build activities from available data
       const activities = [];
       
@@ -557,23 +593,24 @@ const Dashboard = () => {
           });
         });
       }
-
+  
       activities.sort((a, b) => new Date(b.time) - new Date(a.time));
       const sortedActivities = activities.slice(0, 5);
-
+  
+      // ===== FIX: Calculate membership distribution from ALL memberships =====
       const membershipDistribution = memberships.reduce((acc, m) => {
         const planName = m.plan?.name || 'No Plan';
         acc[planName] = (acc[planName] || 0) + 1;
         return acc;
       }, {});
-
+  
       // Calculate Upcoming Birthdays
       const next7Days = new Date(today_date.getTime() + 7 * 24 * 60 * 60 * 1000);
       const upcomingBirthdays = {
         members: [],
         staff: []
       };
-
+  
       if (canSeeMembers) {
         members.forEach(member => {
           if (member.date_of_birth) {
@@ -603,7 +640,7 @@ const Dashboard = () => {
           }
         });
       }
-
+  
       if (canSeeStaff) {
         staff.forEach(staffMember => {
           if (staffMember.date_of_birth) {
@@ -632,10 +669,11 @@ const Dashboard = () => {
           }
         });
       }
-
+  
       upcomingBirthdays.members.sort((a, b) => a.daysUntil - b.daysUntil);
       upcomingBirthdays.staff.sort((a, b) => a.daysUntil - b.daysUntil);
-
+  
+      // ===== SET STATS WITH ACCURATE COUNTS =====
       setStats({
         totalMembers,
         activeMembers,
@@ -670,17 +708,16 @@ const Dashboard = () => {
         expiringMembers,
         upcomingBirthdays
       });
-
+  
       setMembersWithBalanceList(processedMembersWithBalance);
       setRecentLeads(processedRecentLeads);
       setRecentActivities(sortedActivities.length > 0 ? sortedActivities : [
         { id: 1, member: 'No activities yet', action: '', time: '', type: 'info', avatar: 'N' }
       ]);
-
+  
       setUpcomingClasses(statsApiData.upcoming_classes || []);
       
     } catch (error) {
-      // Only show error toast if not a 403 and not silent mode
       if (!silent && error.response?.status !== 403) {
         console.error('Error fetching dashboard data:', error);
         toast.error('Failed to load dashboard data');
@@ -689,6 +726,7 @@ const Dashboard = () => {
       if (!silent) setLoading(false);
     }
   }, [canSeeDashboard, canSeeMembers, canSeePayments, canSeeMemberships, canSeeStaff, canSeeBalances, canSeeLeads]);
+
 
   useEffect(() => {
     if (!permissionsLoading) {

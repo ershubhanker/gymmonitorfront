@@ -1,4 +1,5 @@
-// src/components/BulkImportModal.jsx
+// src/components/BulkImportModal.jsx - FIXED DUPLICATE HANDLING
+
 import React, { useState, useRef } from 'react';
 import { X, Upload, FileSpreadsheet, Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -14,13 +15,11 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   const [step, setStep] = useState(1);
   const [plansCreated, setPlansCreated] = useState([]);
   
-  // Use ref for cancellation to avoid state lag
   const isCancelledRef = useRef(false);
   const abortControllerRef = useRef(null);
 
   if (!isOpen) return null;
 
-  // Helper: Parse date from DD/MM/YYYY to YYYY-MM-DD
   const parseDate = (dateStr) => {
     if (!dateStr) return null;
     
@@ -57,7 +56,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     return null;
   };
 
-  // Helper: Extract duration from plan name
   const extractDuration = (planName) => {
     if (!planName) return { durationDays: 30, planType: 'monthly' };
     
@@ -111,7 +109,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
 
-    // Reset cancellation state when uploading new file
     isCancelledRef.current = false;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -169,22 +166,16 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     setFile(selectedFile);
   };
 
-  // Cancel import - stops the upload and goes back to preview
   const handleCancelImport = () => {
-    // Set cancellation flag
     isCancelledRef.current = true;
-    
-    // Abort any ongoing API requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    
     setUploading(false);
-    toast.info('Import cancelled. You can review the data and try again.');
+    toast.info('Import cancelled.');
   };
 
-  // Cancel and close - close the modal entirely
   const handleCancelAndClose = () => {
     if (uploading) {
       isCancelledRef.current = true;
@@ -198,16 +189,15 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   const handleImport = async () => {
-    // Reset cancellation flag
     isCancelledRef.current = false;
     setUploading(true);
     setImportProgress({ current: 0, total: previewData.length });
-    const results = { success: 0, failed: 0, errors: [], plansCreated: [] };
+    
+    const results = { success: 0, failed: 0, skipped: 0, errors: [], plansCreated: [] };
     const createdPlans = [];
-  
-    // Create abort controller for cancellation
+
     abortControllerRef.current = new AbortController();
-  
+
     try {
       // Step 1: Get existing plans
       let existingPlans = [];
@@ -217,19 +207,19 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       } catch (planError) {
         console.warn('Could not fetch existing plans:', planError);
       }
-  
+
       const existingPlanMap = {};
       existingPlans.forEach(p => {
         existingPlanMap[p.name?.toLowerCase().trim()] = p.id;
       });
-  
+
       // Step 2: Find unique plan names from Excel that don't exist
       const uniquePlans = [...new Set(previewData.map(m => m.plan_name).filter(Boolean))];
       const plansToCreate = uniquePlans.filter(name => {
         const cleanName = name.toLowerCase().trim();
         return !existingPlanMap[cleanName];
       });
-  
+
       // Step 3: Create missing plans
       if (plansToCreate.length > 0 && !isCancelledRef.current) {
         toast.loading(`Creating ${plansToCreate.length} missing plans...`, { id: 'create-plans' });
@@ -256,7 +246,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               is_active: true,
               features: JSON.stringify([`${durationDays} days membership`])
             };
-  
+
             const newPlanResponse = await api.post('/gym/plans', planData);
             const newPlan = newPlanResponse.data;
             
@@ -279,13 +269,13 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           toast.success(`Created ${createdPlans.length} new plans`);
         }
       }
-  
+
       if (isCancelledRef.current) {
         setUploading(false);
         setStep(2);
         return;
       }
-  
+
       // Step 4: Get updated plan list
       let allPlans = [];
       try {
@@ -294,15 +284,21 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       } catch (error) {
         console.warn('Could not fetch updated plans:', error);
       }
-  
+
       const planIdMap = {};
       allPlans.forEach(p => {
         planIdMap[p.name?.toLowerCase().trim()] = p.id;
       });
-  
+
       const defaultPlan = allPlans.find(p => p.is_active) || allPlans[0];
-  
-      // Step 5: Import members
+
+      // ============================================================
+      // FIX: Track successfully imported phones only
+      // Phone numbers must be unique - we track what we've already
+      // successfully imported in this batch
+      // ============================================================
+      const successfullyImportedPhones = new Set();
+      
       for (let i = 0; i < previewData.length; i++) {
         if (isCancelledRef.current) {
           toast.info('Import cancelled.');
@@ -310,29 +306,26 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           setStep(2);
           return;
         }
-  
+
         const member = previewData[i];
         setImportProgress({ current: i + 1, total: previewData.length });
-  
-        let membershipCreated = false;
-  
+
+        // ===== FIX: Check if this phone was already SUCCESSFULLY imported =====
+        // Since phone numbers must be unique, we skip any duplicates in the file
+        if (successfullyImportedPhones.has(member.phone)) {
+          results.skipped++;
+          results.errors.push({
+            member: member.full_name,
+            error: `Duplicate phone number: ${member.phone} (already imported earlier in this file)`
+          });
+          console.log(`⏭️ Skipped duplicate (already imported): ${member.full_name} - ${member.phone}`);
+          continue;
+        }
+
+        let importSuccess = false;
+
         try {
-          // Check if member already exists by phone
-          const existingResponse = await api.get(`/gym/members?phone=${member.phone}`);
-          const existingMembers = existingResponse.data || [];
-          
-          if (existingMembers.some(m => m.phone === member.phone)) {
-            results.failed++;
-            results.errors.push({ 
-              member: member.full_name, 
-              error: 'Member already exists with this phone number' 
-            });
-            continue;
-          }
-  
           // Determine if member should be active based on Excel status
-          // If status is explicitly 'inactive' in Excel, set is_active to false
-          // Otherwise, set to true (will be overridden by membership later)
           const shouldBeActive = member.status !== false;
           
           // Prepare member data
@@ -340,14 +333,13 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             full_name: member.full_name,
             phone: member.phone,
             gender: member.gender || 'male',
-            // Set is_active based on Excel status, but backend will override based on membership
             is_active: shouldBeActive,
           };
-  
+
           if (member.email && member.email.includes('@')) {
             memberData.email = member.email;
           }
-  
+
           if (member.address) memberData.address = member.address;
           if (member.date_of_birth) {
             const dob = parseDate(member.date_of_birth);
@@ -364,11 +356,15 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           } else {
             memberData.joined_date = new Date().toISOString().split('T')[0];
           }
-  
-          // Create member
+
+          // Create member - backend will handle duplicate phone check
           const memberResponse = await api.post('/gym/members', memberData);
           const newMember = memberResponse.data;
-  
+          
+          // ===== FIX: Mark phone as successfully imported ONLY after member creation succeeds =====
+          importSuccess = true;
+          successfullyImportedPhones.add(member.phone);
+
           // Find plan ID
           let planId = null;
           let planName = member.plan_name;
@@ -391,9 +387,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             planId = defaultPlan.id;
             planName = defaultPlan.name;
           }
-  
+
           // Create membership ONLY if member should be active
-          // If Excel status is 'inactive', don't create membership
           if (shouldBeActive && planId) {
             try {
               let startDate = member.joined_date;
@@ -424,7 +419,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 };
                 
                 await api.post('/gym/memberships', membershipPayload);
-                membershipCreated = true;
                 console.log(`✅ Created membership for ${member.full_name} with plan ${planName}`);
               } else {
                 results.errors.push({
@@ -441,42 +435,63 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               });
             }
           } else if (shouldBeActive && !planId) {
-            // Member should be active but no plan found
             results.errors.push({
               member: member.full_name,
               error: 'No plan found for membership'
             });
           } else {
-            // Member is intentionally inactive - log it
             console.log(`ℹ️ Member ${member.full_name} imported as inactive (no membership created)`);
           }
-  
+
           results.success++;
-  
+          console.log(`✅ Imported: ${member.full_name} (${member.phone})`);
+
         } catch (error) {
           console.error('Error importing member:', error);
-          results.failed++;
-          results.errors.push({
-            member: member.full_name,
-            error: error.response?.data?.detail || error.message || 'Unknown error'
-          });
+          
+          const errorMsg = error.response?.data?.detail || error.message || 'Unknown error';
+          
+          // Check if error is due to duplicate phone in database
+          const isDuplicateError = errorMsg.toLowerCase().includes('already exists') || 
+                                   errorMsg.toLowerCase().includes('duplicate') || 
+                                   errorMsg.toLowerCase().includes('phone');
+          
+          if (isDuplicateError) {
+            results.skipped++;
+            results.errors.push({
+              member: member.full_name,
+              error: `Member already exists with phone: ${member.phone} (skipped)`
+            });
+            console.log(`⏭️ Skipped (already exists in DB): ${member.full_name} - ${member.phone}`);
+            // ===== FIX: Don't add to successfullyImportedPhones since this member wasn't imported =====
+          } else {
+            results.failed++;
+            results.errors.push({
+              member: member.full_name,
+              error: errorMsg
+            });
+            // ===== FIX: Don't add to successfullyImportedPhones since this member failed =====
+          }
         }
-  
+
         await new Promise(resolve => setTimeout(resolve, 200));
       }
-  
+
       if (isCancelledRef.current) {
         toast.info('Import cancelled.');
         setUploading(false);
         setStep(2);
         return;
       }
-  
+
       setResults(results);
       setPlansCreated(createdPlans);
       setStep(3);
       
       let summaryMessage = `Import complete! ${results.success} members imported successfully.`;
+      if (results.skipped > 0) {
+        summaryMessage += ` ${results.skipped} skipped (duplicates).`;
+      }
       if (createdPlans.length > 0) {
         summaryMessage += ` Created ${createdPlans.length} new plans.`;
       }
@@ -500,7 +515,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   const handleClose = () => {
-    // Reset all state
     isCancelledRef.current = false;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -517,7 +531,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     onClose();
   };
 
-  // Render step 2 with Cancel button
   const renderStep2 = () => (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -534,6 +547,34 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         </button>
       </div>
 
+      {(() => {
+        // Show duplicate warnings for the file
+        const phoneCounts = {};
+        previewData.forEach(m => {
+          phoneCounts[m.phone] = (phoneCounts[m.phone] || 0) + 1;
+        });
+        const duplicates = Object.entries(phoneCounts).filter(([phone, count]) => count > 1);
+        if (duplicates.length > 0) {
+          return (
+            <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p className="text-sm text-yellow-700">
+                <strong>⚠️ Duplicate Phone Numbers Found:</strong> 
+                {duplicates.map(([phone, count]) => (
+                  <span key={phone} className="ml-2 inline-block">
+                    {phone} ({count} times)
+                  </span>
+                ))}
+                <br />
+                <span className="text-xs text-yellow-600">
+                  Only the first occurrence will be imported. All other occurrences with the same phone will be skipped.
+                </span>
+              </p>
+            </div>
+          );
+        }
+        return null;
+      })()}
+
       <div className="max-h-96 overflow-y-auto border rounded-lg">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50 sticky top-0">
@@ -544,23 +585,42 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duplicate</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {previewData.slice(0, 50).map((member, index) => (
-              <tr key={index} className="hover:bg-gray-50">
-                <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{member.full_name}</td>
-                <td className="px-4 py-3 text-sm text-gray-600">{member.phone}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{member.email || '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{member.plan_name || '—'}</td>
-                <td className="px-4 py-3 text-sm">
-                  <span className={`px-2 py-1 rounded-full text-xs ${member.status !== false ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                    {member.status !== false ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-              </tr>
-            ))}
+            {previewData.slice(0, 50).map((member, index) => {
+              const isDuplicate = previewData.filter(m => m.phone === member.phone).length > 1;
+              const isFirstOccurrence = previewData.findIndex(m => m.phone === member.phone) === index;
+              
+              return (
+                <tr key={index} className={`hover:bg-gray-50 ${isDuplicate && !isFirstOccurrence ? 'bg-yellow-50' : ''}`}>
+                  <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{member.full_name}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    {member.phone}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{member.email || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{member.plan_name || '—'}</td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className={`px-2 py-1 rounded-full text-xs ${member.status !== false ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                      {member.status !== false ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {isDuplicate && isFirstOccurrence && (
+                      <span className="text-xs text-green-600">Will be imported</span>
+                    )}
+                    {isDuplicate && !isFirstOccurrence && (
+                      <span className="text-xs text-yellow-600">⚠️ Will be skipped</span>
+                    )}
+                    {!isDuplicate && (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {previewData.length > 50 && (
@@ -572,8 +632,12 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
       <div className="mt-4 bg-blue-50 rounded-lg p-3">
         <p className="text-sm text-blue-700">
-          <strong>ℹ️ Import Process:</strong> Any plans that don't already exist in the system will be 
-          automatically created with appropriate duration based on the plan name.
+          <strong>ℹ️ Import Process:</strong> Plans will be auto-created if they don't exist.
+          <br />
+          <strong>ℹ️ Phone Number Rules:</strong> 
+          <br />• Phone numbers must be unique across all members
+          <br />• Duplicate phone numbers in the file will be skipped (only first occurrence imported)
+          <br />• If a phone number already exists in the database, the import will be skipped
         </p>
       </div>
 
@@ -629,11 +693,10 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     </div>
   );
 
-  // Render step 3 with Close button
   const renderStep3 = () => (
     <div>
       <div className="text-center mb-6">
-        {results.failed === 0 ? (
+        {results.failed === 0 && results.skipped === 0 ? (
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="h-8 w-8 text-green-600" />
           </div>
@@ -651,6 +714,10 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           <div>
             <p className="text-sm text-gray-500">Successful</p>
             <p className="text-2xl font-bold text-green-600">{results.success}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Skipped (Duplicates)</p>
+            <p className="text-2xl font-bold text-yellow-600">{results.skipped || 0}</p>
           </div>
           <div>
             <p className="text-sm text-gray-500">Failed</p>
@@ -749,6 +816,11 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 </pre>
                 <p className="text-xs text-gray-400 mt-2">
                   Note: Dates should be in DD/MM/YYYY format. Plans will be auto-created if they don't exist.
+                  <br />
+                  <strong>Phone Number Rules:</strong> 
+                  <br />• Phone numbers must be unique across all members
+                  <br />• Duplicate phone numbers in the file will be skipped
+                  <br />• Existing members in the database will also be skipped
                 </p>
               </div>
             </div>

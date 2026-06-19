@@ -477,6 +477,7 @@ const PlanFormModal = ({ plan, onSave, onCancel }) => {
     discounted_price: plan?.discounted_price?.toString() || '',
     description: plan?.description || '',
     is_active: plan?.is_active ?? true,
+    attendance_id: '',
   });
 
   const handlePreset = (preset) => {
@@ -487,6 +488,18 @@ const PlanFormModal = ({ plan, onSave, onCancel }) => {
       name: prev.name || preset.label,
     }));
   };
+
+
+  // When phone changes, auto-update attendance_id
+const handlePhoneChange = (e) => {
+  const phone = e.target.value;
+  setFormData(prev => ({
+      ...prev,
+      phone: phone,
+      // Auto-update attendance_id if it's empty or equals previous phone
+      attendance_id: prev.attendance_id === prev.phone ? phone : prev.attendance_id
+  }));
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -539,6 +552,36 @@ const PlanFormModal = ({ plan, onSave, onCancel }) => {
             ))}
           </div>
         </div>
+
+        <div className="col-span-2">
+    <label className="block text-sm font-medium text-gray-700 mb-1">
+        Attendance ID (Device ID)
+        <span className="text-xs text-gray-500 ml-2">
+            Should match the User ID on the attendance device
+        </span>
+    </label>
+    <div className="flex gap-2">
+        <input
+            type="text"
+            value={formData.attendance_id}
+            onChange={(e) => setFormData({ ...formData, attendance_id: e.target.value })}
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Phone number or custom ID"
+        />
+          <button
+              type="button"
+              onClick={() => setFormData({ ...formData, attendance_id: formData.phone })}
+              className="px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 text-sm whitespace-nowrap"
+              title="Set to phone number"
+          >
+              Use Phone
+          </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+              This ID will be used to match the member with the attendance device.
+              Phone number is recommended as it's unique.
+          </p>
+      </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Plan Name <span className="text-red-500">*</span></label>

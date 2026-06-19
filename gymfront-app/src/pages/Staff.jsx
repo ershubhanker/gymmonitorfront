@@ -1333,17 +1333,21 @@ const Staff = () => {
 
   const handleSyncStaffToDevice = async (staffId, deviceId, staffName) => {
     try {
-      const response = await api.post(`/attendance/devices/${deviceId}/sync-staff`, {
+      // Send numeric staff ID; backend adds the 'S' prefix automatically
+      const response = await api.post(`/gym/devices/${deviceId}/sync-staff`, {
         id: staffId,
         full_name: staffName
       });
       
       if (response.data.success) {
-        toast.success(`Staff member "${staffName}" synced to device! Device ID: ${response.data.device_user_id}`);
+        toast.success(`✅ Staff "${staffName}" synced to device!`);
+        
+        // Refresh staff list to show updated device_user_id
         setTimeout(() => {
           fetchStaff();
           fetchStaffDeviceIds();
-        }, 1000);
+        }, 1500);
+        
         return response.data;
       } else {
         toast.error('Failed to sync staff member');
@@ -1352,19 +1356,20 @@ const Staff = () => {
     } catch (error) {
       console.error('Error syncing staff:', error);
       const errorMsg = error.response?.data?.detail || error.message || 'Failed to sync staff member';
-      toast.error(errorMsg);
+      toast.error(`❌ ${errorMsg}`);
       throw error;
     }
   };
 
   const handleSyncSelectedStaff = async (staffIds, deviceId) => {
     try {
-      const response = await api.post(`/attendance/devices/bulk-sync-staff`, staffIds, {
+      // Staff IDs are numeric; backend adds 'S' prefix for each
+      const response = await api.post(`/gym/devices/bulk-sync-staff`, staffIds, {
         params: { device_id: deviceId }
       });
       
       if (response.data.success) {
-        toast.success(`Queued ${staffIds.length} staff members for sync.`);
+        toast.success(`✅ Queued ${staffIds.length} staff members for sync.`);
         setTimeout(() => {
           fetchStaff();
           fetchStaffDeviceIds();
@@ -1377,7 +1382,7 @@ const Staff = () => {
     } catch (error) {
       console.error('Error syncing staff:', error);
       const errorMsg = error.response?.data?.detail || error.message || 'Failed to sync staff members';
-      toast.error(errorMsg);
+      toast.error(`❌ ${errorMsg}`);
       throw error;
     }
   };
