@@ -70,130 +70,78 @@ const DeleteConfirmationModal = ({
   const deviceInfo = member.deviceUserId || 'Unknown Device ID';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all animate-scaleIn">
-        {/* Header */}
-        <div className="flex items-center gap-3 p-6 border-b">
-          <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-            <AlertTriangle className="h-6 w-6 text-red-600" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 transform transition-all">
+        {/* Header - Compact */}
+        <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b">
+          <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+            <AlertTriangle className="h-5 w-5 text-red-600" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Delete Member</h3>
-            <p className="text-sm text-gray-500">This action cannot be undone</p>
+            <h3 className="text-base font-bold text-gray-900">Delete Member</h3>
+            <p className="text-xs text-gray-500">This action cannot be undone</p>
           </div>
-          <button 
-            onClick={onClose} 
-            className="ml-auto p-1 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <X className="h-5 w-5 text-gray-400" />
-          </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6 space-y-4">
-          {/* Member Info */}
-          <div className="bg-gray-50 rounded-xl p-4">
+        {/* Body - Compact */}
+        <div className="px-5 py-4 space-y-3">
+          {/* Member Info - Compact */}
+          <div className="bg-gray-50 rounded-lg p-3">
             <div className="flex items-center gap-3">
               <img 
                 src={member.avatar} 
                 alt={member.fullName}
-                className="h-12 w-12 rounded-full object-cover"
+                className="h-10 w-10 rounded-full object-cover"
                 onError={(e) => {
                   e.target.onerror = null;
                   e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.fullName)}&background=0D9488&color=fff&size=128`;
                 }}
               />
               <div>
-                <p className="font-semibold text-gray-900">{member.fullName}</p>
-                <p className="text-sm text-gray-500">{member.email || member.phone}</p>
+                <p className="font-semibold text-gray-900 text-sm">{member.fullName}</p>
+                <p className="text-xs text-gray-500 truncate max-w-[180px]">{member.email || member.phone}</p>
               </div>
             </div>
           </div>
 
-          {/* Warning Messages */}
-          <div className="space-y-3">
-            {/* Device Sync Warning */}
+          {/* Confirmation Question - Compact */}
+          <div className="text-center py-2">
+            <p className="text-gray-700 text-sm font-medium">
+              Delete <span className="font-bold text-red-600">{member.fullName}</span>?
+            </p>
             {hasDeviceSync && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                <div className="flex items-start gap-3">
-                  <Smartphone className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-yellow-800">
-                      ⚠️ This member is synced to attendance device
-                    </p>
-                    <p className="text-sm text-yellow-700 mt-1">
-                      Device ID: <span className="font-mono bg-yellow-100 px-2 py-0.5 rounded">{deviceInfo}</span>
-                    </p>
-                    <p className="text-sm text-yellow-700 mt-1">
-                      Deleting will automatically remove them from all attendance devices.
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <p className="text-xs text-yellow-600 mt-1.5 flex items-center justify-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Synced to device: {deviceInfo}
+              </p>
             )}
-
-            {/* General Warning */}
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-red-800">
-                    This will permanently delete:
-                  </p>
-                  <ul className="text-sm text-red-700 mt-1 space-y-1">
-                    <li>• Member profile and personal information</li>
-                    <li>• All membership records</li>
-                    <li>• Payment history</li>
-                    <li>• Attendance records</li>
-                    {hasDeviceSync && <li>• Remove from attendance device</li>}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Confirmation Input */}
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Type <span className="font-bold text-red-600">DELETE</span> to confirm
-            </label>
-            <input
-              type="text"
-              id="deleteConfirmInput"
-              placeholder="Type DELETE here..."
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500 transition-colors"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && e.target.value === 'DELETE') {
-                  onConfirm();
-                }
-              }}
-            />
+            <p className="text-xs text-gray-400 mt-1">All data will be permanently removed.</p>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50 rounded-b-2xl">
+        {/* Footer - Compact */}
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t bg-gray-50 rounded-b-xl">
           <button
             onClick={onClose}
             disabled={loading}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50"
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 font-medium"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
             disabled={loading}
-            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+            className="px-5 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 text-sm font-medium"
           >
             {loading ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Deleting...
               </>
             ) : (
               <>
-                <Trash2 className="h-4 w-4" />
-                Yes, Delete Member
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
               </>
             )}
           </button>
