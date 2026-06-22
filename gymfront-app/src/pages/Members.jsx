@@ -1,5 +1,4 @@
-// src/pages/Members.jsx - Updated with Delete Confirmation Modal
-
+// src/pages/Members.jsx - Updated to show single member in table
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Search, 
@@ -23,7 +22,8 @@ import {
   Link,
   AlertTriangle,
   Smartphone,
-  User
+  User,
+  ArrowLeft
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
@@ -206,7 +206,7 @@ const DeleteConfirmationModal = ({
 // ============================================================
 // MAIN MEMBERS COMPONENT
 // ============================================================
-const Members = () => {
+const Members = ({ initialMemberId, onMemberSelect }) => {
   const { user } = useAuth(); 
   const { devices, syncMemberToDevice, removeMemberFromDevice, refreshAllData, attendanceApi } = useAttendance();
   const [searchTerm, setSearchTerm] = useState('');
@@ -233,6 +233,12 @@ const Members = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [totalMembersCount, setTotalMembersCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  
+  // ===== NEW: State for single member view in table =====
+  const [selectedMemberId, setSelectedMemberId] = useState(null);
+  const [singleMemberData, setSingleMemberData] = useState(null);
+  const [showSingleMember, setShowSingleMember] = useState(false);
+  const [loadingSingleMember, setLoadingSingleMember] = useState(false);
 
   // ============================================================
   // DELETE CONFIRMATION STATE
@@ -244,7 +250,6 @@ const Members = () => {
   const [showBulkLinkModal, setShowBulkLinkModal] = useState(false);
   const [linkingMembers, setLinkingMembers] = useState(false);
 
-  // FIX: Increase items per page from 10 to 50
   const itemsPerPage = 50;
 
   const [gymDetails, setGymDetails] = useState({
@@ -254,6 +259,85 @@ const Members = () => {
     email: '',
     currency_symbol: '₹',
   });
+
+  // ===== Handle initialMemberId prop - Show single member in table =====
+  useEffect(() => {
+    if (initialMemberId) {
+      setSelectedMemberId(initialMemberId);
+      setShowSingleMember(true);
+      fetchSingleMember(initialMemberId);
+    } else {
+      setShowSingleMember(false);
+      setSelectedMemberId(null);
+      setSingleMemberData(null);
+    }
+  }, [initialMemberId]);
+
+  // ===== Fetch single member details =====
+  const fetchSingleMember = async (memberId) => {
+    setLoadingSingleMember(true);
+    try {
+      const response = await api.get(`/gym/members/${memberId}`);
+      const member = response.data;
+      
+      // Transform to match the member format
+      const transformed = {
+        id: member.id,
+        fullName: member.full_name,
+        email: member.email || '',
+        phone: member.phone,
+        gender: member.gender || 'male',
+        joinDate: member.joined_date,
+        membership: member.current_membership?.plan?.name || 'No Plan',
+        membershipEndDate: member.current_membership?.end_date || null,
+        membershipStatus: member.current_membership?.status || null,
+        status: member.is_active ? 'active' : 'inactive',
+        lastVisit: null,
+        payments: member.memberships?.length || 0,
+        avatar: member.profile_image 
+          ? (member.profile_image.startsWith('http') ? member.profile_image : `${API_BASE_URL}${member.profile_image}`)
+          : `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`,
+        profile_image: member.profile_image,
+        raw: member,
+        activeMembership: member.current_membership,
+        memberPayments: [],
+        syncedToDevice: member.device_user_id ? true : false,
+        deviceUserId: member.device_user_id || null,
+      };
+      
+      setSingleMemberData(transformed);
+      
+      // Also update the members list to only show this member
+      setMembers([transformed]);
+      setTotalMembersCount(1);
+      setTotalPages(1);
+      setCurrentPage(1);
+      
+    } catch (error) {
+      console.error('Error fetching member:', error);
+      toast.error('Failed to load member details');
+      setShowSingleMember(false);
+      setSelectedMemberId(null);
+      setSingleMemberData(null);
+      // Reset to show all members
+      fetchMembers();
+    } finally {
+      setLoadingSingleMember(false);
+    }
+  };
+
+  // ===== Handle back to all members =====
+  const handleBackToAllMembers = () => {
+    setShowSingleMember(false);
+    setSelectedMemberId(null);
+    setSingleMemberData(null);
+    if (onMemberSelect) {
+      onMemberSelect(null);
+    }
+    // Reset pagination and fetch all members
+    setCurrentPage(1);
+    fetchMembers();
+  };
 
   useEffect(() => {
     const renewalMemberData = localStorage.getItem('selectedMemberForRenewal');
@@ -328,13 +412,18 @@ const Members = () => {
         toast.success('Member deleted successfully! (No device sync needed)');
       }
       
-      // Remove from local state
-      setMembers(prev => prev.filter(m => m.id !== memberToDelete.id));
-      setSelectedMembers(prev => prev.filter(id => id !== memberToDelete.id));
-      fetchStats();
+      // If viewing single member, go back to all members
+      if (showSingleMember) {
+        handleBackToAllMembers();
+      } else {
+        // Remove from local state
+        setMembers(prev => prev.filter(m => m.id !== memberToDelete.id));
+        setSelectedMembers(prev => prev.filter(id => id !== memberToDelete.id));
+        fetchStats();
+      }
+      
       refreshAllData();
       
-      // Close modal
       setShowDeleteModal(false);
       setMemberToDelete(null);
       
@@ -370,7 +459,6 @@ const Members = () => {
   const handleBulkDelete = async () => {
     if (selectedMembers.length === 0) return;
     
-    // Show a confirmation dialog for bulk delete
     const hasDeviceSync = selectedMembers.some(id => {
       const member = members.find(m => m.id === id);
       return member?.syncedToDevice || member?.deviceUserId;
@@ -412,7 +500,7 @@ const Members = () => {
       const links = selectedMembers.map(memberId => {
         const member = members.find(m => m.id === memberId);
         return {
-          device_user_id: member.phone.replace(/\D/g, ''), // Clean phone number
+          device_user_id: member.phone.replace(/\D/g, ''),
           member_id: member.id
         };
       });
@@ -439,6 +527,9 @@ const Members = () => {
   // OPTIMIZED: Fetch members using the new optimized endpoint
   // ============================================================
   const fetchMembersOptimizedFn = useCallback(async () => {
+    // Don't fetch if we're showing a single member
+    if (showSingleMember) return;
+    
     setLoading(true);
     try {
       const params = {
@@ -496,7 +587,7 @@ const Members = () => {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, filters.status, currentPage, itemsPerPage]);
+  }, [debouncedSearchTerm, filters.status, currentPage, itemsPerPage, showSingleMember]);
 
   // ============================================================
   // OPTIMIZED: Fetch stats using the new optimized endpoint
@@ -528,6 +619,9 @@ const Members = () => {
   // LEGACY: Fetch members (kept for backward compatibility)
   // ============================================================
   const fetchMembersLegacy = useCallback(async () => {
+    // Don't fetch if we're showing a single member
+    if (showSingleMember) return;
+    
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -613,19 +707,27 @@ const Members = () => {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly, itemsPerPage]);
+  }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly, itemsPerPage, showSingleMember]);
 
   // ============================================================
   // Main fetch function - uses optimized endpoint by default
   // ============================================================
   const fetchMembers = useCallback(async () => {
+    // Don't fetch list if we're viewing a single member
+    if (showSingleMember && singleMemberData) {
+      setMembers([singleMemberData]);
+      setTotalMembersCount(1);
+      setTotalPages(1);
+      return;
+    }
+    
     try {
       await fetchMembersOptimizedFn();
     } catch (error) {
       console.log('Optimized fetch failed, falling back to legacy...');
       await fetchMembersLegacy();
     }
-  }, [fetchMembersOptimizedFn, fetchMembersLegacy]);
+  }, [fetchMembersOptimizedFn, fetchMembersLegacy, showSingleMember, singleMemberData]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -662,18 +764,25 @@ const Members = () => {
 
   // Initial load
   useEffect(() => {
-    fetchMembers();
     fetchStats();
     fetchGymDetails();
   }, []);
 
-  // Trigger fetch when search, filters, or page changes
+  // Trigger fetch when search, filters, or page changes (only when not viewing single member)
   useEffect(() => {
-    fetchMembers();
-  }, [debouncedSearchTerm, filters.status, currentPage]);
+    if (!showSingleMember) {
+      fetchMembers();
+    } else if (singleMemberData) {
+      // Ensure single member is displayed
+      setMembers([singleMemberData]);
+      setTotalMembersCount(1);
+      setTotalPages(1);
+    }
+  }, [debouncedSearchTerm, filters.status, currentPage, showSingleMember, singleMemberData]);
 
   // Filter handlers for stats cards
   const handleFilterAll = () => {
+    if (showSingleMember) handleBackToAllMembers();
     setFilters({ ...filters, status: 'all' });
     setShowNewThisMonthOnly(false);
     setSearchTerm('');
@@ -681,6 +790,7 @@ const Members = () => {
   };
 
   const handleFilterActive = () => {
+    if (showSingleMember) handleBackToAllMembers();
     setFilters({ ...filters, status: 'active' });
     setShowNewThisMonthOnly(false);
     setSearchTerm('');
@@ -688,6 +798,7 @@ const Members = () => {
   };
 
   const handleFilterInactive = () => {
+    if (showSingleMember) handleBackToAllMembers();
     setFilters({ ...filters, status: 'inactive' });
     setShowNewThisMonthOnly(false);
     setSearchTerm('');
@@ -695,6 +806,7 @@ const Members = () => {
   };
 
   const handleFilterNewThisMonth = () => {
+    if (showSingleMember) handleBackToAllMembers();
     setFilters({ ...filters, status: 'all' });
     setShowNewThisMonthOnly(true);
     setSearchTerm('');
@@ -889,11 +1001,6 @@ const Members = () => {
     }
   };
 
-  // ============================================================
-  // BULK DELETE FUNCTION
-  // ============================================================
-  // (Already defined above)
-
   const handleBulkSyncToDevice = async () => {
     if (!selectedBulkDevice) {
         toast.error('Please select a device');
@@ -926,7 +1033,6 @@ const Members = () => {
             setSelectedBulkDevice(null);
             refreshAllData();
             
-            // ===== FIX: Trigger immediate sync =====
             if (result.device_serial) {
                 try {
                     await api.post(`/attendance/devices/trigger-sync?device_serial=${result.device_serial}`);
@@ -946,7 +1052,7 @@ const Members = () => {
     } finally {
         setSyncingAll(false);
     }
-};
+  };
 
   const handleExport = async () => {
     try {
@@ -1024,34 +1130,27 @@ const Members = () => {
     );
   };
 
- 
-
-const openDeviceSyncModal = (member) => {
-  // Ensure we have all required fields with proper mapping
-  const memberData = {
-    id: member.id,
-    full_name: member.fullName || member.full_name || '',
-    fullName: member.fullName || member.full_name || '',
-    phone: member.phone || '',
-    email: member.email || '',
-    device_user_id: member.deviceUserId || member.device_user_id || null,
-    deviceUserId: member.deviceUserId || member.device_user_id || null,
-    syncedToDevice: member.syncedToDevice || false,
-    membership: member.membership || '',
-    status: member.status || 'inactive',
-    joinDate: member.joinDate || '',
-    avatar: member.avatar || '',
-    // Include raw data if available
-    raw: member.raw || member
+  const openDeviceSyncModal = (member) => {
+    const memberData = {
+      id: member.id,
+      full_name: member.fullName || member.full_name || '',
+      fullName: member.fullName || member.full_name || '',
+      phone: member.phone || '',
+      email: member.email || '',
+      device_user_id: member.deviceUserId || member.device_user_id || null,
+      deviceUserId: member.deviceUserId || member.device_user_id || null,
+      syncedToDevice: member.syncedToDevice || false,
+      membership: member.membership || '',
+      status: member.status || 'inactive',
+      joinDate: member.joinDate || '',
+      avatar: member.avatar || '',
+      raw: member.raw || member
+    };
+    
+    console.log('📱 Opening sync modal for member:', memberData);
+    setSelectedMemberForSync(memberData);
+    setShowDeviceSyncModal(true);
   };
-  
-  console.log('📱 Opening sync modal for member:', memberData);
-  console.log('📞 Phone number:', memberData.phone);
-  console.log('🆔 Device ID from phone:', memberData.phone ? memberData.phone.replace(/\D/g, '') : 'No phone');
-  
-  setSelectedMemberForSync(memberData);
-  setShowDeviceSyncModal(true);
-};
 
   const handleSyncComplete = (deviceUserId, memberId) => {
     console.log('Sync complete called with:', { deviceUserId, memberId });
@@ -1087,7 +1186,6 @@ const openDeviceSyncModal = (member) => {
     setShowBulkDeviceSelect(true);
   };
 
-  // Members are already filtered and paginated from the server
   const paginatedMembers = members;
   const displayTotalPages = totalPages;
 
@@ -1120,7 +1218,6 @@ const openDeviceSyncModal = (member) => {
     setIsModalOpen(true);
   };
 
-  // Use ALL active devices
   const activeDevices = devices.filter(d => d.is_active);
   
   const copyDeviceIdToClipboard = (deviceUserId) => {
@@ -1132,7 +1229,6 @@ const openDeviceSyncModal = (member) => {
 
   const inactiveCount = stats.total - stats.active;
 
-  // Pagination handlers
   const handlePrevPage = () => {
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
@@ -1146,7 +1242,7 @@ const openDeviceSyncModal = (member) => {
   };
 
   // ============================================================
-  // RENDER
+  // RENDER - Always show table with filtered members
   // ============================================================
   return (
     <div className="p-6">
@@ -1167,37 +1263,37 @@ const openDeviceSyncModal = (member) => {
         <div 
           onClick={handleFilterAll}
           className={`bg-white rounded-xl shadow-sm p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
-            filters.status === 'all' && !showNewThisMonthOnly ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+            filters.status === 'all' && !showNewThisMonthOnly && !showSingleMember ? 'ring-2 ring-blue-500 ring-offset-2' : ''
           }`}
         >
           <p className="text-sm text-gray-600">Total Members</p>
-          <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+          <p className="text-2xl font-bold text-gray-900">{showSingleMember ? 1 : stats.total}</p>
           <p className="text-xs text-gray-400 mt-1">Click to show all</p>
         </div>
         <div 
           onClick={handleFilterActive}
           className={`bg-white rounded-xl shadow-sm p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
-            filters.status === 'active' && !showNewThisMonthOnly ? 'ring-2 ring-green-500 ring-offset-2' : ''
+            filters.status === 'active' && !showNewThisMonthOnly && !showSingleMember ? 'ring-2 ring-green-500 ring-offset-2' : ''
           }`}
         >
           <p className="text-sm text-gray-600">Active Members</p>
-          <p className="text-2xl font-bold text-green-600">{stats.active}</p>
+          <p className="text-2xl font-bold text-green-600">{showSingleMember ? (singleMemberData?.status === 'active' ? 1 : 0) : stats.active}</p>
           <p className="text-xs text-gray-400 mt-1">Click to show active</p>
         </div>
         <div 
           onClick={handleFilterInactive}
           className={`bg-white rounded-xl shadow-sm p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
-            filters.status === 'inactive' && !showNewThisMonthOnly ? 'ring-2 ring-red-500 ring-offset-2' : ''
+            filters.status === 'inactive' && !showNewThisMonthOnly && !showSingleMember ? 'ring-2 ring-red-500 ring-offset-2' : ''
           }`}
         >
           <p className="text-sm text-gray-600">Inactive Members</p>
-          <p className="text-2xl font-bold text-gray-600">{inactiveCount}</p>
+          <p className="text-2xl font-bold text-gray-600">{showSingleMember ? (singleMemberData?.status === 'inactive' ? 1 : 0) : inactiveCount}</p>
           <p className="text-xs text-gray-400 mt-1">Click to show inactive</p>
         </div>
         <div 
           onClick={handleFilterNewThisMonth}
           className={`bg-white rounded-xl shadow-sm p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
-            showNewThisMonthOnly ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+            showNewThisMonthOnly && !showSingleMember ? 'ring-2 ring-blue-500 ring-offset-2' : ''
           }`}
         >
           <p className="text-sm text-gray-600">New This Month</p>
@@ -1205,6 +1301,22 @@ const openDeviceSyncModal = (member) => {
           <p className="text-xs text-gray-400 mt-1">Click to show new members</p>
         </div>
       </div>
+
+      {/* Show "Back to All Members" button when viewing single member */}
+      {showSingleMember && (
+        <div className="mb-4">
+          <button
+            onClick={handleBackToAllMembers}
+            className="flex items-center gap-2 text-blue-600 hover:text-blue-800 transition-colors font-medium"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to All Members
+          </button>
+          <span className="ml-3 text-sm text-gray-500">
+            Showing: <strong>{singleMemberData?.fullName}</strong>
+          </span>
+        </div>
+      )}
 
       {/* Actions Bar */}
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
@@ -1214,29 +1326,43 @@ const openDeviceSyncModal = (member) => {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search members..."
+                placeholder={showSingleMember ? "Search disabled - viewing single member" : "Search members..."}
                 value={searchTerm}
                 onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
+                  if (!showSingleMember) {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }
                 }}
-                className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                disabled={showSingleMember}
+                className={`pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 ${
+                  showSingleMember ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
               />
             </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`p-2 border rounded-lg ${showFilters ? 'bg-blue-50 border-blue-300' : 'border-gray-300'}`}
+              disabled={showSingleMember}
+              className={`p-2 border rounded-lg ${showFilters ? 'bg-blue-50 border-blue-300' : 'border-gray-300'} ${
+                showSingleMember ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
             >
               <Filter className="h-5 w-5 text-gray-600" />
             </button>
             <button
-              onClick={() => fetchMembers()}
+              onClick={() => {
+                if (showSingleMember) {
+                  handleBackToAllMembers();
+                } else {
+                  fetchMembers();
+                }
+              }}
               className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              title="Refresh Members"
+              title={showSingleMember ? "Back to all members" : "Refresh Members"}
             >
-              <RefreshCw className="h-5 w-5 text-gray-600" />
+              {showSingleMember ? <ArrowLeft className="h-5 w-5 text-blue-600" /> : <RefreshCw className="h-5 w-5 text-gray-600" />}
             </button>
-            {(filters.status !== 'all' || showNewThisMonthOnly || searchTerm) && (
+            {(filters.status !== 'all' || showNewThisMonthOnly || searchTerm) && !showSingleMember && (
               <button
                 onClick={() => {
                   setFilters({ ...filters, status: 'all' });
@@ -1253,7 +1379,7 @@ const openDeviceSyncModal = (member) => {
           </div>
 
           <div className="flex items-center space-x-2 flex-wrap gap-2">
-            {selectedMembers.length > 0 && (
+            {selectedMembers.length > 0 && !showSingleMember && (
               <>
                 <button 
                   onClick={handleBulkInvoice}
@@ -1325,7 +1451,7 @@ const openDeviceSyncModal = (member) => {
         </div>
 
         {/* Filters */}
-        {showFilters && (
+        {showFilters && !showSingleMember && (
           <div className="mt-4 pt-4 border-t grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
@@ -1377,6 +1503,33 @@ const openDeviceSyncModal = (member) => {
             )}
           </div>
         )}
+
+        {/* Single Member Info Banner */}
+        {showSingleMember && singleMemberData && (
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex items-center gap-4 bg-blue-50 rounded-lg p-3">
+              <img 
+                src={singleMemberData.avatar} 
+                alt={singleMemberData.fullName}
+                className="h-12 w-12 rounded-full object-cover"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(singleMemberData.fullName)}&background=0D9488&color=fff&size=128`;
+                }}
+              />
+              <div>
+                <p className="font-semibold text-gray-900">{singleMemberData.fullName}</p>
+                <div className="flex items-center gap-3 text-sm text-gray-600">
+                  <span>{singleMemberData.phone}</span>
+                  <span>•</span>
+                  <span>{singleMemberData.email || 'No email'}</span>
+                  <span>•</span>
+                  <span>{getStatusBadge(singleMemberData.status)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Members Table */}
@@ -1387,9 +1540,11 @@ const openDeviceSyncModal = (member) => {
               <tr>
                 <th className="px-6 py-3 text-left">
                   <input type="checkbox"
-                    checked={selectedMembers.length === paginatedMembers.length && paginatedMembers.length > 0}
+                    checked={!showSingleMember && selectedMembers.length === paginatedMembers.length && paginatedMembers.length > 0}
                     onChange={toggleSelectAll}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                    disabled={showSingleMember}
+                    className={`rounded border-gray-300 text-blue-600 focus:ring-blue-500 ${showSingleMember ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  />
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
@@ -1401,7 +1556,7 @@ const openDeviceSyncModal = (member) => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {loading ? (
+              {loading || loadingSingleMember ? (
                 <tr>
                   <td colSpan="8" className="px-6 py-4 text-center">
                     <div className="flex justify-center">
@@ -1414,17 +1569,21 @@ const openDeviceSyncModal = (member) => {
                   <td colSpan="8" className="px-6 py-4 text-center text-gray-500">
                     {showNewThisMonthOnly 
                       ? 'No new members joined this month' 
-                      : 'No members found'}
+                      : showSingleMember 
+                        ? 'Member not found' 
+                        : 'No members found'}
                   </td>
                 </tr>
               ) : (
                 paginatedMembers.map((member) => (
-                  <tr key={member.id} className="hover:bg-gray-50">
+                  <tr key={member.id} className={`hover:bg-gray-50 ${showSingleMember ? 'bg-blue-50/50' : ''}`}>
                     <td className="px-6 py-4">
                       <input type="checkbox"
                         checked={selectedMembers.includes(member.id)}
                         onChange={() => toggleSelectMember(member.id)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                        disabled={showSingleMember}
+                        className={`rounded border-gray-300 text-blue-600 focus:ring-blue-500 ${showSingleMember ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div 
@@ -1443,6 +1602,11 @@ const openDeviceSyncModal = (member) => {
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors">
                             {member.fullName}
+                            {showSingleMember && (
+                              <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                Selected
+                              </span>
+                            )}
                           </div>
                           <div className="text-sm text-gray-500">
                             Joined {new Date(member.joinDate).toLocaleDateString()}
@@ -1505,54 +1669,52 @@ const openDeviceSyncModal = (member) => {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button 
-                      onClick={() => handleDownloadInvoice(member)} 
-                      className="text-green-600 hover:text-green-900 mr-3 inline-flex items-center"
-                      title="Download Invoice"
-                      disabled={downloadingInvoice === member.id}
-                    >
-                      {downloadingInvoice === member.id ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
-                      ) : (
-                        <FileText className="h-4 w-4" />
-                      )}
-                    </button>
-                    
-                    {/* Updated Device Sync Button - Pass complete member data */}
-                    <button 
-                      onClick={() => {
-                        // Create a complete member object before opening modal
-                        const memberForSync = {
-                          id: member.id,
-                          full_name: member.fullName,
-                          fullName: member.fullName,
-                          phone: member.phone,
-                          email: member.email || '',
-                          device_user_id: member.deviceUserId || null,
-                          deviceUserId: member.deviceUserId || null,
-                          syncedToDevice: member.syncedToDevice || false,
-                          membership: member.membership,
-                          status: member.status,
-                          joinDate: member.joinDate,
-                          avatar: member.avatar,
-                          raw: member.raw || member
-                        };
-                        openDeviceSyncModal(memberForSync);
-                      }} 
-                      className="text-purple-600 hover:text-purple-900 mr-3"
-                      title="Sync to Attendance Device"
-                    >
-                      <Wifi className="h-4 w-4" />
-                    </button>
-                    
-                    <button onClick={() => openEditModal(member)} className="text-blue-600 hover:text-blue-900 mr-3">
-                      <Edit className="h-4 w-4" />
-                    </button>
-                    
-                    <button onClick={() => handleDeleteClick(member)} className="text-red-600 hover:text-red-900">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
+                      <button 
+                        onClick={() => handleDownloadInvoice(member)} 
+                        className="text-green-600 hover:text-green-900 mr-3 inline-flex items-center"
+                        title="Download Invoice"
+                        disabled={downloadingInvoice === member.id}
+                      >
+                        {downloadingInvoice === member.id ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                        ) : (
+                          <FileText className="h-4 w-4" />
+                        )}
+                      </button>
+                      
+                      <button 
+                        onClick={() => {
+                          const memberForSync = {
+                            id: member.id,
+                            full_name: member.fullName,
+                            fullName: member.fullName,
+                            phone: member.phone,
+                            email: member.email || '',
+                            device_user_id: member.deviceUserId || null,
+                            deviceUserId: member.deviceUserId || null,
+                            syncedToDevice: member.syncedToDevice || false,
+                            membership: member.membership,
+                            status: member.status,
+                            joinDate: member.joinDate,
+                            avatar: member.avatar,
+                            raw: member.raw || member
+                          };
+                          openDeviceSyncModal(memberForSync);
+                        }} 
+                        className="text-purple-600 hover:text-purple-900 mr-3"
+                        title="Sync to Attendance Device"
+                      >
+                        <Wifi className="h-4 w-4" />
+                      </button>
+                      
+                      <button onClick={() => openEditModal(member)} className="text-blue-600 hover:text-blue-900 mr-3">
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      
+                      <button onClick={() => handleDeleteClick(member)} className="text-red-600 hover:text-red-900">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -1561,7 +1723,7 @@ const openDeviceSyncModal = (member) => {
         </div>
 
         {/* Pagination */}
-        {displayTotalPages > 0 && (
+        {displayTotalPages > 0 && !showSingleMember && (
           <div className="px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-sm text-gray-700">
               Showing <span className="font-medium">{members.length > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0}</span> to{' '}
@@ -1593,7 +1755,7 @@ const openDeviceSyncModal = (member) => {
         )}
       </div>
 
-      {/* Member Modal */}
+      {/* Modals */}
       <MemberModal
         isOpen={isModalOpen}
         onClose={() => { setIsModalOpen(false); setSelectedMember(null); }}
@@ -1602,7 +1764,6 @@ const openDeviceSyncModal = (member) => {
         userRole={user?.role}
       />
 
-      {/* Device Sync Modal for Single Member */}
       <DeviceSyncModal
         isOpen={showDeviceSyncModal}
         onClose={() => {
@@ -1629,7 +1790,6 @@ const openDeviceSyncModal = (member) => {
         />
       )}
 
-      {/* Bulk Import Modal */}
       <BulkImportModal
         isOpen={showBulkImportModal}
         onClose={() => {
@@ -1643,8 +1803,7 @@ const openDeviceSyncModal = (member) => {
         }}
       />
 
-      {/* Bulk Device Selection Modal */}
-      {showBulkDeviceSelect && (
+      {showBulkDeviceSelect && !showSingleMember && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
             <div className="flex items-center justify-between p-4 border-b">

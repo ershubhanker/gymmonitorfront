@@ -1248,6 +1248,12 @@ const Staff = () => {
   const canManagePermissions = hasPermission('manage_staff_permissions');
   const canSyncToDevice = hasPermission('sync_to_device');
 
+  const [initialStaffId, setInitialStaffId] = useState(null);
+const [selectedStaffForView, setSelectedStaffForView] = useState(null);
+const [showSingleStaff, setShowSingleStaff] = useState(false);
+const [loadingSingleStaff, setLoadingSingleStaff] = useState(false);
+
+
   useEffect(() => {
     if (canViewStaff) {
       fetchStaff();
@@ -1255,6 +1261,46 @@ const Staff = () => {
       fetchStaffDeviceIds();
     }
   }, [canViewStaff]);
+
+
+
+
+  useEffect(() => {
+    if (initialStaffId) {
+      setInitialStaffId(initialStaffId);
+      setShowSingleStaff(true);
+      fetchSingleStaff(initialStaffId);
+    } else {
+      setShowSingleStaff(false);
+      setInitialStaffId(null);
+      setSelectedStaffForView(null);
+    }
+  }, [initialStaffId]);
+  
+  // Fetch single staff details
+  const fetchSingleStaff = async (staffId) => {
+    setLoadingSingleStaff(true);
+    try {
+      const response = await api.get(`/gym/staff/${staffId}`);
+      setSelectedStaffForView(response.data);
+    } catch (error) {
+      console.error('Error fetching staff:', error);
+      toast.error('Failed to load staff details');
+      setShowSingleStaff(false);
+    } finally {
+      setLoadingSingleStaff(false);
+    }
+  };
+  
+  // Handle back to list
+  const handleBackToStaffList = () => {
+    setShowSingleStaff(false);
+    setInitialStaffId(null);
+    setSelectedStaffForView(null);
+    if (onStaffSelect) {
+      onStaffSelect(null);
+    }
+  };
 
   const fetchStaff = async () => {
     setLoading(true);

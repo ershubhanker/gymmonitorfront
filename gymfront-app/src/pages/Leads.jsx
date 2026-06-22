@@ -755,6 +755,52 @@ const Leads = () => {
     return () => clearTimeout(t);
   }, [fetchLeads, canViewLeads]);
 
+
+  const [initialLeadId, setInitialLeadId] = useState(null);
+const [selectedLeadForView, setSelectedLeadForView] = useState(null);
+const [showSingleLead, setShowSingleLead] = useState(false);
+const [loadingSingleLead, setLoadingSingleLead] = useState(false);
+
+
+
+useEffect(() => {
+  if (initialLeadId) {
+    setInitialLeadId(initialLeadId);
+    setShowSingleLead(true);
+    fetchSingleLead(initialLeadId);
+  } else {
+    setShowSingleLead(false);
+    setInitialLeadId(null);
+    setSelectedLeadForView(null);
+  }
+}, [initialLeadId]);
+
+// Fetch single lead details
+const fetchSingleLead = async (leadId) => {
+  setLoadingSingleLead(true);
+  try {
+    const response = await api.get(`/gym/leads/${leadId}/detail`);
+    setSelectedLeadForView(response.data);
+  } catch (error) {
+    console.error('Error fetching lead:', error);
+    toast.error('Failed to load lead details');
+    setShowSingleLead(false);
+  } finally {
+    setLoadingSingleLead(false);
+  }
+};
+
+
+// Handle back to list
+const handleBackToLeadList = () => {
+  setShowSingleLead(false);
+  setInitialLeadId(null);
+  setSelectedLeadForView(null);
+  if (onLeadSelect) {
+    onLeadSelect(null);
+  }
+};
+
   const fetchShareableLink = async () => {
     try {
       const response = await api.get('/gym/lead-form-link');

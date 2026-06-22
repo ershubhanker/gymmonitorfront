@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx - Updated with Proper Permission Handling
+// src/pages/Dashboard.jsx - Updated with Search Bar and Follow-Up Card
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -50,10 +50,11 @@ import {
   Clock,
   AlertTriangle,
   Eye,
-  Shield
+  Shield,
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import api, { API_BASE_URL,  fetchMemberStatsOptimized  } from '../services/api';
+import api, { API_BASE_URL, fetchMemberStatsOptimized } from '../services/api';
 import toast from 'react-hot-toast';
 import { usePermissions } from '../hooks/usePermissions';
 
@@ -69,6 +70,10 @@ import DeviceManager from '../components/attendance/DeviceManager';
 import LiveMonitoring from '../components/attendance/LiveMonitoring';
 import AttendanceHistory from '../components/attendance/AttendanceHistory';
 import StaffHours from '../components/attendance/StaffHours';
+
+// Import Search Bar and Follow-Up Card
+import SearchBar from '../components/SearchBar';
+import FollowUpCard from '../components/FollowUpCard';
 
 // Auto-refresh interval in milliseconds
 const AUTO_REFRESH_INTERVAL = 40000;
@@ -162,6 +167,10 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
   const [userRole, setUserRole] = useState(null);
+  const [selectedLeadId, setSelectedLeadId] = useState(null);
+  const [selectedMemberId, setSelectedMemberId] = useState(null);
+  const [selectedStaffId, setSelectedStaffId] = useState(null);
+  const [followupsCount, setFollowupsCount] = useState(0);
   
   const userMenuRef = useRef(null);
   const userButtonRef = useRef(null);
@@ -271,6 +280,23 @@ const Dashboard = () => {
     };
   }, [showUserMenu]);
 
+  // Fetch follow-ups count for dashboard header
+  const fetchFollowupsCount = useCallback(async () => {
+    if (!canSeeLeads) return;
+    
+    try {
+      const response = await api.get('/gym/followups/today');
+      if (response.data) {
+        setFollowupsCount(response.data.count || 0);
+      }
+    } catch (error) {
+      // Silently fail - don't show toast for 403
+      if (error.response?.status !== 403) {
+        console.error('Error fetching followups count:', error);
+      }
+    }
+  }, [canSeeLeads]);
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -278,6 +304,29 @@ const Dashboard = () => {
 
   const goToDashboard = () => {
     setActiveTab('dashboard');
+    setSelectedLeadId(null);
+    setSelectedMemberId(null);
+    setSelectedStaffId(null);
+  };
+
+  // Handle search result selection
+  const handleSearchSelect = (result) => {
+    switch (result.type) {
+      case 'member':
+        setActiveTab('members');
+        setSelectedMemberId(result.id);
+        break;
+      case 'lead':
+        setActiveTab('leads');
+        setSelectedLeadId(result.id);
+        break;
+      case 'staff':
+        setActiveTab('staff');
+        setSelectedStaffId(result.id);
+        break;
+      default:
+        break;
+    }
   };
 
   useEffect(() => {
@@ -731,44 +780,50 @@ const Dashboard = () => {
   useEffect(() => {
     if (!permissionsLoading) {
       fetchDashboardData(false);
+      fetchFollowupsCount();
     }
-  }, [fetchDashboardData, permissionsLoading]);
+  }, [fetchDashboardData, permissionsLoading, fetchFollowupsCount]);
 
   useEffect(() => {
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') {
         fetchDashboardData(true);
+        fetchFollowupsCount();
       }
     }, AUTO_REFRESH_INTERVAL);
 
     return () => clearInterval(timer);
-  }, [fetchDashboardData]);
+  }, [fetchDashboardData, fetchFollowupsCount]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         fetchDashboardData(true);
+        fetchFollowupsCount();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [fetchDashboardData]);
+  }, [fetchDashboardData, fetchFollowupsCount]);
 
   useEffect(() => {
     const handleDataChange = () => {
       fetchDashboardData(true);
+      fetchFollowupsCount();
     };
 
     window.addEventListener('memberAdded', handleDataChange);
     window.addEventListener('paymentAdded', handleDataChange);
     window.addEventListener('leadAdded', handleDataChange);
+    window.addEventListener('leadUpdated', handleDataChange);
     
     return () => {
       window.removeEventListener('memberAdded', handleDataChange);
       window.removeEventListener('paymentAdded', handleDataChange);
       window.removeEventListener('leadAdded', handleDataChange);
+      window.removeEventListener('leadUpdated', handleDataChange);
     };
-  }, [fetchDashboardData]);
+  }, [fetchDashboardData, fetchFollowupsCount]);
 
   // Navigation items based on permissions
   const getNavigation = () => {
@@ -923,6 +978,12 @@ const Dashboard = () => {
             <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
               <TrendUp className="h-4 w-4" />
               {stats.monthlyRevenue > 0 ? formatCurrency(stats.monthlyRevenue) : 'No revenue yet'} this month
+            </div>
+          )}
+          {canSeeLeads && followupsCount > 0 && (
+            <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2 animate-pulse">
+              <Calendar className="h-4 w-4" />
+              {followupsCount} follow-up{followupsCount !== 1 ? 's' : ''} today
             </div>
           )}
         </div>
@@ -1544,6 +1605,7 @@ const Dashboard = () => {
                       className="group relative flex items-center gap-4 p-3 rounded-xl hover:bg-purple-50 transition-all border border-transparent hover:border-purple-200 cursor-pointer"
                       onClick={() => {
                         setActiveTab('leads');
+                        setSelectedLeadId(lead.id);
                         toast.success(`Viewing lead: ${lead.name}`);
                       }}
                     >
@@ -1620,6 +1682,26 @@ const Dashboard = () => {
           </div>
         )}
       </div>
+  
+      {/* ===== FOLLOW-UP CARD - NEW SECTION ===== */}
+      {canSeeLeads && (
+        <div className="grid grid-cols-1 gap-6">
+          <FollowUpCard 
+            onFollowUpClick={(lead) => {
+              if (lead && lead.viewAll) {
+                setActiveTab('leads');
+              } else if (lead && lead.id) {
+                setActiveTab('leads');
+                setSelectedLeadId(lead.id);
+              }
+            }}
+            onRefresh={() => {
+              fetchDashboardData(true);
+              fetchFollowupsCount();
+            }}
+          />
+        </div>
+      )}
   
       {/* Birthday Notifications Section */}
       {(stats.upcomingBirthdays?.members?.length > 0 || stats.upcomingBirthdays?.staff?.length > 0) && (
@@ -1731,122 +1813,8 @@ const Dashboard = () => {
   
       {/* Recent Members and Recent Payments Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {canSeeMembers && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <div className="bg-green-100 p-2 rounded-lg">
-                  <UserPlus className="h-5 w-5 text-green-600" />
-                </div>
-                Recent Members
-              </h3>
-              <button 
-                onClick={() => setActiveTab('members')}
-                className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-              >
-                View All
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-            
-            <div className="space-y-3">
-              {stats.recentMembers?.length > 0 ? (
-                stats.recentMembers.map((member) => (
-                  <div key={member.id} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-all group">
-                    <img 
-                      src={member.avatar} 
-                      alt={member.name} 
-                      className="w-12 h-12 rounded-full ring-2 ring-gray-100 group-hover:ring-blue-200 transition-all object-cover"
-                    />
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-900">{member.name}</p>
-                      <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                        <Calendar className="h-3 w-3" />
-                        Joined {member.joinedDate}
-                      </p>
-                    </div>
-                    <span className="text-xs bg-blue-100 text-blue-600 px-3 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                      View Profile
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <UserPlus className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-400">No members yet</p>
-                  <button 
-                    onClick={() => {
-                      setActiveTab('members');
-                    }}
-                    className="mt-3 text-blue-600 hover:text-blue-700 text-sm font-medium"
-                  >
-                    Add your first member →
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-  
-        {canSeePayments && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <div className="bg-purple-100 p-2 rounded-lg">
-                  <CreditCard className="h-5 w-5 text-purple-600" />
-                </div>
-                Recent Payments
-              </h3>
-              <button 
-                onClick={() => setActiveTab('payments')}
-                className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-              >
-                View All
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-            
-            <div className="space-y-3">
-              {stats.recentPayments?.length > 0 ? (
-                stats.recentPayments.map((payment) => (
-                  <div key={payment.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-all group">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center text-white font-bold">
-                        {payment.memberName.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-gray-900">{payment.memberName}</p>
-                        <p className="text-xs text-gray-500 flex items-center gap-2 mt-1">
-                          <Calendar className="h-3 w-3" />
-                          {payment.date}
-                          <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                          <span className="capitalize">{payment.method}</span>
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-green-600">{formatCurrency(payment.amount)}</p>
-                      <p className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                        Transaction #{payment.id}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <CreditCard className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-400">No payments yet</p>
-                  <button 
-                    onClick={() => setActiveTab('payments')}
-                    className="mt-3 text-blue-600 hover:text-blue-700 text-sm font-medium"
-                  >
-                    Record first payment →
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        
+        
       </div>
   
       {/* Recent Activities and Classes Row */}
@@ -1945,25 +1913,7 @@ const Dashboard = () => {
       {/* Alerts Section */}
       {(stats.expiringThisMonth > 0 || stats.pendingPayments > 0 || stats.overdueCount > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {canSeeMembers && stats.expiringThisMonth > 0 && (
-            <div className="bg-gradient-to-r from-yellow-400 to-orange-400 rounded-2xl p-6 shadow-lg text-white">
-              <div className="flex items-start gap-4">
-                <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
-                  <AlertCircle className="h-6 w-6" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-bold text-lg mb-1">Memberships Expiring Soon</h4>
-                  <p className="text-white/90 mb-3">{stats.expiringThisMonth} memberships will expire this month</p>
-                  <button 
-                    onClick={() => setActiveTab('members')}
-                    className="bg-white text-orange-600 px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
-                  >
-                    View Expiring Members →
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+        
           
           {canSeePayments && stats.pendingPayments > 0 && (
             <div className="bg-gradient-to-r from-red-400 to-pink-500 rounded-2xl p-6 shadow-lg text-white">
@@ -2162,8 +2112,8 @@ const Dashboard = () => {
       `}>
         {/* Header */}
         <header className="bg-white shadow-sm sticky top-0 z-30">
-          <div className="flex items-center justify-between px-6 py-4">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col md:flex-row items-center justify-between px-6 py-3 gap-3">
+            <div className="flex items-center gap-3 w-full md:w-auto">
               <div className="md:hidden">
                 <div className="w-10" />
               </div>
@@ -2171,7 +2121,25 @@ const Dashboard = () => {
                 {navigation.find(n => n.id === activeTab)?.name || 'Dashboard'}
               </h1>
             </div>
-            <div className="flex items-center gap-3">
+            
+            {/* Search Bar - Desktop */}
+            <div className="flex-1 max-w-xl w-full hidden md:block">
+              <SearchBar 
+                onSelect={handleSearchSelect}
+                placeholder="Search members, leads, staff..."
+              />
+            </div>
+            
+            {/* Right Header Actions */}
+            <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+              {/* Search Bar - Mobile */}
+              <div className="md:hidden flex-1">
+                <SearchBar 
+                  onSelect={handleSearchSelect}
+                  placeholder="Search..."
+                />
+              </div>
+              
               <button className="p-2 rounded-lg hover:bg-gray-100 relative">
                 <Bell className="h-5 w-5 text-gray-600" />
                 <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full animate-pulse"></span>
@@ -2250,16 +2218,31 @@ const Dashboard = () => {
         {/* Page Content */}
         <div className="p-6">
           {activeTab === 'dashboard' && renderDashboard()}
-          {activeTab === 'members' && canSeeMembers && <Members />}
+          {activeTab === 'members' && canSeeMembers && (
+            <Members 
+              initialMemberId={selectedMemberId} 
+              onMemberSelect={(id) => setSelectedMemberId(id)}
+            />
+          )}
           {activeTab === 'balance' && canSeeBalances && <Balance />}
           {activeTab === 'devices' && canSeeDevices && <DeviceManager />}
           {activeTab === 'attendance' && canSeeAttendance && <LiveMonitoring />}
           {activeTab === 'history' && canSeeAttendance && <AttendanceHistory />}
           {activeTab === 'expenses' && canSeeExpenses && <Expenses />}
-          {activeTab === 'staff' && canSeeStaff && <Staff />}
+          {activeTab === 'staff' && canSeeStaff && (
+            <Staff 
+              initialStaffId={selectedStaffId}
+              onStaffSelect={(id) => setSelectedStaffId(id)}
+            />
+          )}
           {activeTab === 'profile' && <Profile />}
           {activeTab === 'payments' && canSeePayments && <Payments />}
-          {activeTab === 'leads' && canSeeLeads && <Leads />}
+          {activeTab === 'leads' && canSeeLeads && (
+            <Leads 
+              initialLeadId={selectedLeadId}
+              onLeadSelect={(id) => setSelectedLeadId(id)}
+            />
+          )}
           {activeTab === 'classes' && (
             <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
               <CalendarIcon className="h-16 w-16 text-blue-300 mx-auto mb-4" />
