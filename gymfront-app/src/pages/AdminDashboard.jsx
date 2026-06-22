@@ -123,9 +123,480 @@ const Field = ({ label, name, value, onChange, type = 'text', options, readOnly 
 
 // ─── Edit Modals ─────────────────────────────────────────────────────────────
 
-// ... (Keep all your Edit Modal components - EditGymModal, EditUserModal, etc.)
-// They remain unchanged, so I'm not duplicating them here to save space.
-// Make sure to include them in your actual file.
+const EditGymModal = ({ gym, onClose, onSave }) => {
+  const [form, setForm] = useState(gym || {});
+  
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  
+  const handleSubmit = () => {
+    const data = {
+      name: form.name,
+      address: form.address,
+      phone: form.phone,
+      email: form.email,
+      description: form.description,
+      opening_time: form.opening_time,
+      closing_time: form.closing_time,
+      subscription_plan: form.subscription_plan,
+      subscription_status: form.subscription_status,
+      is_active: form.is_active === true || form.is_active === 'true',
+      max_members: parseInt(form.max_members) || 100,
+      max_staff: parseInt(form.max_staff) || 5,
+    };
+    onSave(data);
+  };
+  
+  return (
+    <ModalShell title="Edit Gym" icon={<Building2 className="h-5 w-5 text-purple-400" />} onClose={onClose} onSave={handleSubmit}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field label="Gym Name" name="name" value={form.name} onChange={handleChange} />
+        <Field label="Phone" name="phone" value={form.phone} onChange={handleChange} />
+        <div className="md:col-span-2">
+          <Field label="Address" name="address" value={form.address} onChange={handleChange} />
+        </div>
+        <Field label="Email" name="email" value={form.email} onChange={handleChange} type="email" />
+        <Field label="Description" name="description" value={form.description} onChange={handleChange} />
+        <Field label="Opening Time" name="opening_time" value={form.opening_time} onChange={handleChange} />
+        <Field label="Closing Time" name="closing_time" value={form.closing_time} onChange={handleChange} />
+        <Field 
+          label="Subscription Plan" 
+          name="subscription_plan" 
+          value={form.subscription_plan} 
+          onChange={handleChange}
+          options={[
+            { value: 'basic', label: 'Basic' },
+            { value: 'pro', label: 'Pro' },
+            { value: 'enterprise', label: 'Enterprise' },
+          ]}
+        />
+        <Field 
+          label="Subscription Status" 
+          name="subscription_status" 
+          value={form.subscription_status} 
+          onChange={handleChange}
+          options={[
+            { value: 'active', label: 'Active' },
+            { value: 'suspended', label: 'Suspended' },
+            { value: 'trial', label: 'Trial' },
+            { value: 'inactive', label: 'Inactive' },
+          ]}
+        />
+        <Field 
+          label="Status" 
+          name="is_active" 
+          value={String(form.is_active)} 
+          onChange={handleChange}
+          options={[
+            { value: 'true', label: 'Active' },
+            { value: 'false', label: 'Inactive' },
+          ]}
+        />
+        <Field label="Max Members" name="max_members" value={form.max_members} onChange={handleChange} type="number" />
+        <Field label="Max Staff" name="max_staff" value={form.max_staff} onChange={handleChange} type="number" />
+      </div>
+    </ModalShell>
+  );
+};
+
+const EditUserModal = ({ user, onClose, onSave }) => {
+  const [form, setForm] = useState(user || {});
+  
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  
+  const handleSubmit = () => {
+    const data = {
+      full_name: form.full_name,
+      email: form.email,
+      username: form.username,
+      phone: form.phone,
+      is_active: form.is_active === true || form.is_active === 'true',
+      is_verified: form.is_verified === true || form.is_verified === 'true',
+      gym_id: form.gym_id ? parseInt(form.gym_id) : null,
+    };
+    onSave(data);
+  };
+  
+  return (
+    <ModalShell title="Edit User" icon={<Users className="h-5 w-5 text-blue-400" />} onClose={onClose} onSave={handleSubmit}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field label="Full Name" name="full_name" value={form.full_name} onChange={handleChange} />
+        <Field label="Username" name="username" value={form.username} onChange={handleChange} />
+        <Field label="Email" name="email" value={form.email} onChange={handleChange} type="email" />
+        <Field label="Phone" name="phone" value={form.phone} onChange={handleChange} />
+        <Field 
+          label="Active" 
+          name="is_active" 
+          value={String(form.is_active)} 
+          onChange={handleChange}
+          options={[
+            { value: 'true', label: 'Active' },
+            { value: 'false', label: 'Inactive' },
+          ]}
+        />
+        <Field 
+          label="Verified" 
+          name="is_verified" 
+          value={String(form.is_verified)} 
+          onChange={handleChange}
+          options={[
+            { value: 'true', label: 'Verified' },
+            { value: 'false', label: 'Not Verified' },
+          ]}
+        />
+      </div>
+    </ModalShell>
+  );
+};
+
+const EditMemberModal = ({ member, onClose, onSave }) => {
+  const [form, setForm] = useState(member || {});
+  
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  
+  const handleSubmit = () => {
+    const data = {
+      full_name: form.full_name,
+      email: form.email,
+      phone: form.phone,
+      address: form.address,
+      gender: form.gender,
+      is_active: form.is_active === true || form.is_active === 'true',
+    };
+    onSave(data);
+  };
+  
+  return (
+    <ModalShell title="Edit Member" icon={<User className="h-5 w-5 text-green-400" />} onClose={onClose} onSave={handleSubmit}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field label="Full Name" name="full_name" value={form.full_name} onChange={handleChange} />
+        <Field label="Email" name="email" value={form.email} onChange={handleChange} type="email" />
+        <Field label="Phone" name="phone" value={form.phone} onChange={handleChange} />
+        <Field label="Address" name="address" value={form.address} onChange={handleChange} />
+        <Field 
+          label="Gender" 
+          name="gender" 
+          value={form.gender} 
+          onChange={handleChange}
+          options={[
+            { value: 'male', label: 'Male' },
+            { value: 'female', label: 'Female' },
+            { value: 'other', label: 'Other' },
+          ]}
+        />
+        <Field 
+          label="Status" 
+          name="is_active" 
+          value={String(form.is_active)} 
+          onChange={handleChange}
+          options={[
+            { value: 'true', label: 'Active' },
+            { value: 'false', label: 'Inactive' },
+          ]}
+        />
+      </div>
+    </ModalShell>
+  );
+};
+
+const EditStaffModal = ({ staff, onClose, onSave }) => {
+  const [form, setForm] = useState(staff || {});
+  
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  
+  const handleSubmit = () => {
+    const data = {
+      position: form.position,
+      salary: form.salary ? parseFloat(form.salary) : null,
+      specializations: form.specializations,
+      is_active: form.is_active === true || form.is_active === 'true',
+    };
+    onSave(data);
+  };
+  
+  return (
+    <ModalShell title="Edit Staff" icon={<Briefcase className="h-5 w-5 text-orange-400" />} onClose={onClose} onSave={handleSubmit}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field label="Position" name="position" value={form.position} onChange={handleChange} />
+        <Field label="Salary" name="salary" value={form.salary} onChange={handleChange} type="number" />
+        <div className="md:col-span-2">
+          <Field label="Specializations" name="specializations" value={form.specializations} onChange={handleChange} />
+        </div>
+        <Field 
+          label="Status" 
+          name="is_active" 
+          value={String(form.is_active)} 
+          onChange={handleChange}
+          options={[
+            { value: 'true', label: 'Active' },
+            { value: 'false', label: 'Inactive' },
+          ]}
+        />
+      </div>
+    </ModalShell>
+  );
+};
+
+const EditPlanModal = ({ plan, onClose, onSave }) => {
+  const [form, setForm] = useState(plan || {});
+  
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  
+  const handleSubmit = () => {
+    const data = {
+      name: form.name,
+      description: form.description,
+      price: parseFloat(form.price) || 0,
+      discounted_price: form.discounted_price ? parseFloat(form.discounted_price) : null,
+      duration_days: parseInt(form.duration_days) || 30,
+      plan_type: form.plan_type,
+      is_active: form.is_active === true || form.is_active === 'true',
+    };
+    onSave(data);
+  };
+  
+  return (
+    <ModalShell title="Edit Plan" icon={<Award className="h-5 w-5 text-yellow-400" />} onClose={onClose} onSave={handleSubmit}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field label="Plan Name" name="name" value={form.name} onChange={handleChange} />
+        <Field label="Description" name="description" value={form.description} onChange={handleChange} />
+        <Field label="Price" name="price" value={form.price} onChange={handleChange} type="number" />
+        <Field label="Discounted Price" name="discounted_price" value={form.discounted_price} onChange={handleChange} type="number" />
+        <Field label="Duration (days)" name="duration_days" value={form.duration_days} onChange={handleChange} type="number" />
+        <Field 
+          label="Plan Type" 
+          name="plan_type" 
+          value={form.plan_type} 
+          onChange={handleChange}
+          options={[
+            { value: 'monthly', label: 'Monthly' },
+            { value: 'quarterly', label: 'Quarterly' },
+            { value: 'half_yearly', label: 'Half Yearly' },
+            { value: 'yearly', label: 'Yearly' },
+          ]}
+        />
+        <Field 
+          label="Status" 
+          name="is_active" 
+          value={String(form.is_active)} 
+          onChange={handleChange}
+          options={[
+            { value: 'true', label: 'Active' },
+            { value: 'false', label: 'Inactive' },
+          ]}
+        />
+      </div>
+    </ModalShell>
+  );
+};
+
+const EditMembershipModal = ({ membership, onClose, onSave }) => {
+  const [form, setForm] = useState(membership || {});
+  
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  
+  const handleSubmit = () => {
+    const data = {
+      status: form.status,
+      payment_status: form.payment_status,
+      notes: form.notes,
+    };
+    onSave(data);
+  };
+  
+  return (
+    <ModalShell title="Edit Membership" icon={<CreditCard className="h-5 w-5 text-pink-400" />} onClose={onClose} onSave={handleSubmit}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field 
+          label="Status" 
+          name="status" 
+          value={form.status} 
+          onChange={handleChange}
+          options={[
+            { value: 'active', label: 'Active' },
+            { value: 'expired', label: 'Expired' },
+            { value: 'cancelled', label: 'Cancelled' },
+            { value: 'pending', label: 'Pending' },
+          ]}
+        />
+        <Field 
+          label="Payment Status" 
+          name="payment_status" 
+          value={form.payment_status} 
+          onChange={handleChange}
+          options={[
+            { value: 'paid', label: 'Paid' },
+            { value: 'pending', label: 'Pending' },
+            { value: 'overdue', label: 'Overdue' },
+          ]}
+        />
+        <div className="md:col-span-2">
+          <Field label="Notes" name="notes" value={form.notes} onChange={handleChange} type="textarea" />
+        </div>
+      </div>
+    </ModalShell>
+  );
+};
+
+const EditPaymentModal = ({ payment, onClose, onSave }) => {
+  const [form, setForm] = useState(payment || {});
+  
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  
+  const handleSubmit = () => {
+    const data = {
+      status: form.status,
+      payment_method: form.payment_method,
+      notes: form.notes,
+      amount: parseFloat(form.amount) || 0,
+    };
+    onSave(data);
+  };
+  
+  return (
+    <ModalShell title="Edit Payment" icon={<DollarSign className="h-5 w-5 text-green-400" />} onClose={onClose} onSave={handleSubmit}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field label="Amount" name="amount" value={form.amount} onChange={handleChange} type="number" />
+        <Field 
+          label="Payment Method" 
+          name="payment_method" 
+          value={form.payment_method} 
+          onChange={handleChange}
+          options={[
+            { value: 'cash', label: 'Cash' },
+            { value: 'card', label: 'Card' },
+            { value: 'bank_transfer', label: 'Bank Transfer' },
+            { value: 'upi', label: 'UPI' },
+            { value: 'online', label: 'Online' },
+          ]}
+        />
+        <Field 
+          label="Status" 
+          name="status" 
+          value={form.status} 
+          onChange={handleChange}
+          options={[
+            { value: 'paid', label: 'Paid' },
+            { value: 'pending', label: 'Pending' },
+            { value: 'overdue', label: 'Overdue' },
+            { value: 'cancelled', label: 'Cancelled' },
+          ]}
+        />
+        <div className="md:col-span-2">
+          <Field label="Notes" name="notes" value={form.notes} onChange={handleChange} type="textarea" />
+        </div>
+      </div>
+    </ModalShell>
+  );
+};
+
+const EditLeadModal = ({ lead, onClose, onSave }) => {
+  const [form, setForm] = useState(lead || {});
+  
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  
+  const handleSubmit = () => {
+    const data = {
+      full_name: form.full_name,
+      phone: form.phone,
+      email: form.email,
+      status: form.status,
+      source: form.source,
+      interest: form.interest,
+      notes: form.notes,
+    };
+    onSave(data);
+  };
+  
+  return (
+    <ModalShell title="Edit Lead" icon={<Target className="h-5 w-5 text-orange-400" />} onClose={onClose} onSave={handleSubmit}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field label="Full Name" name="full_name" value={form.full_name} onChange={handleChange} />
+        <Field label="Phone" name="phone" value={form.phone} onChange={handleChange} />
+        <Field label="Email" name="email" value={form.email} onChange={handleChange} type="email" />
+        <Field 
+          label="Source" 
+          name="source" 
+          value={form.source} 
+          onChange={handleChange}
+          options={[
+            { value: 'walk_in', label: 'Walk-in' },
+            { value: 'phone_call', label: 'Phone Call' },
+            { value: 'whatsapp', label: 'WhatsApp' },
+            { value: 'instagram', label: 'Instagram' },
+            { value: 'facebook', label: 'Facebook' },
+            { value: 'google', label: 'Google' },
+            { value: 'referral', label: 'Referral' },
+            { value: 'website', label: 'Website' },
+          ]}
+        />
+        <Field 
+          label="Status" 
+          name="status" 
+          value={form.status} 
+          onChange={handleChange}
+          options={[
+            { value: 'new', label: 'New' },
+            { value: 'contacted', label: 'Contacted' },
+            { value: 'interested', label: 'Interested' },
+            { value: 'not_interested', label: 'Not Interested' },
+            { value: 'converted', label: 'Converted' },
+            { value: 'lost', label: 'Lost' },
+          ]}
+        />
+        <div className="md:col-span-2">
+          <Field label="Notes" name="notes" value={form.notes} onChange={handleChange} type="textarea" />
+        </div>
+      </div>
+    </ModalShell>
+  );
+};
+
+const EditExpenseModal = ({ expense, onClose, onSave }) => {
+  const [form, setForm] = useState(expense || {});
+  
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  
+  const handleSubmit = () => {
+    const data = {
+      title: form.title,
+      description: form.description,
+      amount: parseFloat(form.amount) || 0,
+      category: form.category,
+      vendor_name: form.vendor_name,
+    };
+    onSave(data);
+  };
+  
+  return (
+    <ModalShell title="Edit Expense" icon={<Wallet className="h-5 w-5 text-red-400" />} onClose={onClose} onSave={handleSubmit}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field label="Title" name="title" value={form.title} onChange={handleChange} />
+        <Field label="Amount" name="amount" value={form.amount} onChange={handleChange} type="number" />
+        <Field 
+          label="Category" 
+          name="category" 
+          value={form.category} 
+          onChange={handleChange}
+          options={[
+            { value: 'maintenance', label: 'Maintenance' },
+            { value: 'equipment', label: 'Equipment' },
+            { value: 'salary', label: 'Salary' },
+            { value: 'utilities', label: 'Utilities' },
+            { value: 'rent', label: 'Rent' },
+            { value: 'marketing', label: 'Marketing' },
+            { value: 'supplies', label: 'Supplies' },
+            { value: 'training', label: 'Training' },
+            { value: 'other', label: 'Other' },
+          ]}
+        />
+        <Field label="Vendor" name="vendor_name" value={form.vendor_name} onChange={handleChange} />
+        <div className="md:col-span-2">
+          <Field label="Description" name="description" value={form.description} onChange={handleChange} type="textarea" />
+        </div>
+      </div>
+    </ModalShell>
+  );
+};
 
 // ─── Modal Shell ──────────────────────────────────────────────────────────────
 
@@ -247,6 +718,7 @@ const StatCard = ({ icon: Icon, label, value, sub, color = 'purple', onClick }) 
     orange: 'border-orange-500 bg-orange-900/20 text-orange-400',
     pink: 'border-pink-500 bg-pink-900/20 text-pink-400',
     yellow: 'border-yellow-500 bg-yellow-900/20 text-yellow-400',
+    red: 'border-red-500 bg-red-900/20 text-red-400',
   };
   return (
     <div onClick={onClick}
@@ -284,12 +756,20 @@ const AdminDashboard = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterRole, setFilterRole] = useState('all');
   
-  // NEW: Sidebar state
+  // Sidebar state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Modal states
   const [editModal, setEditModal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // ===== GYM MEMBERS VIEW STATE =====
+  const [selectedGymId, setSelectedGymId] = useState(null);
+  const [selectedGymMembers, setSelectedGymMembers] = useState([]);
+  const [selectedGymName, setSelectedGymName] = useState('');
+  const [viewingGymMembers, setViewingGymMembers] = useState(false);
+  const [loadingGymMembers, setLoadingGymMembers] = useState(false);
+  const [gymMemberSearch, setGymMemberSearch] = useState('');
 
   // Data
   const [stats, setStats] = useState({});
@@ -345,6 +825,35 @@ const AdminDashboard = () => {
     }
   };
 
+  // ===== GYM MEMBERS FUNCTIONS =====
+  const fetchGymMembers = async (gymId, gymName) => {
+    setLoadingGymMembers(true);
+    setSelectedGymId(gymId);
+    setSelectedGymName(gymName);
+    setViewingGymMembers(true);
+    
+    try {
+      const params = new URLSearchParams();
+      if (gymMemberSearch) params.append('search', gymMemberSearch);
+      const response = await api.get(`/admin/gyms/${gymId}/members?${params}`);
+      setSelectedGymMembers(response.data || []);
+    } catch (error) {
+      console.error('Error fetching gym members:', error);
+      toast.error('Failed to load gym members');
+      setSelectedGymMembers([]);
+    } finally {
+      setLoadingGymMembers(false);
+    }
+  };
+
+  const handleBackToGyms = () => {
+    setViewingGymMembers(false);
+    setSelectedGymId(null);
+    setSelectedGymMembers([]);
+    setSelectedGymName('');
+    setGymMemberSearch('');
+  };
+
   const openEdit = (type, data) => setEditModal({ type, data });
   const closeEdit = () => setEditModal(null);
 
@@ -356,14 +865,24 @@ const AdminDashboard = () => {
     await api.put(`/${endpoint}`, formData);
     toast.success('Updated successfully!');
     closeEdit();
-    fetchAllData();
+    // Refresh the current view
+    if (viewingGymMembers && selectedGymId) {
+      fetchGymMembers(selectedGymId, selectedGymName);
+    } else {
+      fetchAllData();
+    }
   };
 
   const handleDelete = async () => {
     await api.delete(`/${deleteTarget.endpoint}`);
     toast.success('Deleted successfully!');
     closeDelete();
-    fetchAllData();
+    // Refresh the current view
+    if (viewingGymMembers && selectedGymId) {
+      fetchGymMembers(selectedGymId, selectedGymName);
+    } else {
+      fetchAllData();
+    }
   };
 
   const s = searchTerm.toLowerCase();
@@ -463,7 +982,14 @@ const AdminDashboard = () => {
                 setSelectedTab(item.id); 
                 setSearchTerm(''); 
                 setFilterStatus('all'); 
-                setFilterRole('all'); 
+                setFilterRole('all');
+                // Reset gym members view when switching tabs
+                if (item.id !== 'gyms') {
+                  setViewingGymMembers(false);
+                  setSelectedGymId(null);
+                  setSelectedGymMembers([]);
+                  setSelectedGymName('');
+                }
               }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 selectedTab === item.id
@@ -537,10 +1063,9 @@ const AdminDashboard = () => {
       {/* ==================== MAIN CONTENT ==================== */}
       <div className={`flex-1 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-56'}`}>
         
-        {/* Top Navbar (minimal) */}
+        {/* Top Navbar */}
         <nav className="bg-gray-900 border-b border-gray-800 sticky top-0 z-40">
           <div className="px-4 lg:px-8 h-14 flex items-center justify-between">
-            {/* Left side - page title or breadcrumb */}
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -549,11 +1074,10 @@ const AdminDashboard = () => {
                 {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
               </button>
               <h1 className="text-sm font-semibold text-white capitalize">
-                {selectedTab === 'overview' ? 'Dashboard Overview' : selectedTab}
+                {viewingGymMembers ? `${selectedGymName} - Members` : (selectedTab === 'overview' ? 'Dashboard Overview' : selectedTab)}
               </h1>
             </div>
 
-            {/* Right side - actions */}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => fetchAllData(true)}
@@ -568,7 +1092,7 @@ const AdminDashboard = () => {
         </nav>
 
         {/* Search / Filter Bar */}
-        {selectedTab !== 'overview' && (
+        {selectedTab !== 'overview' && !viewingGymMembers && (
           <div className="bg-gray-900/60 border-b border-gray-800 px-4 lg:px-8 py-3 flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
@@ -596,6 +1120,38 @@ const AdminDashboard = () => {
                 <option value="gym_owner">Gym Owners</option>
                 <option value="gym_staff">Staff</option>
               </select>
+            )}
+          </div>
+        )}
+
+        {/* Gym Members Search Bar */}
+        {viewingGymMembers && (
+          <div className="bg-gray-900/60 border-b border-gray-800 px-4 lg:px-8 py-3 flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+              <input
+                value={gymMemberSearch}
+                onChange={e => setGymMemberSearch(e.target.value)}
+                placeholder={`Search members in ${selectedGymName}...`}
+                className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500"
+              />
+            </div>
+            <button
+              onClick={() => fetchGymMembers(selectedGymId, selectedGymName)}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-medium transition-colors"
+            >
+              Search
+            </button>
+            {gymMemberSearch && (
+              <button
+                onClick={() => {
+                  setGymMemberSearch('');
+                  fetchGymMembers(selectedGymId, selectedGymName);
+                }}
+                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-xl text-sm transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
             )}
           </div>
         )}
@@ -745,9 +1301,8 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* ==================== TABLE VIEWS ==================== */}
-          {/* GYMS TABLE */}
-          {selectedTab === 'gyms' && (
+          {/* ==================== GYMS TABLE OR GYM MEMBERS VIEW ==================== */}
+          {selectedTab === 'gyms' && !viewingGymMembers && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
                 <p className="text-sm font-medium text-gray-300">{filteredGyms.length} gyms</p>
@@ -761,15 +1316,21 @@ const AdminDashboard = () => {
                       <tr key={gym.id} className="hover:bg-gray-800/40 transition-colors">
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{gym.id}</td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2.5">
+                          {/* Clickable Gym Name */}
+                          <button 
+                            onClick={() => fetchGymMembers(gym.id, gym.name)}
+                            className="flex items-center gap-2.5 hover:bg-gray-700/50 rounded-lg p-1 -m-1 transition-colors group w-full text-left"
+                          >
                             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                               {gym.name?.charAt(0)}
                             </div>
                             <div>
-                              <p className="text-sm text-white font-medium">{gym.name}</p>
+                              <p className="text-sm text-white font-medium group-hover:text-purple-400 transition-colors">
+                                {gym.name}
+                              </p>
                               <p className="text-xs text-gray-500 truncate max-w-[150px]">{gym.address}</p>
                             </div>
-                          </div>
+                          </button>
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-sm text-white">{gym.owner_name}</p>
@@ -807,6 +1368,123 @@ const AdminDashboard = () => {
                   </tbody>
                 </table>
                 {filteredGyms.length === 0 && <EmptyRow text="No gyms found" />}
+              </div>
+            </div>
+          )}
+
+          {/* ==================== GYM MEMBERS VIEW ==================== */}
+          {selectedTab === 'gyms' && viewingGymMembers && (
+            <div>
+              {/* Back Button */}
+              <button
+                onClick={handleBackToGyms}
+                className="mb-4 flex items-center gap-2 text-purple-400 hover:text-purple-300 transition-colors font-medium"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Back to Gyms
+              </button>
+
+              {/* Gym Header */}
+              <div className="bg-gray-800 rounded-2xl p-5 mb-6 border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                      <Building2 className="h-5 w-5 text-purple-400" />
+                      {selectedGymName}
+                    </h2>
+                    <p className="text-sm text-gray-400 mt-1">
+                      {selectedGymMembers.length} members in this gym
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-purple-900/60 text-purple-300 text-xs border border-purple-700">
+                    Gym Members
+                  </span>
+                </div>
+              </div>
+
+              {/* Members Table */}
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-300">{selectedGymMembers.length} members</p>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-500">
+                      Active: {selectedGymMembers.filter(m => m.is_active).length}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      Inactive: {selectedGymMembers.filter(m => !m.is_active).length}
+                    </span>
+                  </div>
+                </div>
+                
+                {loadingGymMembers ? (
+                  <div className="py-12 text-center">
+                    <Loader2 className="h-8 w-8 text-purple-500 animate-spin mx-auto" />
+                    <p className="text-gray-400 mt-3 text-sm">Loading members...</p>
+                  </div>
+                ) : selectedGymMembers.length === 0 ? (
+                  <div className="py-12 text-center text-gray-500">
+                    <User className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                    <p className="text-sm">No members found in this gym</p>
+                    {gymMemberSearch && (
+                      <button
+                        onClick={() => {
+                          setGymMemberSearch('');
+                          fetchGymMembers(selectedGymId, selectedGymName);
+                        }}
+                        className="mt-3 text-purple-400 hover:text-purple-300 text-sm"
+                      >
+                        Clear search
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full">
+                      <TableHeader cols={['ID', 'Member', 'Email', 'Phone', 'Gender', 'Plan', 'Status', 'Joined', 'Actions']} />
+                      <tbody className="divide-y divide-gray-800">
+                        {selectedGymMembers.map(member => (
+                          <tr key={member.id} className="hover:bg-gray-800/40 transition-colors">
+                            <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{member.id}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-green-600 to-teal-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                                  {member.full_name?.charAt(0)}
+                                </div>
+                                <span className="text-sm text-white font-medium">{member.full_name}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-400">{member.email || '—'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-400">{member.phone}</td>
+                            <td className="px-4 py-3 text-sm text-gray-400 capitalize">{member.gender || '—'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-300">{member.current_plan || '—'}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-0.5 text-xs rounded-full ${member.is_active ? 'bg-emerald-900/60 text-emerald-300' : 'bg-red-900/60 text-red-300'}`}>
+                                {member.is_active ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{formatDate(member.joined_date)}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => openEdit('member', member)}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-blue-900/40 hover:bg-blue-900/70 text-blue-300 rounded-lg border border-blue-800/50 transition-colors"
+                                >
+                                  <Edit className="h-3.5 w-3.5" /> Edit
+                                </button>
+                                <button
+                                  onClick={() => openDelete('member', member.id, member.full_name, `admin/members/${member.id}`)}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-red-900/40 hover:bg-red-900/70 text-red-300 rounded-lg border border-red-800/50 transition-colors"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" /> Del
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1217,7 +1895,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* WHATSAPP LOGS - You can add the WhatsAppLogs component here */}
+          {/* WHATSAPP LOGS */}
           {selectedTab === 'whatsapp' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
               <div className="flex items-center justify-between mb-4">
@@ -1227,7 +1905,6 @@ const AdminDashboard = () => {
                 </h2>
                 <p className="text-xs text-gray-500">Coming soon - WhatsApp logs will be displayed here</p>
               </div>
-              {/* You can import and render WhatsAppLogs component here */}
             </div>
           )}
         </main>
