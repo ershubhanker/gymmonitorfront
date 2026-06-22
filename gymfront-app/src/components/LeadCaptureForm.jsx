@@ -1,14 +1,15 @@
+// src/pages/LeadCaptureForm.jsx
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   User, Phone, Mail, Calendar, DollarSign, 
   MessageCircle, Send, CheckCircle, 
-  Dumbbell, Heart, Target, Flame, Clock, Award
+  Dumbbell, Heart, Target, Flame, Clock, Award,
+  AlertCircle
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
-// const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.gymmonitor.in';
 
 const LeadCaptureForm = () => {
@@ -17,6 +18,7 @@ const LeadCaptureForm = () => {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [gymName, setGymName] = useState('Gym');
   const [formData, setFormData] = useState({
     full_name: '',
     phone: '',
@@ -34,6 +36,20 @@ const LeadCaptureForm = () => {
   // Debug logging
   useEffect(() => {
     console.log('LeadCaptureForm mounted with gymSlug:', gymSlug);
+    // Try to fetch gym info
+    const fetchGymInfo = async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/gym/public/gym-info/${gymSlug}`);
+        if (response.data && response.data.name) {
+          setGymName(response.data.name);
+        }
+      } catch (error) {
+        console.log('Could not fetch gym info, using default');
+      }
+    };
+    if (gymSlug) {
+      fetchGymInfo();
+    }
   }, [gymSlug]);
 
   const validateForm = () => {
@@ -75,7 +91,16 @@ const LeadCaptureForm = () => {
       console.log('Submitting lead to:', `${API_BASE_URL}/gym/public/lead-capture/${gymSlug}`);
       console.log('Payload:', payload);
       
-      const response = await axios.post(`${API_BASE_URL}/gym/public/lead-capture/${gymSlug}`, payload);
+      const response = await axios.post(
+        `${API_BASE_URL}/gym/public/lead-capture/${gymSlug}`,
+        payload,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            // No Authorization header for public endpoint
+          }
+        }
+      );
       
       console.log('Response:', response.data);
       
@@ -88,13 +113,26 @@ const LeadCaptureForm = () => {
     } catch (error) {
       console.error('Submission error:', error);
       let errorMsg = 'Failed to submit. Please try again.';
-      if (error.response?.data?.detail) {
-        errorMsg = error.response.data.detail;
-      } else if (error.response?.data?.message) {
-        errorMsg = error.response.data.message;
+      
+      if (error.response) {
+        console.error('Error response:', error.response.data);
+        console.error('Status:', error.response.status);
+        
+        if (error.response.status === 404) {
+          errorMsg = 'Invalid gym link. Please contact the gym directly.';
+        } else if (error.response.status === 400) {
+          errorMsg = error.response.data.detail || 'Invalid form data. Please check your inputs.';
+        } else if (error.response.status === 403) {
+          errorMsg = 'This gym is not accepting new leads at the moment.';
+        } else if (error.response.data?.detail) {
+          errorMsg = error.response.data.detail;
+        } else if (error.response.data?.message) {
+          errorMsg = error.response.data.message;
+        }
       } else if (error.message) {
         errorMsg = error.message;
       }
+      
       setFormError(errorMsg);
       toast.error(errorMsg);
     } finally {
@@ -117,8 +155,8 @@ const LeadCaptureForm = () => {
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-3">Thank You!</h2>
           <p className="text-gray-600 mb-6">
-            Your inquiry has been submitted successfully. 
-            Our team will get back to you within 24 hours.
+            Your inquiry has been submitted successfully to <strong>{gymName}</strong>.
+            Their team will get back to you within 24 hours.
           </p>
           <button
             onClick={() => navigate('/')}
@@ -147,7 +185,7 @@ const LeadCaptureForm = () => {
             <Dumbbell className="h-8 w-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Join Our Gym
+            Join {gymName}
           </h1>
           <p className="text-gray-600">
             Start your fitness journey today! Fill out the form and we'll get back to you.
@@ -157,11 +195,19 @@ const LeadCaptureForm = () => {
         {/* Error Display */}
         {formError && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
-            <div className="flex items-center gap-3">
-              <div className="text-red-500">⚠️</div>
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-red-700 font-medium">Submission Error</p>
                 <p className="text-red-600 text-sm">{formError}</p>
+                {formError.includes('Invalid gym link') && (
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Try again
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -231,6 +277,7 @@ const LeadCaptureForm = () => {
                   placeholder="you@example.com"
                 />
               </div>
+              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
             </div>
 
             {/* Age & Gender Row */}
@@ -250,6 +297,7 @@ const LeadCaptureForm = () => {
                     max="100"
                   />
                 </div>
+                {errors.age && <p className="text-red-500 text-xs mt-1">{errors.age}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>

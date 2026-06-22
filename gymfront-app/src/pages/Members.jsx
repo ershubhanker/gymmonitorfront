@@ -480,15 +480,18 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     
     setLoading(true);
     try {
+      // Increase limit to get all members or use a larger number
       const params = {
         search: debouncedSearchTerm,
         status: filters.status === 'all' ? 'all' : filters.status,
         page: currentPage,
-        limit: itemsPerPage
+        limit: itemsPerPage  // This is 50
       };
       
       console.log('Fetching members with optimized endpoint:', params);
       const data = await fetchMembersOptimized(params);
+      
+      console.log('API Response - Total:', data.total, 'Items:', data.items.length);
       
       const transformed = data.items.map(item => ({
         id: item.id,
@@ -524,7 +527,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         syncedToDevice: item.synced_to_device || false,
         deviceUserId: item.device_user_id || null,
       }));
-
+  
       setMembers(transformed);
       setTotalMembersCount(data.total || 0);
       setTotalPages(data.total_pages || 0);
@@ -536,7 +539,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       setLoading(false);
     }
   }, [debouncedSearchTerm, filters.status, currentPage, itemsPerPage, showSingleMember]);
-
+  
   // ============================================================
   // OPTIMIZED: Fetch stats using the new optimized endpoint
   // ============================================================
