@@ -5,27 +5,47 @@ import { useAttendance } from '../../context/AttendanceContext';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 
-// Helper function to format time in IST
+// ===== FIXED: Helper function to format time in IST =====
 const formatInIST = (timestamp) => {
   if (!timestamp) return 'N/A';
   try {
-    const date = new Date(timestamp);
-    // Add 5 hours 30 minutes (IST is UTC+5:30)
-    const istTime = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    const timestampStr = typeof timestamp === 'string' ? timestamp : String(timestamp);
+    
+    // Create date object from timestamp
+    const date = new Date(timestampStr);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return String(timestamp);
+    }
+    
+    // Check if the timestamp already has timezone info
+    const hasTimezone = timestampStr.includes('Z') || timestampStr.includes('+');
+    
+    let istDate;
+    if (hasTimezone) {
+      // If it has timezone info (like member attendance), convert to IST by adding 5:30
+      istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    } else {
+      // If no timezone info, it might already be in IST
+      // Just use it as-is without adding offset
+      istDate = new Date(date.getTime());
+    }
     
     // Format the IST time
-    const year = istTime.getFullYear();
-    const month = String(istTime.getMonth() + 1).padStart(2, '0');
-    const day = String(istTime.getDate()).padStart(2, '0');
-    let hours = istTime.getHours();
-    const minutes = String(istTime.getMinutes()).padStart(2, '0');
-    const seconds = String(istTime.getSeconds()).padStart(2, '0');
+    const year = istDate.getFullYear();
+    const month = String(istDate.getMonth() + 1).padStart(2, '0');
+    const day = String(istDate.getDate()).padStart(2, '0');
+    let hours = istDate.getHours();
+    const minutes = String(istDate.getMinutes()).padStart(2, '0');
+    const seconds = String(istDate.getSeconds()).padStart(2, '0');
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12 || 12;
     
     return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds} ${ampm}`;
   } catch (e) {
-    return timestamp;
+    console.warn('Error formatting timestamp:', timestamp, e);
+    return String(timestamp);
   }
 };
 
@@ -119,9 +139,6 @@ const AttendanceHistory = () => {
     }
   };
 
-  // ================================================================
-  // UPDATED: Refresh function that triggers attendance sync
-  // ================================================================
   const handleRefresh = async () => {
     setSyncing(true);
     toast.loading('🔄 Syncing attendance from device...', { id: 'attendance-sync' });
@@ -133,11 +150,10 @@ const AttendanceHistory = () => {
             console.log('✅ Attendance sync triggered:', syncResponse.data);
             await new Promise(resolve => setTimeout(resolve, 3000));
             
-            // ===== USE EXISTING fetch functions =====
             if (activeTab === 'members') {
-                await fetchMemberAttendance();  // Uses /attendance/records
+                await fetchMemberAttendance();
             } else {
-                await fetchStaffAttendance();   // Uses /attendance/staff/attendance
+                await fetchStaffAttendance();
             }
             
             toast.success('📊 Attendance synced and refreshed!', { id: 'attendance-sync' });
@@ -160,8 +176,7 @@ const AttendanceHistory = () => {
     } finally {
         setSyncing(false);
     }
-};
-
+  };
 
   useEffect(() => {
     if (activeTab === 'members') {
@@ -338,7 +353,6 @@ const AttendanceHistory = () => {
           </p>
         </div>
         <div className="flex gap-2">
-          {/* ===== UPDATED REFRESH BUTTON - Now triggers sync ===== */}
           <button
             onClick={handleRefresh}
             disabled={syncing}

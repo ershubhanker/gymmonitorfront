@@ -9,27 +9,89 @@ import { useAttendance } from '../../context/AttendanceContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
-// Helper function to format time in IST
+// Helper function to format time in IST - FIXED for staff timestamps
 const formatInIST = (timestamp) => {
   if (!timestamp) return 'N/A';
   try {
-    const date = new Date(timestamp);
-    // Add 5 hours 30 minutes (IST is UTC+5:30)
-    const istTime = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    const timestampStr = typeof timestamp === 'string' ? timestamp : String(timestamp);
     
-    // Format the IST time
-    const year = istTime.getFullYear();
-    const month = String(istTime.getMonth() + 1).padStart(2, '0');
-    const day = String(istTime.getDate()).padStart(2, '0');
-    let hours = istTime.getHours();
-    const minutes = String(istTime.getMinutes()).padStart(2, '0');
-    const seconds = String(istTime.getSeconds()).padStart(2, '0');
+    // Create date object from timestamp
+    const date = new Date(timestampStr);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return String(timestamp);
+    }
+    
+    // Check if the timestamp already has timezone info
+    // If it contains 'Z' or '+', it's already in UTC or has timezone
+    const hasTimezone = timestampStr.includes('Z') || timestampStr.includes('+');
+    
+    let istDate;
+    if (hasTimezone) {
+      // If it has timezone info, convert to IST by adding 5:30
+      istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    } else {
+      // If no timezone info, it might be stored as IST already
+      // Just use it as-is without adding offset
+      istDate = new Date(date.getTime());
+    }
+    
+    const year = istDate.getFullYear();
+    const month = String(istDate.getMonth() + 1).padStart(2, '0');
+    const day = String(istDate.getDate()).padStart(2, '0');
+    let hours = istDate.getHours();
+    const minutes = String(istDate.getMinutes()).padStart(2, '0');
+    const seconds = String(istDate.getSeconds()).padStart(2, '0');
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12 || 12;
     
     return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds} ${ampm}`;
   } catch (e) {
-    return timestamp;
+    console.warn('Error formatting timestamp:', timestamp, e);
+    return String(timestamp);
+  }
+};
+
+// Helper function to format date only in IST
+const formatDateOnlyIST = (timestamp) => {
+  if (!timestamp) return '';
+  try {
+    const timestampStr = typeof timestamp === 'string' ? timestamp : String(timestamp);
+    const date = new Date(timestampStr);
+    if (isNaN(date.getTime())) return '';
+    
+    const hasTimezone = timestampStr.includes('Z') || timestampStr.includes('+');
+    
+    let istDate;
+    if (hasTimezone) {
+      istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    } else {
+      istDate = new Date(date.getTime());
+    }
+    
+    const year = istDate.getFullYear();
+    const month = String(istDate.getMonth() + 1).padStart(2, '0');
+    const day = String(istDate.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch (e) {
+    return '';
+  }
+};
+
+// Helper to format date for display
+const formatDateDisplay = (dateStr) => {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr + 'T00:00:00');
+    if (isNaN(date.getTime())) return dateStr;
+    return date.toLocaleDateString('en-IN', { 
+      day: '2-digit', 
+      month: 'short', 
+      year: 'numeric' 
+    });
+  } catch (e) {
+    return dateStr;
   }
 };
 
@@ -53,6 +115,10 @@ const LiveMonitoring = () => {
   const [selectedDate, setSelectedDate] = useState('');
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [dateFilter, setDateFilter] = useState('');
+  
+  // Staff Live Events - Separate state for staff events
+  const [staffLiveEvents, setStaffLiveEvents] = useState([]);
+  const [staffLoading, setStaffLoading] = useState(false);
   
   // Staff Stats
   const [staffStats, setStaffStats] = useState({ total_checkins: 0, unique_staff: 0 });
@@ -98,70 +164,124 @@ const LiveMonitoring = () => {
     return false;
   };
 
-  // Fetch staff stats
-  const fetchStaffStats = async () => {
+  // ===== FIXED: Fetch staff live events =====
+  const fetchStaffLiveEvents = async () => {
+    setStaffLoading(true);
     try {
-        const response = await api.get('/attendance/stats/by-type');
-        setStaffStats(response.data?.staff || { total_checkins: 0, unique_staff: 0 });
+      const response = await api.get('/attendance/staff/attendance', {
+        params: { limit: 100 }
+      });
+      
+      if (response.data) {
+        // Convert to live event format - preserve original timestamp
+        const events = (response.data.records || []).map(record => ({
+          id: record.id,
+          user_id: `S${record.staff_id}`,
+          user_name: record.staff_name || 'Unknown Staff',
+          // Preserve the original timestamp as it came from the server
+          timestamp: record.created_at || record.check_in_time || record.timestamp,
+          event_type: record.event_type || 'check_in',
+          verified: record.verified !== undefined ? record.verified : true,
+          device_serial: record.device_serial || 'N/A'
+        }));
+        setStaffLiveEvents(events);
+        
+        // Also update staff stats from the response
+        if (response.data.total !== undefined) {
+          setStaffStats({
+            total_checkins: response.data.total || 0,
+            unique_staff: response.data.unique_staff || 0
+          });
+        }
+      }
     } catch (error) {
-        console.error('Error fetching staff stats:', error);
+      console.error('Error fetching staff live events:', error);
+      try {
+        const statsResponse = await api.get('/attendance/stats/by-type');
+        setStaffStats(statsResponse.data?.staff || { total_checkins: 0, unique_staff: 0 });
+      } catch (statsError) {
+        console.error('Error fetching staff stats:', statsError);
         setStaffStats({ total_checkins: 0, unique_staff: 0 });
+      }
+      setStaffLiveEvents([]);
+    } finally {
+      setStaffLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchStaffStats();
-  }, [liveEvents]);
+  // Fetch staff stats only
+  const fetchStaffStatsOnly = async () => {
+    try {
+      const response = await api.get('/attendance/stats/by-type');
+      setStaffStats(response.data?.staff || { total_checkins: 0, unique_staff: 0 });
+    } catch (error) {
+      console.error('Error fetching staff stats:', error);
+      setStaffStats({ total_checkins: 0, unique_staff: 0 });
+    }
+  };
 
-  // ================================================================
-  // UPDATED: Refresh function that triggers attendance sync
-  // ================================================================
+  // ===== UPDATED: Refresh function that triggers attendance sync =====
   const handleRefresh = async () => {
     setSyncing(true);
     toast.loading('🔄 Syncing attendance from device...', { id: 'attendance-sync' });
     
     try {
-        // Step 1: Trigger attendance sync via bridge
-        const syncResponse = await api.post('/attendance/sync-attendance');
+      const syncResponse = await api.post('/attendance/sync-attendance');
+      
+      if (syncResponse.data.success) {
+        console.log('✅ Attendance sync triggered:', syncResponse.data);
         
-        if (syncResponse.data.success) {
-            console.log('✅ Attendance sync triggered:', syncResponse.data);
-            
-            // Step 2: Wait for bridge to process
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            
-            // Step 3: ===== THIS IS THE KEY - Refresh all data =====
-            // refreshAllData() should fetch from /attendance/stats/today and /attendance/records
-            await refreshAllData();
-            await fetchStaffStats();
-            
-            toast.success('📊 Attendance synced and refreshed!', { id: 'attendance-sync' });
-        } else {
-            toast.warning(syncResponse.data.message || 'No devices found to sync', { id: 'attendance-sync' });
-            refreshAllData();
-            fetchStaffStats();
-        }
-    } catch (error) {
-        console.error('Error syncing attendance:', error);
-        toast.error(error.response?.data?.detail || 'Failed to sync attendance', { id: 'attendance-sync' });
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        await refreshAllData();
+        await fetchStaffLiveEvents();
+        await fetchStaffStatsOnly();
+        
+        toast.success('📊 Attendance synced and refreshed!', { id: 'attendance-sync' });
+      } else {
+        toast.warning(syncResponse.data.message || 'No devices found to sync', { id: 'attendance-sync' });
         refreshAllData();
-        fetchStaffStats();
+        fetchStaffLiveEvents();
+        fetchStaffStatsOnly();
+      }
+    } catch (error) {
+      console.error('Error syncing attendance:', error);
+      toast.error(error.response?.data?.detail || 'Failed to sync attendance', { id: 'attendance-sync' });
+      refreshAllData();
+      fetchStaffLiveEvents();
+      fetchStaffStatsOnly();
     } finally {
-        setSyncing(false);
+      setSyncing(false);
     }
-};
+  };
 
   // Handle delete single event
   const handleDeleteEvent = async () => {
     if (!selectedEvent) return;
     
-    const result = await deleteAttendanceEvent(selectedEvent.id);
+    const isStaff = selectedEvent.user_id?.startsWith('S') || 
+                    selectedEvent.event_type?.startsWith('staff_') ||
+                    selectedEvent.staff_id;
+    
+    let result;
+    if (isStaff) {
+      try {
+        await api.delete(`/attendance/staff/attendance/${selectedEvent.id}`);
+        result = { success: true };
+      } catch (error) {
+        result = { success: false, error: error.response?.data?.detail || 'Failed to delete staff event' };
+      }
+    } else {
+      result = await deleteAttendanceEvent(selectedEvent.id);
+    }
+    
     if (result.success) {
       toast.success('Event deleted successfully');
       setShowDeleteModal(false);
       setSelectedEvent(null);
       refreshAllData();
-      fetchStaffStats();
+      fetchStaffLiveEvents();
+      fetchStaffStatsOnly();
     } else {
       toast.error(result.error || 'Failed to delete event');
     }
@@ -169,15 +289,41 @@ const LiveMonitoring = () => {
 
   // Handle clear all events
   const handleClearAllEvents = async () => {
-    const result = await clearAllEvents(selectedDate || undefined);
-    if (result.success) {
-      toast.success(result.message || 'Events cleared successfully');
+    let success = true;
+    let message = '';
+    
+    try {
+      const memberResult = await clearAllEvents(selectedDate || undefined);
+      if (!memberResult.success) {
+        success = false;
+        message = memberResult.error;
+      }
+    } catch (error) {
+      success = false;
+      message = error.message || 'Failed to clear member events';
+    }
+    
+    try {
+      const params = {};
+      if (selectedDate) params.date = selectedDate;
+      await api.delete('/attendance/staff/attendance/clear', { params });
+    } catch (error) {
+      console.error('Error clearing staff events:', error);
+      if (success) {
+        success = false;
+        message = 'Member events cleared but failed to clear staff events';
+      }
+    }
+    
+    if (success) {
+      toast.success('All events cleared successfully');
       setShowClearAllModal(false);
       setSelectedDate('');
       refreshAllData();
-      fetchStaffStats();
+      fetchStaffLiveEvents();
+      fetchStaffStatsOnly();
     } else {
-      toast.error(result.error || 'Failed to clear events');
+      toast.error(message || 'Failed to clear events');
     }
   };
 
@@ -251,45 +397,37 @@ const LiveMonitoring = () => {
           device_serial: "MANUAL_ENTRY",
           verified: true
         };
+        await api.post('/attendance/live', payload, {
+          headers: { 'X-API-Key': 'MANUAL_ENTRY' }
+        });
       } else {
-        // For staff, use 'S' prefix to differentiate
         payload = {
-          user_id: `S${selectedUser.id}`,
-          user_name: selectedUser.user?.full_name || selectedUser.full_name,
+          staff_id: selectedUser.id,
+          staff_name: selectedUser.user?.full_name || selectedUser.full_name,
+          position: selectedUser.position || 'Staff',
           timestamp: timestamp.toISOString(),
-          status: "0",
           event_type: manualEventType,
           device_serial: "MANUAL_ENTRY",
           verified: true
         };
+        await api.post('/attendance/staff/attendance/manual', payload);
       }
       
-      console.log('Sending manual attendance:', payload);
+      toast.success(`Manual ${manualEventType === 'check_in' ? 'check-in' : 'check-out'} recorded for ${selectedUser.user?.full_name || selectedUser.full_name}`);
       
-      const response = await api.post('/attendance/live', payload, {
-        headers: { 'X-API-Key': 'MANUAL_ENTRY' }
-      });
+      setShowManualModal(false);
+      setManualSearch('');
+      setManualMembers([]);
+      setManualStaff([]);
+      setSelectedUser(null);
+      setManualEventType('check_in');
+      setManualDateTime('');
       
-      if (response.status === 200) {
-        toast.success(`Manual ${manualEventType === 'check_in' ? 'check-in' : 'check-out'} recorded for ${selectedUser.user?.full_name || selectedUser.full_name}`);
-        
-        // Reset form
-        setShowManualModal(false);
-        setManualSearch('');
-        setManualMembers([]);
-        setManualStaff([]);
-        setSelectedUser(null);
-        setManualEventType('check_in');
-        setManualDateTime('');
-        
-        // Refresh data after a short delay
-        setTimeout(() => {
-          refreshAllData();
-          fetchStaffStats();
-        }, 500);
-      } else {
-        toast.error('Failed to record attendance');
-      }
+      setTimeout(() => {
+        refreshAllData();
+        fetchStaffLiveEvents();
+        fetchStaffStatsOnly();
+      }, 500);
     } catch (error) {
       console.error('Error submitting manual attendance:', error);
       const errorMsg = error.response?.data?.detail || 'Failed to record manual attendance';
@@ -301,22 +439,14 @@ const LiveMonitoring = () => {
 
   // Filter events by date, type, and user type
   const getFilteredEvents = () => {
-    let filtered = [...liveEvents];
+    let filtered = [];
     
-    // Filter by user type (member vs staff)
     if (activeTab === 'members') {
-      filtered = filtered.filter(event => {
-        if (!event) return false;
-        return !isStaffEvent(event);
-      });
+      filtered = [...liveEvents];
     } else {
-      filtered = filtered.filter(event => {
-        if (!event) return false;
-        return isStaffEvent(event);
-      });
+      filtered = [...staffLiveEvents];
     }
     
-    // Filter by event type (check_in / check_out)
     if (filter === 'check_in') {
       filtered = filtered.filter(event => {
         const eventType = event?.event_type;
@@ -329,13 +459,11 @@ const LiveMonitoring = () => {
       });
     }
     
-    // Filter by date
     if (dateFilter) {
       filtered = filtered.filter(event => {
         if (!event?.timestamp) return false;
-        const date = new Date(event.timestamp);
-        const dateStr = date.toISOString().split('T')[0];
-        return dateStr === dateFilter;
+        const eventDate = formatDateOnlyIST(event.timestamp);
+        return eventDate === dateFilter;
       });
     }
     
@@ -357,48 +485,74 @@ const LiveMonitoring = () => {
     }
   };
 
+  // Load staff events when tab changes
+  useEffect(() => {
+    if (activeTab === 'staff') {
+      fetchStaffLiveEvents();
+    }
+  }, [activeTab]);
+
+  // Initial load of staff events
+  useEffect(() => {
+    fetchStaffLiveEvents();
+    fetchStaffStatsOnly();
+  }, []);
+
+  // Refresh staff events when liveEvents change (if we're in staff tab)
+  useEffect(() => {
+    if (activeTab === 'staff') {
+      fetchStaffLiveEvents();
+    }
+  }, [liveEvents]);
+
   const filteredEvents = getFilteredEvents();
   const stats = getStats();
   const onlineDevices = (devices || []).filter(d => d?.is_online).length || 0;
 
   // Get unique dates for filter
+  const allEvents = activeTab === 'members' ? liveEvents : staffLiveEvents;
   const uniqueDates = [...new Set(
-    (liveEvents || [])
-      .filter(event => {
-        if (activeTab === 'members') {
-          return !isStaffEvent(event);
-        } else {
-          return isStaffEvent(event);
-        }
-      })
+    (allEvents || [])
       .map(event => {
         if (!event?.timestamp) return null;
-        const date = new Date(event.timestamp);
-        return date.toISOString().split('T')[0];
+        return formatDateOnlyIST(event.timestamp);
       })
-      .filter(date => date)
+      .filter(date => date && date !== '')
   )].sort().reverse();
 
   // Count events for filter buttons
   const getEventCounts = () => {
-    const allEvents = getFilteredEvents();
-    const checkIns = allEvents.filter(e => 
-      e?.event_type === 'check_in' || e?.event_type === 'staff_check_in'
-    );
-    const checkOuts = allEvents.filter(e => 
-      e?.event_type === 'check_out' || e?.event_type === 'staff_check_out'
-    );
-    return { all: allEvents.length, checkIns: checkIns.length, checkOuts: checkOuts.length };
+    const allEventsList = getFilteredEvents();
+    const checkIns = allEventsList.filter(e => {
+      const type = e?.event_type;
+      return type === 'check_in' || type === 'staff_check_in';
+    });
+    const checkOuts = allEventsList.filter(e => {
+      const type = e?.event_type;
+      return type === 'check_out' || type === 'staff_check_out';
+    });
+    return { all: allEventsList.length, checkIns: checkIns.length, checkOuts: checkOuts.length };
   };
 
   const counts = getEventCounts();
 
-  if (loading && (!liveEvents || liveEvents.length === 0)) {
+  if (loading && (!liveEvents || liveEvents.length === 0) && activeTab === 'members') {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
           <p className="text-gray-500 mt-2">Loading attendance data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (staffLoading && activeTab === 'staff' && staffLiveEvents.length === 0) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+          <p className="text-gray-500 mt-2">Loading staff attendance...</p>
         </div>
       </div>
     );
@@ -459,7 +613,7 @@ const LiveMonitoring = () => {
             <div className="bg-gray-50 rounded-lg p-3 mb-6">
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <span className="text-gray-500">{activeTab === 'members' ? 'Member:' : 'Staff:'}</span>
-                <span className="font-medium text-gray-900">{selectedEvent.user_name}</span>
+                <span className="font-medium text-gray-900">{selectedEvent.user_name || selectedEvent.staff_name}</span>
                 <span className="text-gray-500">Time:</span>
                 <span className="font-medium text-gray-900">
                   {formatInIST(selectedEvent.timestamp)}
@@ -680,7 +834,7 @@ const LiveMonitoring = () => {
         </div>
       )}
 
-      {/* Status Bar - UPDATED with Sync functionality */}
+      {/* Status Bar */}
       <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Wifi className="h-4 w-4 text-green-600" />
@@ -702,7 +856,6 @@ const LiveMonitoring = () => {
             Manual Entry
           </button>
           
-          {/* ===== UPDATED REFRESH BUTTON - Now triggers sync ===== */}
           <button 
             onClick={handleRefresh} 
             disabled={syncing}
@@ -719,7 +872,7 @@ const LiveMonitoring = () => {
           <button 
             onClick={() => setShowClearAllModal(true)} 
             className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm" 
-            disabled={liveEvents.length === 0}
+            disabled={(activeTab === 'members' ? liveEvents : staffLiveEvents).length === 0}
           >
             <Trash2 className="h-3.5 w-3.5" />
             Clear All
@@ -786,7 +939,7 @@ const LiveMonitoring = () => {
           className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${dateFilter ? (activeTab === 'members' ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white') : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
         >
           <Calendar className="h-4 w-4" />
-          {dateFilter ? `Date: ${dateFilter}` : 'Filter by Date'}
+          {dateFilter ? `Date: ${formatDateDisplay(dateFilter)}` : 'Filter by Date'}
           {dateFilter && <X className="h-3 w-3 cursor-pointer hover:text-white" onClick={(e) => { e.stopPropagation(); setDateFilter(''); }} />}
         </button>
       </div>
@@ -805,11 +958,7 @@ const LiveMonitoring = () => {
                 onClick={() => { setDateFilter(date); setShowDateFilter(false); }} 
                 className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm hover:bg-blue-50 hover:border-blue-300"
               >
-                {new Date(date).toLocaleDateString('en-IN', { 
-                  day: '2-digit', 
-                  month: 'short', 
-                  year: 'numeric' 
-                })}
+                {formatDateDisplay(date)}
               </button>
             ))}
           </div>
@@ -839,7 +988,7 @@ const LiveMonitoring = () => {
                     <Bell className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                     <p>No {activeTab} attendance events found</p>
                     <p className="text-sm text-gray-400 mt-1">
-                      {dateFilter ? `No events on ${new Date(dateFilter).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : 
+                      {dateFilter ? `No events on ${formatDateDisplay(dateFilter)}` : 
                         activeTab === 'members' 
                           ? 'Scan a fingerprint on the device or use "Manual Entry" to add member attendance'
                           : 'Staff member needs to scan fingerprint on device or use "Manual Entry"'}
@@ -847,50 +996,60 @@ const LiveMonitoring = () => {
                   </td>
                 </tr>
               ) : (
-                filteredEvents.map((event, index) => (
-                  <tr key={event?.id || index} className="hover:bg-gray-50 transition-colors group">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatInIST(event?.timestamp)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${activeTab === 'members' ? 'bg-blue-100' : 'bg-purple-100'}`}>
-                          {activeTab === 'members' ? (
-                            <User className="h-4 w-4 text-blue-600" />
-                          ) : (
-                            <Briefcase className="h-4 w-4 text-purple-600" />
-                          )}
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{event?.user_name || 'Unknown'}</div>
-                          <div className="text-xs text-gray-500">
-                            ID: {getUserIdAsString(event).replace('S', '')}
+                filteredEvents.map((event, index) => {
+                  const userName = event.user_name || event.staff_name || 'Unknown';
+                  const userId = event.user_id || event.staff_id || '';
+                  const eventType = event.event_type || 'check_in';
+                  
+                  return (
+                    <tr key={event?.id || index} className="hover:bg-gray-50 transition-colors group">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatInIST(event.timestamp || event.created_at)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${activeTab === 'members' ? 'bg-blue-100' : 'bg-purple-100'}`}>
+                            {activeTab === 'members' ? (
+                              <User className="h-4 w-4 text-blue-600" />
+                            ) : (
+                              <Briefcase className="h-4 w-4 text-purple-600" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{userName}</div>
+                            <div className="text-xs text-gray-500">
+                              ID: {String(userId).replace('S', '')}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        event?.event_type === 'check_in' || event?.event_type === 'staff_check_in'
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-orange-100 text-orange-800'
-                      }`}>
-                        {event?.event_type?.replace('staff_', '').toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {event?.verified ? <CheckCircle className="h-5 w-5 text-green-500" /> : <XCircle className="h-5 w-5 text-red-500" />}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {event?.device_serial?.slice(-8) || (event?.device_serial === 'MANUAL_ENTRY' ? 'Manual Entry' : 'N/A')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <button onClick={() => { setSelectedEvent(event); setShowDeleteModal(true); }} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-red-600 hover:bg-red-50 rounded-lg">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          eventType === 'check_in' || eventType === 'staff_check_in'
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-orange-100 text-orange-800'
+                        }`}>
+                          {eventType.replace('staff_', '').toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {event.verified !== undefined && event.verified !== null ? (
+                          event.verified ? <CheckCircle className="h-5 w-5 text-green-500" /> : <XCircle className="h-5 w-5 text-red-500" />
+                        ) : (
+                          <CheckCircle className="h-5 w-5 text-green-500" />
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {event.device_serial?.slice(-8) || (event.device_serial === 'MANUAL_ENTRY' ? 'Manual Entry' : 'N/A')}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <button onClick={() => { setSelectedEvent(event); setShowDeleteModal(true); }} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-red-600 hover:bg-red-50 rounded-lg">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
