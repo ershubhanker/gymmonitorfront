@@ -7,7 +7,7 @@ import {
   Wifi, WifiOff, Database, Smartphone, CheckCircle, XCircle,
   Loader2, Cloud, Server, Eye, User, MapPin, Award, BookOpen,
   DollarSign, Calendar as CalendarIcon, Users, Settings, Copy,
-  Shield
+  Shield, Menu, MoreVertical
 } from 'lucide-react';
 import { X as CloseIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -710,10 +710,10 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                   <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1">
                     <Smartphone className="h-3 w-3" /> Device Sync
                   </p>
-                  <div className="flex items-center justify-between mt-2">
-                    <div>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <div className="flex-1 min-w-[120px]">
                       {deviceUserId ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <CheckCircle className="h-4 w-4 text-green-600" />
                           <span className="text-sm font-medium text-green-600">Synced to Device</span>
                           <button
@@ -729,11 +729,11 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                       )}
                     </div>
                     {devices.length > 0 && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <select
                           value={selectedDeviceId}
                           onChange={(e) => setSelectedDeviceId(e.target.value)}
-                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 min-w-[120px]"
                         >
                           <option value="">Select Device</option>
                           {devices.map(device => (
@@ -951,7 +951,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
                 <Smartphone className="inline h-4 w-4 mr-1" />
                 Sync to Attendance Device
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <select
                   value={selectedDeviceId}
                   onChange={(e) => setSelectedDeviceId(e.target.value)}
@@ -968,7 +968,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
                   type="button"
                   onClick={handleSyncToDevice}
                   disabled={syncing || !selectedDeviceId}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
                   Sync
@@ -1088,9 +1088,9 @@ const StaffDeviceSyncModal = ({ isOpen, onClose, staffList, devices, onSyncSelec
           </select>
         </div>
 
-        <div className="p-6 border-b">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-4">
+        <div className="p-6 border-b overflow-y-auto flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <div className="flex flex-wrap items-center gap-4">
               <label className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -1124,7 +1124,7 @@ const StaffDeviceSyncModal = ({ isOpen, onClose, staffList, devices, onSyncSelec
           </div>
 
           {syncMode === 'selected' && (
-            <div className="border rounded-lg overflow-hidden max-h-80 overflow-y-auto">
+            <div className="border rounded-lg overflow-x-auto max-h-80 overflow-y-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -1185,7 +1185,7 @@ const StaffDeviceSyncModal = ({ isOpen, onClose, staffList, devices, onSyncSelec
           )}
         </div>
 
-        <div className="p-6 flex justify-end gap-3">
+        <div className="p-6 flex flex-wrap justify-end gap-3 border-t">
           <button
             type="button"
             onClick={onClose}
@@ -1227,7 +1227,6 @@ const Staff = () => {
   const [staffDeviceIds, setStaffDeviceIds] = useState({});
   const itemsPerPage = 10;
 
-
   useEffect(() => {
     // Get user role from localStorage or from the permissions response
     const storedRole = localStorage.getItem('userRole');
@@ -1235,7 +1234,6 @@ const Staff = () => {
       setUserRole(storedRole);
     }
   }, []);
-
 
   // Permission checks - Gym owners and Super Admins have all permissions
   const isAdmin = userRole === 'gym_owner' || userRole === 'super_admin';
@@ -1249,10 +1247,9 @@ const Staff = () => {
   const canSyncToDevice = hasPermission('sync_to_device');
 
   const [initialStaffId, setInitialStaffId] = useState(null);
-const [selectedStaffForView, setSelectedStaffForView] = useState(null);
-const [showSingleStaff, setShowSingleStaff] = useState(false);
-const [loadingSingleStaff, setLoadingSingleStaff] = useState(false);
-
+  const [selectedStaffForView, setSelectedStaffForView] = useState(null);
+  const [showSingleStaff, setShowSingleStaff] = useState(false);
+  const [loadingSingleStaff, setLoadingSingleStaff] = useState(false);
 
   useEffect(() => {
     if (canViewStaff) {
@@ -1261,9 +1258,6 @@ const [loadingSingleStaff, setLoadingSingleStaff] = useState(false);
       fetchStaffDeviceIds();
     }
   }, [canViewStaff]);
-
-
-
 
   useEffect(() => {
     if (initialStaffId) {
@@ -1297,9 +1291,6 @@ const [loadingSingleStaff, setLoadingSingleStaff] = useState(false);
     setShowSingleStaff(false);
     setInitialStaffId(null);
     setSelectedStaffForView(null);
-    if (onStaffSelect) {
-      onStaffSelect(null);
-    }
   };
 
   const fetchStaff = async () => {
@@ -1555,50 +1546,50 @@ const [loadingSingleStaff, setLoadingSingleStaff] = useState(false);
   const hasDevices = devices.length > 0;
 
   return (
-    <div className="p-6">
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-6">
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <p className="text-sm text-gray-600">Total Staff</p>
-          <p className="text-2xl font-bold text-gray-900">{staffList.length}</p>
+    <div className="p-4 sm:p-6">
+      {/* Stats - Responsive Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-6 mb-4 sm:mb-6">
+        <div className="bg-white rounded-xl shadow-sm p-3 sm:p-6">
+          <p className="text-xs sm:text-sm text-gray-600">Total Staff</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900">{staffList.length}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <p className="text-sm text-gray-600">Active</p>
-          <p className="text-2xl font-bold text-green-600">{staffList.filter(s => s.is_active).length}</p>
+        <div className="bg-white rounded-xl shadow-sm p-3 sm:p-6">
+          <p className="text-xs sm:text-sm text-gray-600">Active</p>
+          <p className="text-xl sm:text-2xl font-bold text-green-600">{staffList.filter(s => s.is_active).length}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <p className="text-sm text-gray-600">Inactive</p>
-          <p className="text-2xl font-bold text-yellow-600">{staffList.filter(s => !s.is_active).length}</p>
+        <div className="bg-white rounded-xl shadow-sm p-3 sm:p-6">
+          <p className="text-xs sm:text-sm text-gray-600">Inactive</p>
+          <p className="text-xl sm:text-2xl font-bold text-yellow-600">{staffList.filter(s => !s.is_active).length}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <p className="text-sm text-gray-600">With Shift Set</p>
-          <p className="text-2xl font-bold text-blue-600">{staffList.filter(s => s.shift_start_time && s.shift_end_time).length}</p>
+        <div className="bg-white rounded-xl shadow-sm p-3 sm:p-6 hidden sm:block">
+          <p className="text-xs sm:text-sm text-gray-600">With Shift</p>
+          <p className="text-xl sm:text-2xl font-bold text-blue-600">{staffList.filter(s => s.shift_start_time && s.shift_end_time).length}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <p className="text-sm text-gray-600">Synced to Device</p>
-          <p className="text-2xl font-bold text-purple-600">
+        <div className="bg-white rounded-xl shadow-sm p-3 sm:p-6 hidden sm:block">
+          <p className="text-xs sm:text-sm text-gray-600">Synced</p>
+          <p className="text-xl sm:text-2xl font-bold text-purple-600">
             {staffList.filter(s => staffDeviceIds[s.id] || s.device_user_id).length}
           </p>
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="bg-white rounded-xl shadow-sm p-4 mb-6 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-        <div className="relative flex-1 max-w-md">
+      {/* Actions - Responsive */}
+      <div className="bg-white rounded-xl shadow-sm p-3 sm:p-4 mb-4 sm:mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between">
+        <div className="relative flex-1 max-w-full sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Search staff by name, email or position..."
+            placeholder="Search staff..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+            className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm"
           />
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={handleSearch}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="px-3 sm:px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
           >
             Search
           </button>
@@ -1606,69 +1597,70 @@ const [loadingSingleStaff, setLoadingSingleStaff] = useState(false);
           {canSyncToDevice && hasDevices && (
             <button
               onClick={() => setIsDeviceSyncModalOpen(true)}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+              className="px-3 sm:px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-1 sm:gap-2 text-sm whitespace-nowrap"
             >
               <Database className="h-4 w-4" />
-              Sync to Device
+              <span className="hidden xs:inline">Sync</span>
+              <span className="hidden sm:inline">to Device</span>
             </button>
           )}
           
           <button
             onClick={checkDeviceConnection}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+            className="px-3 sm:px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 sm:gap-2 text-sm"
           >
             <Wifi className="h-4 w-4" />
-            Check Devices
+            <span className="hidden xs:inline">Devices</span>
           </button>
           
           {canAddStaff && (
             <button
               onClick={() => { setIsAddModalOpen(true); }}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1 sm:gap-2 text-sm whitespace-nowrap"
             >
               <UserPlus className="h-4 w-4" />
-              Add Staff
+              <span className="hidden xs:inline">Add Staff</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Device Status Banner */}
+      {/* Device Status Banner - Responsive */}
       {hasDevices && (
-        <div className={`mb-4 p-3 rounded-lg flex items-center gap-2 ${
+        <div className={`mb-4 p-3 rounded-lg flex flex-wrap items-center gap-2 ${
           onlineDevices.length > 0 ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'
         }`}>
           {onlineDevices.length > 0 ? (
             <>
-              <Wifi className="h-4 w-4" />
+              <Wifi className="h-4 w-4 flex-shrink-0" />
               <span className="text-sm">
-                {onlineDevices.length} device(s) online. Staff can be synced to attendance device.
+                {onlineDevices.length} device(s) online.
               </span>
             </>
           ) : (
             <>
-              <WifiOff className="h-4 w-4" />
+              <WifiOff className="h-4 w-4 flex-shrink-0" />
               <span className="text-sm">
-                No devices online. Please check device connection to sync staff.
+                No devices online. Check connection.
               </span>
             </>
           )}
         </div>
       )}
 
-      {/* Table */}
+      {/* Table - Responsive with horizontal scroll */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff Member</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Position</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shift Timing</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Contact</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Position</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">Shift</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden xl:table-cell">Device ID</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Status</th>
+                <th className="px-3 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -1691,138 +1683,134 @@ const [loadingSingleStaff, setLoadingSingleStaff] = useState(false);
                   const deviceUserId = staffDeviceIds[s.id] || s.device_user_id;
                   return (
                     <tr key={s.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                         <div 
-                          className="flex items-center gap-3 cursor-pointer"
+                          className="flex items-center gap-2 sm:gap-3 cursor-pointer"
                           onClick={() => openProfileModal(s)}
                         >
-                          <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                          <div className={`h-8 w-8 sm:h-10 sm:w-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                             s.position === 'Head Trainer' ? 'bg-purple-100' : 
                             s.position === 'Sales Executive' ? 'bg-orange-100' : 'bg-indigo-100'
                           }`}>
-                            <span className={`font-semibold text-sm ${
+                            <span className={`font-semibold text-xs sm:text-sm ${
                               s.position === 'Head Trainer' ? 'text-purple-700' : 
                               s.position === 'Sales Executive' ? 'text-orange-700' : 'text-indigo-700'
                             }`}>
                               {(s.user?.full_name || 'S').charAt(0).toUpperCase()}
                             </span>
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors truncate max-w-[100px] sm:max-w-[150px]">
                               {s.user?.full_name || '—'}
                             </p>
-                            <p className="text-xs text-gray-500">@{s.user?.username || ''}</p>
+                            <p className="text-xs text-gray-500 truncate max-w-[80px] sm:max-w-[120px]">@{s.user?.username || ''}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 hidden md:table-cell">
                         <div className="flex flex-col gap-1">
                           {s.user?.email && (
-                            <div className="flex items-center gap-1 text-sm text-gray-600">
+                            <div className="flex items-center gap-1 text-xs sm:text-sm text-gray-600">
                               <Mail className="h-3 w-3 flex-shrink-0" /> 
-                              <span className="truncate max-w-[150px]">{s.user.email}</span>
+                              <span className="truncate max-w-[120px]">{s.user.email}</span>
                             </div>
                           )}
                           {s.user?.phone && (
-                            <div className="flex items-center gap-1 text-sm text-gray-600">
+                            <div className="flex items-center gap-1 text-xs sm:text-sm text-gray-600">
                               <Phone className="h-3 w-3 flex-shrink-0" /> 
                               <span>{s.user.phone}</span>
                             </div>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 hidden sm:table-cell">
                         <div className="flex items-center gap-1">
-                          {s.position === 'Head Trainer' && <Crown className="h-3 w-3 text-purple-600" />}
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionBadgeColor(s.position)}`}>
+                          {s.position === 'Head Trainer' && <Crown className="h-3 w-3 text-purple-600 flex-shrink-0" />}
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getPositionBadgeColor(s.position)}`}>
                             {s.position || '—'}
                           </span>
                         </div>
                         {s.specializations && (
-                          <p className="text-xs text-gray-500 mt-1 max-w-[160px] truncate" title={s.specializations}>
+                          <p className="text-xs text-gray-500 mt-1 max-w-[120px] truncate hidden lg:block" title={s.specializations}>
                             {s.specializations}
                           </p>
                         )}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1 text-sm">
-                          <Clock className="h-3 w-3 text-gray-400" />
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 hidden lg:table-cell">
+                        <div className="flex items-center gap-1 text-xs sm:text-sm">
+                          <Clock className="h-3 w-3 text-gray-400 flex-shrink-0" />
                           <span className={!s.shift_start_time ? 'text-gray-400' : 'text-gray-700'}>
                             {getShiftDisplay(s)}
                           </span>
                         </div>
-                        {s.break_duration > 0 && (
-                          <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
-                            <Coffee className="h-3 w-3" />
-                            <span>{s.break_duration} min break</span>
-                          </div>
-                        )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap hidden xl:table-cell">
                         {deviceUserId ? (
                           <div className="flex items-center gap-1">
-                            <Smartphone className="h-3 w-3 text-green-600" />
-                            <span className="text-xs font-mono text-green-600">{deviceUserId}</span>
+                            <Smartphone className="h-3 w-3 text-green-600 flex-shrink-0" />
+                            <span className="text-xs font-mono text-green-600 truncate max-w-[80px]">{deviceUserId}</span>
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-400">Not synced</span>
+                          <span className="text-xs text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap hidden sm:table-cell">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                           s.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                         }`}>
                           {s.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {canManagePermissions && (
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div className="flex items-center justify-end gap-1 sm:gap-2">
+                          {canManagePermissions && (
+                            <button
+                              onClick={() => openPermissionsModal(s)}
+                              className="text-purple-600 hover:text-purple-900 p-1"
+                              title="Manage Permissions"
+                            >
+                              <Shield className="h-4 w-4" />
+                            </button>
+                          )}
+                          
                           <button
-                            onClick={() => openPermissionsModal(s)}
-                            className="text-purple-600 hover:text-purple-900 mr-2"
-                            title="Manage Permissions"
+                            onClick={() => openProfileModal(s)}
+                            className="text-indigo-600 hover:text-indigo-900 p-1"
+                            title="View Profile"
                           >
-                            <Shield className="h-4 w-4" />
+                            <Eye className="h-4 w-4" />
                           </button>
-                        )}
-                        
-                        <button
-                          onClick={() => openProfileModal(s)}
-                          className="text-indigo-600 hover:text-indigo-900 mr-2"
-                          title="View Profile"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-                        
-                        {canEditStaff && (
-                          <button
-                            onClick={() => openEditModal(s)}
-                            className="text-blue-600 hover:text-blue-900 mr-2"
-                            title="Edit"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                        )}
-                        
-                        {canEditStaff && (
-                          <button
-                            onClick={() => handleResetPassword(s.user_id)}
-                            className="text-orange-600 hover:text-orange-900 mr-2"
-                            title="Reset Password"
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                          </button>
-                        )}
-                        
-                        {canDeleteStaff && (
-                          <button
-                            onClick={() => handleDeleteStaff(s.id)}
-                            className="text-red-600 hover:text-red-900"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
+                          
+                          {canEditStaff && (
+                            <button
+                              onClick={() => openEditModal(s)}
+                              className="text-blue-600 hover:text-blue-900 p-1"
+                              title="Edit"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                          )}
+                          
+                          {canEditStaff && (
+                            <button
+                              onClick={() => handleResetPassword(s.user_id)}
+                              className="text-orange-600 hover:text-orange-900 p-1 hidden md:inline-flex"
+                              title="Reset Password"
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                            </button>
+                          )}
+                          
+                          {canDeleteStaff && (
+                            <button
+                              onClick={() => handleDeleteStaff(s.id)}
+                              className="text-red-600 hover:text-red-900 p-1"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1833,7 +1821,7 @@ const [loadingSingleStaff, setLoadingSingleStaff] = useState(false);
         </div>
 
         {totalPages > 1 && (
-          <div className="px-6 py-4 border-t flex items-center justify-between">
+          <div className="px-4 sm:px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-sm text-gray-700">
               Showing {(currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filteredStaff.length)} of {filteredStaff.length}
             </p>
