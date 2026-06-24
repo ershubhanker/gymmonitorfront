@@ -100,24 +100,31 @@ const AttendanceHistory = () => {
     setLoading(true);
     setError(null);
     try {
-        const params = {};
-        
-        if (filters.start_date) params.start_date = filters.start_date;
-        if (filters.end_date) params.end_date = filters.end_date;
-        if (filters.staff_id) params.staff_id = filters.staff_id;
-        
-        params.limit = itemsPerPage;
-        params.offset = (currentPage - 1) * itemsPerPage;
-        
-        const response = await api.get('/attendance/staff/attendance', { params });
-        setStaffRecords(response.data?.records || []);
-        setStaffTotal(response.data?.total || 0);
+      const params = {};
+      
+      if (filters.start_date) params.start_date = filters.start_date;
+      if (filters.end_date) params.end_date = filters.end_date;
+      if (filters.staff_id) params.staff_id = filters.staff_id;
+      
+      params.limit = itemsPerPage;
+      params.offset = (currentPage - 1) * itemsPerPage;
+      
+      const response = await api.get('/attendance/staff/attendance', { params });
+      
+      // FIX: Ensure we're properly handling staff records
+      const records = response.data?.records || [];
+      
+      // Debug: Log the records to see what's coming back
+      console.log('Staff attendance records:', records);
+      
+      setStaffRecords(records);
+      setStaffTotal(response.data?.total || 0);
     } catch (error) {
-        console.error('Error fetching staff attendance:', error);
-        setError('Failed to load staff attendance records');
-        toast.error('Failed to load staff attendance records');
+      console.error('Error fetching staff attendance:', error);
+      setError('Failed to load staff attendance records');
+      toast.error('Failed to load staff attendance records');
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -241,14 +248,22 @@ const AttendanceHistory = () => {
       
       const csv = [
         ['Date', 'Time', `${activeTab === 'members' ? 'Member' : 'Staff'} Name`, 'Event Type', 'Verified', 'Device Serial'],
-        ...recordsToExport.map(r => [
-          formatDateForCSV(r.created_at || r.check_in_time).split(',')[0] || 'N/A',
-          formatDateForCSV(r.created_at || r.check_in_time).split(',')[1]?.trim() || 'N/A',
-          activeTab === 'members' ? (r.member_name || 'Unknown') : (r.staff_name || 'Unknown'),
-          (r.event_type || '').replace('staff_', '').toUpperCase() || 'N/A',
-          r.verified ? 'Yes' : 'No',
-          r.device_serial || 'N/A'
-        ])
+        ...recordsToExport.map(r => {
+          const rawType = (r.event_type || '').toLowerCase();
+          const isOut = rawType.includes('check_out') || rawType.includes('checkout');
+          const ts = activeTab === 'staff'
+            ? (r.display_time || r.check_out_time || r.check_in_time || r.created_at)
+            : (r.created_at || r.check_in_time);
+          const parts = formatDateForCSV(ts).split(',');
+          return [
+            parts[0] || 'N/A',
+            parts[1]?.trim() || 'N/A',
+            activeTab === 'members' ? (r.member_name || 'Unknown') : (r.staff_name || 'Unknown'),
+            isOut ? 'CHECK_OUT' : 'CHECK_IN',
+            r.verified ? 'Yes' : 'No',
+            r.device_serial || 'N/A',
+          ];
+        })
       ].map(row => row.join(',')).join('\n');
       
       const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
@@ -316,6 +331,7 @@ const AttendanceHistory = () => {
             setActiveTab('members');
             setCurrentPage(1);
             setError(null);
+            setFilters(f => ({ ...f, staff_id: '' }));
           }}
           className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-all ${
             activeTab === 'members'
@@ -331,6 +347,7 @@ const AttendanceHistory = () => {
             setActiveTab('staff');
             setCurrentPage(1);
             setError(null);
+            setFilters(f => ({ ...f, member_id: '' }));
           }}
           className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-all ${
             activeTab === 'staff'
@@ -481,7 +498,18 @@ const AttendanceHistory = () => {
                 </tr>
               ) : (
                 currentRecords.map((record) => {
-                  const timestamp = record.created_at || record.check_in_time;
+                  // For staff: prefer the backend-computed display_time which picks
+                  // check_in_time or check_out_time based on event_type.
+                  // For members: use created_at or check_in_time as before.
+                  const timestamp = activeTab === 'staff'
+                    ? (record.display_time || record.check_out_time || record.check_in_time || record.created_at)
+                    : (record.created_at || record.check_in_time);
+
+                  // Normalize event_type: strip staff_ prefix and check for check_out variants
+                  const rawEventType = (record.event_type || '').toLowerCase();
+                  const isCheckOut = rawEventType.includes('check_out') || rawEventType.includes('checkout');
+                  const eventLabel = isCheckOut ? 'CHECK OUT' : 'CHECK IN';
+
                   return (
                     <tr key={record.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -512,11 +540,11 @@ const AttendanceHistory = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          record.event_type === 'check_in' || record.event_type === 'staff_check_in'
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-orange-100 text-orange-800'
+                          isCheckOut
+                            ? 'bg-orange-100 text-orange-800'
+                            : 'bg-green-100 text-green-800'
                         }`}>
-                          {(record.event_type || '').replace('staff_', '').toUpperCase()}
+                          {eventLabel}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">

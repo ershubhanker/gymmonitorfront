@@ -9,31 +9,24 @@ import { useAttendance } from '../../context/AttendanceContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
-// Helper function to format time in IST - FIXED for staff timestamps
+// Helper function to format time in IST
 const formatInIST = (timestamp) => {
   if (!timestamp) return 'N/A';
   try {
     const timestampStr = typeof timestamp === 'string' ? timestamp : String(timestamp);
     
-    // Create date object from timestamp
     const date = new Date(timestampStr);
     
-    // Check if date is valid
     if (isNaN(date.getTime())) {
       return String(timestamp);
     }
     
-    // Check if the timestamp already has timezone info
-    // If it contains 'Z' or '+', it's already in UTC or has timezone
     const hasTimezone = timestampStr.includes('Z') || timestampStr.includes('+');
     
     let istDate;
     if (hasTimezone) {
-      // If it has timezone info, convert to IST by adding 5:30
       istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
     } else {
-      // If no timezone info, it might be stored as IST already
-      // Just use it as-is without adding offset
       istDate = new Date(date.getTime());
     }
     
@@ -107,7 +100,7 @@ const LiveMonitoring = () => {
     clearAllEvents
   } = useAttendance();
   
-  const [activeTab, setActiveTab] = useState('members'); // 'members' or 'staff'
+  const [activeTab, setActiveTab] = useState('members');
   const [filter, setFilter] = useState('all');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -116,7 +109,7 @@ const LiveMonitoring = () => {
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [dateFilter, setDateFilter] = useState('');
   
-  // Staff Live Events - Separate state for staff events
+  // Staff Live Events
   const [staffLiveEvents, setStaffLiveEvents] = useState([]);
   const [staffLoading, setStaffLoading] = useState(false);
   
@@ -151,20 +144,14 @@ const LiveMonitoring = () => {
     return userId.startsWith('S');
   };
 
-  // Helper function to check if event type is staff event
-  const isStaffEventType = (eventType) => {
-    return eventType === 'staff_check_in' || eventType === 'staff_check_out';
-  };
-
-  // Helper function to check if event is staff (either by user_id or event_type)
+  // Helper function to check if event is staff (either by user_id)
   const isStaffEvent = (event) => {
     if (!event) return false;
     if (isStaffUser(event)) return true;
-    if (isStaffEventType(event?.event_type)) return true;
     return false;
   };
 
-  // ===== FIXED: Fetch staff live events =====
+  // ===== Fetch staff live events =====
   const fetchStaffLiveEvents = async () => {
     setStaffLoading(true);
     try {
@@ -172,21 +159,26 @@ const LiveMonitoring = () => {
         params: { limit: 100 }
       });
       
+      console.log('Staff attendance response:', response.data);
+      
       if (response.data) {
+        const records = response.data.records || [];
+        
         // Convert to live event format - preserve original timestamp
-        const events = (response.data.records || []).map(record => ({
+        const events = records.map(record => ({
           id: record.id,
-          user_id: `S${record.staff_id}`,
+          user_id: record.staff_id ? `S${record.staff_id}` : `S${record.id}`,
+          staff_id: record.staff_id || record.id,
           user_name: record.staff_name || 'Unknown Staff',
-          // Preserve the original timestamp as it came from the server
           timestamp: record.created_at || record.check_in_time || record.timestamp,
-          event_type: record.event_type || 'check_in',
+          event_type: record.event_type || 'check_in',  // Use check_in/check_out consistently
           verified: record.verified !== undefined ? record.verified : true,
           device_serial: record.device_serial || 'N/A'
         }));
+        
         setStaffLiveEvents(events);
         
-        // Also update staff stats from the response
+        // Update staff stats from the response
         if (response.data.total !== undefined) {
           setStaffStats({
             total_checkins: response.data.total || 0,
@@ -220,7 +212,7 @@ const LiveMonitoring = () => {
     }
   };
 
-  // ===== UPDATED: Refresh function that triggers attendance sync =====
+  // ===== Refresh function that triggers attendance sync =====
   const handleRefresh = async () => {
     setSyncing(true);
     toast.loading('🔄 Syncing attendance from device...', { id: 'attendance-sync' });
@@ -259,9 +251,7 @@ const LiveMonitoring = () => {
   const handleDeleteEvent = async () => {
     if (!selectedEvent) return;
     
-    const isStaff = selectedEvent.user_id?.startsWith('S') || 
-                    selectedEvent.event_type?.startsWith('staff_') ||
-                    selectedEvent.staff_id;
+    const isStaff = selectedEvent.user_id?.startsWith('S') || selectedEvent.staff_id;
     
     let result;
     if (isStaff) {
@@ -393,7 +383,7 @@ const LiveMonitoring = () => {
           user_name: selectedUser.full_name,
           timestamp: timestamp.toISOString(),
           status: "0",
-          event_type: manualEventType,
+          event_type: manualEventType,  // check_in or check_out
           device_serial: "MANUAL_ENTRY",
           verified: true
         };
@@ -401,16 +391,19 @@ const LiveMonitoring = () => {
           headers: { 'X-API-Key': 'MANUAL_ENTRY' }
         });
       } else {
+        // Staff manual entry - use S prefix for user_id
         payload = {
-          staff_id: selectedUser.id,
-          staff_name: selectedUser.user?.full_name || selectedUser.full_name,
-          position: selectedUser.position || 'Staff',
+          user_id: `S${selectedUser.id}`,
+          user_name: selectedUser.user?.full_name || selectedUser.full_name,
           timestamp: timestamp.toISOString(),
-          event_type: manualEventType,
+          status: "0",
+          event_type: manualEventType,  // check_in or check_out
           device_serial: "MANUAL_ENTRY",
           verified: true
         };
-        await api.post('/attendance/staff/attendance/manual', payload);
+        await api.post('/attendance/live', payload, {
+          headers: { 'X-API-Key': 'MANUAL_ENTRY' }
+        });
       }
       
       toast.success(`Manual ${manualEventType === 'check_in' ? 'check-in' : 'check-out'} recorded for ${selectedUser.user?.full_name || selectedUser.full_name}`);
@@ -447,15 +440,16 @@ const LiveMonitoring = () => {
       filtered = [...staffLiveEvents];
     }
     
+    // Filter by event type (check_in or check_out)
     if (filter === 'check_in') {
       filtered = filtered.filter(event => {
         const eventType = event?.event_type;
-        return eventType === 'check_in' || eventType === 'staff_check_in';
+        return eventType === 'check_in';
       });
     } else if (filter === 'check_out') {
       filtered = filtered.filter(event => {
         const eventType = event?.event_type;
-        return eventType === 'check_out' || eventType === 'staff_check_out';
+        return eventType === 'check_out';
       });
     }
     
@@ -525,11 +519,11 @@ const LiveMonitoring = () => {
     const allEventsList = getFilteredEvents();
     const checkIns = allEventsList.filter(e => {
       const type = e?.event_type;
-      return type === 'check_in' || type === 'staff_check_in';
+      return type === 'check_in';
     });
     const checkOuts = allEventsList.filter(e => {
       const type = e?.event_type;
-      return type === 'check_out' || type === 'staff_check_out';
+      return type === 'check_out';
     });
     return { all: allEventsList.length, checkIns: checkIns.length, checkOuts: checkOuts.length };
   };
@@ -619,8 +613,8 @@ const LiveMonitoring = () => {
                   {formatInIST(selectedEvent.timestamp)}
                 </span>
                 <span className="text-gray-500">Event:</span>
-                <span className={`font-medium ${selectedEvent.event_type === 'check_in' || selectedEvent.event_type === 'staff_check_in' ? 'text-green-600' : 'text-orange-600'}`}>
-                  {selectedEvent.event_type?.replace('staff_', '').toUpperCase()}
+                <span className={`font-medium ${selectedEvent.event_type === 'check_in' ? 'text-green-600' : 'text-orange-600'}`}>
+                  {selectedEvent.event_type?.toUpperCase()}
                 </span>
               </div>
             </div>
@@ -1025,11 +1019,11 @@ const LiveMonitoring = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          eventType === 'check_in' || eventType === 'staff_check_in'
+                          eventType === 'check_in' 
                             ? 'bg-green-100 text-green-800' 
                             : 'bg-orange-100 text-orange-800'
                         }`}>
-                          {eventType.replace('staff_', '').toUpperCase()}
+                          {eventType === 'check_in' ? 'CHECK IN' : 'CHECK OUT'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
