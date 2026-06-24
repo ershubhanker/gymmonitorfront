@@ -1,5 +1,5 @@
 // src/components/attendance/DeviceManager.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Trash2, Wifi, WifiOff, Copy, RefreshCw, 
   Eye, EyeOff, Edit, Check, X, AlertCircle, Loader2
@@ -13,7 +13,13 @@ const DeviceManager = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingDevice, setEditingDevice] = useState(null);
   const [showApiKey, setShowApiKey] = useState(null);
-  const [testingDevice, setTestingDevice] = useState(null); // ADD THIS LINE
+  const [testingDevice, setTestingDevice] = useState(null);
+  
+  // ===== NEW: Online status tracking with polling =====
+  const [onlineStatuses, setOnlineStatuses] = useState({});
+  const [pollingInterval, setPollingInterval] = useState(null);
+  const [statusLoading, setStatusLoading] = useState({});
+  
   const [formData, setFormData] = useState({
     device_name: '',
     device_ip: '',
@@ -23,12 +29,17 @@ const DeviceManager = () => {
   });
   const [formErrors, setFormErrors] = useState({});
 
-  // Fetch devices on load
+  // ===== Fetch devices on load =====
   const fetchDevices = async () => {
     setLoading(true);
     try {
       const response = await api.get('/attendance/devices');
       setDevices(response.data);
+      
+      // After devices load, poll their status
+      if (response.data.length > 0) {
+        await pollDeviceStatus(response.data);
+      }
     } catch (error) {
       console.error('Error fetching devices:', error);
       toast.error('Failed to load devices');
@@ -41,7 +52,79 @@ const DeviceManager = () => {
     fetchDevices();
   }, []);
 
-  // Validate form
+  // ===== Polling setup =====
+  useEffect(() => {
+    if (devices.length > 0) {
+      // Initial poll after devices load
+      pollDeviceStatus(devices);
+      
+      // Set up polling every 15 seconds
+      const interval = setInterval(() => {
+        pollDeviceStatus(devices);
+      }, 15000);
+      
+      setPollingInterval(interval);
+      
+      return () => {
+        if (interval) clearInterval(interval);
+      };
+    }
+  }, [devices.length]);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [pollingInterval]);
+
+  // ===== Poll device status =====
+  const pollDeviceStatus = async (deviceList = devices) => {
+    if (deviceList.length === 0) return;
+    
+    try {
+      const statuses = {};
+      for (const device of deviceList) {
+        try {
+          const response = await api.get(`/attendance/devices/${device.id}/status`);
+          statuses[device.id] = response.data.is_online;
+        } catch (error) {
+          // If we can't get status, keep existing status
+          console.warn(`Failed to get status for device ${device.id}:`, error);
+        }
+      }
+      setOnlineStatuses(prev => ({ ...prev, ...statuses }));
+    } catch (error) {
+      console.error('Error polling device status:', error);
+    }
+  };
+
+  // ===== Check if device is online =====
+  const isDeviceOnline = (device) => {
+    // First check if we have a cached status from polling
+    if (onlineStatuses[device.id] !== undefined) {
+      return onlineStatuses[device.id];
+    }
+    
+    // Fallback to device.is_online from database
+    if (!device.is_online) return false;
+    
+    // If last_seen is more than 60 seconds ago, consider offline
+    if (device.last_seen) {
+      const lastSeen = new Date(device.last_seen);
+      const now = new Date();
+      const diffSeconds = (now - lastSeen) / 1000;
+      if (diffSeconds > 60) {
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  // ===== Validate form =====
   const validateForm = () => {
     const errors = {};
     if (!formData.device_name.trim()) errors.device_name = 'Device name is required';
@@ -58,7 +141,7 @@ const DeviceManager = () => {
     return Object.keys(errors).length === 0;
   };
 
-  // Register new device
+  // ===== Register new device =====
   const handleRegister = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -91,7 +174,7 @@ const DeviceManager = () => {
     }
   };
 
-  // Update device
+  // ===== Update device =====
   const handleUpdate = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -112,7 +195,7 @@ const DeviceManager = () => {
     }
   };
 
-  // Delete device
+  // ===== Delete device =====
   const handleDelete = async (deviceId, deviceName) => {
     if (!window.confirm(`Delete device "${deviceName}"? This action cannot be undone.`)) return;
     
@@ -129,22 +212,7 @@ const DeviceManager = () => {
     }
   };
 
-  const isDeviceOnline = (device) => {
-    if (!device.is_online) return false;
-    
-    // If last_seen is more than 2 minutes ago, consider offline
-    if (device.last_seen) {
-      const lastSeen = new Date(device.last_seen);
-      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
-      if (lastSeen < twoMinutesAgo) {
-        return false;
-      }
-    }
-    
-    return true;
-  };
-
-  // Regenerate API key
+  // ===== Regenerate API key =====
   const handleRegenerateKey = async (deviceId, deviceName) => {
     if (!window.confirm(`⚠️ WARNING: Regenerating API key for "${deviceName}" will immediately invalidate the old key. The bridge will stop working until you update the configuration. Continue?`)) {
       return;
@@ -172,90 +240,144 @@ const DeviceManager = () => {
     }
   };
 
-  // Test device connection
- // Simplified test connection - just shows device status
- const handleTestConnection = async (deviceIp, devicePort, deviceSerial) => {
-  const toastId = toast.loading(`Checking device status...`);
-  
-  try {
-    // First check via bridge (checks registration status)
-    const response = await api.post('/attendance/devices/test-via-bridge', {
-      device_ip: deviceIp,
-      device_port: devicePort,
-      device_serial: deviceSerial
-    });
+  // ===== UPDATED: Test device connection with real-time status =====
+  const handleTestConnection = async (device) => {
+    const toastId = toast.loading(`Checking ${device.device_name}...`);
+    setTestingDevice(device.id);
+    setStatusLoading(prev => ({ ...prev, [device.id]: true }));
     
-    toast.dismiss(toastId);
-    
-    if (response.data.success) {
-      const info = response.data.device_info || {};
-      
-      if (response.data.via_bridge) {
-        // Device is registered
-        toast.success(
-          <div className="p-2">
-            <p className="font-bold text-green-800 mb-1">✅ Device Connected!</p>
-            <p className="text-sm text-gray-600">{response.data.message}</p>
-            <div className="mt-2 text-xs text-gray-500 space-y-1">
-              <p>🔌 Device: {info.device_name}</p>
-              <p>📟 Serial: {info.device_serial}</p>
-              <p>🟢 Status: {info.is_online ? 'Online' : 'Offline'}</p>
-              {info.last_seen && (
-                <p>🕐 Last seen: {new Date(info.last_seen).toLocaleString()}</p>
+    try {
+      // Step 1: Try to get status via the dedicated endpoint
+      try {
+        const statusResponse = await api.get(`/attendance/devices/${device.id}/status`);
+        const isOnline = statusResponse.data.is_online;
+        const lastSeenSeconds = statusResponse.data.last_seen_seconds_ago;
+        
+        toast.dismiss(toastId);
+        setStatusLoading(prev => ({ ...prev, [device.id]: false }));
+        
+        // Update local status
+        setOnlineStatuses(prev => ({ ...prev, [device.id]: isOnline }));
+        
+        if (isOnline) {
+          toast.success(
+            <div className="p-2">
+              <p className="font-bold text-green-800 mb-1">✅ {device.device_name} is Online!</p>
+              <p className="text-sm text-gray-600">Device is connected and active.</p>
+              {lastSeenSeconds !== null && lastSeenSeconds !== undefined && (
+                <p className="text-xs text-gray-500 mt-1">Last seen: {lastSeenSeconds} seconds ago</p>
               )}
-            </div>
-          </div>,
-          { duration: 6000 }
-        );
-      } else {
-        // Device not registered but reachable
-        toast.success(
-          <div className="p-2">
-            <p className="font-bold text-blue-800 mb-1">ℹ️ Device Reachable</p>
-            <p className="text-sm text-gray-600">{response.data.message}</p>
-            <p className="text-xs text-gray-500 mt-2">Click "Register" to add this device to your system.</p>
-          </div>,
-          { duration: 5000 }
-        );
+              <p className="text-xs text-gray-500 mt-1">IP: {device.device_ip}:{device.device_port}</p>
+            </div>,
+            { duration: 5000 }
+          );
+          setTestingDevice(null);
+          return;
+        } else {
+          toast.warning(
+            <div className="p-2">
+              <p className="font-bold text-orange-800 mb-1">⚠️ {device.device_name} is Offline</p>
+              <p className="text-sm text-gray-600">Device is not responding.</p>
+              {lastSeenSeconds !== null && lastSeenSeconds !== undefined && (
+                <p className="text-xs text-gray-500 mt-1">Last seen: {lastSeenSeconds} seconds ago</p>
+              )}
+              <p className="text-xs text-gray-500 mt-2">Troubleshooting tips:</p>
+              <ul className="text-xs text-gray-500 list-disc list-inside">
+                <li>Is the device powered on?</li>
+                <li>Is the bridge application running?</li>
+                <li>Check the IP address on device screen</li>
+                <li>Ensure device is on same network</li>
+              </ul>
+            </div>,
+            { duration: 8000 }
+          );
+          setTestingDevice(null);
+          return;
+        }
+      } catch (statusError) {
+        // Step 2: Fallback to test-via-bridge
+        console.log('Status endpoint failed, falling back to test-via-bridge:', statusError);
       }
-    } else {
+      
+      // Fallback: Check via bridge
+      const response = await api.post('/attendance/devices/test-via-bridge', {
+        device_ip: device.device_ip,
+        device_port: device.device_port,
+        device_serial: device.device_serial
+      });
+      
+      toast.dismiss(toastId);
+      setStatusLoading(prev => ({ ...prev, [device.id]: false }));
+      
+      if (response.data.success) {
+        if (response.data.via_bridge) {
+          const info = response.data.device_info || {};
+          const isOnline = info.is_online || false;
+          
+          // Update local status
+          setOnlineStatuses(prev => ({ ...prev, [device.id]: isOnline }));
+          
+          if (isOnline) {
+            toast.success(
+              <div className="p-2">
+                <p className="font-bold text-green-800 mb-1">✅ {device.device_name} is Online!</p>
+                <p className="text-sm text-gray-600">{response.data.message}</p>
+                <div className="mt-2 text-xs text-gray-500 space-y-1">
+                  <p>🔌 Device: {info.device_name}</p>
+                  <p>📟 Serial: {info.device_serial}</p>
+                  {info.last_seen && (
+                    <p>🕐 Last seen: {new Date(info.last_seen).toLocaleString()}</p>
+                  )}
+                </div>
+              </div>,
+              { duration: 5000 }
+            );
+          } else {
+            toast.warning(
+              <div className="p-2">
+                <p className="font-bold text-orange-800 mb-1">⚠️ {device.device_name} is Offline</p>
+                <p className="text-sm text-gray-600">Device is not responding.</p>
+                <p className="text-xs text-gray-500 mt-2">Make sure the bridge is running and device is connected.</p>
+              </div>,
+              { duration: 5000 }
+            );
+          }
+        } else {
+          toast.info(
+            <div className="p-2">
+              <p className="font-bold text-blue-800 mb-1">ℹ️ Device Not Registered</p>
+              <p className="text-sm text-gray-600">{response.data.message}</p>
+              <p className="text-xs text-gray-500 mt-2">Click "Register" to add this device to your system.</p>
+            </div>,
+            { duration: 5000 }
+          );
+        }
+      }
+    } catch (error) {
+      toast.dismiss(toastId);
+      setStatusLoading(prev => ({ ...prev, [device.id]: false }));
+      console.error('Test connection error:', error);
+      
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to test connection';
       toast.error(
         <div className="p-2">
-          <p className="font-bold text-red-800 mb-1">❌ Connection Failed</p>
-          <p className="text-sm text-gray-600">{response.data.message}</p>
-          <p className="text-xs text-gray-500 mt-2">Troubleshooting tips:</p>
-          <ul className="text-xs text-gray-500 list-disc list-inside">
-            <li>Is the device powered on?</li>
-            <li>Is the bridge application running?</li>
-            <li>Check the IP address on device screen</li>
-            <li>Ensure device is on same network</li>
-          </ul>
-        </div>,
-        { duration: 8000 }
+          <p className="font-bold text-red-800 mb-1">❌ Connection Error</p>
+          <p className="text-sm text-gray-600">{errorMsg}</p>
+          <p className="text-xs text-gray-500 mt-2">Make sure the bridge is running and device is powered on.</p>
+        </div>
       );
+    } finally {
+      setTestingDevice(null);
     }
-  } catch (error) {
-    toast.dismiss(toastId);
-    console.error('Test connection error:', error);
-    
-    const errorMsg = error.response?.data?.detail || error.message || 'Failed to test connection';
-    toast.error(
-      <div className="p-2">
-        <p className="font-bold text-red-800 mb-1">❌ Test Error</p>
-        <p className="text-sm text-gray-600">{errorMsg}</p>
-        <p className="text-xs text-gray-500 mt-2">Make sure the backend server is running.</p>
-      </div>
-    );
-  }
-};
+  };
 
-  // Copy to clipboard
+  // ===== Copy to clipboard =====
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     toast.success('API Key copied to clipboard');
   };
 
-  // Reset form
+  // ===== Reset form =====
   const resetForm = () => {
     setFormData({
       device_name: '',
@@ -268,7 +390,7 @@ const DeviceManager = () => {
     setEditingDevice(null);
   };
 
-  // Open edit modal
+  // ===== Open edit modal =====
   const openEditModal = (device) => {
     setEditingDevice(device);
     setFormData({
@@ -281,6 +403,14 @@ const DeviceManager = () => {
     setShowModal(true);
   };
 
+  // ===== Force refresh status =====
+  const handleRefreshStatus = async () => {
+    toast.loading('Refreshing device status...', { id: 'status-refresh' });
+    await pollDeviceStatus(devices);
+    toast.dismiss('status-refresh');
+    toast.success('Device status updated!');
+  };
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -289,16 +419,25 @@ const DeviceManager = () => {
           <h1 className="text-2xl font-bold text-gray-900">Attendance Devices</h1>
           <p className="text-sm text-gray-500 mt-1">Register and manage your ESSL K30 Pro devices</p>
         </div>
-        <button
-          onClick={() => {
-            resetForm();
-            setShowModal(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md"
-        >
-          <Plus className="h-4 w-4" />
-          Add Device
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefreshStatus}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh Status
+          </button>
+          <button
+            onClick={() => {
+              resetForm();
+              setShowModal(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md"
+          >
+            <Plus className="h-4 w-4" />
+            Add Device
+          </button>
+        </div>
       </div>
 
       {/* Devices List */}
@@ -327,111 +466,117 @@ const DeviceManager = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {devices.map((device) => (
-            <div key={device.id} className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden hover:shadow-lg transition-all duration-300">
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">{device.device_name}</h3>
-                    <p className="text-sm text-gray-500">{device.location || 'No location set'}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                  {isDeviceOnline(device) ? (
-                    <span className="flex items-center gap-1 text-green-600 text-sm bg-green-50 px-2 py-1 rounded-full">
-                      <Wifi className="h-3 w-3" />
-                      Online
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-gray-400 text-sm bg-gray-50 px-2 py-1 rounded-full">
-                      <WifiOff className="h-3 w-3" />
-                      Offline
-                    </span>
-                  )}
-                  </div>
-                </div>
-
-                <div className="space-y-2 text-sm mb-4">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">IP:</span>
-                    <span className="text-gray-800 font-mono">{device.device_ip}:{device.device_port}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Serial:</span>
-                    <span className="text-gray-800 font-mono text-xs">{device.device_serial}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Created:</span>
-                    <span className="text-gray-600 text-xs">{new Date(device.created_at).toLocaleDateString()}</span>
-                  </div>
-                  
-                  {/* API Key Section */}
-                  <div className="bg-gray-50 rounded-lg p-3 mt-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold text-gray-600 uppercase">API Key</span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => setShowApiKey(showApiKey === device.id ? null : device.id)}
-                          className="text-gray-400 hover:text-gray-600 p-1"
-                          title="Show/Hide API Key"
-                        >
-                          {showApiKey === device.id ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                        </button>
-                        <button
-                          onClick={() => copyToClipboard(device.api_key)}
-                          className="text-blue-500 hover:text-blue-600 p-1"
-                          title="Copy API Key"
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleRegenerateKey(device.id, device.device_name)}
-                          className="text-yellow-500 hover:text-yellow-600 p-1"
-                          title="Regenerate API Key"
-                        >
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+          {devices.map((device) => {
+            const isOnline = isDeviceOnline(device);
+            const isTesting = testingDevice === device.id;
+            const isStatusLoading = statusLoading[device.id] || false;
+            
+            return (
+              <div key={device.id} className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden hover:shadow-lg transition-all duration-300">
+                <div className="p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">{device.device_name}</h3>
+                      <p className="text-sm text-gray-500">{device.location || 'No location set'}</p>
                     </div>
-                    <code className="text-xs font-mono break-all bg-white p-1.5 rounded block">
-                      {showApiKey === device.id ? device.api_key : device.api_key.substring(0, 30) + '...'}
-                    </code>
+                    <div className="flex items-center gap-2">
+                      {isOnline ? (
+                        <span className="flex items-center gap-1 text-green-600 text-sm bg-green-50 px-2 py-1 rounded-full animate-pulse">
+                          <Wifi className="h-3 w-3" />
+                          Online
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-gray-400 text-sm bg-gray-50 px-2 py-1 rounded-full">
+                          <WifiOff className="h-3 w-3" />
+                          Offline
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex gap-2 pt-4 border-t">
-                <button
-                onClick={() => {
-                  setTestingDevice(device.id);
-                  handleTestConnection(device.device_ip, device.device_port, device.device_serial)
-                    .finally(() => setTestingDevice(null));
-                }}
-                disabled={testingDevice === device.id}
-                className="flex-1 px-3 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors text-sm disabled:opacity-50"
-              >
-                {testingDevice === device.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
-                ) : (
-                  <Wifi className="h-4 w-4 inline mr-1" />
-                )}
-                Test
-              </button>
-                  <button
-                    onClick={() => openEditModal(device)}
-                    className="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm"
-                  >
-                    <Edit className="h-4 w-4 inline mr-1" />
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(device.id, device.device_name)}
-                    className="px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-sm"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="space-y-2 text-sm mb-4">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">IP:</span>
+                      <span className="text-gray-800 font-mono">{device.device_ip}:{device.device_port}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Serial:</span>
+                      <span className="text-gray-800 font-mono text-xs">{device.device_serial}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Created:</span>
+                      <span className="text-gray-600 text-xs">{new Date(device.created_at).toLocaleDateString()}</span>
+                    </div>
+                    
+                    {/* API Key Section */}
+                    <div className="bg-gray-50 rounded-lg p-3 mt-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-gray-600 uppercase">API Key</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setShowApiKey(showApiKey === device.id ? null : device.id)}
+                            className="text-gray-400 hover:text-gray-600 p-1"
+                            title="Show/Hide API Key"
+                          >
+                            {showApiKey === device.id ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(device.api_key)}
+                            className="text-blue-500 hover:text-blue-600 p-1"
+                            title="Copy API Key"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleRegenerateKey(device.id, device.device_name)}
+                            className="text-yellow-500 hover:text-yellow-600 p-1"
+                            title="Regenerate API Key"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <code className="text-xs font-mono break-all bg-white p-1.5 rounded block">
+                        {showApiKey === device.id ? device.api_key : device.api_key.substring(0, 30) + '...'}
+                      </code>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-4 border-t">
+                    <button
+                      onClick={() => handleTestConnection(device)}
+                      disabled={isTesting}
+                      className={`flex-1 px-3 py-2 rounded-lg transition-colors text-sm disabled:opacity-50 ${
+                        isOnline 
+                          ? 'bg-green-50 text-green-600 hover:bg-green-100' 
+                          : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {isTesting || isStatusLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
+                      ) : (
+                        <Wifi className="h-4 w-4 inline mr-1" />
+                      )}
+                      {isTesting || isStatusLoading ? 'Checking...' : 'Test'}
+                    </button>
+                    <button
+                      onClick={() => openEditModal(device)}
+                      className="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm"
+                    >
+                      <Edit className="h-4 w-4 inline mr-1" />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(device.id, device.device_name)}
+                      className="px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-sm"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
