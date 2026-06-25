@@ -26,7 +26,11 @@ const ALL_POSITIONS = [
   'Group Fitness Instructor', 
   'Nutritionist', 
   'Physiotherapist',
-  'Manager', 
+  'Manager',
+  'Floor Manager',
+  'Sales Manager',
+  'Gym Manager',
+  'Club Manager',
   'Receptionist', 
   'Cleanliness Staff', 
   'Zumba Instructor',
@@ -434,6 +438,10 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
     if (position === 'Trainer' || position === 'Personal Trainer') return 'bg-blue-100 text-blue-800';
     if (position === 'Yoga Instructor') return 'bg-green-100 text-green-800';
     if (position === 'Manager') return 'bg-yellow-100 text-yellow-800';
+    if (position === 'Floor Manager') return 'bg-indigo-100 text-indigo-800';
+    if (position === 'Sales Manager') return 'bg-orange-100 text-orange-800';
+    if (position === 'Gym Manager') return 'bg-red-100 text-red-800';
+    if (position === 'Club Manager') return 'bg-pink-100 text-pink-800';
     if (position === 'Sales Executive') return 'bg-orange-100 text-orange-800';
     return 'bg-gray-100 text-gray-800';
   };
@@ -461,11 +469,21 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
           <div className="flex items-center gap-3">
             <div className={`h-12 w-12 rounded-full flex items-center justify-center ${
               staff.position === 'Head Trainer' ? 'bg-purple-100' : 
-              staff.position === 'Sales Executive' ? 'bg-orange-100' : 'bg-indigo-100'
+              staff.position === 'Sales Executive' ? 'bg-orange-100' : 
+              staff.position === 'Floor Manager' ? 'bg-indigo-100' :
+              staff.position === 'Sales Manager' ? 'bg-orange-100' :
+              staff.position === 'Gym Manager' ? 'bg-red-100' :
+              staff.position === 'Club Manager' ? 'bg-pink-100' :
+              'bg-indigo-100'
             }`}>
               <span className={`text-xl font-bold ${
                 staff.position === 'Head Trainer' ? 'text-purple-700' : 
-                staff.position === 'Sales Executive' ? 'text-orange-700' : 'text-indigo-700'
+                staff.position === 'Sales Executive' ? 'text-orange-700' : 
+                staff.position === 'Floor Manager' ? 'text-indigo-700' :
+                staff.position === 'Sales Manager' ? 'text-orange-700' :
+                staff.position === 'Gym Manager' ? 'text-red-700' :
+                staff.position === 'Club Manager' ? 'text-pink-700' :
+                'text-indigo-700'
               }`}>
                 {(staff.user?.full_name || 'S').charAt(0).toUpperCase()}
               </span>
@@ -1490,6 +1508,10 @@ const Staff = () => {
     if (position === 'Trainer' || position === 'Personal Trainer') return 'bg-blue-100 text-blue-800';
     if (position === 'Yoga Instructor') return 'bg-green-100 text-green-800';
     if (position === 'Manager') return 'bg-yellow-100 text-yellow-800';
+    if (position === 'Floor Manager') return 'bg-indigo-100 text-indigo-800';
+    if (position === 'Sales Manager') return 'bg-orange-100 text-orange-800';
+    if (position === 'Gym Manager') return 'bg-red-100 text-red-800';
+    if (position === 'Club Manager') return 'bg-pink-100 text-pink-800';
     if (position === 'Sales Executive') return 'bg-orange-100 text-orange-800';
     return 'bg-gray-100 text-gray-800';
   };
@@ -1690,11 +1712,21 @@ const Staff = () => {
                         >
                           <div className={`h-8 w-8 sm:h-10 sm:w-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                             s.position === 'Head Trainer' ? 'bg-purple-100' : 
-                            s.position === 'Sales Executive' ? 'bg-orange-100' : 'bg-indigo-100'
+                            s.position === 'Sales Executive' ? 'bg-orange-100' : 
+                            s.position === 'Floor Manager' ? 'bg-indigo-100' :
+                            s.position === 'Sales Manager' ? 'bg-orange-100' :
+                            s.position === 'Gym Manager' ? 'bg-red-100' :
+                            s.position === 'Club Manager' ? 'bg-pink-100' :
+                            'bg-indigo-100'
                           }`}>
                             <span className={`font-semibold text-xs sm:text-sm ${
                               s.position === 'Head Trainer' ? 'text-purple-700' : 
-                              s.position === 'Sales Executive' ? 'text-orange-700' : 'text-indigo-700'
+                              s.position === 'Sales Executive' ? 'text-orange-700' : 
+                              s.position === 'Floor Manager' ? 'text-indigo-700' :
+                              s.position === 'Sales Manager' ? 'text-orange-700' :
+                              s.position === 'Gym Manager' ? 'text-red-700' :
+                              s.position === 'Club Manager' ? 'text-pink-700' :
+                              'text-indigo-700'
                             }`}>
                               {(s.user?.full_name || 'S').charAt(0).toUpperCase()}
                             </span>

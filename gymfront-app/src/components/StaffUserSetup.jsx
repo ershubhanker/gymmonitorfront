@@ -508,7 +508,7 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
     }
   };
 
-  // Updated positions array with Head Trainer at the top
+  // Updated positions with all new positions
   const positions = [
     { value: 'Head Trainer', label: 'Head Trainer', icon: '👑', description: 'Leads the training team and oversees all fitness programs' },
     { value: 'Trainer', label: 'Trainer', icon: '💪', description: 'Conducts general fitness training sessions' },
@@ -519,6 +519,11 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
     { value: 'Nutritionist', label: 'Nutritionist', icon: '🥗', description: 'Diet planning and nutrition advice' },
     { value: 'Physiotherapist', label: 'Physiotherapist', icon: '🩺', description: 'Injury rehabilitation and recovery' },
     { value: 'Manager', label: 'Manager', icon: '👔', description: 'Overall gym operations management' },
+    // NEW POSITIONS - Added here
+    { value: 'Floor Manager', label: 'Floor Manager', icon: '🏢', description: 'Manages daily floor operations and staff supervision' },
+    { value: 'Sales Manager', label: 'Sales Manager', icon: '📊', description: 'Leads sales team, drives membership growth and revenue' },
+    { value: 'Gym Manager', label: 'Gym Manager', icon: '🏋️', description: 'Oversees all gym operations, staff, and member experience' },
+    { value: 'Club Manager', label: 'Club Manager', icon: '🎯', description: 'Manages club operations, events, and member retention' },
     { value: 'Receptionist', label: 'Receptionist', icon: '📞', description: 'Front desk and member services' },
     { value: 'Cleanliness Staff', label: 'Cleanliness Staff', icon: '🧹', description: 'Gym cleaning and maintenance' },
     { value: 'Zumba Instructor', label: 'Zumba Instructor', icon: '💃', description: 'Zumba dance fitness classes' },
@@ -701,7 +706,7 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
                 )}
               </div>
 
-              {/* Shift Timing - NEW */}
+              {/* Shift Timing */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Shift Timing <span className="text-gray-400 text-xs">(optional)</span>
