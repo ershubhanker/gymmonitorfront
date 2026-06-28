@@ -70,6 +70,7 @@ import DeviceManager from '../components/attendance/DeviceManager';
 import LiveMonitoring from '../components/attendance/LiveMonitoring';
 import AttendanceHistory from '../components/attendance/AttendanceHistory';
 import StaffHours from '../components/attendance/StaffHours';
+import MembershipPlans from './MembershipPlans';
 
 // Import Search Bar and Follow-Up Card
 import SearchBar from '../components/SearchBar';
@@ -835,6 +836,7 @@ const Dashboard = () => {
     if (canSeeMembers) {
       nav.push({ name: 'Members', icon: UsersIcon, id: 'members' });
     }
+    nav.push({ name: 'Membership Plans', icon: Dumbbell, id: 'membership-plans' });
     if (canSeeBalances) {
       nav.push({ name: 'Balance', icon: Wallet, id: 'balance' });
     }
@@ -1367,6 +1369,7 @@ const Dashboard = () => {
           </div>
         )}
   
+        {/* UPDATED: Expiring Memberships Card with working click handler */}
         {canSeeMembers && stats.expiringMembers.length > 0 && (
           <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
             <div className="flex items-center justify-between mb-6">
@@ -1387,11 +1390,19 @@ const Dashboard = () => {
               {stats.expiringMembers.map((member) => (
                 <div 
                   key={member.id} 
-                  className={`group relative flex items-center justify-between p-4 rounded-xl transition-all hover:shadow-md ${
+                  className={`group relative flex items-center justify-between p-4 rounded-xl transition-all hover:shadow-md cursor-pointer ${
                     member.daysLeft <= 3 
                       ? 'bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500' 
                       : 'bg-gradient-to-r from-orange-50 to-yellow-50 border-l-4 border-orange-400'
                   }`}
+                  onClick={() => {
+                    // Reset first so useEffect always fires, even if same member clicked again
+                    setSelectedMemberId(null);
+                    setTimeout(() => {
+                      setSelectedMemberId(member.memberId);
+                      setActiveTab('members');
+                    }, 0);
+                  }}
                 >
                   <div className="flex items-center gap-4 flex-1">
                     <img 
@@ -1423,17 +1434,15 @@ const Dashboard = () => {
                       </div>
                     </div>
                   </div>
+                  {/* Renew Now button */}
                   <button 
-                    onClick={() => {
-                      const renewalData = {
-                        id: member.memberId,
-                        name: member.memberName,
-                        planName: member.planName,
-                        endDate: member.endDate
-                      };
-                      localStorage.setItem('selectedMemberForRenewal', JSON.stringify(renewalData));
-                      setActiveTab('members');
-                      toast.success(`Redirecting to renew ${member.memberName}'s membership`);
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedMemberId(null);
+                      setTimeout(() => {
+                        setSelectedMemberId(member.memberId);
+                        setActiveTab('members');
+                      }, 0);
                     }}
                     className="opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transform hover:-translate-y-0.5 transition-all"
                   >
@@ -1810,12 +1819,6 @@ const Dashboard = () => {
           </div>
         </div>
       )}
-  
-      {/* Recent Members and Recent Payments Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        
-      </div>
   
       {/* Recent Activities and Classes Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -2224,6 +2227,7 @@ const Dashboard = () => {
               onMemberSelect={(id) => setSelectedMemberId(id)}
             />
           )}
+          {activeTab === 'membership-plans' && <MembershipPlans />}
           {activeTab === 'balance' && canSeeBalances && <Balance />}
           {activeTab === 'devices' && canSeeDevices && <DeviceManager />}
           {activeTab === 'attendance' && canSeeAttendance && <LiveMonitoring />}
