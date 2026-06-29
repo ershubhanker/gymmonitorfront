@@ -121,71 +121,75 @@ const Balance = () => {
     fetchBalanceData();
   }, [searchTerm, showPaidOnly]);
 
-  // Fetch payment history for a member - FIXED
+  // ===== FIXED: Fetch payment history for a member =====
   const fetchPaymentHistory = async (memberId) => {
     setLoadingHistory(true);
     setPaymentHistory([]);
     try {
-      // Try multiple possible endpoints
-      let response = null;
+      // First, get the member's balance details which includes payment history
+      const response = await api.get(`/gym/members/${memberId}/balance`);
+      console.log('Balance API response:', response.data);
+      
       let historyData = [];
       
-      try {
-        // First attempt: Get member balance details with payment history
-        response = await api.get(`/gym/members/${memberId}/balance`);
-        console.log('Balance API response:', response.data);
-        
-        // Check different possible field names
-        if (response.data) {
-          if (response.data.payment_history && Array.isArray(response.data.payment_history)) {
-            historyData = response.data.payment_history;
-          } else if (response.data.history && Array.isArray(response.data.history)) {
-            historyData = response.data.history;
-          } else if (response.data.payments && Array.isArray(response.data.payments)) {
-            historyData = response.data.payments;
-          } else if (response.data.transactions && Array.isArray(response.data.transactions)) {
-            historyData = response.data.transactions;
-          } else if (response.data.payment_records && Array.isArray(response.data.payment_records)) {
-            historyData = response.data.payment_records;
-          }
+      if (response.data) {
+        // Check for payment_history in the response
+        if (response.data.payment_history && Array.isArray(response.data.payment_history)) {
+          historyData = response.data.payment_history;
+        } 
+        // Check for payments array
+        else if (response.data.payments && Array.isArray(response.data.payments)) {
+          historyData = response.data.payments;
         }
-      } catch (firstError) {
-        console.log('First endpoint failed, trying alternative...');
-        
-        // Second attempt: Try membership payments endpoint
+        // Check for history array
+        else if (response.data.history && Array.isArray(response.data.history)) {
+          historyData = response.data.history;
+        }
+        // If the response itself is an array
+        else if (Array.isArray(response.data)) {
+          historyData = response.data;
+        }
+      }
+      
+      // If no history found in the first endpoint, try the payments endpoint
+      if (historyData.length === 0) {
         try {
-          response = await api.get(`/gym/memberships/${memberId}/payments`);
-          console.log('Membership payments API response:', response.data);
+          const paymentsResponse = await api.get(`/gym/payments?member_id=${memberId}&limit=50`);
+          console.log('Payments API response:', paymentsResponse.data);
           
-          if (response.data) {
-            if (Array.isArray(response.data)) {
-              historyData = response.data;
-            } else if (response.data.payments && Array.isArray(response.data.payments)) {
-              historyData = response.data.payments;
-            } else if (response.data.data && Array.isArray(response.data.data)) {
-              historyData = response.data.data;
+          if (paymentsResponse.data) {
+            if (Array.isArray(paymentsResponse.data)) {
+              historyData = paymentsResponse.data;
+            } else if (paymentsResponse.data.items && Array.isArray(paymentsResponse.data.items)) {
+              historyData = paymentsResponse.data.items;
             }
           }
-        } catch (secondError) {
-          console.log('Second endpoint failed, trying third alternative...');
+        } catch (paymentsError) {
+          console.log('Payments endpoint failed, trying membership endpoint...');
           
-          // Third attempt: Try member payment history endpoint
+          // Try the membership endpoint as fallback
           try {
-            response = await api.get(`/gym/payments/member/${memberId}`);
-            console.log('Member payments API response:', response.data);
+            // Get the member's active membership
+            const membershipResponse = await api.get(`/gym/members/${memberId}`);
+            console.log('Member details response:', membershipResponse.data);
             
-            if (response.data) {
-              if (Array.isArray(response.data)) {
-                historyData = response.data;
-              } else if (response.data.payments && Array.isArray(response.data.payments)) {
-                historyData = response.data.payments;
-              } else if (response.data.data && Array.isArray(response.data.data)) {
-                historyData = response.data.data;
+            if (membershipResponse.data && membershipResponse.data.current_membership) {
+              const membershipId = membershipResponse.data.current_membership.id;
+              
+              // Get payments for this membership
+              const memberPaymentsResponse = await api.get(`/gym/payments?membership_id=${membershipId}&limit=50`);
+              console.log('Membership payments response:', memberPaymentsResponse.data);
+              
+              if (memberPaymentsResponse.data) {
+                if (Array.isArray(memberPaymentsResponse.data)) {
+                  historyData = memberPaymentsResponse.data;
+                } else if (memberPaymentsResponse.data.items && Array.isArray(memberPaymentsResponse.data.items)) {
+                  historyData = memberPaymentsResponse.data.items;
+                }
               }
             }
-          } catch (thirdError) {
+          } catch (memberError) {
             console.log('All endpoints failed, using empty array');
-            historyData = [];
           }
         }
       }
@@ -209,10 +213,15 @@ const Balance = () => {
       formattedHistory.sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date));
       
       setPaymentHistory(formattedHistory);
+      
+      if (formattedHistory.length === 0) {
+        toast.info('No payment history found for this member');
+      }
+      
     } catch (error) {
       console.error('Error fetching payment history:', error);
-      // Don't show error toast to avoid confusion, just show empty state
       setPaymentHistory([]);
+      toast.error('Could not load payment history');
     } finally {
       setLoadingHistory(false);
     }
@@ -374,11 +383,27 @@ const Balance = () => {
     setShowPaymentModal(true);
   };
 
+  // ===== FIXED: Toggle payment history - now properly fetches and shows =====
   const togglePaymentHistory = async (member) => {
+    // If already showing history for this member and modal is open, just close it
     if (showPaymentHistory && selectedMember?.member_id === member.member_id && showPaymentModal) {
       setShowPaymentHistory(false);
       return;
     }
+    
+    // If modal is not open, open it first
+    if (!showPaymentModal) {
+      setSelectedMember(member);
+      setShowPaymentModal(true);
+      // Wait a bit for modal to render, then fetch history
+      setTimeout(async () => {
+        setShowPaymentHistory(true);
+        await fetchPaymentHistory(member.member_id);
+      }, 100);
+      return;
+    }
+    
+    // If modal is already open but showing different member or history is closed
     setSelectedMember(member);
     setShowPaymentHistory(true);
     await fetchPaymentHistory(member.member_id);
@@ -672,12 +697,12 @@ const Balance = () => {
         )}
       </div>
 
-      {/* Payment Modal with Payment Date */}
+      {/* Payment Modal with Payment History */}
       {showPaymentModal && selectedMember && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-white">
+            <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-white z-10">
               <h2 className="text-xl font-bold text-gray-900">Record Payment</h2>
               <button
                 onClick={closeModal}
@@ -713,7 +738,7 @@ const Balance = () => {
                 </div>
               </div>
 
-              {/* ===== PAYMENT DATE ===== */}
+              {/* Payment Date */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Payment Date <span className="text-gray-400 text-xs">(Select date)</span>
@@ -868,78 +893,94 @@ const Balance = () => {
               </div>
 
               {/* ===== PAYMENT HISTORY SECTION - FIXED ===== */}
-              {showPaymentHistory && (
-                <div className="border rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 px-4 py-2 border-b flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-2">
-                      <History className="h-3.5 w-3.5" />
-                      Payment History
-                    </span>
-                    <span className="text-xs text-gray-400">{paymentHistory.length} payment{paymentHistory.length !== 1 ? 's' : ''}</span>
-                  </div>
-                  {loadingHistory ? (
-                    <div className="p-6 text-center">
-                      <Loader2 className="h-6 w-6 animate-spin text-blue-500 mx-auto" />
-                      <p className="text-xs text-gray-400 mt-2">Loading payment history...</p>
-                    </div>
-                  ) : paymentHistory.length === 0 ? (
-                    <div className="p-6 text-center">
-                      <div className="text-gray-300 mb-2">
-                        <History className="h-10 w-10 mx-auto" />
+              <div className="border rounded-lg overflow-hidden">
+                <div 
+                  className="bg-gray-50 px-4 py-2 border-b flex items-center justify-between cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => {
+                    if (showPaymentHistory) {
+                      setShowPaymentHistory(false);
+                    } else {
+                      setShowPaymentHistory(true);
+                      fetchPaymentHistory(selectedMember.member_id);
+                    }
+                  }}
+                >
+                  <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-2">
+                    <History className="h-3.5 w-3.5" />
+                    Payment History
+                    <span className="text-xs text-gray-400 font-normal">({paymentHistory.length} payments)</span>
+                  </span>
+                  <span className="text-xs text-blue-600">
+                    {showPaymentHistory ? 'Hide ▲' : 'Show ▼'}
+                  </span>
+                </div>
+                
+                {showPaymentHistory && (
+                  <div>
+                    {loadingHistory ? (
+                      <div className="p-6 text-center">
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-500 mx-auto" />
+                        <p className="text-xs text-gray-400 mt-2">Loading payment history...</p>
                       </div>
-                      <p className="text-sm text-gray-400">No payment records found</p>
-                      <p className="text-xs text-gray-300 mt-1">Payments will appear here once recorded</p>
-                    </div>
-                  ) : (
-                    <div className="max-h-60 overflow-y-auto divide-y divide-gray-100">
-                      {paymentHistory.map((payment, index) => (
-                        <div key={payment.id || index} className="px-4 py-3 hover:bg-gray-50 transition-colors">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className={`p-2 rounded-full ${
-                                payment.amount > 0 ? 'bg-green-100' : 'bg-red-100'
-                              }`}>
-                                <CreditCard className={`h-4 w-4 ${
-                                  payment.amount > 0 ? 'text-green-600' : 'text-red-600'
-                                }`} />
-                              </div>
-                              <div>
-                                <p className="font-semibold text-gray-900">
-                                  {formatCurrency(payment.amount)}
-                                </p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="text-xs text-gray-500 capitalize">
-                                    {payment.payment_method}
-                                  </span>
-                                  {payment.status && (
-                                    <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                      payment.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                      payment.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                      'bg-gray-100 text-gray-600'
-                                    }`}>
-                                      {payment.status}
+                    ) : paymentHistory.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <div className="text-gray-300 mb-2">
+                          <History className="h-10 w-10 mx-auto" />
+                        </div>
+                        <p className="text-sm text-gray-400">No payment records found</p>
+                        <p className="text-xs text-gray-300 mt-1">Payments will appear here once recorded</p>
+                      </div>
+                    ) : (
+                      <div className="max-h-60 overflow-y-auto divide-y divide-gray-100">
+                        {paymentHistory.map((payment, index) => (
+                          <div key={payment.id || index} className="px-4 py-3 hover:bg-gray-50 transition-colors">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-full ${
+                                  payment.amount > 0 ? 'bg-green-100' : 'bg-red-100'
+                                }`}>
+                                  <CreditCard className={`h-4 w-4 ${
+                                    payment.amount > 0 ? 'text-green-600' : 'text-red-600'
+                                  }`} />
+                                </div>
+                                <div>
+                                  <p className="font-semibold text-gray-900">
+                                    {formatCurrency(payment.amount)}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-xs text-gray-500 capitalize">
+                                      {payment.payment_method}
                                     </span>
-                                  )}
+                                    {payment.status && (
+                                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                        payment.status === 'completed' || payment.status === 'paid' ? 'bg-green-100 text-green-700' :
+                                        payment.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                        'bg-gray-100 text-gray-600'
+                                      }`}>
+                                        {payment.status}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-xs text-gray-500">
-                                {formatDateTime(payment.payment_date)}
-                              </p>
-                              {payment.notes && (
-                                <p className="text-xs text-gray-400 max-w-[180px] truncate mt-0.5">
-                                  {payment.notes}
+                              <div className="text-right">
+                                <p className="text-xs text-gray-500">
+                                  {formatDateTime(payment.payment_date)}
                                 </p>
-                              )}
+                                {payment.notes && (
+                                  <p className="text-xs text-gray-400 max-w-[180px] truncate mt-0.5">
+                                    {payment.notes}
+                                  </p>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Error Display */}
               {errorDetails && (
