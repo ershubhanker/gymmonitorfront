@@ -5,7 +5,7 @@ import {
   MessageCircle, User, Clock, CheckCircle, AlertCircle,
   Send, MessageSquare, History, CreditCard, Activity,
   Award, Calendar as CalendarIcon, FileText, Users,
-  Edit, RefreshCw, Loader2, Trash2
+  Edit, RefreshCw, Loader2, Trash2, Save, XCircle
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -26,6 +26,25 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [balanceDetails, setBalanceDetails] = useState(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
 
+  // ===== EDIT STATE =====
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    full_name: '',
+    email: '',
+    phone: '',
+    address: '',
+    date_of_birth: '',
+    gender: '',
+    emergency_contact_name: '',
+    emergency_contact_phone: '',
+    medical_conditions: '',
+    allergies: '',
+    medications: '',
+    id_proof_type: '',
+    id_proof_number: '',
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+
   useEffect(() => {
     fetchMemberDetails();
     fetchComments();
@@ -39,7 +58,24 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     try {
       setLoading(true);
       const response = await api.get(`/gym/members/${memberId}`);
-      setMember(response.data);
+      const memberData = response.data;
+      setMember(memberData);
+      // Initialize edit form data
+      setEditFormData({
+        full_name: memberData.full_name || '',
+        email: memberData.email || '',
+        phone: memberData.phone || '',
+        address: memberData.address || '',
+        date_of_birth: memberData.date_of_birth || '',
+        gender: memberData.gender || 'male',
+        emergency_contact_name: memberData.emergency_contact_name || '',
+        emergency_contact_phone: memberData.emergency_contact_phone || '',
+        medical_conditions: memberData.medical_conditions || '',
+        allergies: memberData.allergies || '',
+        medications: memberData.medications || '',
+        id_proof_type: memberData.id_proof_type || 'aadhar',
+        id_proof_number: memberData.id_proof_number || '',
+      });
     } catch (error) {
       console.error('Error fetching member details:', error);
       if (error.response?.status === 404) {
@@ -69,7 +105,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const fetchPayments = async () => {
     try {
       setLoadingPayments(true);
-      // Get payments for this member
       const response = await api.get(`/gym/payments?limit=100`);
       const memberPayments = response.data.filter(p => p.member_id === memberId);
       setPayments(memberPayments);
@@ -115,6 +150,107 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setAttendanceHistory([]);
     } finally {
       setLoadingAttendance(false);
+    }
+  };
+
+  // ===== EDIT FUNCTIONS =====
+  const handleEditClick = () => {
+    setIsEditing(true);
+    // Reset form data with current member data
+    if (member) {
+      setEditFormData({
+        full_name: member.full_name || '',
+        email: member.email || '',
+        phone: member.phone || '',
+        address: member.address || '',
+        date_of_birth: member.date_of_birth || '',
+        gender: member.gender || 'male',
+        emergency_contact_name: member.emergency_contact_name || '',
+        emergency_contact_phone: member.emergency_contact_phone || '',
+        medical_conditions: member.medical_conditions || '',
+        allergies: member.allergies || '',
+        medications: member.medications || '',
+        id_proof_type: member.id_proof_type || 'aadhar',
+        id_proof_number: member.id_proof_number || '',
+      });
+    }
+  };
+
+  const handleEditChange = (e) => {
+    const { name, value } = e.target;
+    setEditFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Validate required fields
+    if (!editFormData.full_name.trim()) {
+      toast.error('Full name is required');
+      return;
+    }
+    if (!editFormData.phone.trim()) {
+      toast.error('Phone number is required');
+      return;
+    }
+    if (!/^[+]?[\d\s\-]{7,15}$/.test(editFormData.phone.trim())) {
+      toast.error('Enter a valid phone number');
+      return;
+    }
+
+    setSavingEdit(true);
+    try {
+      // Prepare update data - only send fields that have changed
+      const updateData = {};
+      for (const key of Object.keys(editFormData)) {
+        if (editFormData[key] !== member[key]) {
+          updateData[key] = editFormData[key] || null;
+        }
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        toast.info('No changes to save');
+        setIsEditing(false);
+        setSavingEdit(false);
+        return;
+      }
+
+      await api.put(`/gym/members/${memberId}`, updateData);
+      
+      toast.success('Member details updated successfully!');
+      
+      // Refresh member data
+      await fetchMemberDetails();
+      if (onUpdate) onUpdate();
+      
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error updating member:', error);
+      toast.error(error.response?.data?.detail || 'Failed to update member details');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleEditCancel = () => {
+    setIsEditing(false);
+    // Reset form data to current member data
+    if (member) {
+      setEditFormData({
+        full_name: member.full_name || '',
+        email: member.email || '',
+        phone: member.phone || '',
+        address: member.address || '',
+        date_of_birth: member.date_of_birth || '',
+        gender: member.gender || 'male',
+        emergency_contact_name: member.emergency_contact_name || '',
+        emergency_contact_phone: member.emergency_contact_phone || '',
+        medical_conditions: member.medical_conditions || '',
+        allergies: member.allergies || '',
+        medications: member.medications || '',
+        id_proof_type: member.id_proof_type || 'aadhar',
+        id_proof_number: member.id_proof_number || '',
+      });
     }
   };
 
@@ -226,15 +362,19 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   const currentMembership = member.current_membership;
   
-  // ===== FIXED: Calculate totals correctly =====
-  // Total paid should come from the payments array (actual payments made)
+  // Calculate totals
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  
-  // Balance due should come from the balance API or current membership
   const balanceDue = balanceDetails?.balance_due || currentMembership?.balance_due || 0;
-  
-  // Total plan amount (what the member needs to pay in total)
   const totalPlanAmount = balanceDetails?.total_amount || currentMembership?.plan?.price || 0;
+
+  // ID Proof options
+  const idProofOptions = [
+    { value: 'aadhar', label: 'Aadhar Card' },
+    { value: 'pan', label: 'PAN Card' },
+    { value: 'dl', label: 'Driving License' },
+    { value: 'passport', label: 'Passport' },
+    { value: 'voter', label: 'Voter ID' },
+  ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
@@ -285,7 +425,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Financial Summary Cards - FIXED */}
+          {/* Financial Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-100">
               <p className="text-sm text-green-600 font-medium">Total Paid</p>
@@ -304,48 +444,153 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           </div>
 
+          {/* Edit Button */}
+          <div className="flex justify-end">
+            {!isEditing ? (
+              <button
+                onClick={handleEditClick}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              >
+                <Edit className="h-4 w-4" />
+                Edit Profile
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleEditCancel}
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-sm font-medium"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEditSubmit}
+                  disabled={savingEdit}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50"
+                >
+                  {savingEdit ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  {savingEdit ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Member Information Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Personal Info */}
+            {/* Personal Info - Editable */}
             <div className="bg-gray-50 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <User className="h-4 w-4" />
                 Personal Information
+                {isEditing && <span className="text-xs text-blue-600 ml-2">(Editing)</span>}
               </h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Full Name:</span>
-                  <span className="font-medium text-gray-900">{member.full_name}</span>
+              {isEditing ? (
+                <form className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Full Name *</label>
+                    <input
+                      type="text"
+                      name="full_name"
+                      value={editFormData.full_name}
+                      onChange={handleEditChange}
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Phone *</label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={editFormData.phone}
+                      onChange={handleEditChange}
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Email</label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={editFormData.email}
+                      onChange={handleEditChange}
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Date of Birth</label>
+                    <input
+                      type="date"
+                      name="date_of_birth"
+                      value={editFormData.date_of_birth}
+                      onChange={handleEditChange}
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Gender</label>
+                    <select
+                      name="gender"
+                      value={editFormData.gender}
+                      onChange={handleEditChange}
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                      <option value="prefer_not_to_say">Prefer not to say</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Address</label>
+                    <textarea
+                      name="address"
+                      value={editFormData.address}
+                      onChange={handleEditChange}
+                      rows="2"
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                    />
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Full Name:</span>
+                    <span className="font-medium text-gray-900">{member.full_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Phone:</span>
+                    <span className="font-medium text-gray-900">{member.phone}</span>
+                  </div>
+                  {member.email && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Email:</span>
+                      <span className="font-medium text-gray-900">{member.email}</span>
+                    </div>
+                  )}
+                  {member.date_of_birth && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Date of Birth:</span>
+                      <span className="font-medium text-gray-900">{formatDate(member.date_of_birth)}</span>
+                    </div>
+                  )}
+                  {member.gender && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Gender:</span>
+                      <span className="font-medium text-gray-900">{member.gender}</span>
+                    </div>
+                  )}
+                  {member.address && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Address:</span>
+                      <span className="font-medium text-gray-900">{member.address}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Phone:</span>
-                  <span className="font-medium text-gray-900">{member.phone}</span>
-                </div>
-                {member.email && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Email:</span>
-                    <span className="font-medium text-gray-900">{member.email}</span>
-                  </div>
-                )}
-                {member.date_of_birth && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Date of Birth:</span>
-                    <span className="font-medium text-gray-900">{formatDate(member.date_of_birth)}</span>
-                  </div>
-                )}
-                {member.gender && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Gender:</span>
-                    <span className="font-medium text-gray-900">{member.gender}</span>
-                  </div>
-                )}
-                {member.address && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Address:</span>
-                    <span className="font-medium text-gray-900">{member.address}</span>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
 
             {/* Current Membership */}
@@ -398,13 +643,37 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               )}
             </div>
 
-            {/* Emergency Contact */}
-            {(member.emergency_contact_name || member.emergency_contact_phone) && (
-              <div className="bg-gray-50 rounded-xl p-4">
-                <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4" />
-                  Emergency Contact
-                </h3>
+            {/* Emergency Contact - Editable */}
+            <div className="bg-gray-50 rounded-xl p-4">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                Emergency Contact
+                {isEditing && <span className="text-xs text-blue-600 ml-2">(Editing)</span>}
+              </h3>
+              {isEditing ? (
+                <form className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Contact Name</label>
+                    <input
+                      type="text"
+                      name="emergency_contact_name"
+                      value={editFormData.emergency_contact_name}
+                      onChange={handleEditChange}
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Contact Phone</label>
+                    <input
+                      type="tel"
+                      name="emergency_contact_phone"
+                      value={editFormData.emergency_contact_phone}
+                      onChange={handleEditChange}
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                </form>
+              ) : (
                 <div className="space-y-2 text-sm">
                   {member.emergency_contact_name && (
                     <div className="flex justify-between">
@@ -418,17 +687,57 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       <span className="font-medium text-gray-900">{member.emergency_contact_phone}</span>
                     </div>
                   )}
+                  {!member.emergency_contact_name && !member.emergency_contact_phone && (
+                    <p className="text-sm text-gray-400 text-center py-2">No emergency contact set</p>
+                  )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
-            {/* Medical Info */}
-            {(member.medical_conditions || member.allergies || member.medications) && (
-              <div className="bg-gray-50 rounded-xl p-4">
-                <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <Activity className="h-4 w-4" />
-                  Medical Information
-                </h3>
+            {/* Medical Info - Editable */}
+            <div className="bg-gray-50 rounded-xl p-4">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                Medical Information
+                {isEditing && <span className="text-xs text-blue-600 ml-2">(Editing)</span>}
+              </h3>
+              {isEditing ? (
+                <form className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Medical Conditions</label>
+                    <textarea
+                      name="medical_conditions"
+                      value={editFormData.medical_conditions}
+                      onChange={handleEditChange}
+                      rows="2"
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                      placeholder="e.g. Diabetes, Hypertension"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Allergies</label>
+                    <textarea
+                      name="allergies"
+                      value={editFormData.allergies}
+                      onChange={handleEditChange}
+                      rows="2"
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                      placeholder="e.g. Peanuts, Latex"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Current Medications</label>
+                    <textarea
+                      name="medications"
+                      value={editFormData.medications}
+                      onChange={handleEditChange}
+                      rows="2"
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                      placeholder="List any regular medications"
+                    />
+                  </div>
+                </form>
+              ) : (
                 <div className="space-y-2 text-sm">
                   {member.medical_conditions && (
                     <div>
@@ -448,9 +757,68 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       <p className="text-gray-900 mt-1">{member.medications}</p>
                     </div>
                   )}
+                  {!member.medical_conditions && !member.allergies && !member.medications && (
+                    <p className="text-sm text-gray-400 text-center py-2">No medical information recorded</p>
+                  )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+
+            {/* ID Proof - Editable */}
+            <div className="bg-gray-50 rounded-xl p-4">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                ID Proof
+                {isEditing && <span className="text-xs text-blue-600 ml-2">(Editing)</span>}
+              </h3>
+              {isEditing ? (
+                <form className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">ID Proof Type</label>
+                    <select
+                      name="id_proof_type"
+                      value={editFormData.id_proof_type}
+                      onChange={handleEditChange}
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      {idProofOptions.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">ID Proof Number</label>
+                    <input
+                      type="text"
+                      name="id_proof_number"
+                      value={editFormData.id_proof_number}
+                      onChange={handleEditChange}
+                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-2 text-sm">
+                  {member.id_proof_type && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Type:</span>
+                      <span className="font-medium text-gray-900">
+                        {idProofOptions.find(o => o.value === member.id_proof_type)?.label || member.id_proof_type}
+                      </span>
+                    </div>
+                  )}
+                  {member.id_proof_number && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Number:</span>
+                      <span className="font-medium text-gray-900">{member.id_proof_number}</span>
+                    </div>
+                  )}
+                  {!member.id_proof_type && !member.id_proof_number && (
+                    <p className="text-sm text-gray-400 text-center py-2">No ID proof recorded</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Payment History */}

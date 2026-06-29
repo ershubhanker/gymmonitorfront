@@ -21,7 +21,8 @@ import {
   X,
   RefreshCw,
   CalendarDays,
-  History
+  History,
+  Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -45,6 +46,12 @@ const Balance = () => {
   const [showPaymentHistory, setShowPaymentHistory] = useState(false);
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  
+  // ===== NEW: Delete/Clear Balance State =====
+  const [showClearBalanceModal, setShowClearBalanceModal] = useState(false);
+  const [memberToClear, setMemberToClear] = useState(null);
+  const [clearingBalance, setClearingBalance] = useState(false);
+  const [clearBalanceNotes, setClearBalanceNotes] = useState('');
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -126,32 +133,23 @@ const Balance = () => {
     setLoadingHistory(true);
     setPaymentHistory([]);
     try {
-      // First, get the member's balance details which includes payment history
       const response = await api.get(`/gym/members/${memberId}/balance`);
       console.log('Balance API response:', response.data);
       
       let historyData = [];
       
       if (response.data) {
-        // Check for payment_history in the response
         if (response.data.payment_history && Array.isArray(response.data.payment_history)) {
           historyData = response.data.payment_history;
-        } 
-        // Check for payments array
-        else if (response.data.payments && Array.isArray(response.data.payments)) {
+        } else if (response.data.payments && Array.isArray(response.data.payments)) {
           historyData = response.data.payments;
-        }
-        // Check for history array
-        else if (response.data.history && Array.isArray(response.data.history)) {
+        } else if (response.data.history && Array.isArray(response.data.history)) {
           historyData = response.data.history;
-        }
-        // If the response itself is an array
-        else if (Array.isArray(response.data)) {
+        } else if (Array.isArray(response.data)) {
           historyData = response.data;
         }
       }
       
-      // If no history found in the first endpoint, try the payments endpoint
       if (historyData.length === 0) {
         try {
           const paymentsResponse = await api.get(`/gym/payments?member_id=${memberId}&limit=50`);
@@ -167,16 +165,13 @@ const Balance = () => {
         } catch (paymentsError) {
           console.log('Payments endpoint failed, trying membership endpoint...');
           
-          // Try the membership endpoint as fallback
           try {
-            // Get the member's active membership
             const membershipResponse = await api.get(`/gym/members/${memberId}`);
             console.log('Member details response:', membershipResponse.data);
             
             if (membershipResponse.data && membershipResponse.data.current_membership) {
               const membershipId = membershipResponse.data.current_membership.id;
               
-              // Get payments for this membership
               const memberPaymentsResponse = await api.get(`/gym/payments?membership_id=${membershipId}&limit=50`);
               console.log('Membership payments response:', memberPaymentsResponse.data);
               
@@ -194,12 +189,10 @@ const Balance = () => {
         }
       }
       
-      // Ensure we have an array
       if (!Array.isArray(historyData)) {
         historyData = [];
       }
       
-      // Format the history data with proper fields
       const formattedHistory = historyData.map(item => ({
         id: item.id || `payment_${Date.now()}_${Math.random()}`,
         amount: item.amount || item.paid_amount || item.payment_amount || 0,
@@ -209,7 +202,6 @@ const Balance = () => {
         status: item.status || 'completed'
       }));
       
-      // Sort by date (newest first)
       formattedHistory.sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date));
       
       setPaymentHistory(formattedHistory);
@@ -367,6 +359,8 @@ const Balance = () => {
     setErrorDetails(null);
     setPaymentHistory([]);
     setShowPaymentHistory(false);
+    setShowClearBalanceModal(false);
+    setMemberToClear(null);
   };
 
   const openPaymentModal = (member) => {
@@ -383,19 +377,75 @@ const Balance = () => {
     setShowPaymentModal(true);
   };
 
-  // ===== FIXED: Toggle payment history - now properly fetches and shows =====
+  // ===== NEW: Open Clear Balance Modal =====
+  const openClearBalanceModal = (member) => {
+    setMemberToClear(member);
+    setClearBalanceNotes('');
+    setShowClearBalanceModal(true);
+  };
+
+  // ===== NEW: Handle Clear Balance =====
+  const handleClearBalance = async () => {
+    if (!memberToClear) return;
+    
+    setClearingBalance(true);
+    try {
+      // Get the amount to clear
+      const amountToClear = memberToClear.balance_due;
+      
+      if (amountToClear <= 0) {
+        toast.info('This member has no balance to clear');
+        setShowClearBalanceModal(false);
+        setMemberToClear(null);
+        setClearingBalance(false);
+        return;
+      }
+      
+      // Create a payment record for the full amount to clear the balance
+      const response = await api.post(`/gym/memberships/${memberToClear.membership_id}/partial-payment`, {
+        membership_id: memberToClear.membership_id,
+        amount: amountToClear,
+        payment_method: 'adjustment',
+        notes: clearBalanceNotes || `Balance cleared - ${formatCurrency(amountToClear)} adjusted`,
+        payment_date: new Date().toISOString()
+      });
+      
+      console.log('Clear balance response:', response.data);
+      
+      toast.success(
+        <div>
+          <p className="font-bold">✓ Balance Cleared Successfully!</p>
+          <p className="text-sm mt-1">Amount: {formatCurrency(amountToClear)}</p>
+          <p className="text-sm text-green-600">Balance is now ₹0</p>
+          {clearBalanceNotes && (
+            <p className="text-sm text-gray-600 mt-1">Note: {clearBalanceNotes}</p>
+          )}
+        </div>,
+        { duration: 5000 }
+      );
+      
+      setShowClearBalanceModal(false);
+      setMemberToClear(null);
+      await fetchBalanceData();
+      
+    } catch (error) {
+      console.error('Clear balance error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to clear balance');
+    } finally {
+      setClearingBalance(false);
+    }
+  };
+
+  // ===== Toggle payment history =====
   const togglePaymentHistory = async (member) => {
-    // If already showing history for this member and modal is open, just close it
     if (showPaymentHistory && selectedMember?.member_id === member.member_id && showPaymentModal) {
       setShowPaymentHistory(false);
       return;
     }
     
-    // If modal is not open, open it first
     if (!showPaymentModal) {
       setSelectedMember(member);
       setShowPaymentModal(true);
-      // Wait a bit for modal to render, then fetch history
       setTimeout(async () => {
         setShowPaymentHistory(true);
         await fetchPaymentHistory(member.member_id);
@@ -403,7 +453,6 @@ const Balance = () => {
       return;
     }
     
-    // If modal is already open but showing different member or history is closed
     setSelectedMember(member);
     setShowPaymentHistory(true);
     await fetchPaymentHistory(member.member_id);
@@ -656,6 +705,17 @@ const Balance = () => {
                         >
                           <History className="h-4 w-4" />
                         </button>
+                        {/* ===== NEW: Clear Balance Button ===== */}
+                        {member.balance_due > 0 && (
+                          <button
+                            onClick={() => openClearBalanceModal(member)}
+                            className="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-600 text-sm rounded-lg hover:bg-red-100 transition-colors"
+                            title="Clear Balance"
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Clear
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -892,7 +952,7 @@ const Balance = () => {
                 />
               </div>
 
-              {/* ===== PAYMENT HISTORY SECTION - FIXED ===== */}
+              {/* Payment History Section */}
               <div className="border rounded-lg overflow-hidden">
                 <div 
                   className="bg-gray-50 px-4 py-2 border-b flex items-center justify-between cursor-pointer hover:bg-gray-100 transition-colors"
@@ -1011,6 +1071,100 @@ const Balance = () => {
                   <CreditCard className="h-4 w-4" />
                 )}
                 {processingPayment ? 'Recording...' : 'Record Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== NEW: Clear Balance Confirmation Modal ===== */}
+      {showClearBalanceModal && memberToClear && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <AlertCircle className="h-5 w-5 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Clear Balance</h3>
+                  <p className="text-xs text-gray-500">This action cannot be undone</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowClearBalanceModal(false);
+                  setMemberToClear(null);
+                  setClearBalanceNotes('');
+                }}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              <div className="bg-red-50 rounded-xl p-4 border border-red-200">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-700 font-medium">Member:</span>
+                  <span className="font-semibold text-gray-900">{memberToClear.member_name}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm mt-2">
+                  <span className="text-gray-700 font-medium">Balance Due:</span>
+                  <span className="font-bold text-red-600">{formatCurrency(memberToClear.balance_due)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm mt-2">
+                  <span className="text-gray-700 font-medium">Plan:</span>
+                  <span className="text-gray-900">{memberToClear.plan_name}</span>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
+                <p className="text-sm text-yellow-800 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <span>This will clear the remaining balance of <strong>{formatCurrency(memberToClear.balance_due)}</strong> by recording an adjustment payment. The balance will be set to ₹0.</span>
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <textarea
+                  rows="2"
+                  value={clearBalanceNotes}
+                  onChange={(e) => setClearBalanceNotes(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-none"
+                  placeholder="e.g. Balance cleared due to adjustment, discount applied, etc."
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-2xl">
+              <button
+                onClick={() => {
+                  setShowClearBalanceModal(false);
+                  setMemberToClear(null);
+                  setClearBalanceNotes('');
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearBalance}
+                disabled={clearingBalance}
+                className="flex items-center gap-2 px-5 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+              >
+                {clearingBalance ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                {clearingBalance ? 'Clearing...' : 'Clear Balance'}
               </button>
             </div>
           </div>

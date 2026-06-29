@@ -619,7 +619,9 @@ const MembershipSelector = ({
   onRefreshPlans,
   userManuallyChangedAmount,
   setUserManuallyChangedAmount,
-  handleAmountChange
+  handleAmountChange,
+  amountError,
+  setAmountError
 }) => {
   const [editingPlan, setEditingPlan] = useState(null);
   const [deletingPlanId, setDeletingPlanId] = useState(null);
@@ -629,15 +631,23 @@ const MembershipSelector = ({
   const handlePlanSelect = (e) => {
     const planId = e.target.value;
     setFormData(prev => ({ ...prev, plan_id: planId }));
+    setAmountError(null); // Clear error when plan changes
     
     // If user hasn't manually changed the amount, auto-fill with plan price
     if (!userManuallyChangedAmount) {
       const plan = membershipPlans.find(p => String(p.id) === String(planId));
       if (plan) {
+        const price = plan.discounted_price || plan.price;
         setFormData(prev => ({ 
           ...prev, 
-          amount_paid: String(plan.discounted_price || plan.price) 
+          amount_paid: String(price) 
         }));
+        // Validate the auto-filled amount
+        if (parseFloat(price) > (plan.discounted_price || plan.price)) {
+          setAmountError('Amount cannot exceed plan price');
+        } else {
+          setAmountError(null);
+        }
       }
     }
   };
@@ -661,21 +671,25 @@ const MembershipSelector = ({
       // Only update amount if user hasn't manually changed it
       if (String(formData.plan_id) === String(editingPlan.id) && !userManuallyChangedAmount) {
         const updatedPlan = res.data;
+        const price = updatedPlan.discounted_price || updatedPlan.price;
         setFormData(prev => ({
           ...prev,
-          amount_paid: String(updatedPlan.discounted_price || updatedPlan.price)
+          amount_paid: String(price)
         }));
+        setAmountError(null);
       }
     } else {
       const res = await api.post('/gym/plans', planPayload);
       toast.success(`Plan "${res.data.name}" created`);
       await onRefreshPlans();
+      const price = res.data.discounted_price || res.data.price;
       setFormData(prev => ({
         ...prev,
         plan_id: String(res.data.id),
-        amount_paid: String(res.data.discounted_price || res.data.price)
+        amount_paid: String(price)
       }));
       setUserManuallyChangedAmount(false);
+      setAmountError(null);
     }
     setShowPlanCreator(false);
   };
@@ -690,6 +704,7 @@ const MembershipSelector = ({
       
       if (String(formData.plan_id) === String(plan.id)) {
         setFormData(prev => ({ ...prev, plan_id: '', amount_paid: '' }));
+        setAmountError(null);
       }
       
       await onRefreshPlans();
@@ -908,6 +923,8 @@ const MembershipSelector = ({
                   } else {
                     setFormData(prev => ({ ...prev, discount_applied: e.target.value }));
                   }
+                  // Validate amount paid after discount change
+                  validateAmountPaid(formData.amount_paid, selectedPlan);
                 }}
                 className={inputCls} 
                 placeholder="0.00"
@@ -947,11 +964,27 @@ const MembershipSelector = ({
                   min="0" 
                   step="0.01" 
                   value={formData.amount_paid}
-                  onChange={handleAmountChange}
-                  className={`${inputCls} pl-7`} 
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Validate amount against plan price
+                    const planPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
+                    if (parseFloat(value) > planPrice) {
+                      setAmountError(`Amount cannot exceed plan price of ₹${planPrice}`);
+                    } else {
+                      setAmountError(null);
+                    }
+                    handleAmountChange(e);
+                  }}
+                  className={`${inputCls} pl-7 ${amountError ? 'border-red-500 ring-2 ring-red-100' : ''}`} 
                   placeholder="0.00" 
                 />
               </div>
+              {amountError && (
+                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {amountError}
+                </p>
+              )}
 
               <div className="flex gap-2 mt-2">
                 <button
@@ -960,6 +993,7 @@ const MembershipSelector = ({
                     const finalPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
                     setUserManuallyChangedAmount(true);
                     setFormData(prev => ({ ...prev, amount_paid: String(finalPrice) }));
+                    setAmountError(null);
                   }}
                   className="flex-1 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
                 >
@@ -970,7 +1004,9 @@ const MembershipSelector = ({
                   onClick={() => {
                     const finalPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
                     setUserManuallyChangedAmount(true);
-                    setFormData(prev => ({ ...prev, amount_paid: String(Math.floor(finalPrice / 2)) }));
+                    const halfPrice = Math.floor(finalPrice / 2);
+                    setFormData(prev => ({ ...prev, amount_paid: String(halfPrice) }));
+                    setAmountError(null);
                   }}
                   className="flex-1 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
                 >
@@ -981,6 +1017,7 @@ const MembershipSelector = ({
                   onClick={() => {
                     setUserManuallyChangedAmount(true);
                     setFormData(prev => ({ ...prev, amount_paid: '0' }));
+                    setAmountError(null);
                   }}
                   className="flex-1 py-1.5 text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
                 >
@@ -992,6 +1029,17 @@ const MembershipSelector = ({
                 const planPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
                 const paid = Number(formData.amount_paid);
                 const balanceDue = Math.max(0, planPrice - paid);
+                
+                if (paid > planPrice) {
+                  return (
+                    <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-xs text-red-700 flex items-center gap-1.5 font-medium">
+                        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                        Amount exceeds plan price by ₹{(paid - planPrice).toFixed(2)}
+                      </p>
+                    </div>
+                  );
+                }
                 
                 if (priceInfo?.discount > 0 && planPrice !== (selectedPlan?.discounted_price || selectedPlan?.price)) {
                   return (
@@ -1088,6 +1136,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
   const [showPlanCreator, setShowPlanCreator] = useState(false);
   const [saving, setSaving] = useState(false);
   const [userManuallyChangedAmount, setUserManuallyChangedAmount] = useState(false);
+  const [amountError, setAmountError] = useState(null);
 
   const getPendingFileRef = useRef(null);
 
@@ -1116,6 +1165,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
     setSaving(false);
     setShowPlanCreator(false);
     setUserManuallyChangedAmount(false);
+    setAmountError(null);
 
     if (member) {
       setFormData({
@@ -1161,21 +1211,49 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
     if (formData.plan_id && !userManuallyChangedAmount) {
       const plan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
       if (plan) {
-        setFormData(prev => ({ ...prev, amount_paid: String(plan.discounted_price || plan.price) }));
+        const price = plan.discounted_price || plan.price;
+        setFormData(prev => ({ ...prev, amount_paid: String(price) }));
+        setAmountError(null);
       }
     }
   }, [formData.plan_id, membershipPlans, userManuallyChangedAmount]);
 
   // Handler for amount change - marks that user manually changed it
   const handleAmountChange = (e) => {
+    const value = e.target.value;
+    // Validate against plan price
+    const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
+    if (selectedPlan) {
+      const planPrice = selectedPlan.discounted_price || selectedPlan.price;
+      const discount = parseFloat(formData.discount_applied) || 0;
+      const finalPrice = planPrice - discount;
+      if (parseFloat(value) > finalPrice) {
+        setAmountError(`Amount cannot exceed ₹${finalPrice}`);
+      } else {
+        setAmountError(null);
+      }
+    }
     setUserManuallyChangedAmount(true);
-    setFormData(prev => ({ ...prev, amount_paid: e.target.value }));
+    setFormData(prev => ({ ...prev, amount_paid: value }));
   };
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+  
+    // Validate amount before submission
+    const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
+    if (selectedPlan && formData.amount_paid) {
+      const planPrice = selectedPlan.discounted_price || selectedPlan.price;
+      const discount = parseFloat(formData.discount_applied) || 0;
+      const finalPrice = planPrice - discount;
+      if (parseFloat(formData.amount_paid) > finalPrice) {
+        toast.error(`Amount paid cannot exceed ₹${finalPrice}`);
+        setActiveTab('membership');
+        return;
+      }
+    }
   
     if (!formData.full_name.trim()) {
       toast.error('Full name is required');
@@ -1565,6 +1643,8 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
                       userManuallyChangedAmount={userManuallyChangedAmount}
                       setUserManuallyChangedAmount={setUserManuallyChangedAmount}
                       handleAmountChange={handleAmountChange}
+                      amountError={amountError}
+                      setAmountError={setAmountError}
                     />
                   )
                 )}
@@ -1602,7 +1682,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
                   Next <ChevronRight className="h-4 w-4" />
                 </button>
               )}
-              <button type="submit" disabled={saving}
+              <button type="submit" disabled={saving || amountError}
                 className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                 {saving
                   ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</>
