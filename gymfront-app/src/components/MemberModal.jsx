@@ -15,15 +15,12 @@ const PLAN_PRESETS = [
   { label: 'Yearly',      plan_type: 'yearly',      duration_days: 365 },
 ];
 
-// ─── DOB Scroll Picker (unchanged) ────────────────────────────────────────────
+// ─── DOB Scroll Picker ────────────────────────────────────────────────────────
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const ITEM_H = 40;
 
-
-
 const compressImage = (file, maxWidth = 800, maxHeight = 800, quality = 0.8) => {
   return new Promise((resolve, reject) => {
-    // Check if it's an image
     if (!file.type.startsWith('image/')) {
       reject(new Error('Not an image file'));
       return;
@@ -37,7 +34,6 @@ const compressImage = (file, maxWidth = 800, maxHeight = 800, quality = 0.8) => 
       img.src = event.target.result;
       
       img.onload = () => {
-        // Calculate new dimensions while maintaining aspect ratio
         let width = img.width;
         let height = img.height;
         
@@ -53,7 +49,6 @@ const compressImage = (file, maxWidth = 800, maxHeight = 800, quality = 0.8) => 
           }
         }
         
-        // Create canvas and draw compressed image
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
@@ -61,19 +56,16 @@ const compressImage = (file, maxWidth = 800, maxHeight = 800, quality = 0.8) => 
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Determine output format (keep original format preference)
         let outputFormat = 'image/jpeg';
         let outputQuality = quality;
         
-        // For PNG with transparency, keep PNG but compress with quality
         if (file.type === 'image/png') {
           outputFormat = 'image/png';
-          outputQuality = Math.min(quality, 0.9); // PNG quality slightly lower
+          outputQuality = Math.min(quality, 0.9);
         } else if (file.type === 'image/webp') {
           outputFormat = 'image/webp';
         }
         
-        // Convert to blob
         canvas.toBlob(
           (blob) => {
             if (!blob) {
@@ -81,7 +73,6 @@ const compressImage = (file, maxWidth = 800, maxHeight = 800, quality = 0.8) => 
               return;
             }
             
-            // Create a new file from the compressed blob
             const compressedFile = new File(
               [blob],
               file.name.replace(/\.[^/.]+$/, '') + '.jpg',
@@ -90,12 +81,6 @@ const compressImage = (file, maxWidth = 800, maxHeight = 800, quality = 0.8) => 
                 lastModified: Date.now(),
               }
             );
-            
-            // Log compression stats
-            const originalSizeKB = (file.size / 1024).toFixed(2);
-            const compressedSizeKB = (blob.size / 1024).toFixed(2);
-            const compressionRatio = ((1 - blob.size / file.size) * 100).toFixed(1);
-            console.log(`Image compressed: ${originalSizeKB}KB → ${compressedSizeKB}KB (${compressionRatio}% reduction)`);
             
             resolve(compressedFile);
           },
@@ -114,8 +99,6 @@ const compressImage = (file, maxWidth = 800, maxHeight = 800, quality = 0.8) => 
     };
   });
 };
-
-
 
 const ScrollColumn = ({ items, selectedIndex, onChange, label }) => {
   const listRef = useRef(null);
@@ -267,7 +250,7 @@ const DOBPicker = ({ value, onChange, maxDate }) => {
   );
 };
 
-// ─── Profile Photo Uploader (unchanged) ───────────────────────────────────────
+// ─── Profile Photo Uploader ────────────────────────────────────────────────────
 const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingFileRef }) => {
   const fileInputRef = useRef(null);
   const [preview, setPreview] = useState(null);
@@ -295,7 +278,7 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
   }, [currentPhotoUrl, memberId]);
 
   const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-  const MAX_SIZE_MB = 10; // Allow up to 10MB original, will compress down
+  const MAX_SIZE_MB = 10;
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -306,7 +289,6 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
       return;
     }
     
-    // Check original file size (allow up to 10MB, will compress)
     if (file.size > MAX_SIZE_MB * 1024 * 1024) {
       toast.error(`Original image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Please choose an image under ${MAX_SIZE_MB}MB.`);
       return;
@@ -316,12 +298,10 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
     toast.loading('Compressing image...', { id: 'compress' });
     
     try {
-      // Compress the image
       const compressedFile = await compressImage(file, 800, 800, 0.8);
       
       toast.dismiss('compress');
       
-      // Create preview from compressed file
       const localUrl = URL.createObjectURL(compressedFile);
       setPreview(localUrl);
 
@@ -489,18 +469,6 @@ const PlanFormModal = ({ plan, onSave, onCancel }) => {
     }));
   };
 
-
-  // When phone changes, auto-update attendance_id
-const handlePhoneChange = (e) => {
-  const phone = e.target.value;
-  setFormData(prev => ({
-      ...prev,
-      phone: phone,
-      // Auto-update attendance_id if it's empty or equals previous phone
-      attendance_id: prev.attendance_id === prev.phone ? phone : prev.attendance_id
-  }));
-};
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.price) {
@@ -553,13 +521,6 @@ const handlePhoneChange = (e) => {
           </div>
         </div>
 
-        <div className="col-span-2">
-   
-          <p className="text-xs text-gray-400 mt-1">
-              This ID will be used to match the member with the attendance device.
-              Phone number is recommended as it's unique.
-          </p>
-      </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Plan Name <span className="text-red-500">*</span></label>
@@ -569,31 +530,31 @@ const handlePhoneChange = (e) => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
           <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Duration (days)</label>
-          <input 
-            type="number" 
-            min="1" 
-            value={formData.duration_days === 0 ? '' : formData.duration_days}
-            onChange={(e) => {
-              const value = e.target.value;
-              if (value === '') {
-                setFormData({ ...formData, duration_days: 0 });
-              } else {
-                const numValue = parseInt(value);
-                if (!isNaN(numValue) && numValue >= 1) {
-                  setFormData({ ...formData, duration_days: numValue });
+            <label className="block text-sm font-medium text-gray-700 mb-1">Duration (days)</label>
+            <input 
+              type="number" 
+              min="1" 
+              value={formData.duration_days === 0 ? '' : formData.duration_days}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === '') {
+                  setFormData({ ...formData, duration_days: 0 });
+                } else {
+                  const numValue = parseInt(value);
+                  if (!isNaN(numValue) && numValue >= 1) {
+                    setFormData({ ...formData, duration_days: numValue });
+                  }
                 }
-              }
-            }}
-            onBlur={() => {
-              if (formData.duration_days === 0 || formData.duration_days === '') {
-                setFormData({ ...formData, duration_days: 30 });
-              }
-            }}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
-            placeholder="Enter duration in days"
-          />
-        </div>
+              }}
+              onBlur={() => {
+                if (formData.duration_days === 0 || formData.duration_days === '') {
+                  setFormData({ ...formData, duration_days: 30 });
+                }
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
+              placeholder="Enter duration in days"
+            />
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Price (₹) <span className="text-red-500">*</span></label>
             <div className="relative">
@@ -647,14 +608,39 @@ const handlePhoneChange = (e) => {
 
 // ─── Membership Selector (with Edit/Delete) ────────────────────────────────────
 const MembershipSelector = ({ 
-  formData, setFormData, membershipPlans, setMembershipPlans, 
-  showPlanCreator, setShowPlanCreator, inputCls, labelCls,
-  onRefreshPlans
+  formData, 
+  setFormData, 
+  membershipPlans, 
+  setMembershipPlans, 
+  showPlanCreator, 
+  setShowPlanCreator, 
+  inputCls, 
+  labelCls,
+  onRefreshPlans,
+  userManuallyChangedAmount,
+  setUserManuallyChangedAmount,
+  handleAmountChange
 }) => {
   const [editingPlan, setEditingPlan] = useState(null);
   const [deletingPlanId, setDeletingPlanId] = useState(null);
   const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
-  const set = (field) => (e) => setFormData(prev => ({ ...prev, [field]: e.target.value }));
+  
+  // FIXED: When plan is selected, only set amount if user hasn't manually changed it
+  const handlePlanSelect = (e) => {
+    const planId = e.target.value;
+    setFormData(prev => ({ ...prev, plan_id: planId }));
+    
+    // If user hasn't manually changed the amount, auto-fill with plan price
+    if (!userManuallyChangedAmount) {
+      const plan = membershipPlans.find(p => String(p.id) === String(planId));
+      if (plan) {
+        setFormData(prev => ({ 
+          ...prev, 
+          amount_paid: String(plan.discounted_price || plan.price) 
+        }));
+      }
+    }
+  };
 
   const calculatePriceWithDiscount = () => {
     if (!selectedPlan) return null;
@@ -666,15 +652,14 @@ const MembershipSelector = ({
 
   const priceInfo = calculatePriceWithDiscount();
 
-
-
   const handlePlanSave = async (planPayload) => {
     if (editingPlan) {
       const res = await api.put(`/gym/plans/${editingPlan.id}`, planPayload);
       toast.success(`Plan "${res.data.name}" updated`);
       setEditingPlan(null);
       await onRefreshPlans();
-      if (String(formData.plan_id) === String(editingPlan.id)) {
+      // Only update amount if user hasn't manually changed it
+      if (String(formData.plan_id) === String(editingPlan.id) && !userManuallyChangedAmount) {
         const updatedPlan = res.data;
         setFormData(prev => ({
           ...prev,
@@ -690,6 +675,7 @@ const MembershipSelector = ({
         plan_id: String(res.data.id),
         amount_paid: String(res.data.discounted_price || res.data.price)
       }));
+      setUserManuallyChangedAmount(false);
     }
     setShowPlanCreator(false);
   };
@@ -771,9 +757,14 @@ const MembershipSelector = ({
                   className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${
                     isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
                   }`}>
-                  <input type="radio" name="plan_id" value={String(plan.id)}
-                    checked={isSelected} onChange={set('plan_id')}
-                    className="accent-blue-600 w-4 h-4 flex-shrink-0" />
+                  <input 
+                    type="radio" 
+                    name="plan_id" 
+                    value={String(plan.id)}
+                    checked={isSelected} 
+                    onChange={handlePlanSelect}
+                    className="accent-blue-600 w-4 h-4 flex-shrink-0" 
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-gray-900 text-sm truncate">{plan.name}</p>
@@ -831,222 +822,242 @@ const MembershipSelector = ({
         />
       )}
 
-{selectedPlan && !shouldShowPlanCreator && (
-  <div className="space-y-4">
-    <div className="border border-green-200 bg-green-50 rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <CheckCircle className="h-4 w-4 text-green-600" />
-        <span className="text-sm font-semibold text-green-800">Selected: {selectedPlan.name}</span>
-      </div>
-      <div className="grid grid-cols-3 gap-2 text-sm text-green-700">
-        <div><span className="font-medium">Duration:</span> {selectedPlan.duration_days} days</div>
-        <div><span className="font-medium">Price:</span> ₹{selectedPlan.discounted_price || selectedPlan.price}</div>
-        <div>
-          <span className="font-medium">Expires:</span>{' '}
-          {formData.membership_start_date
-            ? new Date(new Date(formData.membership_start_date).getTime() + selectedPlan.duration_days * 86400000)
-                .toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-            : '—'}
-        </div>
-      </div>
-    </div>
+      {selectedPlan && !shouldShowPlanCreator && (
+        <div className="space-y-4">
+          <div className="border border-green-200 bg-green-50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <span className="text-sm font-semibold text-green-800">Selected: {selectedPlan.name}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-sm text-green-700">
+              <div><span className="font-medium">Duration:</span> {selectedPlan.duration_days} days</div>
+              <div><span className="font-medium">Price:</span> ₹{selectedPlan.discounted_price || selectedPlan.price}</div>
+              <div>
+                <span className="font-medium">Expires:</span>{' '}
+                {formData.membership_start_date
+                  ? new Date(new Date(formData.membership_start_date).getTime() + selectedPlan.duration_days * 86400000)
+                      .toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                  : '—'}
+              </div>
+            </div>
+          </div>
 
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div>
-        <label className={labelCls}>
-          <span className="flex items-center gap-1.5">
-            <Calendar className="h-4 w-4 text-gray-400" />
-            Start Date <span className="text-red-500">*</span>
-          </span>
-        </label>
-        <input type="date" value={formData.membership_start_date} onChange={set('membership_start_date')}
-          className={inputCls} style={{ colorScheme: 'light' }} />
-        {formData.membership_start_date && (
-          <p className="text-xs text-gray-500 mt-1">
-            {new Date(formData.membership_start_date + 'T00:00:00').toLocaleDateString('en-IN', {
-              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-            })}
-          </p>
-        )}
-      </div>
-      <div>
-        <label className={labelCls}>
-          <span className="flex items-center gap-1.5">
-            <CreditCard className="h-4 w-4 text-gray-400" /> Payment Method
-          </span>
-        </label>
-        <select value={formData.payment_method} onChange={set('payment_method')} className={inputCls}>
-          <option value="cash">Cash</option>
-          <option value="card">Card</option>
-          <option value="upi">UPI</option>
-          <option value="bank_transfer">Bank Transfer</option>
-          <option value="online">Online</option>
-        </select>
-      </div>
-      
-      {/* DISCOUNT FIELD - NEW */}
-      <div>
-        <label className={labelCls}>
-          <span className="flex items-center gap-1.5">
-            <span className="text-gray-400 font-bold">₹</span>
-            Discount Amount (Optional)
-          </span>
-        </label>
-        <input 
-          type="number" 
-          min="0" 
-          step="0.01" 
-          value={formData.discount_applied}
-          onChange={(e) => {
-            const discount = parseFloat(e.target.value) || 0;
-            const originalPrice = selectedPlan?.discounted_price || selectedPlan?.price || 0;
-            const maxDiscount = originalPrice;
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4 text-gray-400" />
+                  Start Date <span className="text-red-500">*</span>
+                </span>
+              </label>
+              <input 
+                type="date" 
+                value={formData.membership_start_date} 
+                onChange={(e) => setFormData(prev => ({ ...prev, membership_start_date: e.target.value }))}
+                className={inputCls} 
+                style={{ colorScheme: 'light' }} 
+              />
+              {formData.membership_start_date && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {new Date(formData.membership_start_date + 'T00:00:00').toLocaleDateString('en-IN', {
+                    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+                  })}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className={labelCls}>
+                <span className="flex items-center gap-1.5">
+                  <CreditCard className="h-4 w-4 text-gray-400" /> Payment Method
+                </span>
+              </label>
+              <select 
+                value={formData.payment_method} 
+                onChange={(e) => setFormData(prev => ({ ...prev, payment_method: e.target.value }))} 
+                className={inputCls}
+              >
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="upi">UPI</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="online">Online</option>
+              </select>
+            </div>
             
-            if (discount > maxDiscount) {
-              toast.error(`Discount cannot exceed the plan price of ₹${maxDiscount}`);
-              setFormData(prev => ({ ...prev, discount_applied: String(maxDiscount) }));
-            } else {
-              setFormData(prev => ({ ...prev, discount_applied: e.target.value }));
-            }
-          }}
-          className={inputCls} 
-          placeholder="0.00"
-        />
-        <p className="text-xs text-gray-400 mt-1">
-          Enter discount amount to subtract from plan price
-        </p>
-      </div>
-      
-      {/* Show price breakdown when discount is applied */}
-      {priceInfo && priceInfo.discount > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <p className="text-xs font-semibold text-blue-700 mb-2">Price Breakdown</p>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Original Price:</span>
-              <span className="font-medium">₹{priceInfo.originalPrice}</span>
+            {/* DISCOUNT FIELD */}
+            <div>
+              <label className={labelCls}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-gray-400 font-bold">₹</span>
+                  Discount Amount (Optional)
+                </span>
+              </label>
+              <input 
+                type="number" 
+                min="0" 
+                step="0.01" 
+                value={formData.discount_applied}
+                onChange={(e) => {
+                  const discount = parseFloat(e.target.value) || 0;
+                  const originalPrice = selectedPlan?.discounted_price || selectedPlan?.price || 0;
+                  const maxDiscount = originalPrice;
+                  
+                  if (discount > maxDiscount) {
+                    toast.error(`Discount cannot exceed the plan price of ₹${maxDiscount}`);
+                    setFormData(prev => ({ ...prev, discount_applied: String(maxDiscount) }));
+                  } else {
+                    setFormData(prev => ({ ...prev, discount_applied: e.target.value }));
+                  }
+                }}
+                className={inputCls} 
+                placeholder="0.00"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Enter discount amount to subtract from plan price
+              </p>
             </div>
-            <div className="flex justify-between">
-              <span className="text-red-600">Discount:</span>
-              <span className="text-red-600 font-medium">- ₹{priceInfo.discount}</span>
-            </div>
-            <div className="flex justify-between pt-1 border-t border-blue-200 font-semibold">
-              <span>Final Price:</span>
-              <span className="text-green-600">₹{priceInfo.finalPrice}</span>
+            
+            {/* Show price breakdown when discount is applied */}
+            {priceInfo && priceInfo.discount > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs font-semibold text-blue-700 mb-2">Price Breakdown</p>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Original Price:</span>
+                    <span className="font-medium">₹{priceInfo.originalPrice}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-red-600">Discount:</span>
+                    <span className="text-red-600 font-medium">- ₹{priceInfo.discount}</span>
+                  </div>
+                  <div className="flex justify-between pt-1 border-t border-blue-200 font-semibold">
+                    <span>Final Price:</span>
+                    <span className="text-green-600">₹{priceInfo.finalPrice}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="sm:col-span-2">
+              <label className={labelCls}>Amount Paid (₹)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">₹</span>
+                <input 
+                  type="number" 
+                  min="0" 
+                  step="0.01" 
+                  value={formData.amount_paid}
+                  onChange={handleAmountChange}
+                  className={`${inputCls} pl-7`} 
+                  placeholder="0.00" 
+                />
+              </div>
+
+              <div className="flex gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const finalPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
+                    setUserManuallyChangedAmount(true);
+                    setFormData(prev => ({ ...prev, amount_paid: String(finalPrice) }));
+                  }}
+                  className="flex-1 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                >
+                  Full (₹{priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0)})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const finalPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
+                    setUserManuallyChangedAmount(true);
+                    setFormData(prev => ({ ...prev, amount_paid: String(Math.floor(finalPrice / 2)) }));
+                  }}
+                  className="flex-1 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  Half (₹{Math.floor((priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0)) / 2)})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserManuallyChangedAmount(true);
+                    setFormData(prev => ({ ...prev, amount_paid: '0' }));
+                  }}
+                  className="flex-1 py-1.5 text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  Pay Later
+                </button>
+              </div>
+
+              {formData.amount_paid !== '' && (() => {
+                const planPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
+                const paid = Number(formData.amount_paid);
+                const balanceDue = Math.max(0, planPrice - paid);
+                
+                if (priceInfo?.discount > 0 && planPrice !== (selectedPlan?.discounted_price || selectedPlan?.price)) {
+                  return (
+                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-xs text-blue-700 flex items-center gap-1.5 font-medium">
+                        <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                        Discount of ₹{priceInfo.discount} applied! Final price: ₹{planPrice}
+                      </p>
+                    </div>
+                  );
+                }
+                
+                if (paid === 0) {
+                  return (
+                    <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                      <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                        <AlertCircle className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                        <span>No payment recorded — full amount of <strong>₹{planPrice}</strong> will remain as balance due</span>
+                      </p>
+                    </div>
+                  );
+                } else if (paid >= planPrice) {
+                  return (
+                    <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-xs text-green-700 flex items-center gap-1.5 font-medium">
+                        <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                        Full payment — no balance due ✓
+                      </p>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1">
+                      <p className="text-xs text-amber-700 flex items-center gap-1.5 font-medium">
+                        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                        Partial payment — balance will be tracked
+                      </p>
+                      <div className="flex justify-between text-xs text-amber-700 pl-5">
+                        <span>Final price after discount:</span>
+                        <span className="font-medium">₹{planPrice}</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-amber-700 pl-5">
+                        <span>Paying now:</span>
+                        <span className="font-medium text-green-700">₹{paid}</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-bold text-red-600 pl-5 pt-0.5 border-t border-amber-200">
+                        <span>Remaining balance due:</span>
+                        <span>₹{balanceDue}</span>
+                      </div>
+                      <p className="text-xs text-amber-600 pl-5">Member can pay remaining from Balance tab</p>
+                    </div>
+                  );
+                }
+              })()}
             </div>
           </div>
         </div>
       )}
-      
-      <div className="sm:col-span-2">
-        <label className={labelCls}>Amount Paid (₹)</label>
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">₹</span>
-          <input type="number" min="0" step="0.01" value={formData.amount_paid}
-            onChange={set('amount_paid')} className={`${inputCls} pl-7`} placeholder="0.00" />
-        </div>
-
-        <div className="flex gap-2 mt-2">
-          <button
-            type="button"
-            onClick={() => {
-              const finalPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
-              setFormData(prev => ({ ...prev, amount_paid: String(finalPrice) }));
-            }}
-            className="flex-1 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
-          >
-            Full (₹{priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0)})
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const finalPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
-              setFormData(prev => ({ ...prev, amount_paid: String(Math.floor(finalPrice / 2)) }));
-            }}
-            className="flex-1 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
-          >
-            Half (₹{Math.floor((priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0)) / 2)})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFormData(prev => ({ ...prev, amount_paid: '0' }))}
-            className="flex-1 py-1.5 text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            Pay Later
-          </button>
-        </div>
-
-        {formData.amount_paid !== '' && (() => {
-          const planPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
-          const paid = Number(formData.amount_paid);
-          const balanceDue = Math.max(0, planPrice - paid);
-          
-          if (priceInfo?.discount > 0 && planPrice !== (selectedPlan?.discounted_price || selectedPlan?.price)) {
-            return (
-              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-xs text-blue-700 flex items-center gap-1.5 font-medium">
-                  <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                  Discount of ₹{priceInfo.discount} applied! Final price: ₹{planPrice}
-                </p>
-              </div>
-            );
-          }
-          
-          if (paid === 0) {
-            return (
-              <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <p className="text-xs text-gray-600 flex items-center gap-1.5">
-                  <AlertCircle className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
-                  <span>No payment recorded — full amount of <strong>₹{planPrice}</strong> will remain as balance due</span>
-                </p>
-              </div>
-            );
-          } else if (paid >= planPrice) {
-            return (
-              <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-xs text-green-700 flex items-center gap-1.5 font-medium">
-                  <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                  Full payment — no balance due ✓
-                </p>
-              </div>
-            );
-          } else {
-            return (
-              <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1">
-                <p className="text-xs text-amber-700 flex items-center gap-1.5 font-medium">
-                  <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                  Partial payment — balance will be tracked
-                </p>
-                <div className="flex justify-between text-xs text-amber-700 pl-5">
-                  <span>Final price after discount:</span>
-                  <span className="font-medium">₹{planPrice}</span>
-                </div>
-                <div className="flex justify-between text-xs text-amber-700 pl-5">
-                  <span>Paying now:</span>
-                  <span className="font-medium text-green-700">₹{paid}</span>
-                </div>
-                <div className="flex justify-between text-xs font-bold text-red-600 pl-5 pt-0.5 border-t border-amber-200">
-                  <span>Remaining balance due:</span>
-                  <span>₹{balanceDue}</span>
-                </div>
-                <p className="text-xs text-amber-600 pl-5">Member can pay remaining from Balance tab</p>
-              </div>
-            );
-          }
-        })()}
-      </div>
-    </div>
-  </div>
-)}
     </div>
   );
 };
 
-// ─── Helper function to clean form data (convert empty strings to null) ───────
+// ─── Helper function to clean form data ──────────────────────────────────────
 const cleanFormData = (data) => {
   const cleaned = {};
   for (const [key, value] of Object.entries(data)) {
-    // Convert empty strings to null for optional fields
     if (value === '') {
       cleaned[key] = null;
     } else {
@@ -1067,7 +1078,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
     medical_conditions: '', allergies: '', medications: '',
     id_proof_type: 'aadhar', id_proof_number: '',
     plan_id: '', membership_start_date: today, payment_method: 'cash', amount_paid: '',
-    discount_applied: '', // Add this line
+    discount_applied: '',
     renew_membership: false,
   });
 
@@ -1076,6 +1087,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [showPlanCreator, setShowPlanCreator] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [userManuallyChangedAmount, setUserManuallyChangedAmount] = useState(false);
 
   const getPendingFileRef = useRef(null);
 
@@ -1097,11 +1109,13 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
     }
   }, [member]);
 
+  // Reset form when modal opens/closes
   useEffect(() => {
     if (!isOpen) return;
     setActiveTab('personal');
     setSaving(false);
     setShowPlanCreator(false);
+    setUserManuallyChangedAmount(false);
 
     if (member) {
       setFormData({
@@ -1118,7 +1132,11 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         medications: member.medications || '',
         id_proof_type: member.id_proof_type || 'aadhar',
         id_proof_number: member.id_proof_number || '',
-        plan_id: '', membership_start_date: today, payment_method: 'cash', amount_paid: '',
+        plan_id: '', 
+        membership_start_date: today, 
+        payment_method: 'cash', 
+        amount_paid: '',
+        discount_applied: '',
         renew_membership: false,
       });
     } else {
@@ -1127,21 +1145,32 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         address: '', emergency_contact_name: '', emergency_contact_phone: '',
         medical_conditions: '', allergies: '', medications: '',
         id_proof_type: 'aadhar', id_proof_number: '',
-        plan_id: '', membership_start_date: today, payment_method: 'cash', amount_paid: '',
+        plan_id: '', 
+        membership_start_date: today, 
+        payment_method: 'cash', 
+        amount_paid: '',
+        discount_applied: '',
         renew_membership: false,
       });
     }
     refreshMembershipPlans();
   }, [isOpen, member, refreshMembershipPlans, today]);
 
+  // FIXED: Only set amount_paid automatically when plan is selected AND user hasn't manually changed it
   useEffect(() => {
-    if (formData.plan_id) {
+    if (formData.plan_id && !userManuallyChangedAmount) {
       const plan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
       if (plan) {
         setFormData(prev => ({ ...prev, amount_paid: String(plan.discounted_price || plan.price) }));
       }
     }
-  }, [formData.plan_id, membershipPlans]);
+  }, [formData.plan_id, membershipPlans, userManuallyChangedAmount]);
+
+  // Handler for amount change - marks that user manually changed it
+  const handleAmountChange = (e) => {
+    setUserManuallyChangedAmount(true);
+    setFormData(prev => ({ ...prev, amount_paid: e.target.value }));
+  };
 
   if (!isOpen) return null;
 
@@ -1200,7 +1229,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
   
     setSaving(true);
     try {
-      // Build member data with proper null handling for empty strings
       const memberFields = {
         full_name: formData.full_name.trim(),
         email: formData.email?.trim() || null,
@@ -1217,32 +1245,28 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         id_proof_number: formData.id_proof_number?.trim() || null,
       };
   
-      // Build payload for onSave - INCLUDE DISCOUNT
       let payload;
       
       if (isEdit && formData.renew_membership) {
-        // When renewing, include membership data with discount
         payload = {
           ...memberFields,
           plan_id: formData.plan_id,
           membership_start_date: formData.membership_start_date,
           payment_method: formData.payment_method,
           amount_paid: formData.amount_paid,
-          discount_applied: formData.discount_applied || 0, // Add discount
+          discount_applied: formData.discount_applied || 0,
           renew_membership: true,
         };
       } else if (isEdit) {
-        // Just update member details
         payload = memberFields;
       } else {
-        // New member with discount
         payload = {
           ...memberFields,
           plan_id: formData.plan_id,
           membership_start_date: formData.membership_start_date,
           payment_method: formData.payment_method,
           amount_paid: formData.amount_paid,
-          discount_applied: formData.discount_applied || 0, // Add discount
+          discount_applied: formData.discount_applied || 0,
         };
       }
   
@@ -1267,7 +1291,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
       }
     } catch (error) {
       console.error('Save error:', error);
-      // Let the onSave function handle its own error messages
     } finally {
       setSaving(false);
     }
@@ -1539,6 +1562,9 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
                       inputCls={inputCls}
                       labelCls={labelCls}
                       onRefreshPlans={refreshMembershipPlans}
+                      userManuallyChangedAmount={userManuallyChangedAmount}
+                      setUserManuallyChangedAmount={setUserManuallyChangedAmount}
+                      handleAmountChange={handleAmountChange}
                     />
                   )
                 )}

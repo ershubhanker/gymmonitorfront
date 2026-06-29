@@ -23,6 +23,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [attendanceHistory, setAttendanceHistory] = useState([]);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [deletingComment, setDeletingComment] = useState(null);
+  const [balanceDetails, setBalanceDetails] = useState(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
 
   useEffect(() => {
     fetchMemberDetails();
@@ -30,6 +32,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     fetchPayments();
     fetchMembershipHistory();
     fetchAttendanceHistory();
+    fetchBalanceDetails();
   }, [memberId]);
 
   const fetchMemberDetails = async () => {
@@ -66,6 +69,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const fetchPayments = async () => {
     try {
       setLoadingPayments(true);
+      // Get payments for this member
       const response = await api.get(`/gym/payments?limit=100`);
       const memberPayments = response.data.filter(p => p.member_id === memberId);
       setPayments(memberPayments);
@@ -74,6 +78,19 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setPayments([]);
     } finally {
       setLoadingPayments(false);
+    }
+  };
+
+  const fetchBalanceDetails = async () => {
+    try {
+      setLoadingBalance(true);
+      const response = await api.get(`/gym/members/${memberId}/balance`);
+      setBalanceDetails(response.data);
+    } catch (error) {
+      console.error('Error fetching balance details:', error);
+      setBalanceDetails(null);
+    } finally {
+      setLoadingBalance(false);
     }
   };
 
@@ -112,7 +129,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       const response = await api.post(`/gym/members/${memberId}/comments`, { comment: newComment });
       toast.success('Comment added successfully');
       setNewComment('');
-      // Add the new comment to the list immediately
       setComments(prev => [response.data, ...prev]);
       if (onUpdate) onUpdate();
     } catch (error) {
@@ -124,7 +140,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   };
 
   const handleDeleteComment = async (commentId) => {
-    // Confirm before deleting
     if (!window.confirm('Are you sure you want to delete this comment?')) {
       return;
     }
@@ -133,7 +148,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     try {
       await api.delete(`/gym/members/${memberId}/comments/${commentId}`);
       toast.success('Comment deleted successfully');
-      // Remove the comment from the list
       setComments(prev => prev.filter(c => c.id !== commentId));
       if (onUpdate) onUpdate();
     } catch (error) {
@@ -211,8 +225,16 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   if (!member) return null;
 
   const currentMembership = member.current_membership;
-  const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
-  const balanceDue = currentMembership?.balance_due || 0;
+  
+  // ===== FIXED: Calculate totals correctly =====
+  // Total paid should come from the payments array (actual payments made)
+  const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  
+  // Balance due should come from the balance API or current membership
+  const balanceDue = balanceDetails?.balance_due || currentMembership?.balance_due || 0;
+  
+  // Total plan amount (what the member needs to pay in total)
+  const totalPlanAmount = balanceDetails?.total_amount || currentMembership?.plan?.price || 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
@@ -249,6 +271,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 fetchPayments();
                 fetchMembershipHistory();
                 fetchAttendanceHistory();
+                fetchBalanceDetails();
               }}
               className="p-2 rounded-xl hover:bg-gray-100"
               title="Refresh"
@@ -262,19 +285,22 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Financial Summary Cards */}
+          {/* Financial Summary Cards - FIXED */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-100">
               <p className="text-sm text-green-600 font-medium">Total Paid</p>
               <p className="text-2xl font-bold text-green-700">₹{totalPaid.toLocaleString()}</p>
+              <p className="text-xs text-green-500 mt-1">Amount actually paid by member</p>
             </div>
             <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-4 border border-orange-100">
-              <p className="text-sm text-orange-600 font-medium">Balance Due</p>
-              <p className="text-2xl font-bold text-orange-700">₹{balanceDue.toLocaleString()}</p>
+              <p className="text-sm text-orange-600 font-medium">Plan Amount</p>
+              <p className="text-2xl font-bold text-orange-700">₹{totalPlanAmount.toLocaleString()}</p>
+              <p className="text-xs text-orange-500 mt-1">Total amount member needs to pay</p>
             </div>
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
-              <p className="text-sm text-blue-600 font-medium">Total Payments</p>
-              <p className="text-2xl font-bold text-blue-700">{payments.length}</p>
+              <p className="text-sm text-blue-600 font-medium">Balance Due</p>
+              <p className="text-2xl font-bold text-blue-700">₹{balanceDue.toLocaleString()}</p>
+              <p className="text-xs text-blue-500 mt-1">Remaining amount to be paid</p>
             </div>
           </div>
 
@@ -461,9 +487,19 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     ))}
                   </tbody>
                 </table>
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg flex justify-between">
+                  <span className="font-medium text-gray-600">Total Paid:</span>
+                  <span className="font-bold text-green-600">₹{totalPaid.toLocaleString()}</span>
+                </div>
               </div>
             ) : (
-              <p className="text-sm text-gray-500 text-center py-4">No payment records found</p>
+              <div className="text-center py-8">
+                <div className="text-gray-300 mb-2">
+                  <CreditCard className="h-12 w-12 mx-auto" />
+                </div>
+                <p className="text-sm text-gray-400">No payment records found</p>
+                <p className="text-xs text-gray-300 mt-1">Payments will appear here once recorded</p>
+              </div>
             )}
           </div>
 
