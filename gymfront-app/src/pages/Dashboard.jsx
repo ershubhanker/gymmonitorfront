@@ -355,7 +355,6 @@ const Dashboard = () => {
     if (!silent) setLoading(true);
     
     try {
-      // ===== FIX: Use optimized stats endpoint for accurate counts =====
       let statsData = { data: null };
       let membersData = { data: [] };
       let paymentsData = { data: [] };
@@ -369,27 +368,29 @@ const Dashboard = () => {
       if (canSeeDashboard) {
         try {
           const statsResult = await fetchMemberStatsOptimized();
+          console.log('📊 Stats API Response:', statsResult);
+          
           if (statsResult) {
             statsData = { data: {
               total_members: statsResult.total_members || 0,
               active_members: statsResult.active_members || 0,
               new_members_this_month: statsResult.new_this_month || 0,
-              today_checkins: 0,
-              total_revenue: 0,
-              monthly_revenue: 0,
-              revenue_growth: 0,
-              total_expenses: 0,
-              monthly_expenses: 0,
-              expense_growth: 0,
-              net_profit: 0,
-              profit_margin: 0,
-              expense_by_category: {},
-              average_attendance: 0,
-              peak_hour: "5:00 PM - 7:00 PM",
-              popular_class: "HIIT Training",
-              member_retention: 87,
-              trainer_count: 0,
-              upcoming_classes: []
+              today_checkins: statsResult.today_checkins || 0,
+              total_revenue: statsResult.total_revenue || 0,
+              monthly_revenue: statsResult.monthly_revenue || 0,
+              revenue_growth: statsResult.revenue_growth || 0,
+              total_expenses: statsResult.total_expenses || 0,
+              monthly_expenses: statsResult.monthly_expenses || 0,
+              expense_growth: statsResult.expense_growth || 0,
+              net_profit: statsResult.net_profit || 0,
+              profit_margin: statsResult.profit_margin || 0,
+              expense_by_category: statsResult.expense_by_category || {},
+              average_attendance: statsResult.average_attendance || 0,
+              peak_hour: statsResult.peak_hour || "5:00 PM - 7:00 PM",
+              popular_class: statsResult.popular_class || "HIIT Training",
+              member_retention: statsResult.member_retention || 87,
+              trainer_count: statsResult.trainer_count || 0,
+              upcoming_classes: statsResult.upcoming_classes || []
             } };
           }
         } catch (err) {
@@ -454,16 +455,52 @@ const Dashboard = () => {
       if (endpointMap.balanceMembers !== undefined) balanceMembersData = results[endpointMap.balanceMembers];
       if (endpointMap.leads !== undefined) leadsData = results[endpointMap.leads];
   
-      // ===== USE OPTIMIZED STATS FOR COUNTS =====
+      // ===== GET DATA FROM RESPONSES =====
       const statsApiData = statsData.data || {};
       
       // Get accurate counts from optimized stats
-      const totalMembers = statsApiData.total_members || 0;
-      const activeMembers = statsApiData.active_members || 0;
-      const inactiveMembers = totalMembers - activeMembers;
-      const newMembersThisMonth = statsApiData.new_members_this_month || 0;
-  
+      let totalMembers = statsApiData.total_members || 0;
+      let activeMembers = statsApiData.active_members || 0;
+      let newMembersThisMonth = statsApiData.new_members_this_month || 0;
+      
       const members = membersData.data || [];
+      
+      // ===== FALLBACK: Calculate from members list if API returned 0 =====
+      // ===== FALLBACK: Calculate from members list if API returned 0 =====
+// IMPORTANT: Use joined_date, NOT membership start date
+if (newMembersThisMonth === 0 && members.length > 0) {
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  
+  // Count members who joined in the current month
+  const calculatedNewMembers = members.filter(m => {
+    const joinedDate = new Date(m.joined_date || m.created_at);
+    // Check if joined in current month and year
+    return joinedDate.getMonth() === currentMonth && 
+           joinedDate.getFullYear() === currentYear;
+  }).length;
+  
+  console.log('📊 Current month:', currentMonth + 1, 'Current year:', currentYear);
+  console.log('📊 Members joined this month:', members.filter(m => {
+    const joinedDate = new Date(m.joined_date || m.created_at);
+    return joinedDate.getMonth() === currentMonth && 
+           joinedDate.getFullYear() === currentYear;
+  }).map(m => ({ name: m.full_name, joined: m.joined_date || m.created_at })));
+  console.log('📊 Calculated new members this month from members list:', calculatedNewMembers);
+  
+  // Use calculated value if it's greater than 0
+  if (calculatedNewMembers > 0) {
+    newMembersThisMonth = calculatedNewMembers;
+    console.log('✅ Using calculated new members count:', newMembersThisMonth);
+  }
+}
+      
+      // ===== LOG FOR DEBUGGING =====
+      console.log('📊 Final newMembersThisMonth:', newMembersThisMonth);
+      console.log('📊 Members count:', members.length);
+  
+      const inactiveMembers = totalMembers - activeMembers;
       const payments = paymentsData.data || [];
       const memberships = membershipsData.data || [];
       const staff = staffData.data || [];
@@ -474,7 +511,7 @@ const Dashboard = () => {
       const today = new Date().toISOString().split('T')[0];
       const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
       
-      // ===== FIX: Calculate from ALL memberships, not just fetched members =====
+      // Calculate members by gender
       const membersByGender = members.reduce((acc, m) => {
         const gender = m.gender || 'other';
         acc[gender] = (acc[gender] || 0) + 1;
@@ -517,7 +554,6 @@ const Dashboard = () => {
         ? ((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue * 100).toFixed(1)
         : monthlyRevenue > 0 ? 100 : 0;
   
-      // ===== FIX: Calculate from ALL memberships =====
       const pendingPayments = memberships.filter(m => 
         m.payment_status === 'pending' || m.payment_status === 'PENDING'
       ).length;
@@ -647,7 +683,7 @@ const Dashboard = () => {
       activities.sort((a, b) => new Date(b.time) - new Date(a.time));
       const sortedActivities = activities.slice(0, 5);
   
-      // ===== FIX: Calculate membership distribution from ALL memberships =====
+      // Calculate membership distribution
       const membershipDistribution = memberships.reduce((acc, m) => {
         const planName = m.plan?.name || 'No Plan';
         acc[planName] = (acc[planName] || 0) + 1;
@@ -728,7 +764,7 @@ const Dashboard = () => {
         totalMembers,
         activeMembers,
         inactiveMembers,
-        newMembersThisMonth,
+        newMembersThisMonth, // ✅ This now has the correct value
         monthlyRevenue,
         todayCheckins,
         pendingPayments,

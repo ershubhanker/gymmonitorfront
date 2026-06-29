@@ -1374,120 +1374,170 @@ const AdminDashboard = () => {
 
           {/* ==================== GYM MEMBERS VIEW ==================== */}
           {selectedTab === 'gyms' && viewingGymMembers && (
-            <div>
-              {/* Back Button */}
-              <button
-                onClick={handleBackToGyms}
-                className="mb-4 flex items-center gap-2 text-purple-400 hover:text-purple-300 transition-colors font-medium"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Back to Gyms
-              </button>
+  <div>
+    {/* Back Button */}
+    <button
+      onClick={handleBackToGyms}
+      className="mb-4 flex items-center gap-2 text-purple-400 hover:text-purple-300 transition-colors font-medium"
+    >
+      <ChevronLeft className="h-4 w-4" />
+      Back to Gyms
+    </button>
 
-              {/* Gym Header */}
-              <div className="bg-gray-800 rounded-2xl p-5 mb-6 border border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                      <Building2 className="h-5 w-5 text-purple-400" />
-                      {selectedGymName}
-                    </h2>
-                    <p className="text-sm text-gray-400 mt-1">
-                      {selectedGymMembers.length} members in this gym
+    {/* Gym Header - UPDATED with address and phone */}
+    <div className="bg-gray-800 rounded-2xl p-5 mb-6 border border-gray-700">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-purple-400" />
+            {selectedGymName}
+          </h2>
+          
+          {/* Gym Details - Address and Phone */}
+          <div className="mt-2 space-y-1">
+            {(() => {
+              // Find the gym object from the gyms list to get full details
+              const gymDetails = gyms.find(g => g.id === selectedGymId);
+              return (
+                <>
+                  {gymDetails?.address && (
+                    <p className="text-sm text-gray-400 flex items-center gap-2">
+                      <MapPin className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" />
+                      <span>{gymDetails.address}</span>
                     </p>
-                  </div>
-                  <span className="px-3 py-1 rounded-full bg-purple-900/60 text-purple-300 text-xs border border-purple-700">
-                    Gym Members
-                  </span>
-                </div>
-              </div>
+                  )}
+                  {gymDetails?.phone && (
+                    <p className="text-sm text-gray-400 flex items-center gap-2">
+                      <Phone className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" />
+                      <span>{gymDetails.phone}</span>
+                    </p>
+                  )}
+                  {gymDetails?.email && (
+                    <p className="text-sm text-gray-400 flex items-center gap-2">
+                      <Mail className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" />
+                      <span>{gymDetails.email}</span>
+                    </p>
+                  )}
+                  {!gymDetails?.address && !gymDetails?.phone && (
+                    <p className="text-sm text-gray-500 italic">No contact details available</p>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+          
+          {/* Member count */}
+          <p className="text-sm text-gray-400 mt-2">
+            {selectedGymMembers.length} members in this gym
+          </p>
+        </div>
+        
+        {/* Badge */}
+        <div className="flex items-center gap-2">
+          <span className="px-3 py-1 rounded-full bg-purple-900/60 text-purple-300 text-xs border border-purple-700 whitespace-nowrap">
+            Gym Members
+          </span>
+          {(() => {
+            const gymDetails = gyms.find(g => g.id === selectedGymId);
+            if (gymDetails?.subscription_status) {
+              return (
+                <span className={`px-3 py-1 rounded-full text-xs border ${statusBadge(gymDetails.subscription_status)} whitespace-nowrap`}>
+                  {gymDetails.subscription_status}
+                </span>
+              );
+            }
+            return null;
+          })()}
+        </div>
+      </div>
+    </div>
 
-              {/* Members Table */}
-              <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
-                  <p className="text-sm font-medium text-gray-300">{selectedGymMembers.length} members</p>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-500">
-                      Active: {selectedGymMembers.filter(m => m.is_active).length}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      Inactive: {selectedGymMembers.filter(m => !m.is_active).length}
-                    </span>
-                  </div>
-                </div>
-                
-                {loadingGymMembers ? (
-                  <div className="py-12 text-center">
-                    <Loader2 className="h-8 w-8 text-purple-500 animate-spin mx-auto" />
-                    <p className="text-gray-400 mt-3 text-sm">Loading members...</p>
-                  </div>
-                ) : selectedGymMembers.length === 0 ? (
-                  <div className="py-12 text-center text-gray-500">
-                    <User className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm">No members found in this gym</p>
-                    {gymMemberSearch && (
-                      <button
-                        onClick={() => {
-                          setGymMemberSearch('');
-                          fetchGymMembers(selectedGymId, selectedGymName);
-                        }}
-                        className="mt-3 text-purple-400 hover:text-purple-300 text-sm"
-                      >
-                        Clear search
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full">
-                      <TableHeader cols={['ID', 'Member', 'Email', 'Phone', 'Gender', 'Plan', 'Status', 'Joined', 'Actions']} />
-                      <tbody className="divide-y divide-gray-800">
-                        {selectedGymMembers.map(member => (
-                          <tr key={member.id} className="hover:bg-gray-800/40 transition-colors">
-                            <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{member.id}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-green-600 to-teal-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                                  {member.full_name?.charAt(0)}
-                                </div>
-                                <span className="text-sm text-white font-medium">{member.full_name}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-400">{member.email || '—'}</td>
-                            <td className="px-4 py-3 text-sm text-gray-400">{member.phone}</td>
-                            <td className="px-4 py-3 text-sm text-gray-400 capitalize">{member.gender || '—'}</td>
-                            <td className="px-4 py-3 text-sm text-gray-300">{member.current_plan || '—'}</td>
-                            <td className="px-4 py-3">
-                              <span className={`px-2 py-0.5 text-xs rounded-full ${member.is_active ? 'bg-emerald-900/60 text-emerald-300' : 'bg-red-900/60 text-red-300'}`}>
-                                {member.is_active ? 'Active' : 'Inactive'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{formatDate(member.joined_date)}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  onClick={() => openEdit('member', member)}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-blue-900/40 hover:bg-blue-900/70 text-blue-300 rounded-lg border border-blue-800/50 transition-colors"
-                                >
-                                  <Edit className="h-3.5 w-3.5" /> Edit
-                                </button>
-                                <button
-                                  onClick={() => openDelete('member', member.id, member.full_name, `admin/members/${member.id}`)}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-red-900/40 hover:bg-red-900/70 text-red-300 rounded-lg border border-red-800/50 transition-colors"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" /> Del
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
+    {/* Members Table - keep the same */}
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
+        <p className="text-sm font-medium text-gray-300">{selectedGymMembers.length} members</p>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-500">
+            Active: {selectedGymMembers.filter(m => m.is_active).length}
+          </span>
+          <span className="text-xs text-gray-500">
+            Inactive: {selectedGymMembers.filter(m => !m.is_active).length}
+          </span>
+        </div>
+      </div>
+      
+      {loadingGymMembers ? (
+        <div className="py-12 text-center">
+          <Loader2 className="h-8 w-8 text-purple-500 animate-spin mx-auto" />
+          <p className="text-gray-400 mt-3 text-sm">Loading members...</p>
+        </div>
+      ) : selectedGymMembers.length === 0 ? (
+        <div className="py-12 text-center text-gray-500">
+          <User className="h-12 w-12 mx-auto mb-3 opacity-30" />
+          <p className="text-sm">No members found in this gym</p>
+          {gymMemberSearch && (
+            <button
+              onClick={() => {
+                setGymMemberSearch('');
+                fetchGymMembers(selectedGymId, selectedGymName);
+              }}
+              className="mt-3 text-purple-400 hover:text-purple-300 text-sm"
+            >
+              Clear search
+            </button>
           )}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full">
+            <TableHeader cols={['ID', 'Member', 'Email', 'Phone', 'Gender', 'Plan', 'Status', 'Joined', 'Actions']} />
+            <tbody className="divide-y divide-gray-800">
+              {selectedGymMembers.map(member => (
+                <tr key={member.id} className="hover:bg-gray-800/40 transition-colors">
+                  <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{member.id}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-green-600 to-teal-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                        {member.full_name?.charAt(0)}
+                      </div>
+                      <span className="text-sm text-white font-medium">{member.full_name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-400">{member.email || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-400">{member.phone}</td>
+                  <td className="px-4 py-3 text-sm text-gray-400 capitalize">{member.gender || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-300">{member.current_plan || '—'}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 text-xs rounded-full ${member.is_active ? 'bg-emerald-900/60 text-emerald-300' : 'bg-red-900/60 text-red-300'}`}>
+                      {member.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{formatDate(member.joined_date)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => openEdit('member', member)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-blue-900/40 hover:bg-blue-900/70 text-blue-300 rounded-lg border border-blue-800/50 transition-colors"
+                      >
+                        <Edit className="h-3.5 w-3.5" /> Edit
+                      </button>
+                      <button
+                        onClick={() => openDelete('member', member.id, member.full_name, `admin/members/${member.id}`)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-red-900/40 hover:bg-red-900/70 text-red-300 rounded-lg border border-red-800/50 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Del
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
           {/* USERS TABLE */}
           {selectedTab === 'users' && (

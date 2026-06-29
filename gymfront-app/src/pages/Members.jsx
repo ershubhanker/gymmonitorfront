@@ -208,21 +208,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     currency_symbol: '₹',
   });
 
-  // ===== Handle initialMemberId prop - Show single member in table =====
-  useEffect(() => {
-    if (initialMemberId) {
-      setSelectedMemberId(initialMemberId);
-      setShowSingleMember(true);
-      fetchSingleMember(initialMemberId);
-    } else {
-      setShowSingleMember(false);
-      setSelectedMemberId(null);
-      setSingleMemberData(null);
-    }
-  }, [initialMemberId]);
-
   // ===== Fetch single member details =====
-  const fetchSingleMember = async (memberId) => {
+  const fetchSingleMember = useCallback(async (memberId) => {
     setLoadingSingleMember(true);
     try {
       const response = await api.get(`/gym/members/${memberId}`);
@@ -272,7 +259,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     } finally {
       setLoadingSingleMember(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ===== Handle back to all members =====
   const handleBackToAllMembers = () => {
@@ -286,6 +274,20 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     setCurrentPage(1);
     fetchMembers();
   };
+
+  // ===== Handle initialMemberId prop - Show single member in table =====
+  // This effect is placed AFTER fetchSingleMember so the function reference is stable
+  useEffect(() => {
+    if (initialMemberId) {
+      setSelectedMemberId(initialMemberId);
+      setShowSingleMember(true);
+      fetchSingleMember(initialMemberId);
+    } else {
+      setShowSingleMember(false);
+      setSelectedMemberId(null);
+      setSingleMemberData(null);
+    }
+  }, [initialMemberId, fetchSingleMember]);
 
   useEffect(() => {
     const renewalMemberData = localStorage.getItem('selectedMemberForRenewal');
