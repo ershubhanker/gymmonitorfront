@@ -833,27 +833,26 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
         const discount = discount_applied ? parseFloat(discount_applied) : 0;
         
+        // Create membership with amount_paid = 0
         const membershipPayload = {
           member_id: memberId,
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
-          amount_paid: paidAmount,
+          amount_paid: 0,  // ← Always 0 when creating membership
           discount_applied: discount,
         };
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
         
-        // ✅ CREATE A PAYMENT RECORD for the amount paid
+        // ✅ Create a payment record for the amount paid
         if (paidAmount > 0) {
           try {
-            await api.post('/gym/payments', {
-              member_id: memberId,
+            await api.post('/gym/memberships/' + membershipResponse.data.id + '/partial-payment', {
               membership_id: membershipResponse.data.id,
               amount: paidAmount,
               payment_method: payment_method || 'cash',
-              payment_date: new Date().toISOString().split('T')[0],
-              notes: 'Initial payment',
-              status: 'paid'
+              payment_date: new Date().toISOString(),
+              notes: 'Initial payment'
             });
             console.log('✅ Payment record created for ₹', paidAmount);
           } catch (paymentError) {
@@ -921,27 +920,26 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
         const discount = discount_applied ? parseFloat(discount_applied) : 0;
         
+        // Create new membership with amount_paid = 0
         const membershipPayload = {
           member_id: selectedMember.id,
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
-          amount_paid: paidAmount,
+          amount_paid: 0,  // ← Always 0
           discount_applied: discount,
         };
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
         
-        // ✅ CREATE A PAYMENT RECORD for the renewal payment
+        // ✅ Create payment record for the renewal payment
         if (paidAmount > 0) {
           try {
-            await api.post('/gym/payments', {
-              member_id: selectedMember.id,
+            await api.post('/gym/memberships/' + membershipResponse.data.id + '/partial-payment', {
               membership_id: membershipResponse.data.id,
               amount: paidAmount,
               payment_method: payment_method || 'cash',
-              payment_date: new Date().toISOString().split('T')[0],
-              notes: 'Renewal payment',
-              status: 'paid'
+              payment_date: new Date().toISOString(),
+              notes: 'Renewal payment'
             });
             console.log('✅ Renewal payment record created for ₹', paidAmount);
           } catch (paymentError) {
