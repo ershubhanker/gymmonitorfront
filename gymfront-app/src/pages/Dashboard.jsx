@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx - Updated with Search Bar and Follow-Up Card
+// src/pages/Dashboard.jsx - Updated with Search Bar, Follow-Up Card, and WhatsApp Logs
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -51,7 +51,11 @@ import {
   AlertTriangle,
   Eye,
   Shield,
-  RefreshCw
+  RefreshCw,
+  MessageSquare,
+  Send,
+  Download,
+  Filter
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api, { API_BASE_URL, fetchMemberStatsOptimized } from '../services/api';
@@ -172,6 +176,15 @@ const Dashboard = () => {
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const [selectedStaffId, setSelectedStaffId] = useState(null);
   const [followupsCount, setFollowupsCount] = useState(0);
+  
+  // WhatsApp Logs State
+  const [whatsappLogs, setWhatsappLogs] = useState([]);
+  const [whatsappStats, setWhatsappStats] = useState(null);
+  const [logFilter, setLogFilter] = useState({
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
+    status: 'all'
+  });
   
   const userMenuRef = useRef(null);
   const userButtonRef = useRef(null);
@@ -298,6 +311,34 @@ const Dashboard = () => {
     }
   }, [canSeeLeads]);
 
+  // Fetch WhatsApp logs
+  const fetchWhatsAppLogs = useCallback(async (date) => {
+    try {
+      const response = await api.get(`/whatsapp/logs?limit=100&start_date=${date}T00:00:00&end_date=${date}T23:59:59`);
+      if (response.data) {
+        setWhatsappLogs(response.data.logs || []);
+      }
+    } catch (error) {
+      if (error.response?.status !== 403) {
+        console.error('Error fetching WhatsApp logs:', error);
+      }
+    }
+  }, []);
+
+  // Fetch WhatsApp stats
+  const fetchWhatsAppStats = useCallback(async () => {
+    try {
+      const response = await api.get('/whatsapp/logs/stats');
+      if (response.data) {
+        setWhatsappStats(response.data);
+      }
+    } catch (error) {
+      if (error.response?.status !== 403) {
+        console.error('Error fetching WhatsApp stats:', error);
+      }
+    }
+  }, []);
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -327,6 +368,26 @@ const Dashboard = () => {
         break;
       default:
         break;
+    }
+  };
+
+  // Export WhatsApp logs as CSV
+  const exportLogs = async () => {
+    try {
+      const response = await api.get(`/whatsapp/logs/export?start_date=${logFilter.startDate}T00:00:00&end_date=${logFilter.endDate}T23:59:59`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `whatsapp_logs_${logFilter.startDate}_to_${logFilter.endDate}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success('Logs exported successfully!');
+    } catch (error) {
+      console.error('Error exporting logs:', error);
+      toast.error('Failed to export logs');
     }
   };
 
@@ -466,36 +527,34 @@ const Dashboard = () => {
       const members = membersData.data || [];
       
       // ===== FALLBACK: Calculate from members list if API returned 0 =====
-      // ===== FALLBACK: Calculate from members list if API returned 0 =====
-// IMPORTANT: Use joined_date, NOT membership start date
-if (newMembersThisMonth === 0 && members.length > 0) {
-  const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
-  
-  // Count members who joined in the current month
-  const calculatedNewMembers = members.filter(m => {
-    const joinedDate = new Date(m.joined_date || m.created_at);
-    // Check if joined in current month and year
-    return joinedDate.getMonth() === currentMonth && 
-           joinedDate.getFullYear() === currentYear;
-  }).length;
-  
-  console.log('📊 Current month:', currentMonth + 1, 'Current year:', currentYear);
-  console.log('📊 Members joined this month:', members.filter(m => {
-    const joinedDate = new Date(m.joined_date || m.created_at);
-    return joinedDate.getMonth() === currentMonth && 
-           joinedDate.getFullYear() === currentYear;
-  }).map(m => ({ name: m.full_name, joined: m.joined_date || m.created_at })));
-  console.log('📊 Calculated new members this month from members list:', calculatedNewMembers);
-  
-  // Use calculated value if it's greater than 0
-  if (calculatedNewMembers > 0) {
-    newMembersThisMonth = calculatedNewMembers;
-    console.log('✅ Using calculated new members count:', newMembersThisMonth);
-  }
-}
-      
+      if (newMembersThisMonth === 0 && members.length > 0) {
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        
+        // Count members who joined in the current month
+        const calculatedNewMembers = members.filter(m => {
+          const joinedDate = new Date(m.joined_date || m.created_at);
+          // Check if joined in current month and year
+          return joinedDate.getMonth() === currentMonth && 
+                 joinedDate.getFullYear() === currentYear;
+        }).length;
+        
+        console.log('📊 Current month:', currentMonth + 1, 'Current year:', currentYear);
+        console.log('📊 Members joined this month:', members.filter(m => {
+          const joinedDate = new Date(m.joined_date || m.created_at);
+          return joinedDate.getMonth() === currentMonth && 
+                 joinedDate.getFullYear() === currentYear;
+        }).map(m => ({ name: m.full_name, joined: m.joined_date || m.created_at })));
+        console.log('📊 Calculated new members this month from members list:', calculatedNewMembers);
+        
+        // Use calculated value if it's greater than 0
+        if (calculatedNewMembers > 0) {
+          newMembersThisMonth = calculatedNewMembers;
+          console.log('✅ Using calculated new members count:', newMembersThisMonth);
+        }
+      }
+        
       // ===== LOG FOR DEBUGGING =====
       console.log('📊 Final newMembersThisMonth:', newMembersThisMonth);
       console.log('📊 Members count:', members.length);
@@ -764,7 +823,7 @@ if (newMembersThisMonth === 0 && members.length > 0) {
         totalMembers,
         activeMembers,
         inactiveMembers,
-        newMembersThisMonth, // ✅ This now has the correct value
+        newMembersThisMonth,
         monthlyRevenue,
         todayCheckins,
         pendingPayments,
@@ -862,6 +921,14 @@ if (newMembersThisMonth === 0 && members.length > 0) {
     };
   }, [fetchDashboardData, fetchFollowupsCount]);
 
+  // Fetch WhatsApp logs when tab changes
+  useEffect(() => {
+    if (activeTab === 'whatsapp-logs') {
+      fetchWhatsAppLogs(new Date().toISOString().split('T')[0]);
+      fetchWhatsAppStats();
+    }
+  }, [activeTab, fetchWhatsAppLogs, fetchWhatsAppStats]);
+
   // Navigation items based on permissions
   const getNavigation = () => {
     const nav = [];
@@ -895,6 +962,8 @@ if (newMembersThisMonth === 0 && members.length > 0) {
     if (canSeeLeads) {
       nav.push({ name: 'Leads', icon: Target, id: 'leads' });
     }
+    // Add WhatsApp Logs to navigation
+    nav.push({ name: 'WhatsApp Logs', icon: MessageSquare, id: 'whatsapp-logs' });
     
     return nav;
   };
@@ -2297,6 +2366,140 @@ if (newMembersThisMonth === 0 && members.length > 0) {
               <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
             </div>
           )}
+
+          {/* WhatsApp Logs Tab */}
+          {activeTab === 'whatsapp-logs' && (
+            <div className="space-y-6">
+              {/* Stats Cards */}
+              {whatsappStats && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-white rounded-xl shadow-md p-4 border-l-4 border-green-500">
+                    <p className="text-sm text-gray-500">Total Sent Today</p>
+                    <p className="text-2xl font-bold text-gray-900">{whatsappStats.total_sent || 0}</p>
+                  </div>
+                  <div className="bg-white rounded-xl shadow-md p-4 border-l-4 border-red-500">
+                    <p className="text-sm text-gray-500">Failed</p>
+                    <p className="text-2xl font-bold text-gray-900">{whatsappStats.total_failed || 0}</p>
+                  </div>
+                  <div className="bg-white rounded-xl shadow-md p-4 border-l-4 border-yellow-500">
+                    <p className="text-sm text-gray-500">Success Rate</p>
+                    <p className="text-2xl font-bold text-gray-900">{whatsappStats.success_rate || 0}%</p>
+                  </div>
+                  <div className="bg-white rounded-xl shadow-md p-4 border-l-4 border-blue-500">
+                    <p className="text-sm text-gray-500">Total Messages</p>
+                    <p className="text-2xl font-bold text-gray-900">{whatsappStats.total_messages || 0}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Filter Section */}
+              <div className="bg-white rounded-xl shadow-md p-4">
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <CalendarIcon className="h-5 w-5 text-gray-400" />
+                    <input
+                      type="date"
+                      value={logFilter.startDate}
+                      onChange={(e) => setLogFilter({...logFilter, startDate: e.target.value})}
+                      className="border rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">to</span>
+                    <input
+                      type="date"
+                      value={logFilter.endDate}
+                      onChange={(e) => setLogFilter({...logFilter, endDate: e.target.value})}
+                      className="border rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <select
+                    value={logFilter.status}
+                    onChange={(e) => setLogFilter({...logFilter, status: e.target.value})}
+                    className="border rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="sent">Sent</option>
+                    <option value="failed">Failed</option>
+                    <option value="pending">Pending</option>
+                  </select>
+                  <button
+                    onClick={() => {
+                      fetchWhatsAppLogs(logFilter.startDate);
+                    }}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700"
+                  >
+                    Apply Filter
+                  </button>
+                  <button
+                    onClick={exportLogs}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 flex items-center gap-2"
+                  >
+                    <Download className="h-4 w-4" /> Export CSV
+                  </button>
+                </div>
+              </div>
+
+              {/* Logs Table */}
+              <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Template</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Days Left</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sent At</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {whatsappLogs.length > 0 ? (
+                        whatsappLogs.map((log) => (
+                          <tr key={log.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 text-sm text-gray-900">{log.member_name || 'Unknown'}</td>
+                            <td className="px-6 py-4 text-sm text-gray-500">{log.phone_number}</td>
+                            <td className="px-6 py-4 text-sm text-gray-500">{log.template_name}</td>
+                            <td className="px-6 py-4 text-sm font-medium">
+                              {log.amount_displayed ? `₹${log.amount_displayed}` : '—'}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500">{log.days_left || '—'} days</td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2 py-1 text-xs rounded-full ${
+                                log.status === 'sent' ? 'bg-green-100 text-green-700' :
+                                log.status === 'failed' ? 'bg-red-100 text-red-700' :
+                                'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                {log.status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500">
+                              {new Date(log.sent_at).toLocaleString('en-IN', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                            No WhatsApp messages sent on this date
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Access denied for tabs user doesn't have permission for */}
           {activeTab === 'members' && !canSeeMembers && (
             <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
