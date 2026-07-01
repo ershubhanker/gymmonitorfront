@@ -31,7 +31,6 @@ const MessageDetailModal = ({ log, isOpen, onClose }) => {
   if (!isOpen || !log) return null;
 
   // Get the actual gym name from the log data
-  // The gym_name should come from the backend in the log object
   const gymName = log.gym_name || 'Unknown Gym';
   const memberName = log.member_name || 'Valued Member';
   const expiryDate = log.expiry_date ? new Date(log.expiry_date).toLocaleDateString('en-IN', {
@@ -42,8 +41,6 @@ const MessageDetailModal = ({ log, isOpen, onClose }) => {
   const amount = log.amount_displayed || '0';
 
   // Construct the message based on your template
-  // Header: {{1}} Payment Notification
-  // Body: Hello {{1}}, Your membership at {{2}} is expiring on {{3}}. We noticed a pending fee of ₹{{4}}...
   const message = {
     header: `${gymName} Payment Notification`,
     body: `Hello ${memberName},\nYour membership at ${gymName} is expiring on ${expiryDate}.\nWe noticed a pending fee of ₹${amount} on your account. Kindly renew your membership to continue enjoying our services without interruption.\nFor assistance, feel free to contact us.\nThank you,`,
@@ -263,7 +260,7 @@ const WhatsAppLogs = () => {
       
       const response = await api.get(url);
       if (response.data) {
-        console.log('📊 Logs response:', response.data); // Debug log
+        console.log('📊 Logs response:', response.data);
         setLogs(response.data.logs || []);
         setPagination(prev => ({
           ...prev,
@@ -353,7 +350,7 @@ const WhatsAppLogs = () => {
 
   // Handle row click to open modal
   const handleRowClick = (log) => {
-    console.log('📋 Selected log:', log); // Debug log - check if gym_name is present
+    console.log('📋 Selected log:', log);
     setSelectedLog(log);
     setIsModalOpen(true);
   };
@@ -510,7 +507,7 @@ const WhatsAppLogs = () => {
           </div>
         </div>
 
-        {/* Logs Table */}
+        {/* Logs Table - Removed Gym Column */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -524,7 +521,6 @@ const WhatsAppLogs = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gym</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
@@ -540,9 +536,6 @@ const WhatsAppLogs = () => {
                       return (
                         <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4 text-sm text-gray-500">{serialNumber}</td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm font-medium text-gray-700">{log.gym_name || 'Unknown'}</span>
-                          </td>
                           <td className="px-6 py-4">
                             <button
                               onClick={() => handleRowClick(log)}
