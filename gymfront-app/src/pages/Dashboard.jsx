@@ -79,6 +79,7 @@ import MembershipPlans from './MembershipPlans';
 // Import Search Bar and Follow-Up Card
 import SearchBar from '../components/SearchBar';
 import FollowUpCard from '../components/FollowUpCard';
+import WhatsAppLogs from './WhatsAppLogs';
 
 // Auto-refresh interval in milliseconds
 const AUTO_REFRESH_INTERVAL = 40000;
@@ -2366,139 +2367,7 @@ const Dashboard = () => {
               <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
             </div>
           )}
-
-          {/* WhatsApp Logs Tab */}
-          {activeTab === 'whatsapp-logs' && (
-            <div className="space-y-6">
-              {/* Stats Cards */}
-              {whatsappStats && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="bg-white rounded-xl shadow-md p-4 border-l-4 border-green-500">
-                    <p className="text-sm text-gray-500">Total Sent Today</p>
-                    <p className="text-2xl font-bold text-gray-900">{whatsappStats.total_sent || 0}</p>
-                  </div>
-                  <div className="bg-white rounded-xl shadow-md p-4 border-l-4 border-red-500">
-                    <p className="text-sm text-gray-500">Failed</p>
-                    <p className="text-2xl font-bold text-gray-900">{whatsappStats.total_failed || 0}</p>
-                  </div>
-                  <div className="bg-white rounded-xl shadow-md p-4 border-l-4 border-yellow-500">
-                    <p className="text-sm text-gray-500">Success Rate</p>
-                    <p className="text-2xl font-bold text-gray-900">{whatsappStats.success_rate || 0}%</p>
-                  </div>
-                  <div className="bg-white rounded-xl shadow-md p-4 border-l-4 border-blue-500">
-                    <p className="text-sm text-gray-500">Total Messages</p>
-                    <p className="text-2xl font-bold text-gray-900">{whatsappStats.total_messages || 0}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Filter Section */}
-              <div className="bg-white rounded-xl shadow-md p-4">
-                <div className="flex flex-wrap items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <CalendarIcon className="h-5 w-5 text-gray-400" />
-                    <input
-                      type="date"
-                      value={logFilter.startDate}
-                      onChange={(e) => setLogFilter({...logFilter, startDate: e.target.value})}
-                      className="border rounded-lg px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">to</span>
-                    <input
-                      type="date"
-                      value={logFilter.endDate}
-                      onChange={(e) => setLogFilter({...logFilter, endDate: e.target.value})}
-                      className="border rounded-lg px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <select
-                    value={logFilter.status}
-                    onChange={(e) => setLogFilter({...logFilter, status: e.target.value})}
-                    className="border rounded-lg px-3 py-2 text-sm"
-                  >
-                    <option value="all">All Status</option>
-                    <option value="sent">Sent</option>
-                    <option value="failed">Failed</option>
-                    <option value="pending">Pending</option>
-                  </select>
-                  <button
-                    onClick={() => {
-                      fetchWhatsAppLogs(logFilter.startDate);
-                    }}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700"
-                  >
-                    Apply Filter
-                  </button>
-                  <button
-                    onClick={exportLogs}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 flex items-center gap-2"
-                  >
-                    <Download className="h-4 w-4" /> Export CSV
-                  </button>
-                </div>
-              </div>
-
-              {/* Logs Table */}
-              <div className="bg-white rounded-xl shadow-md overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Member</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Template</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Days Left</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sent At</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {whatsappLogs.length > 0 ? (
-                        whatsappLogs.map((log) => (
-                          <tr key={log.id} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 text-sm text-gray-900">{log.member_name || 'Unknown'}</td>
-                            <td className="px-6 py-4 text-sm text-gray-500">{log.phone_number}</td>
-                            <td className="px-6 py-4 text-sm text-gray-500">{log.template_name}</td>
-                            <td className="px-6 py-4 text-sm font-medium">
-                              {log.amount_displayed ? `₹${log.amount_displayed}` : '—'}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-500">{log.days_left || '—'} days</td>
-                            <td className="px-6 py-4">
-                              <span className={`px-2 py-1 text-xs rounded-full ${
-                                log.status === 'sent' ? 'bg-green-100 text-green-700' :
-                                log.status === 'failed' ? 'bg-red-100 text-red-700' :
-                                'bg-yellow-100 text-yellow-700'
-                              }`}>
-                                {log.status}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-500">
-                              {new Date(log.sent_at).toLocaleString('en-IN', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
-                            No WhatsApp messages sent on this date
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
+          {activeTab === 'whatsapp-logs' && <WhatsAppLogs />}
 
           {/* Access denied for tabs user doesn't have permission for */}
           {activeTab === 'members' && !canSeeMembers && (
