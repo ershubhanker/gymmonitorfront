@@ -31,9 +31,7 @@ const MessageDetailModal = ({ log, isOpen, onClose }) => {
 
   // Parse the message content from template
   const getMessagePreview = (log) => {
-    // This constructs the message based on your template
-    // Header: {{1}} Payment Notification
-    // Body: Hello {{1}}, Your membership at {{2}} is expiring on {{3}}. We noticed a pending fee of ₹{{4}}...
+    // Use gym_name from the log, fallback only if not available
     const gymName = log.gym_name || 'Gold Gym';
     const memberName = log.member_name || 'Valued Member';
     const expiryDate = log.expiry_date ? new Date(log.expiry_date).toLocaleDateString('en-IN', {
@@ -42,7 +40,7 @@ const MessageDetailModal = ({ log, isOpen, onClose }) => {
       year: 'numeric'
     }) : 'N/A';
     const amount = log.amount_displayed || '0';
-
+  
     return {
       header: `${gymName} Payment Notification`,
       body: `Hello ${memberName},\nYour membership at ${gymName} is expiring on ${expiryDate}.\nWe noticed a pending fee of ₹${amount} on your account. Kindly renew your membership to continue enjoying our services without interruption.\nFor assistance, feel free to contact us.\nThank you,`,
