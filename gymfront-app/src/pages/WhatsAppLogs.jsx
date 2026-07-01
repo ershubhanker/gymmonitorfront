@@ -20,7 +20,8 @@ import {
   IndianRupee,
   Clock as ClockIcon,
   Send,
-  AlertCircle
+  AlertCircle,
+  Building
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -29,26 +30,25 @@ import toast from 'react-hot-toast';
 const MessageDetailModal = ({ log, isOpen, onClose }) => {
   if (!isOpen || !log) return null;
 
-  // Parse the message content from template
-  const getMessagePreview = (log) => {
-    // Use gym_name from the log, fallback only if not available
-    const gymName = log.gym_name || 'Gold Gym';
-    const memberName = log.member_name || 'Valued Member';
-    const expiryDate = log.expiry_date ? new Date(log.expiry_date).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    }) : 'N/A';
-    const amount = log.amount_displayed || '0';
-  
-    return {
-      header: `${gymName} Payment Notification`,
-      body: `Hello ${memberName},\nYour membership at ${gymName} is expiring on ${expiryDate}.\nWe noticed a pending fee of ₹${amount} on your account. Kindly renew your membership to continue enjoying our services without interruption.\nFor assistance, feel free to contact us.\nThank you,`,
-      footer: 'Please do not reply or call on this no.'
-    };
-  };
+  // Get the actual gym name from the log data
+  // The gym_name should come from the backend in the log object
+  const gymName = log.gym_name || 'Unknown Gym';
+  const memberName = log.member_name || 'Valued Member';
+  const expiryDate = log.expiry_date ? new Date(log.expiry_date).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  }) : 'N/A';
+  const amount = log.amount_displayed || '0';
 
-  const message = getMessagePreview(log);
+  // Construct the message based on your template
+  // Header: {{1}} Payment Notification
+  // Body: Hello {{1}}, Your membership at {{2}} is expiring on {{3}}. We noticed a pending fee of ₹{{4}}...
+  const message = {
+    header: `${gymName} Payment Notification`,
+    body: `Hello ${memberName},\nYour membership at ${gymName} is expiring on ${expiryDate}.\nWe noticed a pending fee of ₹${amount} on your account. Kindly renew your membership to continue enjoying our services without interruption.\nFor assistance, feel free to contact us.\nThank you,`,
+    footer: 'Please do not reply or call on this no.'
+  };
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
@@ -74,6 +74,15 @@ const MessageDetailModal = ({ log, isOpen, onClose }) => {
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+          {/* Gym Info */}
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 mb-6 border border-blue-100">
+            <div className="flex items-center gap-2 mb-2">
+              <Building className="h-4 w-4 text-blue-600" />
+              <span className="text-sm font-semibold text-blue-600">Gym</span>
+            </div>
+            <p className="text-lg font-bold text-gray-900">{gymName}</p>
+          </div>
+
           {/* Sender Info */}
           <div className="bg-gray-50 rounded-xl p-4 mb-6">
             <div className="grid grid-cols-2 gap-4">
@@ -254,6 +263,7 @@ const WhatsAppLogs = () => {
       
       const response = await api.get(url);
       if (response.data) {
+        console.log('📊 Logs response:', response.data); // Debug log
         setLogs(response.data.logs || []);
         setPagination(prev => ({
           ...prev,
@@ -343,6 +353,7 @@ const WhatsAppLogs = () => {
 
   // Handle row click to open modal
   const handleRowClick = (log) => {
+    console.log('📋 Selected log:', log); // Debug log - check if gym_name is present
     setSelectedLog(log);
     setIsModalOpen(true);
   };
@@ -513,6 +524,7 @@ const WhatsAppLogs = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gym</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
@@ -528,6 +540,9 @@ const WhatsAppLogs = () => {
                       return (
                         <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4 text-sm text-gray-500">{serialNumber}</td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm font-medium text-gray-700">{log.gym_name || 'Unknown'}</span>
+                          </td>
                           <td className="px-6 py-4">
                             <button
                               onClick={() => handleRowClick(log)}
