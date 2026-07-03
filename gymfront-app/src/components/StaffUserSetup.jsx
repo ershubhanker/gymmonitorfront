@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   X, User, Mail, Phone, Key, Briefcase, Building2, 
   AlertCircle, CheckCircle, Loader2, Eye, EyeOff, UserPlus, Calendar,
-  ChevronUp, ChevronDown, Clock, Coffee
+  ChevronUp, ChevronDown, Clock, Coffee, Plus, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -161,10 +161,51 @@ const DOBPicker = ({ value, onChange, maxDate }) => {
   );
 };
 
-// ─── Shift Timing Picker Component ─────────────────────────────────────────────
-const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }) => {
+// ─── Shift Time Slot Component ──────────────────────────────────────────────
+const ShiftTimeSlot = ({ slot, index, onUpdate, onRemove, isRemovable }) => {
+  return (
+    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+      <div className="flex-1 grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Start Time</label>
+          <input
+            type="time"
+            value={slot.start || ''}
+            onChange={(e) => onUpdate(index, { ...slot, start: e.target.value })}
+            className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">End Time</label>
+          <input
+            type="time"
+            value={slot.end || ''}
+            onChange={(e) => onUpdate(index, { ...slot, end: e.target.value })}
+            className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          />
+        </div>
+      </div>
+      {isRemovable && (
+        <button
+          type="button"
+          onClick={() => onRemove(index)}
+          className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors mt-4"
+          title="Remove this time slot"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+};
+
+// ─── Shift Timing Picker with Broken Shift Support ──────────────────────────
+const ShiftTimingPicker = ({ shiftSlots, onChange }) => {
   const [isOpen, setIsOpen] = useState(false);
-  
+  const [slots, setSlots] = useState(shiftSlots || [{ start: '', end: '' }]);
+  const [selectedDays, setSelectedDays] = useState([]);
+  const [breakDuration, setBreakDuration] = useState('');
+
   const weekDays = [
     { value: 'mon', label: 'Mon' },
     { value: 'tue', label: 'Tue' },
@@ -174,19 +215,38 @@ const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }
     { value: 'sat', label: 'Sat' },
     { value: 'sun', label: 'Sun' }
   ];
-  
-  const selectedDays = days ? days.split(',').map(d => d.trim()) : [];
-  
-  const toggleDay = (dayValue) => {
-    let newDays;
-    if (selectedDays.includes(dayValue)) {
-      newDays = selectedDays.filter(d => d !== dayValue);
-    } else {
-      newDays = [...selectedDays, dayValue];
+
+  // Initialize from props
+  useEffect(() => {
+    if (shiftSlots && shiftSlots.length > 0) {
+      setSlots(shiftSlots);
     }
-    onChange({ startTime, endTime, days: newDays.join(','), breakDuration });
+  }, [shiftSlots]);
+
+  const toggleDay = (dayValue) => {
+    if (selectedDays.includes(dayValue)) {
+      setSelectedDays(selectedDays.filter(d => d !== dayValue));
+    } else {
+      setSelectedDays([...selectedDays, dayValue]);
+    }
   };
-  
+
+  const updateSlot = (index, updatedSlot) => {
+    const newSlots = [...slots];
+    newSlots[index] = updatedSlot;
+    setSlots(newSlots);
+  };
+
+  const addSlot = () => {
+    setSlots([...slots, { start: '', end: '' }]);
+  };
+
+  const removeSlot = (index) => {
+    if (slots.length <= 1) return;
+    const newSlots = slots.filter((_, i) => i !== index);
+    setSlots(newSlots);
+  };
+
   const formatTime = (time) => {
     if (!time) return 'Not set';
     const [hours, minutes] = time.split(':');
@@ -195,14 +255,68 @@ const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }
     const hour12 = hour % 12 || 12;
     return `${hour12}:${minutes} ${ampm}`;
   };
-  
+
   const getDisplayText = () => {
-    if (!startTime || !endTime) return 'Set shift timing';
+    const validSlots = slots.filter(s => s.start && s.end);
+    if (validSlots.length === 0) return 'Set shift timing';
+    
     const dayCount = selectedDays.length;
     const daysText = dayCount === 7 ? 'Daily' : dayCount === 0 ? 'No days' : `${dayCount} day${dayCount > 1 ? 's' : ''}`;
-    return `${formatTime(startTime)} - ${formatTime(endTime)} (${daysText})`;
+    
+    if (validSlots.length === 1) {
+      return `${formatTime(validSlots[0].start)} - ${formatTime(validSlots[0].end)} (${daysText})`;
+    }
+    
+    const slotStrings = validSlots.map(s => `${formatTime(s.start)}-${formatTime(s.end)}`);
+    return `${slotStrings.join(', ')} (${daysText})`;
   };
-  
+
+  const handleDone = () => {
+    const validSlots = slots.filter(s => s.start && s.end);
+    if (validSlots.length === 0) {
+      toast.error('Please set at least one time slot');
+      return;
+    }
+    
+    // Validate that end time is after start time for each slot
+    for (const slot of validSlots) {
+      if (slot.start >= slot.end) {
+        toast.error(`End time must be after start time for slot ${validSlots.indexOf(slot) + 1}`);
+        return;
+      }
+    }
+    
+    const daysString = selectedDays.join(',');
+    const breakMinutes = parseInt(breakDuration) || 0;
+    
+    onChange({
+      shift_slots: validSlots,
+      shift_days: daysString,
+      break_duration: breakMinutes
+    });
+    
+    setIsOpen(false);
+  };
+
+  const handleClear = () => {
+    setSlots([{ start: '', end: '' }]);
+    setSelectedDays([]);
+    setBreakDuration('');
+    onChange({
+      shift_slots: [],
+      shift_days: '',
+      break_duration: null
+    });
+    setIsOpen(false);
+  };
+
+  // Format display text for the selected days
+  const getDaysDisplay = () => {
+    if (selectedDays.length === 0) return 'No days selected';
+    if (selectedDays.length === 7) return 'Every day';
+    return selectedDays.map(d => weekDays.find(w => w.value === d)?.label).join(', ');
+  };
+
   return (
     <div className="relative">
       <button
@@ -212,7 +326,7 @@ const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }
       >
         <span className="flex items-center gap-2">
           <Clock className="h-4 w-4 text-gray-400" />
-          <span className={!startTime ? 'text-gray-400' : 'text-gray-800'}>
+          <span className="text-gray-800 truncate">
             {getDisplayText()}
           </span>
         </span>
@@ -220,25 +334,36 @@ const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }
       </button>
       
       {isOpen && (
-        <div className="absolute left-0 mt-2 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 min-w-[320px]">
+        <div className="absolute left-0 mt-2 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 min-w-[400px] max-w-[500px] max-h-[80vh] overflow-y-auto">
           <div className="mb-4">
-            <label className="block text-xs font-semibold text-gray-500 mb-2">Start Time</label>
-            <input
-              type="time"
-              value={startTime || ''}
-              onChange={(e) => onChange({ startTime: e.target.value, endTime, days, breakDuration })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-xs font-semibold text-gray-500 mb-2">End Time</label>
-            <input
-              type="time"
-              value={endTime || ''}
-              onChange={(e) => onChange({ startTime, endTime: e.target.value, days, breakDuration })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Shift Time Slots
+              </label>
+              <button
+                type="button"
+                onClick={addSlot}
+                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Slot
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mb-3">
+              Add multiple time slots for broken shifts (e.g., 6AM-11AM and 3PM-9PM)
+            </p>
+            <div className="space-y-2">
+              {slots.map((slot, index) => (
+                <ShiftTimeSlot
+                  key={index}
+                  slot={slot}
+                  index={index}
+                  onUpdate={updateSlot}
+                  onRemove={removeSlot}
+                  isRemovable={slots.length > 1}
+                />
+              ))}
+            </div>
           </div>
           
           <div className="mb-4">
@@ -250,9 +375,9 @@ const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }
                 min="0"
                 max="180"
                 step="15"
-                value={breakDuration || ''}
-                onChange={(e) => onChange({ startTime, endTime, days, breakDuration: parseInt(e.target.value) || 0 })}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                value={breakDuration}
+                onChange={(e) => setBreakDuration(e.target.value)}
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 placeholder="e.g., 60"
               />
             </div>
@@ -277,29 +402,56 @@ const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }
               ))}
             </div>
             <p className="text-xs text-gray-400 mt-2">
-              {selectedDays.length === 0 && "No days selected"}
-              {selectedDays.length > 0 && selectedDays.length < 7 && `${selectedDays.length} day(s) selected`}
-              {selectedDays.length === 7 && "Working every day"}
+              {getDaysDisplay()}
             </p>
           </div>
           
-          <div className="flex justify-end gap-2 pt-3 border-t">
+          {/* Preview of selected shifts */}
+          {slots.some(s => s.start && s.end) && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-xs font-semibold text-blue-700 mb-1">Shift Preview:</p>
+              {slots.filter(s => s.start && s.end).map((slot, idx) => (
+                <p key={idx} className="text-xs text-blue-600">
+                  Slot {idx + 1}: {formatTime(slot.start)} - {formatTime(slot.end)}
+                </p>
+              ))}
+              {selectedDays.length > 0 && (
+                <p className="text-xs text-blue-600 mt-1">
+                  Days: {getDaysDisplay()}
+                </p>
+              )}
+              {breakDuration && parseInt(breakDuration) > 0 && (
+                <p className="text-xs text-blue-600">
+                  Break: {breakDuration} min
+                </p>
+              )}
+            </div>
+          )}
+          
+          <div className="flex justify-between gap-2 pt-3 border-t">
             <button
               type="button"
-              onClick={() => {
-                onChange({ startTime: null, endTime: null, days: '', breakDuration: null });
-              }}
+              onClick={handleClear}
               className="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg"
             >
               Clear All
             </button>
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Done
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="px-3 py-1.5 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDone}
+                className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Apply
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -307,6 +459,7 @@ const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }
   );
 };
 
+// ─── Main StaffUserSetup Component ──────────────────────────────────────────
 const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     full_name: '',
@@ -315,8 +468,7 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
     position: '',
     date_of_birth: '',
     password: 'Staff@123',
-    shift_start_time: '',
-    shift_end_time: '',
+    shift_slots: [{ start: '', end: '' }],
     shift_days: '',
     break_duration: '',
   });
@@ -353,17 +505,27 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
       newErrors.position = 'Position is required';
     }
     
+    // Validate shift slots
+    const validSlots = formData.shift_slots.filter(s => s.start && s.end);
+    if (validSlots.length > 0) {
+      for (const slot of validSlots) {
+        if (slot.start >= slot.end) {
+          newErrors.shift = 'End time must be after start time for each slot';
+          break;
+        }
+      }
+    }
+    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleShiftChange = ({ startTime, endTime, days, breakDuration }) => {
+  const handleShiftChange = ({ shift_slots, shift_days, break_duration }) => {
     setFormData(prev => ({
       ...prev,
-      shift_start_time: startTime !== undefined ? startTime : prev.shift_start_time,
-      shift_end_time: endTime !== undefined ? endTime : prev.shift_end_time,
-      shift_days: days !== undefined ? days : prev.shift_days,
-      break_duration: breakDuration !== undefined ? breakDuration : prev.break_duration,
+      shift_slots: shift_slots || prev.shift_slots,
+      shift_days: shift_days !== undefined ? shift_days : prev.shift_days,
+      break_duration: break_duration !== undefined ? break_duration : prev.break_duration,
     }));
   };
 
@@ -402,6 +564,10 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
 
       console.log('Step 2: Creating staff record...');
       
+      // Serialize shift slots to a JSON string for storage
+      const validSlots = formData.shift_slots.filter(s => s.start && s.end);
+      const shiftSlotsJson = validSlots.length > 0 ? JSON.stringify(validSlots) : null;
+      
       const staffPayload = {
         user_id: userResponse.data.id,
         position: formData.position,
@@ -409,10 +575,11 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
         salary: null,
         specializations: null,
         date_of_birth: formData.date_of_birth || null,
-        shift_start_time: formData.shift_start_time || null,
-        shift_end_time: formData.shift_end_time || null,
+        shift_start_time: null, // We're using shift_slots now
+        shift_end_time: null,   // We're using shift_slots now
         shift_days: formData.shift_days || null,
         break_duration: formData.break_duration ? parseInt(formData.break_duration) : null,
+        shift_slots: shiftSlotsJson, // New field for broken shifts
       };
 
       console.log('Staff payload:', staffPayload);
@@ -422,11 +589,26 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
       
       setStep(2);
       
+      // Format shift display for success message
+      let shiftDisplay = '';
+      if (validSlots.length > 0) {
+        const formatTime = (time) => {
+          if (!time) return '';
+          const [hours, minutes] = time.split(':');
+          const hour = parseInt(hours);
+          const ampm = hour >= 12 ? 'PM' : 'AM';
+          const hour12 = hour % 12 || 12;
+          return `${hour12}:${minutes} ${ampm}`;
+        };
+        shiftDisplay = validSlots.map(s => `${formatTime(s.start)}-${formatTime(s.end)}`).join(', ');
+      }
+      
       toast.success(
         <div className="flex flex-col gap-2">
           <p className="font-bold text-green-600">✓ Staff Member Added Successfully!</p>
           <p className="text-sm">Name: {formData.full_name}</p>
           <p className="text-sm">Position: {formData.position}</p>
+          {shiftDisplay && <p className="text-sm">Shift: {shiftDisplay}</p>}
         </div>,
         { duration: 5000 }
       );
@@ -451,8 +633,7 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
           position: '',
           date_of_birth: '',
           password: 'Staff@123',
-          shift_start_time: '',
-          shift_end_time: '',
+          shift_slots: [{ start: '', end: '' }],
           shift_days: '',
           break_duration: '',
         });
@@ -519,7 +700,6 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
     { value: 'Nutritionist', label: 'Nutritionist', icon: '🥗', description: 'Diet planning and nutrition advice' },
     { value: 'Physiotherapist', label: 'Physiotherapist', icon: '🩺', description: 'Injury rehabilitation and recovery' },
     { value: 'Manager', label: 'Manager', icon: '👔', description: 'Overall gym operations management' },
-    // NEW POSITIONS - Added here
     { value: 'Floor Manager', label: 'Floor Manager', icon: '🏢', description: 'Manages daily floor operations and staff supervision' },
     { value: 'Sales Manager', label: 'Sales Manager', icon: '📊', description: 'Leads sales team, drives membership growth and revenue' },
     { value: 'Gym Manager', label: 'Gym Manager', icon: '🏋️', description: 'Oversees all gym operations, staff, and member experience' },
@@ -535,6 +715,21 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
 
   // Get icon and description for selected position
   const selectedPositionData = positions.find(p => p.value === formData.position);
+
+  // Format shift display for preview
+  const getShiftDisplay = () => {
+    const validSlots = formData.shift_slots.filter(s => s.start && s.end);
+    if (validSlots.length === 0) return 'Not set';
+    const formatTime = (time) => {
+      if (!time) return '';
+      const [hours, minutes] = time.split(':');
+      const hour = parseInt(hours);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const hour12 = hour % 12 || 12;
+      return `${hour12}:${minutes} ${ampm}`;
+    };
+    return validSlots.map(s => `${formatTime(s.start)}-${formatTime(s.end)}`).join(', ');
+  };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -697,7 +892,6 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
                     {errors.position}
                   </p>
                 )}
-                {/* Show position description when selected */}
                 {selectedPositionData && selectedPositionData.description && (
                   <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
                     <span className="text-blue-500">ℹ️</span>
@@ -706,18 +900,27 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
                 )}
               </div>
 
-              {/* Shift Timing */}
+              {/* Shift Timing with Broken Shift Support */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Shift Timing <span className="text-gray-400 text-xs">(optional)</span>
                 </label>
                 <ShiftTimingPicker
-                  startTime={formData.shift_start_time}
-                  endTime={formData.shift_end_time}
-                  days={formData.shift_days}
-                  breakDuration={formData.break_duration}
+                  shiftSlots={formData.shift_slots}
                   onChange={handleShiftChange}
                 />
+                {formData.shift_slots.some(s => s.start && s.end) && (
+                  <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3" />
+                    Shift set: {getShiftDisplay()}
+                  </p>
+                )}
+                {errors.shift && (
+                  <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.shift}
+                  </p>
+                )}
               </div>
 
               {/* Password */}
@@ -779,19 +982,38 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
                   </div>
                 </div>
 
+                {/* Broken Shift Info */}
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="bg-purple-100 p-2 rounded-lg">
+                      <Clock className="h-4 w-4 text-purple-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-purple-800 text-sm">Broken Shift Support</p>
+                      <p className="text-xs text-purple-600 mt-1">
+                        You can set multiple time slots for split shifts. For example:
+                      </p>
+                      <ul className="text-xs text-purple-600 mt-1 list-disc list-inside">
+                        <li>Morning: 6:00 AM - 11:00 AM</li>
+                        <li>Evening: 3:00 PM - 9:00 PM</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Head Trainer Special Note */}
                 {formData.position === 'Head Trainer' && (
-                  <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
                     <div className="flex items-start gap-3">
-                      <div className="bg-purple-100 p-2 rounded-lg">
-                        <span className="text-purple-600 text-lg">👑</span>
+                      <div className="bg-indigo-100 p-2 rounded-lg">
+                        <span className="text-indigo-600 text-lg">👑</span>
                       </div>
                       <div>
-                        <p className="font-medium text-purple-800 text-sm">Head Trainer Role</p>
-                        <p className="text-xs text-purple-600 mt-1">
+                        <p className="font-medium text-indigo-800 text-sm">Head Trainer Role</p>
+                        <p className="text-xs text-indigo-600 mt-1">
                           Head Trainers have additional privileges including:
                         </p>
-                        <ul className="text-xs text-purple-600 mt-1 list-disc list-inside">
+                        <ul className="text-xs text-indigo-600 mt-1 list-disc list-inside">
                           <li>Manage other trainers</li>
                           <li>Create training schedules</li>
                           <li>Oversee fitness programs</li>
@@ -846,13 +1068,29 @@ const StaffUserSetup = ({ isOpen, onClose, onSuccess }) => {
               <p className="text-sm text-blue-700">Email: {formData.email}</p>
               <p className="text-sm text-blue-700">Password: {formData.password}</p>
             </div>
-            {formData.shift_start_time && formData.shift_end_time && (
+            {formData.shift_slots.some(s => s.start && s.end) && (
               <div className="bg-green-50 rounded-lg p-4 text-left mb-4">
                 <p className="text-sm font-medium text-green-800 mb-2">Shift Timing:</p>
-                <p className="text-sm text-green-700">
-                  {formData.shift_start_time} - {formData.shift_end_time}
-                  {formData.break_duration > 0 && ` (${formData.break_duration} min break)`}
-                </p>
+                {formData.shift_slots.filter(s => s.start && s.end).map((slot, idx) => {
+                  const formatTime = (time) => {
+                    if (!time) return '';
+                    const [hours, minutes] = time.split(':');
+                    const hour = parseInt(hours);
+                    const ampm = hour >= 12 ? 'PM' : 'AM';
+                    const hour12 = hour % 12 || 12;
+                    return `${hour12}:${minutes} ${ampm}`;
+                  };
+                  return (
+                    <p key={idx} className="text-sm text-green-700">
+                      Slot {idx + 1}: {formatTime(slot.start)} - {formatTime(slot.end)}
+                    </p>
+                  );
+                })}
+                {formData.break_duration && parseInt(formData.break_duration) > 0 && (
+                  <p className="text-sm text-green-700 mt-1">
+                    Break: {formData.break_duration} minutes
+                  </p>
+                )}
               </div>
             )}
             <p className="text-xs text-gray-500">
