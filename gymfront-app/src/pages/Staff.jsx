@@ -1,4 +1,4 @@
-// src/pages/Staff.jsx - COMPLETE WITH PERMISSIONS MANAGEMENT
+// src/pages/Staff.jsx - FIXED SHIFT DISPLAY
 import React, { useState, useEffect } from 'react';
 import {
   Search, UserPlus, Edit, Trash2, Phone, Mail,
@@ -7,7 +7,7 @@ import {
   Wifi, WifiOff, Database, Smartphone, CheckCircle, XCircle,
   Loader2, Cloud, Server, Eye, User, MapPin, Award, BookOpen,
   DollarSign, Calendar as CalendarIcon, Users, Settings, Copy,
-  Shield, Menu, MoreVertical
+  Shield, Menu, MoreVertical, Plus, Trash2 as TrashIcon
 } from 'lucide-react';
 import { X as CloseIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -193,10 +193,68 @@ const DOBPicker = ({ value, onChange, maxDate }) => {
   );
 };
 
-// ─── Shift Timing Component ─────────────────────────────────────────────────────
-const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }) => {
-  const [isOpen, setIsOpen] = useState(false);
+// ─── FORMAT TIME HELPER ──────────────────────────────────────────────────────
+const formatTime = (time) => {
+  if (!time) return '—';
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+};
+
+// ─── PARSE SHIFT SLOTS ──────────────────────────────────────────────────────
+const parseShiftSlots = (shiftSlots) => {
+  if (!shiftSlots) return [];
+  try {
+    const parsed = JSON.parse(shiftSlots);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed;
+    }
+    return [];
+  } catch {
+    return [];
+  }
+};
+
+// ─── GET SHIFT DISPLAY ──────────────────────────────────────────────────────
+const getShiftDisplay = (staff) => {
+  // First check for shift_slots (new format)
+  if (staff.shift_slots) {
+    try {
+      const slots = JSON.parse(staff.shift_slots);
+      if (Array.isArray(slots) && slots.length > 0) {
+        return slots.map(s => `${formatTime(s.start)}-${formatTime(s.end)}`).join(', ');
+      }
+    } catch {
+      // Fall through to legacy shift display
+    }
+  }
   
+  // Legacy shift display (single shift)
+  if (staff.shift_start_time && staff.shift_end_time) {
+    let display = `${formatTime(staff.shift_start_time)} - ${formatTime(staff.shift_end_time)}`;
+    if (staff.shift_days) {
+      const dayCount = staff.shift_days.split(',').length;
+      if (dayCount === 7) {
+        display += ' (Daily)';
+      } else if (dayCount > 0) {
+        display += ` (${dayCount}d)`;
+      }
+    }
+    return display;
+  }
+  
+  return 'Not set';
+};
+
+// ─── SHIFT EDITOR COMPONENT ──────────────────────────────────────────────────
+const ShiftEditor = ({ shiftSlots, shiftStartTime, shiftEndTime, shiftDays, breakDuration, onChange }) => {
+  const [useSplitShift, setUseSplitShift] = useState(false);
+  const [slots, setSlots] = useState([]);
+  const [days, setDays] = useState(shiftDays || '');
+  const [breakMin, setBreakMin] = useState(breakDuration?.toString() || '');
+
   const weekDays = [
     { value: 'mon', label: 'Mon' },
     { value: 'tue', label: 'Tue' },
@@ -206,130 +264,241 @@ const ShiftTimingPicker = ({ startTime, endTime, days, breakDuration, onChange }
     { value: 'sat', label: 'Sat' },
     { value: 'sun', label: 'Sun' }
   ];
-  
-  const selectedDays = days ? days.split(',').map(d => d.trim()) : [];
-  
-  const toggleDay = (dayValue) => {
-    let newDays;
-    if (selectedDays.includes(dayValue)) {
-      newDays = selectedDays.filter(d => d !== dayValue);
+
+  // Initialize shift mode and slots
+  useEffect(() => {
+    // Check if there are existing shift slots
+    const parsedSlots = parseShiftSlots(shiftSlots);
+    if (parsedSlots.length > 0) {
+      setUseSplitShift(true);
+      setSlots(parsedSlots.map(s => ({ ...s })));
     } else {
-      newDays = [...selectedDays, dayValue];
+      setUseSplitShift(false);
+      // Initialize with single shift if exists
+      if (shiftStartTime && shiftEndTime) {
+        setSlots([{ start: shiftStartTime, end: shiftEndTime }]);
+      } else {
+        setSlots([{ start: '', end: '' }]);
+      }
     }
-    onChange({ startTime, endTime, days: newDays.join(','), breakDuration });
+  }, [shiftSlots, shiftStartTime, shiftEndTime]);
+
+  const updateSlot = (index, field, value) => {
+    const newSlots = [...slots];
+    newSlots[index] = { ...newSlots[index], [field]: value };
+    setSlots(newSlots);
+    notifyChange(newSlots);
   };
-  
-  const formatTime = (time) => {
-    if (!time) return 'Not set';
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const hour12 = hour % 12 || 12;
-    return `${hour12}:${minutes} ${ampm}`;
+
+  const addSlot = () => {
+    setSlots([...slots, { start: '', end: '' }]);
   };
-  
-  const getDisplayText = () => {
-    if (!startTime || !endTime) return 'Set shift timing';
-    const dayCount = selectedDays.length;
-    const daysText = dayCount === 7 ? 'Everyday' : dayCount === 0 ? 'No days selected' : `${dayCount} day${dayCount > 1 ? 's' : ''}`;
-    return `${formatTime(startTime)} - ${formatTime(endTime)} (${daysText})`;
+
+  const removeSlot = (index) => {
+    if (slots.length <= 1) return;
+    const newSlots = slots.filter((_, i) => i !== index);
+    setSlots(newSlots);
+    notifyChange(newSlots);
   };
-  
+
+  const toggleDay = (dayValue) => {
+    const dayArray = days ? days.split(',').map(d => d.trim()) : [];
+    let newDays;
+    if (dayArray.includes(dayValue)) {
+      newDays = dayArray.filter(d => d !== dayValue);
+    } else {
+      newDays = [...dayArray, dayValue];
+    }
+    setDays(newDays.join(','));
+    notifyChange(slots, newDays.join(','), breakMin);
+  };
+
+  const notifyChange = (newSlots = slots, newDays = days, newBreak = breakMin) => {
+    const validSlots = newSlots.filter(s => s.start && s.end);
+    const shiftSlotsJson = validSlots.length > 0 ? JSON.stringify(validSlots) : null;
+    
+    onChange({
+      shift_slots: shiftSlotsJson,
+      shift_start_time: (!useSplitShift && validSlots.length === 1) ? validSlots[0].start : null,
+      shift_end_time: (!useSplitShift && validSlots.length === 1) ? validSlots[0].end : null,
+      shift_days: newDays || null,
+      break_duration: newBreak ? parseInt(newBreak) : null,
+    });
+  };
+
+  const selectedDays = days ? days.split(',').map(d => d.trim()) : [];
+
+  const getDaysDisplay = () => {
+    if (selectedDays.length === 0) return 'No days selected';
+    if (selectedDays.length === 7) return 'Every day';
+    return selectedDays.map(d => weekDays.find(w => w.value === d)?.label).join(', ');
+  };
+
+  const getSlotPreview = () => {
+    const validSlots = slots.filter(s => s.start && s.end);
+    if (validSlots.length === 0) return 'No shift set';
+    return validSlots.map(s => `${formatTime(s.start)} - ${formatTime(s.end)}`).join(', ');
+  };
+
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-left flex items-center justify-between bg-white hover:border-blue-400 transition-all"
-      >
-        <span className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-gray-400" />
-          <span className={!startTime ? 'text-gray-400' : 'text-gray-800'}>
-            {getDisplayText()}
-          </span>
-        </span>
-        <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-      
-      {isOpen && (
-        <div className="absolute left-0 mt-2 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 min-w-[320px]">
-          <div className="mb-4">
-            <label className="block text-xs font-semibold text-gray-500 mb-2">Start Time</label>
-            <input
-              type="time"
-              value={startTime || ''}
-              onChange={(e) => onChange({ startTime: e.target.value, endTime, days, breakDuration })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-xs font-semibold text-gray-500 mb-2">End Time</label>
-            <input
-              type="time"
-              value={endTime || ''}
-              onChange={(e) => onChange({ startTime, endTime: e.target.value, days, breakDuration })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-xs font-semibold text-gray-500 mb-2">Break Duration (minutes)</label>
-            <div className="relative">
-              <Coffee className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="number"
-                min="0"
-                max="180"
-                step="15"
-                value={breakDuration || ''}
-                onChange={(e) => onChange({ startTime, endTime, days, breakDuration: parseInt(e.target.value) || 0 })}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., 60"
-              />
-            </div>
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-xs font-semibold text-gray-500 mb-2">Working Days</label>
-            <div className="grid grid-cols-7 gap-1">
-              {weekDays.map(day => (
-                <button
-                  key={day.value}
-                  type="button"
-                  onClick={() => toggleDay(day.value)}
-                  className={`px-2 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                    selectedDays.includes(day.value)
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {day.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          
-          <div className="flex justify-end gap-2 pt-3 border-t">
+    <div className="space-y-4">
+      {/* Shift Mode Toggle */}
+      <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+        <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+          <input
+            type="radio"
+            checked={!useSplitShift}
+            onChange={() => {
+              setUseSplitShift(false);
+              const validSlots = slots.filter(s => s.start && s.end);
+              if (validSlots.length > 0) {
+                setSlots([validSlots[0]]);
+              } else {
+                setSlots([{ start: '', end: '' }]);
+              }
+            }}
+            className="w-4 h-4 text-blue-600"
+          />
+          Single Shift
+        </label>
+        <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+          <input
+            type="radio"
+            checked={useSplitShift}
+            onChange={() => {
+              setUseSplitShift(true);
+              if (slots.length === 0 || !slots[0].start) {
+                setSlots([{ start: '', end: '' }]);
+              }
+            }}
+            className="w-4 h-4 text-blue-600"
+          />
+          Split Shift
+        </label>
+      </div>
+
+      {/* Shift Slots */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            {useSplitShift ? 'Shift Slots' : 'Shift Timing'}
+          </label>
+          {useSplitShift && (
             <button
               type="button"
-              onClick={() => {
-                onChange({ startTime: null, endTime: null, days: '', breakDuration: null });
-              }}
-              className="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg"
+              onClick={addSlot}
+              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
             >
-              Clear All
+              <Plus className="h-3.5 w-3.5" />
+              Add Slot
             </button>
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Done
-            </button>
-          </div>
+          )}
         </div>
-      )}
+        {useSplitShift && (
+          <p className="text-xs text-gray-400 mb-2">
+            Add multiple time slots for broken shifts (e.g., 6AM-11AM and 3PM-9PM)
+          </p>
+        )}
+        <div className="space-y-2">
+          {slots.map((slot, index) => (
+            <div key={index} className="flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg">
+              <div className="flex-1 grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-500">Start</label>
+                  <input
+                    type="time"
+                    value={slot.start || ''}
+                    onChange={(e) => updateSlot(index, 'start', e.target.value)}
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500">End</label>
+                  <input
+                    type="time"
+                    value={slot.end || ''}
+                    onChange={(e) => updateSlot(index, 'end', e.target.value)}
+                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+              {useSplitShift && slots.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeSlot(index)}
+                  className="p-1 text-red-500 hover:bg-red-50 rounded-lg transition-colors mt-4"
+                  title="Remove this slot"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Working Days */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Working Days</label>
+        <div className="grid grid-cols-7 gap-1">
+          {weekDays.map(day => (
+            <button
+              key={day.value}
+              type="button"
+              onClick={() => toggleDay(day.value)}
+              className={`px-2 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                selectedDays.includes(day.value)
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {day.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 mt-2">
+          {getDaysDisplay()}
+        </p>
+      </div>
+
+      {/* Break Duration */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Break Duration (minutes)</label>
+        <div className="relative">
+          <Coffee className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="number"
+            min="0"
+            max="180"
+            step="15"
+            value={breakMin}
+            onChange={(e) => {
+              setBreakMin(e.target.value);
+              notifyChange(slots, days, e.target.value);
+            }}
+            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            placeholder="e.g., 60"
+          />
+        </div>
+      </div>
+
+      {/* Preview */}
+      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <p className="text-xs font-semibold text-blue-700 mb-1">Shift Preview:</p>
+        <p className="text-xs text-blue-600">
+          {getSlotPreview()}
+        </p>
+        {selectedDays.length > 0 && (
+          <p className="text-xs text-blue-600 mt-1">
+            Days: {getDaysDisplay()}
+          </p>
+        )}
+        {breakMin && parseInt(breakMin) > 0 && (
+          <p className="text-xs text-blue-600">
+            Break: {breakMin} min
+          </p>
+        )}
+      </div>
     </div>
   );
 };
@@ -345,6 +514,9 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
 
   useEffect(() => {
     if (staff) {
+      // Parse shift slots
+      const parsedSlots = parseShiftSlots(staff.shift_slots);
+      
       setFormData({
         position: staff.position || '',
         hireDate: staff.hire_date || '',
@@ -356,19 +528,23 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
         shift_end_time: staff.shift_end_time || '',
         shift_days: staff.shift_days || '',
         break_duration: staff.break_duration?.toString() || '',
+        shift_slots: staff.shift_slots || '',
+        shift_slots_parsed: parsedSlots,
       });
     }
   }, [staff]);
 
   if (!staff) return null;
 
-  const handleShiftChange = ({ startTime, endTime, days, breakDuration }) => {
+  const handleShiftChange = (shiftData) => {
     setFormData(prev => ({
       ...prev,
-      shift_start_time: startTime !== undefined ? startTime : prev.shift_start_time,
-      shift_end_time: endTime !== undefined ? endTime : prev.shift_end_time,
-      shift_days: days !== undefined ? days : prev.shift_days,
-      break_duration: breakDuration !== undefined ? breakDuration : prev.break_duration,
+      shift_start_time: shiftData.shift_start_time || '',
+      shift_end_time: shiftData.shift_end_time || '',
+      shift_days: shiftData.shift_days || '',
+      break_duration: shiftData.break_duration?.toString() || '',
+      shift_slots: shiftData.shift_slots || '',
+      shift_slots_parsed: parseShiftSlots(shiftData.shift_slots),
     }));
   };
 
@@ -389,6 +565,7 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
         shift_end_time: formData.shift_end_time || null,
         shift_days: formData.shift_days || null,
         break_duration: formData.break_duration ? parseInt(formData.break_duration) : null,
+        shift_slots: formData.shift_slots || null,
       });
       
       toast.success('Staff updated successfully!');
@@ -417,20 +594,24 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
     }
   };
 
-  const formatTime = (time) => {
-    if (!time) return '—';
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const hour12 = hour % 12 || 12;
-    return `${hour12}:${minutes} ${ampm}`;
-  };
-
-  const getShiftDisplay = () => {
-    if (!formData.shift_start_time || !formData.shift_end_time) return 'Not set';
-    const days = formData.shift_days ? formData.shift_days.split(',').length : 0;
-    const daysText = days === 7 ? 'Daily' : days === 0 ? '' : ` (${days}d)`;
-    return `${formatTime(formData.shift_start_time)} - ${formatTime(formData.shift_end_time)}${daysText}`;
+  const getShiftDisplayForModal = () => {
+    const slots = formData.shift_slots_parsed || [];
+    if (slots.length > 0) {
+      return slots.map(s => `${formatTime(s.start)} - ${formatTime(s.end)}`).join(', ');
+    }
+    if (formData.shift_start_time && formData.shift_end_time) {
+      let display = `${formatTime(formData.shift_start_time)} - ${formatTime(formData.shift_end_time)}`;
+      if (formData.shift_days) {
+        const dayCount = formData.shift_days.split(',').length;
+        if (dayCount === 7) {
+          display += ' (Daily)';
+        } else if (dayCount > 0) {
+          display += ` (${dayCount}d)`;
+        }
+      }
+      return display;
+    }
+    return 'Not set';
   };
 
   const getPositionBadgeColor = (position) => {
@@ -458,7 +639,8 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
     }
   };
 
-  const hasShift = formData.shift_start_time && formData.shift_end_time;
+  const hasShift = (formData.shift_slots_parsed && formData.shift_slots_parsed.length > 0) || 
+                   (formData.shift_start_time && formData.shift_end_time);
   const deviceUserId = staff.device_user_id;
   const salaryValue = staff.salary || staff.salary_amount || staff.monthly_salary || 0;
 
@@ -582,17 +764,6 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Shift Timing</label>
-                  <ShiftTimingPicker
-                    startTime={formData.shift_start_time}
-                    endTime={formData.shift_end_time}
-                    days={formData.shift_days}
-                    breakDuration={formData.break_duration}
-                    onChange={handleShiftChange}
-                  />
-                </div>
-
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Specializations</label>
                   <textarea
@@ -603,6 +774,18 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Shift Timing</label>
+                  <ShiftEditor
+                    shiftSlots={formData.shift_slots}
+                    shiftStartTime={formData.shift_start_time}
+                    shiftEndTime={formData.shift_end_time}
+                    shiftDays={formData.shift_days}
+                    breakDuration={formData.break_duration}
+                    onChange={handleShiftChange}
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t">
@@ -610,6 +793,7 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                   type="button"
                   onClick={() => {
                     setIsEditing(false);
+                    const parsedSlots = parseShiftSlots(staff.shift_slots);
                     setFormData({
                       position: staff.position || '',
                       hireDate: staff.hire_date || '',
@@ -621,6 +805,8 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                       shift_end_time: staff.shift_end_time || '',
                       shift_days: staff.shift_days || '',
                       break_duration: staff.break_duration?.toString() || '',
+                      shift_slots: staff.shift_slots || '',
+                      shift_slots_parsed: parsedSlots,
                     });
                   }}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
@@ -668,8 +854,8 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                   <p className="text-xs text-blue-600 uppercase tracking-wider flex items-center gap-1">
                     <Clock className="h-3 w-3" /> Shift Timing
                   </p>
-                  <p className="text-base font-semibold text-gray-900 mt-1">
-                    {hasShift ? `${formatTime(formData.shift_start_time)} - ${formatTime(formData.shift_end_time)}` : 'Not set'}
+                  <p className="text-sm font-semibold text-gray-900 mt-1">
+                    {getShiftDisplayForModal()}
                   </p>
                 </div>
                 <div className="bg-blue-50 rounded-xl p-4">
@@ -781,7 +967,7 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
   );
 };
 
-// ─── Staff Edit Modal ─────────────────────────────────────────────────────────
+// ─── STAFF EDIT MODAL ─────────────────────────────────────────────────────────
 const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], onSyncToDevice, canSyncToDevice }) => {
   const [formData, setFormData] = useState({
     position: '',
@@ -794,6 +980,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
     shift_end_time: '',
     shift_days: '',
     break_duration: '',
+    shift_slots: '',
   });
 
   const [saving, setSaving] = useState(false);
@@ -814,19 +1001,21 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
         shift_end_time: staff.shift_end_time || '',
         shift_days: staff.shift_days || '',
         break_duration: staff.break_duration?.toString() || '',
+        shift_slots: staff.shift_slots || '',
       });
     }
   }, [staff]);
 
   if (!isOpen) return null;
 
-  const handleShiftChange = ({ startTime, endTime, days, breakDuration }) => {
+  const handleShiftChange = (shiftData) => {
     setFormData(prev => ({
       ...prev,
-      shift_start_time: startTime !== undefined ? startTime : prev.shift_start_time,
-      shift_end_time: endTime !== undefined ? endTime : prev.shift_end_time,
-      shift_days: days !== undefined ? days : prev.shift_days,
-      break_duration: breakDuration !== undefined ? breakDuration : prev.break_duration,
+      shift_start_time: shiftData.shift_start_time || '',
+      shift_end_time: shiftData.shift_end_time || '',
+      shift_days: shiftData.shift_days || '',
+      break_duration: shiftData.break_duration?.toString() || '',
+      shift_slots: shiftData.shift_slots || '',
     }));
   };
 
@@ -856,6 +1045,17 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
     } finally {
       setSyncing(false);
     }
+  };
+
+  const getShiftPreview = () => {
+    const slots = parseShiftSlots(formData.shift_slots);
+    if (slots.length > 0) {
+      return slots.map(s => `${formatTime(s.start)}-${formatTime(s.end)}`).join(', ');
+    }
+    if (formData.shift_start_time && formData.shift_end_time) {
+      return `${formatTime(formData.shift_start_time)}-${formatTime(formData.shift_end_time)}`;
+    }
+    return 'Not set';
   };
 
   return (
@@ -916,17 +1116,6 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Shift Timing</label>
-            <ShiftTimingPicker
-              startTime={formData.shift_start_time}
-              endTime={formData.shift_end_time}
-              days={formData.shift_days}
-              breakDuration={formData.break_duration}
-              onChange={handleShiftChange}
-            />
-          </div>
-
-          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Salary (Monthly ₹)</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₹</span>
@@ -961,6 +1150,21 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Shift Timing</label>
+            <ShiftEditor
+              shiftSlots={formData.shift_slots}
+              shiftStartTime={formData.shift_start_time}
+              shiftEndTime={formData.shift_end_time}
+              shiftDays={formData.shift_days}
+              breakDuration={formData.break_duration}
+              onChange={handleShiftChange}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Current: {getShiftPreview()}
+            </p>
           </div>
 
           {canSyncToDevice && devices.length > 0 && (
@@ -1022,7 +1226,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
   );
 };
 
-// ─── Staff Device Sync Modal ─────────────────────────────────────────────────────
+// ─── STAFF DEVICE SYNC MODAL ─────────────────────────────────────────────────────
 const StaffDeviceSyncModal = ({ isOpen, onClose, staffList, devices, onSyncSelected, onSyncAll }) => {
   const [selectedStaffIds, setSelectedStaffIds] = useState(new Set());
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -1246,17 +1450,14 @@ const Staff = () => {
   const itemsPerPage = 10;
 
   useEffect(() => {
-    // Get user role from localStorage or from the permissions response
     const storedRole = localStorage.getItem('userRole');
     if (storedRole) {
       setUserRole(storedRole);
     }
   }, []);
 
-  // Permission checks - Gym owners and Super Admins have all permissions
   const isAdmin = userRole === 'gym_owner' || userRole === 'super_admin';
 
-  // Permission checks
   const canViewStaff = hasPermission('view_staff');
   const canAddStaff = hasPermission('add_staff');
   const canEditStaff = hasPermission('edit_staff');
@@ -1289,7 +1490,6 @@ const Staff = () => {
     }
   }, [initialStaffId]);
   
-  // Fetch single staff details
   const fetchSingleStaff = async (staffId) => {
     setLoadingSingleStaff(true);
     try {
@@ -1304,7 +1504,6 @@ const Staff = () => {
     }
   };
   
-  // Handle back to list
   const handleBackToStaffList = () => {
     setShowSingleStaff(false);
     setInitialStaffId(null);
@@ -1375,6 +1574,7 @@ const Staff = () => {
         shift_end_time: formData.shift_end_time || null,
         shift_days: formData.shift_days || null,
         break_duration: formData.break_duration ? parseInt(formData.break_duration) : null,
+        shift_slots: formData.shift_slots || null,
       });
       toast.success('Staff updated successfully!');
       fetchStaff();
@@ -1388,7 +1588,6 @@ const Staff = () => {
 
   const handleSyncStaffToDevice = async (staffId, deviceId, staffName) => {
     try {
-      // Send numeric staff ID; backend adds the 'S' prefix automatically
       const response = await api.post(`/gym/devices/${deviceId}/sync-staff`, {
         id: staffId,
         full_name: staffName
@@ -1396,13 +1595,10 @@ const Staff = () => {
       
       if (response.data.success) {
         toast.success(`✅ Staff "${staffName}" synced to device!`);
-        
-        // Refresh staff list to show updated device_user_id
         setTimeout(() => {
           fetchStaff();
           fetchStaffDeviceIds();
         }, 1500);
-        
         return response.data;
       } else {
         toast.error('Failed to sync staff member');
@@ -1418,7 +1614,6 @@ const Staff = () => {
 
   const handleSyncSelectedStaff = async (staffIds, deviceId) => {
     try {
-      // Staff IDs are numeric; backend adds 'S' prefix for each
       const response = await api.post(`/gym/devices/bulk-sync-staff`, staffIds, {
         params: { device_id: deviceId }
       });
@@ -1516,23 +1711,6 @@ const Staff = () => {
     return 'bg-gray-100 text-gray-800';
   };
 
-  const formatShiftTime = (time) => {
-    if (!time) return '—';
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const hour12 = hour % 12 || 12;
-    return `${hour12}:${minutes} ${ampm}`;
-  };
-
-  const getShiftDisplay = (staff) => {
-    if (!staff.shift_start_time || !staff.shift_end_time) return 'Not set';
-    const days = staff.shift_days ? staff.shift_days.split(',').length : 0;
-    const daysText = days === 7 ? 'Daily' : days === 0 ? '' : ` (${days}d)`;
-    return `${formatShiftTime(staff.shift_start_time)} - ${formatShiftTime(staff.shift_end_time)}${daysText}`;
-  };
-
-  // If permissions are still loading, show loading state
   if (permissionsLoading) {
     return (
       <div className="p-6 flex justify-center items-center min-h-[400px]">
@@ -1541,7 +1719,6 @@ const Staff = () => {
     );
   }
 
-  // If user doesn't have view_staff permission, show access denied
   if (!canViewStaff) {
     return (
       <div className="p-6">
@@ -1585,7 +1762,9 @@ const Staff = () => {
         </div>
         <div className="bg-white rounded-xl shadow-sm p-3 sm:p-6 hidden sm:block">
           <p className="text-xs sm:text-sm text-gray-600">With Shift</p>
-          <p className="text-xl sm:text-2xl font-bold text-blue-600">{staffList.filter(s => s.shift_start_time && s.shift_end_time).length}</p>
+          <p className="text-xl sm:text-2xl font-bold text-blue-600">
+            {staffList.filter(s => s.shift_slots || (s.shift_start_time && s.shift_end_time)).length}
+          </p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-3 sm:p-6 hidden sm:block">
           <p className="text-xs sm:text-sm text-gray-600">Synced</p>
@@ -1703,6 +1882,7 @@ const Staff = () => {
               ) : (
                 paginated.map((s) => {
                   const deviceUserId = staffDeviceIds[s.id] || s.device_user_id;
+                  const shiftDisplay = getShiftDisplay(s);
                   return (
                     <tr key={s.id} className="hover:bg-gray-50">
                       <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
@@ -1771,8 +1951,8 @@ const Staff = () => {
                       <td className="px-3 sm:px-6 py-3 sm:py-4 hidden lg:table-cell">
                         <div className="flex items-center gap-1 text-xs sm:text-sm">
                           <Clock className="h-3 w-3 text-gray-400 flex-shrink-0" />
-                          <span className={!s.shift_start_time ? 'text-gray-400' : 'text-gray-700'}>
-                            {getShiftDisplay(s)}
+                          <span className={!s.shift_start_time && !s.shift_slots ? 'text-gray-400' : 'text-gray-700 truncate max-w-[150px]'}>
+                            {shiftDisplay}
                           </span>
                         </div>
                       </td>

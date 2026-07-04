@@ -471,24 +471,141 @@ const PlanFormModal = ({ plan, onSave, onCancel }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.price) {
-      toast.error('Plan name and price are required');
+  
+    // Validate amount before submission
+    const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
+    if (selectedPlan && formData.amount_paid) {
+      const planPrice = selectedPlan.discounted_price || selectedPlan.price;
+      const discount = parseFloat(formData.discount_applied) || 0;
+      const finalPrice = planPrice - discount;
+      if (parseFloat(formData.amount_paid) > finalPrice) {
+        toast.error(`Amount paid cannot exceed ₹${finalPrice}`);
+        setActiveTab('membership');
+        return;
+      }
+    }
+  
+    if (!formData.full_name.trim()) {
+      toast.error('Full name is required');
+      setActiveTab('personal');
       return;
     }
+    if (!formData.phone.trim()) {
+      toast.error('Phone number is required');
+      setActiveTab('personal');
+      return;
+    }
+    if (!/^[+]?[\d\s\-]{7,15}$/.test(formData.phone.trim())) {
+      toast.error('Enter a valid phone number (e.g. +91-9876543210)');
+      setActiveTab('personal');
+      return;
+    }
+    if (formData.emergency_contact_phone.trim() && !/^[+]?[\d\s\-]{7,15}$/.test(formData.emergency_contact_phone.trim())) {
+      toast.error('Enter a valid emergency contact phone number');
+      setActiveTab('contact');
+      return;
+    }
+    if (!isEdit && !formData.plan_id) {
+      toast.error('Please select a membership plan');
+      setActiveTab('membership');
+      return;
+    }
+    if (isEdit && formData.renew_membership && !formData.plan_id) {
+      toast.error('Please select a plan to renew');
+      setActiveTab('membership');
+      return;
+    }
+  
+    if (!isEdit) {
+      try {
+        const phoneCheck = await api.get(`/gym/members?search=${encodeURIComponent(formData.phone.trim())}`);
+        const duplicate = phoneCheck.data?.find(
+          m => m.phone === formData.phone.trim()
+        );
+        if (duplicate) {
+          toast.error(
+            `A member with phone number ${formData.phone.trim()} already exists (${duplicate.full_name}). Please use a different number.`,
+            { duration: 5000 }
+          );
+          setActiveTab('personal');
+          return;
+        }
+      } catch {
+        // ignore
+      }
+    }
+  
     setSaving(true);
     try {
-      const payload = {
-        name: formData.name.trim(),
-        plan_type: formData.plan_type,
-        duration_days: parseInt(formData.duration_days),
-        price: parseFloat(formData.price),
-        discounted_price: formData.discounted_price ? parseFloat(formData.discounted_price) : null,
-        description: formData.description || null,
-        is_active: formData.is_active,
+      const memberFields = {
+        full_name: formData.full_name.trim(),
+        email: formData.email?.trim() || null,
+        phone: formData.phone.trim(),
+        address: formData.address?.trim() || null,
+        date_of_birth: formData.date_of_birth || null,
+        gender: formData.gender,
+        emergency_contact_name: formData.emergency_contact_name?.trim() || null,
+        emergency_contact_phone: formData.emergency_contact_phone?.trim() || null,
+        medical_conditions: formData.medical_conditions?.trim() || null,
+        allergies: formData.allergies?.trim() || null,
+        medications: formData.medications?.trim() || null,
+        id_proof_type: formData.id_proof_type || null,
+        id_proof_number: formData.id_proof_number?.trim() || null,
       };
-      await onSave(payload);
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed to save plan');
+  
+      let payload;
+      
+      if (isEdit && formData.renew_membership) {
+        // RENEWAL: Send the renewal data
+        // IMPORTANT: For renewal, we DON'T send amount_paid as a payment
+        // The backend will handle carrying over the existing payment
+        payload = {
+          ...memberFields,
+          plan_id: formData.plan_id,
+          membership_start_date: formData.membership_start_date,
+          payment_method: formData.payment_method,
+          // amount_paid: 0, // ← DON'T send amount_paid for renewal
+          // The backend will use the existing payment
+          discount_applied: formData.discount_applied || 0,
+          renew_membership: true,
+          // NEW: Send the current membership ID to help with renewal
+          current_membership_id: member?.id || null,
+        };
+      } else if (isEdit) {
+        payload = memberFields;
+      } else {
+        // NEW MEMBER: Send all data including amount_paid for initial payment
+        payload = {
+          ...memberFields,
+          plan_id: formData.plan_id,
+          membership_start_date: formData.membership_start_date,
+          payment_method: formData.payment_method,
+          amount_paid: formData.amount_paid || 0,
+          discount_applied: formData.discount_applied || 0,
+        };
+      }
+  
+      const savedMember = await onSave(payload);
+  
+      if (!isEdit && savedMember?.id) {
+        const pendingFile = getPendingFileRef.current?.();
+        if (pendingFile) {
+          try {
+            const fd = new FormData();
+            fd.append('file', pendingFile);
+            await api.post(
+              `/gym/members/${savedMember.id}/upload-photo`,
+              fd,
+              { headers: { 'Content-Type': 'multipart/form-data' } }
+            );
+            toast.success('Photo uploaded!');
+          } catch {
+            toast.error('Member saved, but photo upload failed. You can re-upload from edit mode.');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Save error:', error);
     } finally {
       setSaving(false);
     }
@@ -519,6 +636,7 @@ const PlanFormModal = ({ plan, onSave, onCancel }) => {
               </button>
             ))}
           </div>
+          <p className="text-xs text-gray-500 mt-1">Click a preset to auto-fill, or enter custom values below</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -530,11 +648,14 @@ const PlanFormModal = ({ plan, onSave, onCancel }) => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Duration (days)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Duration (days) <span className="text-red-500">*</span>
+            </label>
             <input 
               type="number" 
               min="1" 
-              value={formData.duration_days === 0 ? '' : formData.duration_days}
+              max="9999"
+              value={formData.duration_days === 0 || formData.duration_days === '' ? '' : formData.duration_days}
               onChange={(e) => {
                 const value = e.target.value;
                 if (value === '') {
@@ -552,8 +673,11 @@ const PlanFormModal = ({ plan, onSave, onCancel }) => {
                 }
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
-              placeholder="Enter duration in days"
+              placeholder="e.g., 30, 90, 180, 365"
             />
+            <p className="text-xs text-gray-400 mt-1">
+              Enter any number of days (e.g., 30 for monthly, 365 for yearly)
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Price (₹) <span className="text-red-500">*</span></label>

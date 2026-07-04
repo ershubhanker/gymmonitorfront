@@ -902,6 +902,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       amount_paid,
       discount_applied,
       renew_membership,
+      current_membership_id, // NEW: Get the current membership ID
       ...memberFields
     } = memberData;
   
@@ -917,37 +918,33 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   
     if (renew_membership && plan_id && membership_start_date) {
       try {
-        const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
-        const discount = discount_applied ? parseFloat(discount_applied) : 0;
-        
-        // Create new membership with amount_paid = 0
+        // NEW: For renewal, we DON'T create a payment record
+        // The backend will handle carrying over the existing payment
         const membershipPayload = {
           member_id: selectedMember.id,
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
-          amount_paid: 0,  // ← Always 0
-          discount_applied: discount,
+          amount_paid: 0,  // Always 0 - backend will use existing payment
+          discount_applied: parseFloat(discount_applied) || 0,
+          // NEW: Send the current membership ID for reference
+          current_membership_id: current_membership_id || null,
+          // NEW: Flag this as a renewal
+          is_renewal: true,
         };
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
         
-        // ✅ Create payment record for the renewal payment
-        if (paidAmount > 0) {
-          try {
-            await api.post('/gym/memberships/' + membershipResponse.data.id + '/partial-payment', {
-              membership_id: membershipResponse.data.id,
-              amount: paidAmount,
-              payment_method: payment_method || 'cash',
-              payment_date: new Date().toISOString(),
-              notes: 'Renewal payment'
-            });
-            console.log('✅ Renewal payment record created for ₹', paidAmount);
-          } catch (paymentError) {
-            console.error('Payment creation error:', paymentError);
-            hasError = true;
-            toast.error('Member renewed but payment record creation failed. Please record payment manually.');
-          }
-        }
+        // NEW: For renewal, we DON'T create a new payment record
+        // The payment already exists from the previous membership
+        // The backend will transfer the payment amount to the new membership
+        
+        // Only create a payment record if there's a NEW payment being made
+        // (not for renewals where the user is just extending)
+        // The amount_paid should be 0 for renewals
+        
+        // If there's a NEW payment being made (not renewal), create payment record
+        // This is already handled by the create_membership endpoint for new members
+        
       } catch (err) {
         console.error('Membership renewal error:', err);
         hasError = true;
