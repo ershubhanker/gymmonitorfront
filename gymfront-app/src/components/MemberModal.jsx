@@ -855,6 +855,21 @@ const MembershipSelector = ({
     setShowPlanCreator(false);
   };
 
+
+
+  const validateAmountPaid = (amount, selectedPlan) => {
+    if (!selectedPlan) return;
+    const planPrice = selectedPlan.discounted_price || selectedPlan.price;
+    const discount = parseFloat(formData.discount_applied) || 0;
+    const finalPrice = planPrice - discount; // ✅ Use final price after discount
+    
+    if (parseFloat(amount) > finalPrice) {
+      setAmountError(`Amount cannot exceed ₹${finalPrice}`);
+    } else {
+      setAmountError(null);
+    }
+  };
+  
   const shouldShowPlanCreator = showPlanCreator || membershipPlans.length === 0;
 
   return (
@@ -1060,24 +1075,28 @@ const MembershipSelector = ({
             
             {/* Show price breakdown when discount is applied */}
             {priceInfo && priceInfo.discount > 0 && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-xs font-semibold text-blue-700 mb-2">Price Breakdown</p>
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Original Price:</span>
-                    <span className="font-medium">₹{priceInfo.originalPrice}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-red-600">Discount:</span>
-                    <span className="text-red-600 font-medium">- ₹{priceInfo.discount}</span>
-                  </div>
-                  <div className="flex justify-between pt-1 border-t border-blue-200 font-semibold">
-                    <span>Final Price:</span>
-                    <span className="text-green-600">₹{priceInfo.finalPrice}</span>
-                  </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs font-semibold text-blue-700 mb-2">Price Breakdown</p>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Original Price:</span>
+                  <span className="font-medium">₹{priceInfo.originalPrice}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-red-600">Discount:</span>
+                  <span className="text-red-600 font-medium">- ₹{priceInfo.discount}</span>
+                </div>
+                <div className="flex justify-between pt-1 border-t border-blue-200 font-semibold">
+                  <span className="text-green-600">Final Price (After Discount):</span>
+                  <span className="text-green-600 font-bold">₹{priceInfo.finalPrice}</span>
+                </div>
+                <div className="flex justify-between text-gray-500 text-xs pt-1">
+                  <span>GST (5% on final price):</span>
+                  <span>₹{(priceInfo.finalPrice - (priceInfo.finalPrice / 1.05)).toFixed(2)}</span>
                 </div>
               </div>
-            )}
+            </div>
+          )}
             
             <div className="sm:col-span-2">
               <label className={labelCls}>Amount Paid (₹)</label>
