@@ -4,7 +4,6 @@ import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
 import { Download, ArrowLeft, FileText, Loader2 } from 'lucide-react';
 
-// Define the API URL directly in the file
 const API_BASE_URL = 'https://api.gymmonitor.in';
 
 const InvoicePage = () => {
@@ -16,14 +15,14 @@ const InvoicePage = () => {
   useEffect(() => {
     const fetchInvoice = async () => {
       try {
-        console.log('Fetching invoice from:', `${API_BASE_URL}/api/invoices/${memberId}/${membershipId}`);
-        
         const response = await axios.get(
           `${API_BASE_URL}/api/invoices/${memberId}/${membershipId}`,
-          { responseType: 'blob' }
+          { 
+            responseType: 'blob',
+            withCredentials: false // Don't send cookies/auth
+          }
         );
 
-        // Create a URL for the PDF blob
         const pdfBlob = new Blob([response.data], { type: 'application/pdf' });
         const pdfUrl = URL.createObjectURL(pdfBlob);
         setPdfUrl(pdfUrl);
@@ -31,9 +30,6 @@ const InvoicePage = () => {
 
         // Open PDF in new tab
         window.open(pdfUrl, '_blank');
-        
-        // Close the current tab after a short delay (optional)
-        // setTimeout(() => window.close(), 1000);
 
       } catch (err) {
         console.error('Error fetching invoice:', err);
@@ -50,7 +46,6 @@ const InvoicePage = () => {
 
     fetchInvoice();
 
-    // Cleanup
     return () => {
       if (pdfUrl) {
         URL.revokeObjectURL(pdfUrl);
