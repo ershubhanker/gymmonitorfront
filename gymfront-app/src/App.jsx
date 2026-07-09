@@ -16,6 +16,7 @@ import LandingPage from './pages/LandingPage';
 import { AttendanceProvider } from './context/AttendanceContext';
 import LeadCaptureForm from './components/LeadCaptureForm';
 import WhatsAppLogs from './components/WhatsAppLogs';
+import InvoicePage from './pages/InvoicePage'; // ADD THIS IMPORT
 
 function AdminRoute({ children }) {
   const { user, initialLoading } = useAuth();
@@ -73,6 +74,9 @@ function App() {
                 
                 {/* Public Lead Capture Form - No authentication required */}
                 <Route path="/lead-form/:gymSlug" element={<LeadCaptureForm />} />
+                
+                {/* ADD THIS ROUTE - Public invoice view (no auth required) */}
+                <Route path="/invoice/:memberId/:membershipId" element={<InvoicePage />} />
                 
                 {/* Protected Routes - Require authentication */}
                 <Route path="/gym-setup" element={<PrivateRoute><GymSetup /></PrivateRoute>} />
