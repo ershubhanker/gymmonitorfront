@@ -1,4 +1,4 @@
-// src/pages/Members.jsx - Updated with Bridge Sync Integration
+// src/pages/Members.jsx - Updated with Bridge Sync Integration (Removed duplicate sync buttons)
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Search, 
@@ -432,48 +432,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ============================================================
-  // Add function to bulk link members to device
-  // ============================================================
-  const handleBulkLinkToDevice = async () => {
-    if (selectedMembers.length === 0) {
-      toast.error('Please select members to link');
-      return;
-    }
-
-    if (activeDevices.length === 0) {
-      toast.error('No active devices found');
-      return;
-    }
-
-    setLinkingMembers(true);
-    try {
-      const links = selectedMembers.map(memberId => {
-        const member = members.find(m => m.id === memberId);
-        return {
-          device_user_id: member.phone.replace(/\D/g, ''),
-          member_id: member.id
-        };
-      });
-
-      const response = await api.post('/attendance/devices/batch-link', {
-        links: links,
-        device_id: activeDevices[0]?.id
-      });
-
-      if (response.data.success) {
-        toast.success(`Successfully linked ${response.data.summary.linked} members`);
-        setSelectedMembers([]);
-        fetchMembers();
-      }
-    } catch (error) {
-      console.error('Bulk link error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to link members');
-    } finally {
-      setLinkingMembers(false);
-    }
-  };
-
-  // ============================================================
   // OPTIMIZED: Fetch members using the new optimized endpoint
   // ============================================================
   const fetchMembersOptimizedFn = useCallback(async () => {
@@ -823,73 +781,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     } catch (error) {
       console.warn('⚠️ Failed to sync member to bridge:', error);
       return false;
-    }
-  };
-
-  // ============================================================
-  // BULK SYNC MEMBERS TO BRIDGE
-  // ============================================================
-  const handleBulkSyncToBridge = async () => {
-    if (selectedMembers.length === 0) {
-      toast.error('Please select members to sync');
-      return;
-    }
-
-    // Check if bridge is available
-    const hasActiveDevice = devices.some(d => d.is_active);
-    if (!hasActiveDevice) {
-      toast.error('No active attendance device found. Please add a device first.');
-      return;
-    }
-
-    setSyncingAll(true);
-    toast.loading(`Sending sync command for ${selectedMembers.length} members...`, { id: 'bridge-sync' });
-    
-    try {
-      const response = await api.post('/gym/members/sync-to-bridge', {
-        member_ids: selectedMembers
-      });
-      
-      toast.dismiss('bridge-sync');
-      
-      if (response.data.success) {
-        toast.success(
-          `✅ Sync command sent for ${selectedMembers.length} members.\n` +
-          `The bridge will add them to the device shortly.`,
-          { duration: 5000 }
-        );
-        
-        // Update local state to show as synced
-        setMembers(prevMembers => 
-          prevMembers.map(m => 
-            selectedMembers.includes(m.id) 
-              ? { ...m, syncedToDevice: true, deviceUserId: String(m.id) }
-              : m
-          )
-        );
-        
-        setSelectedMembers([]);
-        setShowBulkDeviceSelect(false);
-        setSelectedBulkDevice(null);
-        refreshAllData();
-        
-        setTimeout(() => fetchMembers(), 3000);
-      } else {
-        toast.error(response.data.message || 'Failed to sync members to bridge');
-      }
-    } catch (error) {
-      toast.dismiss('bridge-sync');
-      console.error('Bulk sync error:', error);
-      
-      if (error.response?.status === 404) {
-        toast.error('No active attendance device found. Please add a device first.');
-      } else if (error.response?.status === 503) {
-        toast.error('Bridge is not reachable. Please ensure the attendance bridge is running.');
-      } else {
-        toast.error(error.response?.data?.detail || 'Failed to sync members to bridge');
-      }
-    } finally {
-      setSyncingAll(false);
     }
   };
 
@@ -1470,47 +1361,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   Invoices ({selectedMembers.length})
                 </button>
                 <button 
-                  onClick={handleBulkSyncToBridge}
-                  disabled={syncingAll}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
-                >
-                  {syncingAll ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Wifi className="h-4 w-4" />
-                  )}
-                  Sync Bridge ({selectedMembers.length})
-                </button>
-                <button 
-                  onClick={openBulkDeviceSelect}
-                  disabled={syncingAll || activeDevices.length === 0}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
-                >
-                  {syncingAll ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Wifi className="h-4 w-4" />
-                  )}
-                  Sync Device ({selectedMembers.length})
-                </button>
-                <button 
                   onClick={handleBulkDelete} 
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
                 >
                   <Trash2 className="h-4 w-4" />
                   Delete ({selectedMembers.length})
-                </button>
-                <button 
-                  onClick={handleBulkLinkToDevice}
-                  disabled={linkingMembers || activeDevices.length === 0}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
-                >
-                  {linkingMembers ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Link className="h-4 w-4" />
-                  )}
-                  Link ({selectedMembers.length})
                 </button>
                 <button onClick={() => setSelectedMembers([])} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50">
                   <X className="h-5 w-5" />
