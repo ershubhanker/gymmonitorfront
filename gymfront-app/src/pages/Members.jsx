@@ -1,4 +1,4 @@
-// src/pages/Members.jsx - Updated to show single member in table
+// src/pages/Members.jsx - Updated with Bridge Sync Integration
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Search, 
@@ -807,6 +807,92 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     }
   };
 
+  // ============================================================
+  // SYNC MEMBER TO BRIDGE (Attendance Device via Bridge)
+  // ============================================================
+  const syncMemberToBridge = async (memberId) => {
+    try {
+      const response = await api.post(`/gym/members/${memberId}/sync-to-bridge`);
+      if (response.data.success) {
+        console.log('✅ Member synced to bridge:', response.data);
+        return true;
+      } else {
+        console.warn('⚠️ Bridge sync response:', response.data);
+        return false;
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to sync member to bridge:', error);
+      return false;
+    }
+  };
+
+  // ============================================================
+  // BULK SYNC MEMBERS TO BRIDGE
+  // ============================================================
+  const handleBulkSyncToBridge = async () => {
+    if (selectedMembers.length === 0) {
+      toast.error('Please select members to sync');
+      return;
+    }
+
+    // Check if bridge is available
+    const hasActiveDevice = devices.some(d => d.is_active);
+    if (!hasActiveDevice) {
+      toast.error('No active attendance device found. Please add a device first.');
+      return;
+    }
+
+    setSyncingAll(true);
+    toast.loading(`Sending sync command for ${selectedMembers.length} members...`, { id: 'bridge-sync' });
+    
+    try {
+      const response = await api.post('/gym/members/sync-to-bridge', {
+        member_ids: selectedMembers
+      });
+      
+      toast.dismiss('bridge-sync');
+      
+      if (response.data.success) {
+        toast.success(
+          `✅ Sync command sent for ${selectedMembers.length} members.\n` +
+          `The bridge will add them to the device shortly.`,
+          { duration: 5000 }
+        );
+        
+        // Update local state to show as synced
+        setMembers(prevMembers => 
+          prevMembers.map(m => 
+            selectedMembers.includes(m.id) 
+              ? { ...m, syncedToDevice: true, deviceUserId: String(m.id) }
+              : m
+          )
+        );
+        
+        setSelectedMembers([]);
+        setShowBulkDeviceSelect(false);
+        setSelectedBulkDevice(null);
+        refreshAllData();
+        
+        setTimeout(() => fetchMembers(), 3000);
+      } else {
+        toast.error(response.data.message || 'Failed to sync members to bridge');
+      }
+    } catch (error) {
+      toast.dismiss('bridge-sync');
+      console.error('Bulk sync error:', error);
+      
+      if (error.response?.status === 404) {
+        toast.error('No active attendance device found. Please add a device first.');
+      } else if (error.response?.status === 503) {
+        toast.error('Bridge is not reachable. Please ensure the attendance bridge is running.');
+      } else {
+        toast.error(error.response?.data?.detail || 'Failed to sync members to bridge');
+      }
+    } finally {
+      setSyncingAll(false);
+    }
+  };
+
   const handleAddMember = async (memberData) => {
     const { plan_id, membership_start_date, payment_method, amount_paid, discount_applied, ...memberFields } = memberData;
   
@@ -876,10 +962,26 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     if (!hasError) {
       toast.success('Member added successfully!');
       
+      // ✅ Sync the new member to the attendance device via bridge
+      if (createdMember && createdMember.id) {
+        // Don't block UI - sync in background
+        setTimeout(async () => {
+          const synced = await syncMemberToBridge(createdMember.id);
+          if (synced) {
+            toast.success(`${createdMember.full_name} synced to attendance device!`, { duration: 3000 });
+          } else {
+            toast.warning(
+              `${createdMember.full_name} added but not synced to device. Use the "Sync" button to add later.`,
+              { duration: 4000 }
+            );
+          }
+        }, 1000);
+      }
+      
       const activeDevices = devices.filter(d => d.is_active);
       if (activeDevices.length > 0) {
         setTimeout(() => {
-          if (window.confirm(`Would you like to sync "${createdMember.full_name}" to the attendance device?`)) {
+          if (window.confirm(`Would you like to sync "${createdMember.full_name}" to the attendance device now?`)) {
             setSelectedMemberForSync({
               id: createdMember.id,
               full_name: createdMember.full_name,
@@ -958,6 +1060,16 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     
     if (!hasError) {
       toast.success('Member updated successfully!');
+      
+      // ✅ Sync the updated member to the attendance device via bridge
+      if (selectedMember && selectedMember.id) {
+        setTimeout(async () => {
+          const synced = await syncMemberToBridge(selectedMember.id);
+          if (synced) {
+            toast.success(`${selectedMember.full_name} synced to attendance device!`, { duration: 3000 });
+          }
+        }, 1000);
+      }
     } else if (renew_membership) {
       toast.success('Member details updated! Please review membership details.');
     } else {
@@ -1358,8 +1470,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   Invoices ({selectedMembers.length})
                 </button>
                 <button 
-                  onClick={openBulkDeviceSelect}
-                  disabled={syncingAll || activeDevices.length === 0}
+                  onClick={handleBulkSyncToBridge}
+                  disabled={syncingAll}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
                 >
                   {syncingAll ? (
@@ -1367,7 +1479,19 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   ) : (
                     <Wifi className="h-4 w-4" />
                   )}
-                  Sync ({selectedMembers.length})
+                  Sync Bridge ({selectedMembers.length})
+                </button>
+                <button 
+                  onClick={openBulkDeviceSelect}
+                  disabled={syncingAll || activeDevices.length === 0}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {syncingAll ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wifi className="h-4 w-4" />
+                  )}
+                  Sync Device ({selectedMembers.length})
                 </button>
                 <button 
                   onClick={handleBulkDelete} 
