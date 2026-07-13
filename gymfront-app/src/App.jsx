@@ -1,3 +1,4 @@
+// src/App.jsx
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -16,7 +17,8 @@ import LandingPage from './pages/LandingPage';
 import { AttendanceProvider } from './context/AttendanceContext';
 import LeadCaptureForm from './components/LeadCaptureForm';
 import WhatsAppLogs from './components/WhatsAppLogs';
-import InvoicePage from './pages/InvoicePage'; // ADD THIS IMPORT
+import InvoicePage from './pages/InvoicePage';
+import PrivacyPolicy from './pages/PrivacyPolicy'; // ADD THIS IMPORT
 
 function AdminRoute({ children }) {
   const { user, initialLoading } = useAuth();
@@ -71,11 +73,12 @@ function App() {
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/privacy-policy" element={<PrivacyPolicy />} /> {/* ADD THIS ROUTE */}
                 
                 {/* Public Lead Capture Form - No authentication required */}
                 <Route path="/lead-form/:gymSlug" element={<LeadCaptureForm />} />
                 
-                {/* ADD THIS ROUTE - Public invoice view (no auth required) */}
+                {/* Public invoice view (no auth required) */}
                 <Route path="/invoice/:memberId/:membershipId" element={<InvoicePage />} />
                 
                 {/* Protected Routes - Require authentication */}
