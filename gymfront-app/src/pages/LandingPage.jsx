@@ -365,21 +365,36 @@ export default function LandingPage() {
 
       {/* ── Footer ── */}
       <footer className="bg-gray-900 text-gray-400 py-10 text-center text-sm">
-        <div className="flex items-center justify-center gap-2 mb-3">
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1 rounded-lg font-bold text-sm flex items-center gap-2">
-            <Dumbbell className="h-4 w-4" />
-            Gym Monitor
-          </div>
-        </div>
-        <p>© {new Date().getFullYear()} Gym Monitor by Maskottchen Technology. All rights reserved.</p>
-        <p className="mt-1 text-gray-500">
-          Support:{' '}
-          <a href="mailto:info@maskottchentechnology.com" className="text-blue-400 hover:underline">
-            info@maskottchentechnology.com
-          </a>
-        </p>
-      </footer>
-
+  <div className="flex items-center justify-center gap-2 mb-3">
+    <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1 rounded-lg font-bold text-sm flex items-center gap-2">
+      <Dumbbell className="h-4 w-4" />
+      Gym Monitor
+    </div>
+  </div>
+  
+  {/* Add navigation links */}
+  <div className="flex flex-wrap items-center justify-center gap-4 mb-4 text-xs">
+    <a href="/privacy-policy" className="text-gray-400 hover:text-blue-400 transition-colors">
+      Privacy Policy
+    </a>
+    <span className="text-gray-600">|</span>
+    <a href="/terms" className="text-gray-400 hover:text-blue-400 transition-colors">
+      Terms of Service
+    </a>
+    <span className="text-gray-600">|</span>
+    <a href="/login" className="text-gray-400 hover:text-blue-400 transition-colors">
+      Refund Policy
+    </a>
+  </div>
+  
+  <p>© {new Date().getFullYear()} Gym Monitor by Maskottchen Technology. All rights reserved.</p>
+  <p className="mt-1 text-gray-500">
+    Support:{' '}
+    <a href="mailto:info@maskottchentechnology.com" className="text-blue-400 hover:underline">
+      info@maskottchentechnology.com
+    </a>
+  </p>
+</footer>
     </div>
   );
 }

@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { Clock, Calendar, Download, TrendingUp, Users, Briefcase, Loader2 } from 'lucide-react';
 import { useAttendance } from '../../context/AttendanceContext';
 import toast from 'react-hot-toast';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 const StaffHours = () => {
   const { attendanceApi } = useAttendance();
@@ -31,25 +33,93 @@ const StaffHours = () => {
     fetchStaffHours();
   }, [dateRange]);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (staffHours.length === 0) {
       toast.error('No data to export');
       return;
     }
-    
-    const csv = [
-      ['Staff Name', 'Position', 'Total Hours', 'Total Minutes'],
-      ...staffHours.map(s => [s.name, s.position, s.total_hours || 0, s.total_minutes || 0])
-    ].map(row => row.join(',')).join('\n');
-    
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `staff_hours_${dateRange.start_date}_to_${dateRange.end_date}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-    toast.success('Export complete!');
+
+    try {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Gym Management System';
+      workbook.created = new Date();
+
+      const sheet = workbook.addWorksheet('Staff Working Hours', {
+        views: [{ state: 'frozen', ySplit: 4 }]
+      });
+
+      // Title block
+      sheet.mergeCells(1, 1, 1, 5);
+      const titleCell = sheet.getCell(1, 1);
+      titleCell.value = 'Staff Working Hours Report';
+      titleCell.font = { bold: true, size: 14, color: { argb: 'FF111827' } };
+      sheet.getRow(1).height = 26;
+
+      sheet.mergeCells(2, 1, 2, 5);
+      const subtitleCell = sheet.getCell(2, 1);
+      subtitleCell.value = `${dateRange.start_date} to ${dateRange.end_date}`;
+      subtitleCell.font = { italic: true, size: 10, color: { argb: 'FF6B7280' } };
+      sheet.addRow([]); // spacer
+
+      // Header row
+      const headerRow = sheet.addRow(['Staff Name', 'Position', 'Total Hours', 'Total Minutes', 'Daily Average (hrs)']);
+      headerRow.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+          bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+          left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+          right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
+        };
+      });
+      headerRow.height = 22;
+      sheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: 5 } };
+
+      const daysInPeriod = Math.ceil(
+        (new Date(dateRange.end_date) - new Date(dateRange.start_date)) / (1000 * 60 * 60 * 24)
+      ) || 1;
+
+      staffHours.forEach((s) => {
+        const dailyAvg = ((s.total_hours || 0) / daysInPeriod);
+        const row = sheet.addRow([
+          s.name || 'Unknown',
+          s.position || 'Staff',
+          Number((s.total_hours || 0).toFixed(2)),
+          s.total_minutes || 0,
+          Number(dailyAvg.toFixed(2))
+        ]);
+        row.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+          };
+        });
+      });
+
+      // Auto-fit columns
+      sheet.columns.forEach((col) => {
+        let maxLen = 12;
+        col.eachCell({ includeEmpty: false }, (cell) => {
+          const len = cell.value ? String(cell.value).length : 0;
+          if (len + 2 > maxLen) maxLen = len + 2;
+        });
+        col.width = Math.min(maxLen, 40);
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      saveAs(
+        new Blob([buffer], { type: 'application/octet-stream' }),
+        `staff_hours_${dateRange.start_date}_to_${dateRange.end_date}.xlsx`
+      );
+      toast.success('Export complete!');
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Export failed');
+    }
   };
 
   const totalHours = staffHours.reduce((sum, s) => sum + (s.total_hours || 0), 0);

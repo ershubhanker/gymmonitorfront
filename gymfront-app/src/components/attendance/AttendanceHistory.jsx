@@ -4,6 +4,8 @@ import { Calendar, Download, Filter, ChevronLeft, ChevronRight, User, Loader2, U
 import { useAttendance } from '../../context/AttendanceContext';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 // ===== FIXED: Helper function to format time in IST =====
 const formatInIST = (timestamp) => {
@@ -561,14 +563,89 @@ const AttendanceHistory = () => {
     fetchStaff();
   }, []);
 
-  // ===== ENHANCED EXPORT WITH WORKING HOURS AND SALARY =====
+  // ===== Excel styling helpers =====
+  const HEADER_FILLS = {
+    daily: 'FF1E3A8A',    // dark blue
+    weekly: 'FF6D28D9',   // purple
+    monthly: 'FF047857',  // green
+    members: 'FF1E40AF'   // blue
+  };
+
+  const STATUS_FILLS = {
+    complete: 'FFD1FAE5',      // light green
+    in_progress: 'FFFEF3C7',   // light yellow
+    no_data: 'FFF3F4F6',       // light gray
+    'Full Salary': 'FFD1FAE5',
+    'Deduction Applied': 'FFFEE2E2',
+    'No Salary Set': 'FFF3F4F6'
+  };
+
+  const styleHeaderRow = (row, fillColor) => {
+    row.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
+      };
+    });
+    row.height = 22;
+  };
+
+  const styleDataRow = (row, fillColor) => {
+    row.eachCell((cell) => {
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+      };
+      cell.alignment = { vertical: 'middle' };
+      if (fillColor) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
+      }
+    });
+  };
+
+  const autoFitColumns = (worksheet, minWidth = 10, maxWidth = 45) => {
+    worksheet.columns.forEach((col) => {
+      let maxLen = minWidth;
+      col.eachCell({ includeEmpty: false }, (cell) => {
+        const len = cell.value ? String(cell.value).length : 0;
+        if (len + 2 > maxLen) maxLen = len + 2;
+      });
+      col.width = Math.min(maxLen, maxWidth);
+    });
+  };
+
+  const addTitleBlock = (worksheet, title, subtitle, numColumns) => {
+    worksheet.mergeCells(1, 1, 1, numColumns);
+    const titleCell = worksheet.getCell(1, 1);
+    titleCell.value = title;
+    titleCell.font = { bold: true, size: 14, color: { argb: 'FF111827' } };
+    titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
+    worksheet.getRow(1).height = 26;
+
+    worksheet.mergeCells(2, 1, 2, numColumns);
+    const subtitleCell = worksheet.getCell(2, 1);
+    subtitleCell.value = subtitle;
+    subtitleCell.font = { italic: true, size: 10, color: { argb: 'FF6B7280' } };
+    worksheet.getRow(2).height = 18;
+
+    worksheet.addRow([]); // spacer row
+  };
+
+  // ===== ENHANCED EXPORT WITH WORKING HOURS AND SALARY (styled .xlsx) =====
   const handleExport = async () => {
     try {
       toast.loading(`Exporting ${activeTab} attendance data with working hours...`, { id: 'export' });
-      
+
       let recordsToExport = [];
       let staffData = [];
-      
+
       if (activeTab === 'members') {
         const params = {};
         if (filters.start_date) params.start_date = filters.start_date;
@@ -585,37 +662,37 @@ const AttendanceHistory = () => {
         };
         const response = await api.get('/attendance/staff/attendance', { params });
         recordsToExport = response.data?.records || [];
-        
+
         // Get staff data for salary calculation
         const staffResponse = await api.get('/gym/staff');
         staffData = staffResponse?.data || [];
       }
-      
+
       if (recordsToExport.length === 0) {
         toast.error('No data to export');
         return;
       }
-      
-      // ===== For Staff: Generate detailed working hours report =====
+
+      const dateStr = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }).replace(/\//g, '-');
+
+      // ===== For Staff: Generate detailed working hours workbook =====
       if (activeTab === 'staff') {
         // Group records by staff and date
         const staffDailyHours = {};
-        const staffMonthlyHours = {};
-        const staffWeeklyHours = {};
-        
+
         recordsToExport.forEach(r => {
           const staffId = r.staff_id;
           const staffName = r.staff_name || 'Unknown';
-          const dateStr = formatDateOnly(r.created_at);
+          const dateOnly = formatDateOnly(r.created_at);
           const monthStr = getMonthYear(r.created_at);
           const weekNum = getWeekNumber(r.created_at);
-          
-          const key = `${staffId}_${dateStr}`;
+
+          const key = `${staffId}_${dateOnly}`;
           if (!staffDailyHours[key]) {
             staffDailyHours[key] = {
               staffId,
               staffName,
-              date: dateStr,
+              date: dateOnly,
               month: monthStr,
               week: weekNum,
               checkIn: null,
@@ -625,34 +702,33 @@ const AttendanceHistory = () => {
           }
           staffDailyHours[key].records.push(r);
         });
-        
+
         // Calculate daily working hours
         Object.keys(staffDailyHours).forEach(key => {
           const day = staffDailyHours[key];
-          const result = calculateStaffWorkingHours(
-            day.records, 
-            day.staffId, 
-            day.date
-          );
+          const result = calculateStaffWorkingHours(day.records, day.staffId, day.date);
           if (result && result.status === 'complete') {
             day.totalHours = result.totalHours;
             day.hoursFormatted = result.formatted;
             day.checkIn = result.checkIn;
             day.checkOut = result.checkOut;
             day.status = 'complete';
+            day.statusLabel = 'Complete';
           } else if (result && result.status === 'in_progress') {
             day.totalHours = 0;
             day.hoursFormatted = 'In Progress';
             day.checkIn = result.checkIn;
             day.checkOut = null;
             day.status = 'in_progress';
+            day.statusLabel = 'In Progress';
           } else {
             day.totalHours = 0;
             day.hoursFormatted = 'No Data';
             day.status = 'no_data';
+            day.statusLabel = 'No Data';
           }
         });
-        
+
         // Calculate monthly totals per staff
         const monthlyTotals = {};
         Object.values(staffDailyHours).forEach(day => {
@@ -673,7 +749,7 @@ const AttendanceHistory = () => {
           }
           monthlyTotals[key].daysWithData++;
         });
-        
+
         // Calculate weekly totals per staff
         const weeklyTotals = {};
         Object.values(staffDailyHours).forEach(day => {
@@ -693,227 +769,192 @@ const AttendanceHistory = () => {
             weeklyTotals[key].daysWorked++;
           }
         });
-        
-        // Build CSV with daily, weekly, and monthly summaries
+
         const expectedDailyHours = 9;
         const expectedDaysPerMonth = 26;
-        
-        // CSV Header
-        let csvRows = [
-          ['=== STAFF ATTENDANCE REPORT WITH WORKING HOURS ==='],
-          [''],
-          ['DAILY BREAKDOWN:'],
+
+        // ===== Build the workbook =====
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'Gym Management System';
+        workbook.created = new Date();
+
+        // --- Sheet 1: Daily Attendance ---
+        const dailySheet = workbook.addWorksheet('Daily Attendance', {
+          views: [{ state: 'frozen', ySplit: 4 }]
+        });
+        addTitleBlock(
+          dailySheet,
+          'Staff Attendance Report — Daily Breakdown',
+          `Generated ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} • ${filters.start_date || 'All'} to ${filters.end_date || 'All'}`,
+          7
+        );
+        const dailyHeaderRow = dailySheet.addRow(
           ['Date', 'Staff Name', 'Check In', 'Check Out', 'Working Hours', 'Status', 'Device']
-        ];
-        
-        // Daily data
+        );
+        styleHeaderRow(dailyHeaderRow, HEADER_FILLS.daily);
+        dailySheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: 7 } };
+
         Object.values(staffDailyHours)
           .sort((a, b) => a.date.localeCompare(b.date) || a.staffName.localeCompare(b.staffName))
           .forEach(day => {
-            csvRows.push([
-              day.date,
+            const row = dailySheet.addRow([
+              day.date ? new Date(day.date) : null,
               day.staffName,
               day.checkIn ? formatInIST(day.checkIn) : '—',
               day.checkOut ? formatInIST(day.checkOut) : '—',
               day.hoursFormatted || '—',
-              day.status || '—',
+              day.statusLabel || '—',
               day.records[0]?.device_serial || '—'
             ]);
+            row.getCell(1).numFmt = 'dd-mmm-yyyy';
+            styleDataRow(row, STATUS_FILLS[day.status]);
           });
-        
-        // Weekly summary
-        csvRows.push(['']);
-        csvRows.push(['=== WEEKLY SUMMARY ===']);
-        csvRows.push(['Staff Name', 'Week', 'Month', 'Total Hours', 'Days Worked', 'Avg Hours/Day']);
-        
+        autoFitColumns(dailySheet);
+
+        // --- Sheet 2: Weekly Summary ---
+        const weeklySheet = workbook.addWorksheet('Weekly Summary', {
+          views: [{ state: 'frozen', ySplit: 4 }]
+        });
+        addTitleBlock(
+          weeklySheet,
+          'Staff Attendance Report — Weekly Summary',
+          `Generated ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
+          6
+        );
+        const weeklyHeaderRow = weeklySheet.addRow(
+          ['Staff Name', 'Week', 'Month', 'Total Hours', 'Days Worked', 'Avg Hours/Day']
+        );
+        styleHeaderRow(weeklyHeaderRow, HEADER_FILLS.weekly);
+        weeklySheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: 6 } };
+
         Object.values(weeklyTotals)
           .sort((a, b) => a.staffName.localeCompare(b.staffName) || a.week - b.week)
           .forEach(week => {
             const avgHours = week.daysWorked > 0 ? (week.totalHours / week.daysWorked) : 0;
-            csvRows.push([
+            const row = weeklySheet.addRow([
               week.staffName,
               `Week ${week.week}`,
               week.month,
-              week.totalHours.toFixed(2),
+              Number(week.totalHours.toFixed(2)),
               week.daysWorked,
-              avgHours.toFixed(2)
+              Number(avgHours.toFixed(2))
             ]);
+            styleDataRow(row);
           });
-        
-        // Monthly summary with salary calculation
-        csvRows.push(['']);
-        csvRows.push(['=== MONTHLY SUMMARY & SALARY CALCULATION ===']);
-        csvRows.push([
-          'Staff Name', 'Month', 'Total Hours', 'Days Worked', 
-          'Expected Hours', 'Shortfall Hours', 
+        autoFitColumns(weeklySheet);
+
+        // --- Sheet 3: Monthly Summary & Salary ---
+        const monthlySheet = workbook.addWorksheet('Monthly Summary & Salary', {
+          views: [{ state: 'frozen', ySplit: 4 }]
+        });
+        addTitleBlock(
+          monthlySheet,
+          'Staff Attendance Report — Monthly Summary & Salary',
+          `Generated ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} • Expected: ${expectedDailyHours}h/day × ${expectedDaysPerMonth} days`,
+          11
+        );
+        const monthlyHeaderRow = monthlySheet.addRow([
+          'Staff Name', 'Month', 'Total Hours', 'Days Worked',
+          'Expected Hours', 'Shortfall Hours',
           'Monthly Salary (₹)', 'Hourly Rate (₹)', 'Deduction (₹)', 'Net Salary (₹)', 'Status'
         ]);
-        
+        styleHeaderRow(monthlyHeaderRow, HEADER_FILLS.monthly);
+        monthlySheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: 11 } };
+
         Object.values(monthlyTotals)
           .sort((a, b) => a.staffName.localeCompare(b.staffName) || a.month.localeCompare(b.month))
           .forEach(month => {
             const staff = staffData.find(s => s.id === month.staffId);
-            // Get salary - handle different possible field names
             const monthlySalary = staff?.salary || staff?.salary_amount || staff?.monthly_salary || 0;
             const numericSalary = Number(monthlySalary);
-            
+
+            let row;
             if (numericSalary > 0) {
               const expectedMonthlyHours = expectedDailyHours * expectedDaysPerMonth;
               const perHourRate = numericSalary / expectedMonthlyHours;
               const shortfall = Math.max(0, expectedMonthlyHours - month.totalHours);
               const deduction = shortfall * perHourRate;
               const netSalary = Math.max(0, numericSalary - deduction);
-              
-              csvRows.push([
+              const statusLabel = deduction > 0 ? 'Deduction Applied' : 'Full Salary';
+
+              row = monthlySheet.addRow([
                 month.staffName,
                 month.month,
-                month.totalHours.toFixed(2),
+                Number(month.totalHours.toFixed(2)),
                 month.daysWorked,
-                expectedMonthlyHours.toFixed(2),
-                shortfall.toFixed(2),
-                numericSalary.toFixed(2),  // Use numericSalary instead of monthlySalary
-                perHourRate.toFixed(2),
-                deduction.toFixed(2),
-                netSalary.toFixed(2),
-                deduction > 0 ? 'Deduction Applied' : 'Full Salary'
+                Number(expectedMonthlyHours.toFixed(2)),
+                Number(shortfall.toFixed(2)),
+                Number(numericSalary.toFixed(2)),
+                Number(perHourRate.toFixed(2)),
+                Number(deduction.toFixed(2)),
+                Number(netSalary.toFixed(2)),
+                statusLabel
               ]);
+              [7, 8, 9, 10].forEach(colIdx => { row.getCell(colIdx).numFmt = '₹#,##0.00'; });
+              styleDataRow(row, STATUS_FILLS[statusLabel]);
             } else {
-              csvRows.push([
-                month.staffName,
-                month.month,
-                month.totalHours.toFixed(2),
-                month.daysWorked,
-                '—',
-                '—',
-                '0.00',
-                '—',
-                '—',
-                '0.00',
-                'No Salary Set'
+              row = monthlySheet.addRow([
+                month.staffName, month.month, Number(month.totalHours.toFixed(2)), month.daysWorked,
+                '—', '—', 0, '—', '—', 0, 'No Salary Set'
               ]);
+              styleDataRow(row, STATUS_FILLS['No Salary Set']);
             }
           });
-        
-        // Grand Summary
-        csvRows.push(['']);
-        csvRows.push(['=== GRAND SUMMARY ===']);
-        
-        const totalMonthlyHours = Object.values(monthlyTotals).reduce((sum, m) => sum + m.totalHours, 0);
-        const totalMonthlyDays = Object.values(monthlyTotals).reduce((sum, m) => sum + m.daysWorked, 0);
-        const totalStaff = Object.keys(monthlyTotals).length;
-        
-        csvRows.push([
-          'Total Staff', 'Total Hours', 'Total Days', 'Avg Hours/Staff', 'Avg Days/Staff'
-        ]);
-        csvRows.push([
-          totalStaff,
-          totalMonthlyHours.toFixed(2),
-          totalMonthlyDays,
-          totalStaff > 0 ? (totalMonthlyHours / totalStaff).toFixed(2) : '0',
-          totalStaff > 0 ? (totalMonthlyDays / totalStaff).toFixed(2) : '0'
-        ]);
-        
-        // Final salary summary
-        csvRows.push(['']);
-        csvRows.push(['=== SALARY SUMMARY ===']);
-        csvRows.push(['Staff Name', 'Month', 'Monthly Salary (₹)', 'Deduction (₹)', 'Net Salary (₹)', 'Status']);
-        
-        Object.values(monthlyTotals)
-          .sort((a, b) => a.staffName.localeCompare(b.staffName))
-          .forEach(month => {
-            const staff = staffData.find(s => s.id === month.staffId);
-            const monthlySalary = staff?.salary || staff?.salary_amount || staff?.monthly_salary || 0;
-            const numericSalary = Number(monthlySalary);
-            
-            if (numericSalary > 0) {
-              const expectedMonthlyHours = expectedDailyHours * expectedDaysPerMonth;
-              const perHourRate = numericSalary / expectedMonthlyHours;
-              const shortfall = Math.max(0, expectedMonthlyHours - month.totalHours);
-              const deduction = shortfall * perHourRate;
-              const netSalary = Math.max(0, numericSalary - deduction);
-              
-              csvRows.push([
-                month.staffName,
-                month.month,
-                numericSalary.toFixed(2),  // Use numericSalary
-                deduction.toFixed(2),
-                netSalary.toFixed(2),
-                deduction > 0 ? `Shortfall: ${shortfall.toFixed(2)}h` : 'Full'
-              ]);
-            } else {
-              csvRows.push([
-                month.staffName,
-                month.month,
-                '0.00',
-                '0.00',
-                '0.00',
-                'No Salary'
-              ]);
-            }
-          });
-        
-        const csvString = csvRows.map(row => row.join(',')).join('\n');
-        const blob = new Blob(['\uFEFF' + csvString], { type: 'text/csv;charset=utf-8' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const dateStr = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }).replace(/\//g, '-');
-        a.download = `staff_attendance_with_hours_${dateStr}.csv`;
-        a.click();
-        window.URL.revokeObjectURL(url);
-        
-        toast.success('Staff attendance with working hours exported!', { id: 'export' });
+        autoFitColumns(monthlySheet);
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        saveAs(new Blob([buffer], { type: 'application/octet-stream' }), `staff_attendance_with_hours_${dateStr}.xlsx`);
+
+        toast.success('Staff attendance workbook exported!', { id: 'export' });
         return;
       }
-      
-      // ===== For Members: Simple export =====
-      const formatDateForCSV = (timestamp) => {
-        if (!timestamp) return 'N/A';
-        try {
-          const date = new Date(timestamp);
-          return date.toLocaleString('en-IN', {
-            timeZone: 'Asia/Kolkata',
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true
-          });
-        } catch (e) {
-          return timestamp;
-        }
-      };
-      
-      const csv = [
-        ['Date', 'Time', 'Member Name', 'Event Type', 'Verified', 'Device Serial'],
-        ...recordsToExport.map(r => {
-          const rawType = (r.event_type || '').toLowerCase();
-          const isOut = rawType.includes('check_out') || rawType.includes('checkout');
-          const ts = r.created_at || r.check_in_time;
-          const parts = formatDateForCSV(ts).split(',');
-          return [
-            parts[0] || 'N/A',
-            parts[1]?.trim() || 'N/A',
-            r.member_name || 'Unknown',
-            isOut ? 'CHECK_OUT' : 'CHECK_IN',
-            r.verified ? 'Yes' : 'No',
-            r.device_serial || 'N/A',
-          ];
-        })
-      ].map(row => row.join(',')).join('\n');
-      
-      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const dateStr = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }).replace(/\//g, '-');
-      a.download = `${activeTab}_attendance_${dateStr}.csv`;
-      a.click();
-      window.URL.revokeObjectURL(url);
+
+      // ===== For Members: styled single-sheet workbook =====
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Gym Management System';
+      workbook.created = new Date();
+
+      const memberSheet = workbook.addWorksheet('Member Attendance', {
+        views: [{ state: 'frozen', ySplit: 4 }]
+      });
+      addTitleBlock(
+        memberSheet,
+        'Member Attendance Report',
+        `Generated ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
+        6
+      );
+      const memberHeaderRow = memberSheet.addRow(
+        ['Date', 'Time', 'Member Name', 'Event Type', 'Verified', 'Device Serial']
+      );
+      styleHeaderRow(memberHeaderRow, HEADER_FILLS.members);
+      memberSheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: 6 } };
+
+      recordsToExport.forEach(r => {
+        const rawType = (r.event_type || '').toLowerCase();
+        const isOut = rawType.includes('check_out') || rawType.includes('checkout');
+        const ts = r.created_at || r.check_in_time;
+        const tsDate = ts ? new Date(ts) : null;
+        const timePart = tsDate && !isNaN(tsDate.getTime())
+          ? tsDate.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+          : 'N/A';
+
+        const row = memberSheet.addRow([
+          tsDate && !isNaN(tsDate.getTime()) ? tsDate : null,
+          timePart,
+          r.member_name || 'Unknown',
+          isOut ? 'CHECK OUT' : 'CHECK IN',
+          r.verified ? 'Yes' : 'No',
+          r.device_serial || 'N/A',
+        ]);
+        row.getCell(1).numFmt = 'dd-mmm-yyyy';
+        styleDataRow(row, isOut ? 'FFFFEDD5' : 'FFD1FAE5');
+      });
+      autoFitColumns(memberSheet);
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      saveAs(new Blob([buffer], { type: 'application/octet-stream' }), `member_attendance_${dateStr}.xlsx`);
       toast.success('Export complete!', { id: 'export' });
-      
+
     } catch (error) {
       console.error('Export error:', error);
       toast.error('Export failed', { id: 'export' });
@@ -1054,7 +1095,7 @@ const AttendanceHistory = () => {
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
           >
             <Download className="h-4 w-4" />
-            Export CSV
+            Export Excel
           </button>
         </div>
       </div>
