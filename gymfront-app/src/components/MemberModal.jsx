@@ -978,7 +978,7 @@ const PersonalTrainingSection = ({
                 type="number"
                 min="0"
                 step="10"
-                value={formData.pt_amount_paid || 0}
+                value={formData.pt_amount_paid || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, pt_amount_paid: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                 placeholder="0"
@@ -1600,7 +1600,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
     pt_session_time: '',
     pt_session_days: '[]',
     pt_total_amount: '',  // ✅ Total amount for PT
-    pt_amount_paid: 0,    // ✅ Amount paid for PT
+    pt_amount_paid: '',    // ✅ Amount paid for PT
     pt_notes: '',
   });
 
@@ -1718,7 +1718,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         pt_session_time: '',
         pt_session_days: '[]',
         pt_total_amount: '',
-        pt_amount_paid: 0,
+        pt_amount_paid: '',
         pt_notes: '',
       });
     } else {
@@ -1740,7 +1740,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         pt_session_time: '',
         pt_session_days: '[]',
         pt_total_amount: '',
-        pt_amount_paid: 0,
+        pt_amount_paid: '',
         pt_notes: '',
       });
     }
