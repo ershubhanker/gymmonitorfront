@@ -101,7 +101,7 @@ export default function PrivacyPolicy() {
           <section id="section-1">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">1. Introduction</h2>
             <p className="leading-relaxed mb-4">
-              Gymmonitor.in ("we", "our", or "us") is committed to protecting your privacy. 
+              Gymmonitor.in is committed to protecting your privacy. 
               This Privacy Policy explains how we collect, use, disclose, and safeguard your 
               personal information when you use our software-as-a-service (SaaS) gym management 
               platform, including our web application located at https://gymmonitor.in (the "Service").

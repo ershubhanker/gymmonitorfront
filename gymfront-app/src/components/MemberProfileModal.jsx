@@ -1,11 +1,12 @@
-// src/components/MemberProfileModal.jsx
+// src/components/MemberProfileModal.jsx - FIXED
 import React, { useState, useEffect } from 'react';
 import {
   X, Phone, Mail, Calendar, MapPin, DollarSign, Tag, 
   MessageCircle, User, Clock, CheckCircle, AlertCircle,
   Send, MessageSquare, History, CreditCard, Activity,
   Award, Calendar as CalendarIcon, FileText, Users,
-  Edit, RefreshCw, Loader2, Trash2, Save, XCircle
+  Edit, RefreshCw, Loader2, Trash2, Save, XCircle,
+  Dumbbell
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -25,6 +26,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [deletingComment, setDeletingComment] = useState(null);
   const [balanceDetails, setBalanceDetails] = useState(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
+  
+  // ===== PT State =====
+  const [ptSessions, setPtSessions] = useState([]);
+  const [loadingPt, setLoadingPt] = useState(false);
 
   // ===== EDIT STATE =====
   const [isEditing, setIsEditing] = useState(false);
@@ -52,6 +57,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     fetchMembershipHistory();
     fetchAttendanceHistory();
     fetchBalanceDetails();
+    fetchPtSessions();
   }, [memberId]);
 
   const fetchMemberDetails = async () => {
@@ -60,7 +66,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       const response = await api.get(`/gym/members/${memberId}`);
       const memberData = response.data;
       setMember(memberData);
-      // Initialize edit form data
       setEditFormData({
         full_name: memberData.full_name || '',
         email: memberData.email || '',
@@ -153,10 +158,56 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     }
   };
 
+  // ===== Fetch PT Sessions =====
+  const fetchPtSessions = async () => {
+    try {
+      setLoadingPt(true);
+      const response = await api.get(`/gym/members/${memberId}/personal-training`);
+      setPtSessions(response.data || []);
+    } catch (error) {
+      console.error('Error fetching PT sessions:', error);
+      setPtSessions([]);
+    } finally {
+      setLoadingPt(false);
+    }
+  };
+
+  // ===== PT Status Badge =====
+  const getPtStatusBadge = (status) => {
+    const statusConfig = {
+      active: { color: 'bg-green-100 text-green-700', icon: CheckCircle },
+      completed: { color: 'bg-blue-100 text-blue-700', icon: CheckCircle },
+      cancelled: { color: 'bg-red-100 text-red-700', icon: XCircle },
+      pending: { color: 'bg-yellow-100 text-yellow-700', icon: Clock },
+    };
+    const config = statusConfig[status] || statusConfig.pending;
+    const Icon = config.icon;
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${config.color}`}>
+        <Icon className="h-3 w-3" />
+        {status?.charAt(0).toUpperCase() + status?.slice(1) || 'Unknown'}
+      </span>
+    );
+  };
+
+  // ===== Helper function to parse session days =====
+  const parseSessionDays = (sessionDays) => {
+    if (!sessionDays) return [];
+    if (Array.isArray(sessionDays)) return sessionDays;
+    if (typeof sessionDays === 'string') {
+      try {
+        const parsed = JSON.parse(sessionDays);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
   // ===== EDIT FUNCTIONS =====
   const handleEditClick = () => {
     setIsEditing(true);
-    // Reset form data with current member data
     if (member) {
       setEditFormData({
         full_name: member.full_name || '',
@@ -184,7 +235,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     
-    // Validate required fields
     if (!editFormData.full_name.trim()) {
       toast.error('Full name is required');
       return;
@@ -200,7 +250,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
     setSavingEdit(true);
     try {
-      // Prepare update data - only send fields that have changed
       const updateData = {};
       for (const key of Object.keys(editFormData)) {
         if (editFormData[key] !== member[key]) {
@@ -218,11 +267,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       await api.put(`/gym/members/${memberId}`, updateData);
       
       toast.success('Member details updated successfully!');
-      
-      // Refresh member data
       await fetchMemberDetails();
       if (onUpdate) onUpdate();
-      
       setIsEditing(false);
     } catch (error) {
       console.error('Error updating member:', error);
@@ -234,7 +280,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   const handleEditCancel = () => {
     setIsEditing(false);
-    // Reset form data to current member data
     if (member) {
       setEditFormData({
         full_name: member.full_name || '',
@@ -317,7 +362,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const getStatusBadge = (status) => {
     const statusConfig = {
       active: { color: 'bg-green-100 text-green-700', icon: CheckCircle },
-      inactive: { color: 'bg-gray-100 text-gray-500', icon: X },
+      inactive: { color: 'bg-gray-100 text-gray-500', icon: XCircle },
       expired: { color: 'bg-red-100 text-red-700', icon: AlertCircle },
       pending: { color: 'bg-yellow-100 text-yellow-700', icon: Clock },
     };
@@ -412,6 +457,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 fetchMembershipHistory();
                 fetchAttendanceHistory();
                 fetchBalanceDetails();
+                fetchPtSessions();
               }}
               className="p-2 rounded-xl hover:bg-gray-100"
               title="Refresh"
@@ -819,6 +865,100 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Personal Training Section - FIXED */}
+          <div className="border-t border-gray-100 pt-6">
+            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Dumbbell className="h-5 w-5 text-purple-600" />
+              Personal Training
+            </h3>
+            
+            {loadingPt ? (
+              <div className="text-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
+              </div>
+            ) : ptSessions.length > 0 ? (
+              <div className="space-y-4">
+                {ptSessions.map((session) => {
+                  // ✅ FIX: Parse session days safely
+                  const daysArray = parseSessionDays(session.session_days);
+                  const daysDisplay = daysArray.length > 0 
+                    ? daysArray.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ')
+                    : '—';
+                  
+                  return (
+                    <div key={session.id} className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Dumbbell className="h-5 w-5 text-purple-600" />
+                          <span className="font-semibold text-gray-900">
+                            Trainer: {session.trainer_name || 'Unknown Trainer'}
+                          </span>
+                        </div>
+                        {getPtStatusBadge(session.status)}
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        <div>
+                          <span className="text-gray-500">Start Date:</span>
+                          <span className="ml-2 font-medium text-gray-900">{formatDate(session.start_date)}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">End Date:</span>
+                          <span className="ml-2 font-medium text-gray-900">{formatDate(session.end_date)}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Time:</span>
+                          <span className="ml-2 font-medium text-gray-900">{session.session_time || '—'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Days:</span>
+                          <span className="ml-2 font-medium text-gray-900">{daysDisplay}</span>
+                        </div>
+                      </div>
+                      
+                      {/* Payment Summary */}
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 pt-3 border-t border-purple-200">
+                        <div>
+                          <span className="text-gray-500 text-xs">Total Amount:</span>
+                          <p className="font-semibold text-purple-700">₹{session.total_amount?.toLocaleString() || 0}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500 text-xs">Amount Paid:</span>
+                          <p className="font-semibold text-green-600">₹{session.amount_paid?.toLocaleString() || 0}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500 text-xs">Balance Due:</span>
+                          <p className={`font-semibold ${session.balance_due > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                            ₹{session.balance_due?.toLocaleString() || 0}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500 text-xs">Status:</span>
+                          <p className="font-medium text-gray-900 capitalize">{session.status || 'Pending'}</p>
+                        </div>
+                      </div>
+                      
+                      {session.notes && (
+                        <div className="mt-3 pt-3 border-t border-purple-200">
+                          <span className="text-gray-500 text-sm">Notes:</span>
+                          <p className="text-sm text-gray-700 mt-1">{session.notes}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="text-gray-300 mb-2">
+                  <Dumbbell className="h-12 w-12 mx-auto" />
+                </div>
+                <p className="text-sm text-gray-400">No personal training sessions</p>
+                <p className="text-xs text-gray-300 mt-1">PT sessions will appear here once assigned</p>
+              </div>
+            )}
           </div>
 
           {/* Payment History */}

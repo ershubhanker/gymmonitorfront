@@ -1,4 +1,4 @@
-// src/pages/Members.jsx - Updated with Bridge Sync Integration (Removed duplicate sync buttons)
+// src/pages/Members.jsx - Updated with Personal Training column and payment fields
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Search, 
@@ -23,7 +23,8 @@ import {
   AlertTriangle,
   Smartphone,
   User,
-  ArrowLeft
+  ArrowLeft,
+  Dumbbell
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
@@ -182,6 +183,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   const [totalMembersCount, setTotalMembersCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   
+  // ===== PT Data =====
+  const [ptData, setPtData] = useState({});
+  const [loadingPt, setLoadingPt] = useState(false);
+  
   // ===== NEW: State for single member view in table =====
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const [singleMemberData, setSingleMemberData] = useState(null);
@@ -207,6 +212,24 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     email: '',
     currency_symbol: '₹',
   });
+
+  // ===== Fetch PT data for all members =====
+  const fetchPTData = useCallback(async () => {
+    setLoadingPt(true);
+    try {
+      const response = await api.get('/gym/members/pt-data');
+      const ptMap = {};
+      response.data.forEach(pt => {
+        ptMap[pt.member_id] = pt;
+      });
+      setPtData(ptMap);
+    } catch (error) {
+      console.error('Error fetching PT data:', error);
+      setPtData({});
+    } finally {
+      setLoadingPt(false);
+    }
+  }, []);
 
   // ===== Fetch single member details =====
   const fetchSingleMember = useCallback(async (memberId) => {
@@ -276,7 +299,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ===== Handle initialMemberId prop - Show single member in table =====
-  // This effect is placed AFTER fetchSingleMember so the function reference is stable
   useEffect(() => {
     if (initialMemberId) {
       setSelectedMemberId(initialMemberId);
@@ -353,7 +375,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           { duration: 5000 }
         );
       } else if (response.data.device_user_id) {
-        toast.warning(
+        toast(
           `⚠️ Member deleted but not removed from devices.\n\n` +
           `The member had a device ID (${response.data.device_user_id}) but no active devices were found.`,
           { duration: 5000 }
@@ -440,12 +462,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     
     setLoading(true);
     try {
-      // Increase limit to get all members or use a larger number
       const params = {
         search: debouncedSearchTerm,
         status: filters.status === 'all' ? 'all' : filters.status,
         page: currentPage,
-        limit: itemsPerPage  // This is 50
+        limit: itemsPerPage
       };
       
       console.log('Fetching members with optimized endpoint:', params);
@@ -492,13 +513,16 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       setTotalMembersCount(data.total || 0);
       setTotalPages(data.total_pages || 0);
       
+      // Fetch PT data after members are loaded
+      await fetchPTData();
+      
     } catch (error) {
       console.error('Error fetching members (optimized):', error);
       toast.error('Failed to fetch members');
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, filters.status, currentPage, itemsPerPage, showSingleMember]);
+  }, [debouncedSearchTerm, filters.status, currentPage, itemsPerPage, showSingleMember, fetchPTData]);
   
   // ============================================================
   // OPTIMIZED: Fetch stats using the new optimized endpoint
@@ -612,13 +636,16 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       setMembers(transformed);
       setTotalMembersCount(transformed.length);
       setTotalPages(Math.ceil(transformed.length / itemsPerPage));
+      
+      await fetchPTData();
+      
     } catch (error) {
       console.error('Error fetching members:', error.response?.data || error.message);
       toast.error('Failed to fetch members');
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly, itemsPerPage, showSingleMember]);
+  }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly, itemsPerPage, showSingleMember, fetchPTData]);
 
   // ============================================================
   // Main fetch function - uses optimized endpoint by default
@@ -677,6 +704,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   useEffect(() => {
     fetchStats();
     fetchGymDetails();
+    fetchPTData();
   }, []);
 
   // Trigger fetch when search, filters, or page changes (only when not viewing single member)
@@ -788,28 +816,27 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     // ✅ DEBUG: Log what's being received
     console.log('📥 MemberModal sending data:', memberData);
     console.log('📥 custom_due_date received:', memberData.custom_due_date);
-    console.log('📥 custom_due_date type:', typeof memberData.custom_due_date);
+    console.log('📥 PT data received:', memberData.pt_data);
     
-    // Destructure ALL fields including custom_due_date
+    // Destructure ALL fields including custom_due_date and pt_data
     const { 
       plan_id, 
       membership_start_date, 
       payment_method, 
       amount_paid, 
       discount_applied, 
-      custom_due_date,  // ✅ Make sure this is extracted
+      custom_due_date,
+      pt_data,  // ✅ Extract PT data
       ...memberFields 
     } = memberData;
-  
+
     console.log('📤 Extracted fields:');
     console.log('  - plan_id:', plan_id);
     console.log('  - membership_start_date:', membership_start_date);
     console.log('  - amount_paid:', amount_paid);
-    console.log('  - discount_applied:', discount_applied);
     console.log('  - custom_due_date (raw):', custom_due_date);
-    console.log('  - custom_due_date type:', typeof custom_due_date);
-    console.log('  - custom_due_date is null/undefined?', custom_due_date == null);
-  
+    console.log('  - pt_data:', pt_data);
+
     let memberResponse;
     let createdMember = null;
     let hasError = false;
@@ -826,43 +853,38 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
       throw error;
     }
-  
+
     const memberId = createdMember.id;
-  
+
+    // Handle Membership creation
     if (plan_id && membership_start_date && memberId) {
       try {
         const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
         const discount = discount_applied ? parseFloat(discount_applied) : 0;
         
-        // ✅ FIX: Properly handle custom_due_date
-        // Check if custom_due_date is valid (not null, undefined, empty, or "None")
+        // ✅ Handle custom_due_date properly
         let dueDate = null;
         if (custom_due_date && custom_due_date !== 'null' && custom_due_date !== 'None' && custom_due_date.trim() !== '') {
           dueDate = custom_due_date.trim();
         }
         
         console.log('📤 Final dueDate to send:', dueDate);
-        console.log('📤 dueDate type:', typeof dueDate);
         
-        // ✅ Build membership payload with ALL fields
         const membershipPayload = {
           member_id: memberId,
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
-          amount_paid: 0,  // Always 0 for membership creation
+          amount_paid: 0,
           discount_applied: discount,
-          payment_method: payment_method || 'cash',  // Add payment method
+          payment_method: payment_method || 'cash',
         };
         
-        // ✅ IMPORTANT: Only add custom_due_date if it has a valid value
         if (dueDate) {
           membershipPayload.custom_due_date = dueDate;
           console.log('📤 ✅ Adding custom_due_date to payload:', dueDate);
-        } else {
-          console.log('📤 ❌ No custom_due_date - will use default (next month)');
         }
         
-        console.log('📤 📦 Final membership payload being sent:', JSON.stringify(membershipPayload, null, 2));
+        console.log('📤 📦 Final membership payload:', membershipPayload);
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
         
@@ -886,6 +908,32 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
             toast.error('Member added but payment record creation failed. Please record payment manually.');
           }
         }
+        
+        // ✅ Handle Personal Training if data exists
+        if (pt_data && pt_data.trainer_id) {
+          try {
+            const ptPayload = {
+              member_id: memberId,
+              trainer_id: parseInt(pt_data.trainer_id),
+              start_date: pt_data.start_date,
+              end_date: pt_data.end_date,
+              session_time: pt_data.session_time,
+              session_days: pt_data.session_days || '[]',
+              total_amount: pt_data.total_amount ? parseFloat(pt_data.total_amount) : null,
+              amount_paid: pt_data.amount_paid ? parseFloat(pt_data.amount_paid) : 0,
+              notes: pt_data.notes || null
+            };
+            
+            console.log('📤 Creating personal training session:', ptPayload);
+            await api.post('/gym/personal-training', ptPayload);
+            console.log('✅ Personal training session created');
+            toast.success('Personal training session added!');
+          } catch (ptError) {
+            console.error('Error creating PT session:', ptError);
+            toast('Member added but personal training session could not be created.');
+          }
+        }
+        
       } catch (membershipError) {
         console.error('Membership creation error:', membershipError);
         hasError = true;
@@ -893,7 +941,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         return createdMember;
       }
     }
-  
+
     await fetchMembers();
     fetchStats();
     setIsModalOpen(false);
@@ -907,7 +955,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           if (synced) {
             toast.success(`${createdMember.full_name} synced to attendance device!`, { duration: 3000 });
           } else {
-            toast.warning(
+            toast(
               `${createdMember.full_name} added but not synced to device. Use the "Sync" button to add later.`,
               { duration: 4000 }
             );
@@ -941,7 +989,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       amount_paid,
       discount_applied,
       renew_membership,
-      current_membership_id, // NEW: Get the current membership ID
+      current_membership_id,
       ...memberFields
     } = memberData;
   
@@ -957,32 +1005,17 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   
     if (renew_membership && plan_id && membership_start_date) {
       try {
-        // NEW: For renewal, we DON'T create a payment record
-        // The backend will handle carrying over the existing payment
         const membershipPayload = {
           member_id: selectedMember.id,
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
-          amount_paid: 0,  // Always 0 - backend will use existing payment
+          amount_paid: 0,
           discount_applied: parseFloat(discount_applied) || 0,
-          // NEW: Send the current membership ID for reference
           current_membership_id: current_membership_id || null,
-          // NEW: Flag this as a renewal
           is_renewal: true,
         };
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
-        
-        // NEW: For renewal, we DON'T create a new payment record
-        // The payment already exists from the previous membership
-        // The backend will transfer the payment amount to the new membership
-        
-        // Only create a payment record if there's a NEW payment being made
-        // (not for renewals where the user is just extending)
-        // The amount_paid should be 0 for renewals
-        
-        // If there's a NEW payment being made (not renewal), create payment record
-        // This is already handled by the create_membership endpoint for new members
         
       } catch (err) {
         console.error('Membership renewal error:', err);
@@ -998,7 +1031,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     if (!hasError) {
       toast.success('Member updated successfully!');
       
-      // ✅ Sync the updated member to the attendance device via bridge
       if (selectedMember && selectedMember.id) {
         setTimeout(async () => {
           const synced = await syncMemberToBridge(selectedMember.id);
@@ -1081,12 +1113,14 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           'Membership Plan', 'Status', 'Join Date', 'Payments Count',
           'Plan Amount (₹)', 'Amount Paid (₹)', 'Pending Balance (₹)',
           'Payment Status', 'Next Payment Date', 'Last Payment Date',
-          'Device User ID', 'Synced to Device'
+          'Device User ID', 'Synced to Device', 'Personal Training',
+          'PT Total (₹)', 'PT Paid (₹)', 'PT Balance (₹)'
         ]
       ];
 
       for (const member of members) {
         const balance = balancesMap.get(member.id);
+        const ptInfo = ptData[member.id];
         
         csvRows.push([
           member.id, member.fullName, member.email, member.phone,
@@ -1098,7 +1132,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           balance ? balance.payment_status : 'N/A',
           balance?.next_payment_date ? new Date(balance.next_payment_date).toLocaleDateString() : '',
           balance?.last_payment_date ? new Date(balance.last_payment_date).toLocaleDateString() : '',
-          member.deviceUserId || '', member.syncedToDevice ? 'Yes' : 'No'
+          member.deviceUserId || '', member.syncedToDevice ? 'Yes' : 'No',
+          ptInfo ? `Yes (Trainer: ${ptInfo.trainer_name})` : 'No',
+          ptInfo ? ptInfo.total_amount || 0 : '',
+          ptInfo ? ptInfo.amount_paid || 0 : '',
+          ptInfo ? ptInfo.balance_due || 0 : ''
         ]);
       }
 
@@ -1539,6 +1577,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Membership</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PT</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device Sync</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -1547,7 +1586,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading || loadingSingleMember ? (
                 <tr>
-                  <td colSpan="8" className="px-6 py-4 text-center">
+                  <td colSpan="9" className="px-6 py-4 text-center">
                     <div className="flex justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
@@ -1555,7 +1594,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 </tr>
               ) : paginatedMembers.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan="9" className="px-6 py-4 text-center text-gray-500">
                     {showNewThisMonthOnly 
                       ? 'No new members joined this month' 
                       : showSingleMember 
@@ -1564,148 +1603,174 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   </td>
                 </tr>
               ) : (
-                paginatedMembers.map((member) => (
-                  <tr key={member.id} className={`hover:bg-gray-50 ${showSingleMember ? 'bg-blue-50/50' : ''}`}>
-                    <td className="px-6 py-4">
-                      <input type="checkbox"
-                        checked={selectedMembers.includes(member.id)}
-                        onChange={() => toggleSelectMember(member.id)}
-                        disabled={showSingleMember}
-                        className={`rounded border-gray-300 text-blue-600 focus:ring-blue-500 ${showSingleMember ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      />
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div 
-                        className="flex items-center cursor-pointer hover:bg-gray-50 rounded-lg p-1 -m-1 transition-colors"
-                        onClick={() => openProfileModal(member)}
-                      >
-                        <img 
-                          className="h-10 w-10 rounded-full object-cover flex-shrink-0" 
-                          src={member.avatar} 
-                          alt={member.fullName}
-                          onError={(e) => {
-                            e.target.onerror = null;
-                            e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.fullName)}&background=0D9488&color=fff&size=128`;
-                          }}
+                paginatedMembers.map((member) => {
+                  const ptInfo = ptData[member.id];
+                  return (
+                    <tr key={member.id} className={`hover:bg-gray-50 ${showSingleMember ? 'bg-blue-50/50' : ''}`}>
+                      <td className="px-6 py-4">
+                        <input type="checkbox"
+                          checked={selectedMembers.includes(member.id)}
+                          onChange={() => toggleSelectMember(member.id)}
+                          disabled={showSingleMember}
+                          className={`rounded border-gray-300 text-blue-600 focus:ring-blue-500 ${showSingleMember ? 'opacity-50 cursor-not-allowed' : ''}`}
                         />
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors">
-                            {member.fullName}
-                            {showSingleMember && (
-                              <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                                Selected
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            Joined {new Date(member.joinDate).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div 
+                          className="flex items-center cursor-pointer hover:bg-gray-50 rounded-lg p-1 -m-1 transition-colors"
+                          onClick={() => openProfileModal(member)}
+                        >
+                          <img 
+                            className="h-10 w-10 rounded-full object-cover flex-shrink-0" 
+                            src={member.avatar} 
+                            alt={member.fullName}
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.fullName)}&background=0D9488&color=fff&size=128`;
+                            }}
+                          />
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors">
+                              {member.fullName}
+                              {showSingleMember && (
+                                <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                  Selected
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              Joined {new Date(member.joinDate).toLocaleDateString()}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{member.email || '—'}</div>
-                      <div className="text-sm text-gray-500">{member.phone}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{member.membership}</div>
-                      <div className="text-sm text-gray-500">
-                        {member.payments} payment{member.payments !== 1 ? 's' : ''}
-                        {member.membershipEndDate && (
-                          <span className="ml-1">
-                            · expires {new Date(member.membershipEndDate).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {getStatusBadge(member.status)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {member.syncedToDevice ? (
-                        <div className="group relative">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 cursor-help">
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Synced
-                          </span>
-                          {member.deviceUserId && (
-                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                              Device ID: {member.deviceUserId}
-                            </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900">{member.email || '—'}</div>
+                        <div className="text-sm text-gray-500">{member.phone}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{member.membership}</div>
+                        <div className="text-sm text-gray-500">
+                          {member.payments} payment{member.payments !== 1 ? 's' : ''}
+                          {member.membershipEndDate && (
+                            <span className="ml-1">
+                              · expires {new Date(member.membershipEndDate).toLocaleDateString()}
+                            </span>
                           )}
                         </div>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                          <XCircle className="h-3 w-3 mr-1" />
-                          Not Synced
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {member.deviceUserId ? (
-                        <button
-                          onClick={() => copyDeviceIdToClipboard(member.deviceUserId)}
-                          className="group relative inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors cursor-pointer"
-                          title="Click to copy Device User ID"
-                        >
-                          {member.deviceUserId.substring(0, 8)}...
-                          <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                            Click to copy full ID
-                          </span>
-                        </button>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button 
-                        onClick={() => handleDownloadInvoice(member)} 
-                        className="text-green-600 hover:text-green-900 mr-3 inline-flex items-center"
-                        title="Download Invoice"
-                        disabled={downloadingInvoice === member.id}
-                      >
-                        {downloadingInvoice === member.id ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getStatusBadge(member.status)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {ptInfo ? (
+                          <div className="group relative">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 cursor-help">
+                              <Dumbbell className="h-3 w-3 mr-1" />
+                              Active
+                            </span>
+                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none min-w-[240px] text-center shadow-lg">
+                              <p className="font-semibold text-purple-300">PT Details</p>
+                              <p><strong>Trainer:</strong> {ptInfo.trainer_name}</p>
+                              <p><strong>Days:</strong> {ptInfo.session_days_display || '—'}</p>
+                              <p><strong>Time:</strong> {ptInfo.session_time || '—'}</p>
+                              <div className="border-t border-gray-700 my-1"></div>
+                              <p><strong>Total:</strong> ₹{ptInfo.total_amount?.toLocaleString() || 0}</p>
+                              <p><strong>Paid:</strong> ₹{ptInfo.amount_paid?.toLocaleString() || 0}</p>
+                              <p><strong>Balance:</strong> ₹{ptInfo.balance_due?.toLocaleString() || 0}</p>
+                              <p><strong>Status:</strong> <span className="capitalize">{ptInfo.status || 'Active'}</span></p>
+                            </div>
+                          </div>
                         ) : (
-                          <FileText className="h-4 w-4" />
+                          <span className="text-xs text-gray-400">—</span>
                         )}
-                      </button>
-                      
-                      <button 
-                        onClick={() => {
-                          const memberForSync = {
-                            id: member.id,
-                            full_name: member.fullName,
-                            fullName: member.fullName,
-                            phone: member.phone,
-                            email: member.email || '',
-                            device_user_id: member.deviceUserId || null,
-                            deviceUserId: member.deviceUserId || null,
-                            syncedToDevice: member.syncedToDevice || false,
-                            membership: member.membership,
-                            status: member.status,
-                            joinDate: member.joinDate,
-                            avatar: member.avatar,
-                            raw: member.raw || member
-                          };
-                          openDeviceSyncModal(memberForSync);
-                        }} 
-                        className="text-purple-600 hover:text-purple-900 mr-3"
-                        title="Sync to Attendance Device"
-                      >
-                        <Wifi className="h-4 w-4" />
-                      </button>
-                      
-                      <button onClick={() => openEditModal(member)} className="text-blue-600 hover:text-blue-900 mr-3">
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      
-                      <button onClick={() => handleDeleteClick(member)} className="text-red-600 hover:text-red-900">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {member.syncedToDevice ? (
+                          <div className="group relative">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 cursor-help">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Synced
+                            </span>
+                            {member.deviceUserId && (
+                              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+                                Device ID: {member.deviceUserId}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            <XCircle className="h-3 w-3 mr-1" />
+                            Not Synced
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {member.deviceUserId ? (
+                          <button
+                            onClick={() => copyDeviceIdToClipboard(member.deviceUserId)}
+                            className="group relative inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors cursor-pointer"
+                            title="Click to copy Device User ID"
+                          >
+                            {member.deviceUserId.substring(0, 8)}...
+                            <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                              Click to copy full ID
+                            </span>
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button 
+                          onClick={() => handleDownloadInvoice(member)} 
+                          className="text-green-600 hover:text-green-900 mr-3 inline-flex items-center"
+                          title="Download Invoice"
+                          disabled={downloadingInvoice === member.id}
+                        >
+                          {downloadingInvoice === member.id ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                          ) : (
+                            <FileText className="h-4 w-4" />
+                          )}
+                        </button>
+                        
+                        <button 
+                          onClick={() => {
+                            const memberForSync = {
+                              id: member.id,
+                              full_name: member.fullName,
+                              fullName: member.fullName,
+                              phone: member.phone,
+                              email: member.email || '',
+                              device_user_id: member.deviceUserId || null,
+                              deviceUserId: member.deviceUserId || null,
+                              syncedToDevice: member.syncedToDevice || false,
+                              membership: member.membership,
+                              status: member.status,
+                              joinDate: member.joinDate,
+                              avatar: member.avatar,
+                              raw: member.raw || member
+                            };
+                            openDeviceSyncModal(memberForSync);
+                          }} 
+                          className="text-purple-600 hover:text-purple-900 mr-3"
+                          title="Sync to Attendance Device"
+                        >
+                          <Wifi className="h-4 w-4" />
+                        </button>
+                        
+                        <button onClick={() => openEditModal(member)} className="text-blue-600 hover:text-blue-900 mr-3">
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        
+                        <button onClick={() => handleDeleteClick(member)} className="text-red-600 hover:text-red-900">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

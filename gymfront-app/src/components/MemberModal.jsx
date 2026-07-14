@@ -1,10 +1,10 @@
-// MemberModal.jsx - Fixed custom due date picker (no auto-default date)
+// MemberModal.jsx - Updated with Personal Training
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, User, Phone, Heart, FileText, Camera, Plus, CheckCircle,
   Calendar, CreditCard, AlertCircle, ChevronRight, Loader2, RefreshCw,
-  ChevronUp, ChevronDown, Upload, Trash2, Edit, CalendarDays
+  ChevronUp, ChevronDown, Upload, Trash2, Edit, CalendarDays, Dumbbell
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
@@ -748,6 +748,283 @@ const CustomDueDatePicker = ({
   );
 };
 
+// ─── Personal Training Section ────────────────────────────────────────────────────
+const PersonalTrainingSection = ({ 
+  formData, 
+  setFormData, 
+  trainers,
+  loadingTrainers,
+  isEdit
+}) => {
+  const [showPTOption, setShowPTOption] = useState(false);
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  
+  // Days of week for session scheduling
+  const daysOfWeek = [
+    { value: 'monday', label: 'Monday' },
+    { value: 'tuesday', label: 'Tuesday' },
+    { value: 'wednesday', label: 'Wednesday' },
+    { value: 'thursday', label: 'Thursday' },
+    { value: 'friday', label: 'Friday' },
+    { value: 'saturday', label: 'Saturday' },
+    { value: 'sunday', label: 'Sunday' }
+  ];
+
+  // Parse session time if it exists
+  useEffect(() => {
+    if (formData.pt_session_time) {
+      const parts = formData.pt_session_time.split(' - ');
+      if (parts.length === 2) {
+        setStartTime(parts[0]);
+        setEndTime(parts[1]);
+      }
+    }
+  }, [formData.pt_session_time]);
+
+  // Update session time when start or end time changes
+  const updateSessionTime = (start, end) => {
+    if (start && end) {
+      setFormData(prev => ({ ...prev, pt_session_time: `${start} - ${end}` }));
+    } else {
+      setFormData(prev => ({ ...prev, pt_session_time: '' }));
+    }
+  };
+
+  const handleStartTimeChange = (value) => {
+    setStartTime(value);
+    updateSessionTime(value, endTime);
+  };
+
+  const handleEndTimeChange = (value) => {
+    setEndTime(value);
+    updateSessionTime(startTime, value);
+  };
+
+  // Handle day selection toggle
+  const toggleDay = (day) => {
+    const currentDays = JSON.parse(formData.pt_session_days || '[]');
+    const newDays = currentDays.includes(day) 
+      ? currentDays.filter(d => d !== day)
+      : [...currentDays, day];
+    setFormData(prev => ({ ...prev, pt_session_days: JSON.stringify(newDays) }));
+  };
+
+  if (loadingTrainers) {
+    return (
+      <div className="mt-6 border-t border-gray-200 pt-6">
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+          <span className="ml-2 text-gray-600">Loading trainers...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 border-t border-gray-200 pt-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h4 className="text-md font-semibold text-gray-900 flex items-center gap-2">
+            <Dumbbell className="h-5 w-5 text-blue-600" />
+            Personal Training
+          </h4>
+          <p className="text-sm text-gray-500">Add personal training sessions for this member</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowPTOption(!showPTOption)}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+            showPTOption ? 'bg-blue-600' : 'bg-gray-200'
+          }`}
+        >
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+            showPTOption ? 'translate-x-6' : 'translate-x-1'
+          }`} />
+        </button>
+      </div>
+
+      {showPTOption && (
+        <div className="space-y-4 bg-blue-50 border border-blue-200 rounded-xl p-5">
+          {/* Trainer Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Select Trainer <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={formData.pt_trainer_id || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, pt_trainer_id: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+            >
+              <option value="">Select a trainer...</option>
+              {trainers.map(trainer => (
+                <option key={trainer.id} value={trainer.id}>
+                  {trainer.full_name} {trainer.position ? `(${trainer.position})` : ''} {trainer.phone ? `- ${trainer.phone}` : ''}
+                </option>
+              ))}
+            </select>
+            {trainers.length === 0 && (
+              <p className="text-xs text-amber-600 mt-1">
+                ⚠️ No trainers found. Please add staff members with trainer positions first.
+              </p>
+            )}
+          </div>
+
+          {/* Date Range */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Start Date <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={formData.pt_start_date || ''}
+                min={new Date().toISOString().split('T')[0]}
+                onChange={(e) => setFormData(prev => ({ ...prev, pt_start_date: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                End Date <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={formData.pt_end_date || ''}
+                min={formData.pt_start_date || new Date().toISOString().split('T')[0]}
+                onChange={(e) => setFormData(prev => ({ ...prev, pt_end_date: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+              />
+            </div>
+          </div>
+
+          {/* Session Days */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Session Days <span className="text-red-500">*</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {daysOfWeek.map((day) => {
+                const selectedDays = JSON.parse(formData.pt_session_days || '[]');
+                const isSelected = selectedDays.includes(day.value);
+                return (
+                  <button
+                    key={day.value}
+                    type="button"
+                    onClick={() => toggleDay(day.value)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${
+                      isSelected
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:border-blue-400'
+                    }`}
+                  >
+                    {day.label.substring(0, 3)}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Select the days of the week for training sessions</p>
+          </div>
+
+          {/* Time Inputs */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Start Time <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => handleStartTimeChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                step="900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                End Time <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => handleEndTimeChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                step="900"
+              />
+            </div>
+          </div>
+
+          {/* ✅ Total Amount and Amount Paid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Total Amount (₹) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="10"
+                value={formData.pt_total_amount || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, pt_total_amount: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                placeholder="e.g., 5000"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Amount Paid (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="10"
+                value={formData.pt_amount_paid || 0}
+                onChange={(e) => setFormData(prev => ({ ...prev, pt_amount_paid: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                placeholder="0"
+              />
+            </div>
+          </div>
+
+          {/* Show balance due */}
+          {formData.pt_total_amount && formData.pt_total_amount > 0 && (
+            <div className={`p-3 rounded-lg ${
+              (parseFloat(formData.pt_total_amount) - parseFloat(formData.pt_amount_paid || 0)) > 0
+                ? 'bg-amber-50 border border-amber-200'
+                : 'bg-green-50 border border-green-200'
+            }`}>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Balance Due:</span>
+                <span className={`font-bold ${
+                  (parseFloat(formData.pt_total_amount) - parseFloat(formData.pt_amount_paid || 0)) > 0
+                    ? 'text-amber-600'
+                    : 'text-green-600'
+                }`}>
+                  ₹{(parseFloat(formData.pt_total_amount || 0) - parseFloat(formData.pt_amount_paid || 0)).toFixed(2)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Notes (Optional)
+            </label>
+            <textarea
+              rows="2"
+              value={formData.pt_notes || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, pt_notes: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+              placeholder="Any special requirements or notes for the trainer..."
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Membership Selector (with Edit/Delete) ────────────────────────────────────
 const MembershipSelector = ({ 
   formData, 
@@ -784,7 +1061,6 @@ const MembershipSelector = ({
     if (!selectedPlan || !formData.amount_paid) return false;
     const finalPrice = priceInfo?.finalPrice || selectedPlan.discounted_price || selectedPlan.price;
     const paid = parseFloat(formData.amount_paid) || 0;
-    // Show due date picker if amount paid is less than final price AND greater than 0
     return paid > 0 && paid < finalPrice;
   };
 
@@ -800,7 +1076,7 @@ const MembershipSelector = ({
         setFormData(prev => ({ 
           ...prev, 
           amount_paid: String(price),
-          custom_due_date: '' // Clear due date for full payment
+          custom_due_date: ''
         }));
         setAmountError(null);
       }
@@ -1029,7 +1305,6 @@ const MembershipSelector = ({
                 value={formData.membership_start_date} 
                 onChange={(e) => {
                   setFormData(prev => ({ ...prev, membership_start_date: e.target.value }));
-                  // Clear due date if start date changes
                   setFormData(prev => ({ ...prev, custom_due_date: '' }));
                 }}
                 className={inputCls} 
@@ -1086,7 +1361,6 @@ const MembershipSelector = ({
                   } else {
                     setFormData(prev => ({ ...prev, discount_applied: e.target.value }));
                   }
-                  // Validate amount paid after discount change
                   validateAmountPaid(formData.amount_paid, selectedPlan);
                 }}
                 className={inputCls} 
@@ -1134,13 +1408,11 @@ const MembershipSelector = ({
                   onChange={(e) => {
                     const value = e.target.value;
                     const finalPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
-                    // Validate amount against plan price
                     if (parseFloat(value) > finalPrice) {
                       setAmountError(`Amount cannot exceed plan price of ₹${finalPrice}`);
                     } else {
                       setAmountError(null);
                     }
-                    // Call the parent handler
                     handleAmountChange(e);
                   }}
                   className={`${inputCls} pl-7 ${amountError ? 'border-red-500 ring-2 ring-red-100' : ''}`} 
@@ -1204,7 +1476,6 @@ const MembershipSelector = ({
                     value={formData.custom_due_date}
                     onChange={(date) => {
                       console.log('📅 Due date selected in picker:', date);
-                      console.log('📅 Due date type:', typeof date);
                       setFormData(prev => ({ ...prev, custom_due_date: date }));
                       setUserManuallyChangedAmount(true);
                     }}
@@ -1215,7 +1486,6 @@ const MembershipSelector = ({
                     minDate={new Date().toISOString().split('T')[0]}
                     disabled={false}
                   />
-
                   <p className="text-xs text-blue-600 mt-1.5">
                     👆 Select the date when the remaining balance is due
                   </p>
@@ -1309,20 +1579,6 @@ const MembershipSelector = ({
   );
 };
 
-
-// ─── Helper function to clean form data ──────────────────────────────────────
-const cleanFormData = (data) => {
-  const cleaned = {};
-  for (const [key, value] of Object.entries(data)) {
-    if (value === '') {
-      cleaned[key] = null;
-    } else {
-      cleaned[key] = value;
-    }
-  }
-  return cleaned;
-};
-
 // ─── Main MemberModal ─────────────────────────────────────────────────────────
 const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_owner' }) => {
   const today = new Date().toISOString().split('T')[0];
@@ -1336,7 +1592,16 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
     plan_id: '', membership_start_date: today, payment_method: 'cash', amount_paid: '',
     discount_applied: '',
     renew_membership: false,
-    custom_due_date: '', // Custom due date for partial payments
+    custom_due_date: '',
+    // Personal Training fields
+    pt_trainer_id: '',
+    pt_start_date: '',
+    pt_end_date: '',
+    pt_session_time: '',
+    pt_session_days: '[]',
+    pt_total_amount: '',  // ✅ Total amount for PT
+    pt_amount_paid: 0,    // ✅ Amount paid for PT
+    pt_notes: '',
   });
 
   const [activeTab, setActiveTab] = useState('personal');
@@ -1346,6 +1611,8 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
   const [saving, setSaving] = useState(false);
   const [userManuallyChangedAmount, setUserManuallyChangedAmount] = useState(false);
   const [amountError, setAmountError] = useState(null);
+  const [trainers, setTrainers] = useState([]);
+  const [loadingTrainers, setLoadingTrainers] = useState(false);
 
   const getPendingFileRef = useRef(null);
 
@@ -1366,6 +1633,53 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
       setLoadingPlans(false);
     }
   }, [member]);
+
+  const fetchTrainers = useCallback(async () => {
+    setLoadingTrainers(true);
+    try {
+      // ✅ Try the trainers endpoint first
+      const response = await api.get('/gym/trainers');
+      setTrainers(response.data || []);
+      console.log('✅ Trainers loaded from /gym/trainers:', response.data);
+    } catch (error) {
+      console.error('Error fetching trainers from /gym/trainers:', error);
+      
+      // ✅ Fallback: Try to get staff with trainer positions
+      try {
+        console.log('🔄 Falling back to /gym/staff endpoint...');
+        const staffResponse = await api.get('/gym/staff');
+        const trainerPositions = [
+          'Head Trainer', 'Trainer', 'Personal Trainer', 
+          'Yoga Instructor', 'Spin Instructor', 'Group Fitness Instructor',
+          'Zumba Instructor', 'Martial Arts Coach', 'Swimming Coach'
+        ];
+        const trainers = staffResponse.data.filter(s => 
+          s.is_active && trainerPositions.includes(s.position)
+        );
+        
+        if (trainers.length > 0) {
+          setTrainers(trainers.map(s => ({
+            id: s.user_id,
+            staff_id: s.id,
+            full_name: s.user?.full_name || 'Unknown',
+            email: s.user?.email || '',
+            phone: s.user?.phone || '',
+            position: s.position,
+            role: 'trainer'
+          })));
+          console.log('✅ Trainers loaded from fallback:', trainers.length);
+        } else {
+          console.warn('⚠️ No trainers found in staff list');
+          setTrainers([]);
+        }
+      } catch (fallbackError) {
+        console.error('❌ Fallback trainer fetch failed:', fallbackError);
+        setTrainers([]);
+      }
+    } finally {
+      setLoadingTrainers(false);
+    }
+  }, []);
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -1398,6 +1712,14 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         discount_applied: '',
         renew_membership: false,
         custom_due_date: '',
+        pt_trainer_id: '',
+        pt_start_date: '',
+        pt_end_date: '',
+        pt_session_time: '',
+        pt_session_days: '[]',
+        pt_total_amount: '',
+        pt_amount_paid: 0,
+        pt_notes: '',
       });
     } else {
       setFormData({
@@ -1412,10 +1734,19 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         discount_applied: '',
         renew_membership: false,
         custom_due_date: '',
+        pt_trainer_id: '',
+        pt_start_date: '',
+        pt_end_date: '',
+        pt_session_time: '',
+        pt_session_days: '[]',
+        pt_total_amount: '',
+        pt_amount_paid: 0,
+        pt_notes: '',
       });
     }
     refreshMembershipPlans();
-  }, [isOpen, member, refreshMembershipPlans, today]);
+    fetchTrainers();
+  }, [isOpen, member, refreshMembershipPlans, fetchTrainers, today]);
 
   // Only set amount_paid automatically when plan is selected AND user hasn't manually changed it
   useEffect(() => {
@@ -1432,7 +1763,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
   // Handler for amount change - marks that user manually changed it
   const handleAmountChange = (e) => {
     const value = e.target.value;
-    // Validate against plan price
     const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
     if (selectedPlan) {
       const planPrice = selectedPlan.discounted_price || selectedPlan.price;
@@ -1442,8 +1772,6 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         setAmountError(`Amount cannot exceed ₹${finalPrice}`);
       } else {
         setAmountError(null);
-        // If partial payment, keep existing custom_due_date or let user set it
-        // Do NOT auto-set the date here - let the user choose
       }
     }
     setUserManuallyChangedAmount(true);
@@ -1452,169 +1780,168 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
 
   if (!isOpen) return null;
 
-  // In MemberModal.jsx - Update the handleSubmit function
-
-const handleSubmit = async (e) => {
-  e.preventDefault();
-
-  // Validate amount before submission
-  const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
-  if (selectedPlan && formData.amount_paid) {
-    const planPrice = selectedPlan.discounted_price || selectedPlan.price;
-    const discount = parseFloat(formData.discount_applied) || 0;
-    const finalPrice = planPrice - discount;
-    if (parseFloat(formData.amount_paid) > finalPrice) {
-      toast.error(`Amount paid cannot exceed ₹${finalPrice}`);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+  
+    const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
+    if (selectedPlan && formData.amount_paid) {
+      const planPrice = selectedPlan.discounted_price || selectedPlan.price;
+      const discount = parseFloat(formData.discount_applied) || 0;
+      const finalPrice = planPrice - discount;
+      if (parseFloat(formData.amount_paid) > finalPrice) {
+        toast.error(`Amount paid cannot exceed ₹${finalPrice}`);
+        setActiveTab('membership');
+        return;
+      }
+    }
+  
+    if (!formData.full_name.trim()) {
+      toast.error('Full name is required');
+      setActiveTab('personal');
+      return;
+    }
+    if (!formData.phone.trim()) {
+      toast.error('Phone number is required');
+      setActiveTab('personal');
+      return;
+    }
+    if (!/^[+]?[\d\s\-]{7,15}$/.test(formData.phone.trim())) {
+      toast.error('Enter a valid phone number (e.g. +91-9876543210)');
+      setActiveTab('personal');
+      return;
+    }
+    if (formData.emergency_contact_phone.trim() && !/^[+]?[\d\s\-]{7,15}$/.test(formData.emergency_contact_phone.trim())) {
+      toast.error('Enter a valid emergency contact phone number');
+      setActiveTab('contact');
+      return;
+    }
+    if (!isEdit && !formData.plan_id) {
+      toast.error('Please select a membership plan');
       setActiveTab('membership');
       return;
     }
-  }
-
-  if (!formData.full_name.trim()) {
-    toast.error('Full name is required');
-    setActiveTab('personal');
-    return;
-  }
-  if (!formData.phone.trim()) {
-    toast.error('Phone number is required');
-    setActiveTab('personal');
-    return;
-  }
-  if (!/^[+]?[\d\s\-]{7,15}$/.test(formData.phone.trim())) {
-    toast.error('Enter a valid phone number (e.g. +91-9876543210)');
-    setActiveTab('personal');
-    return;
-  }
-  if (formData.emergency_contact_phone.trim() && !/^[+]?[\d\s\-]{7,15}$/.test(formData.emergency_contact_phone.trim())) {
-    toast.error('Enter a valid emergency contact phone number');
-    setActiveTab('contact');
-    return;
-  }
-  if (!isEdit && !formData.plan_id) {
-    toast.error('Please select a membership plan');
-    setActiveTab('membership');
-    return;
-  }
-  if (isEdit && formData.renew_membership && !formData.plan_id) {
-    toast.error('Please select a plan to renew');
-    setActiveTab('membership');
-    return;
-  }
-
-  if (!isEdit) {
-    try {
-      const phoneCheck = await api.get(`/gym/members?search=${encodeURIComponent(formData.phone.trim())}`);
-      const duplicate = phoneCheck.data?.find(
-        m => m.phone === formData.phone.trim()
-      );
-      if (duplicate) {
-        toast.error(
-          `A member with phone number ${formData.phone.trim()} already exists (${duplicate.full_name}). Please use a different number.`,
-          { duration: 5000 }
+    if (isEdit && formData.renew_membership && !formData.plan_id) {
+      toast.error('Please select a plan to renew');
+      setActiveTab('membership');
+      return;
+    }
+  
+    if (!isEdit) {
+      try {
+        const phoneCheck = await api.get(`/gym/members?search=${encodeURIComponent(formData.phone.trim())}`);
+        const duplicate = phoneCheck.data?.find(
+          m => m.phone === formData.phone.trim()
         );
-        setActiveTab('personal');
-        return;
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  setSaving(true);
-  try {
-    const memberFields = {
-      full_name: formData.full_name.trim(),
-      email: formData.email?.trim() || null,
-      phone: formData.phone.trim(),
-      address: formData.address?.trim() || null,
-      date_of_birth: formData.date_of_birth || null,
-      gender: formData.gender,
-      emergency_contact_name: formData.emergency_contact_name?.trim() || null,
-      emergency_contact_phone: formData.emergency_contact_phone?.trim() || null,
-      medical_conditions: formData.medical_conditions?.trim() || null,
-      allergies: formData.allergies?.trim() || null,
-      medications: formData.medications?.trim() || null,
-      id_proof_type: formData.id_proof_type || null,
-      id_proof_number: formData.id_proof_number?.trim() || null,
-    };
-
-    console.log('🔍 FORM DATA DEBUG:');
-    console.log('  - amount_paid:', formData.amount_paid);
-    console.log('  - custom_due_date (raw):', formData.custom_due_date);
-    console.log('  - custom_due_date type:', typeof formData.custom_due_date);
-    console.log('  - custom_due_date length:', formData.custom_due_date?.length);
-
-    // ✅ FIX: Only send custom_due_date if it has a value and is not empty
-    // If it's empty string, undefined, or null, send null
-    let dueDate = null;
-    if (formData.custom_due_date && formData.custom_due_date.trim() !== '') {
-      dueDate = formData.custom_due_date.trim();
-    }
-    // If it's the string "None" (which might come from somewhere), treat as null
-    if (dueDate === 'None') {
-      dueDate = null;
-    }
-    
-    console.log('  - dueDate (after processing):', dueDate);
-    console.log('  - dueDate type:', typeof dueDate);
-
-    let payload;
-    
-    if (isEdit && formData.renew_membership) {
-      payload = {
-        ...memberFields,
-        plan_id: formData.plan_id,
-        membership_start_date: formData.membership_start_date,
-        payment_method: formData.payment_method,
-        amount_paid: formData.amount_paid || 0,
-        discount_applied: formData.discount_applied || 0,
-        renew_membership: true,
-        custom_due_date: dueDate, // ✅ Send null if empty
-      };
-    } else if (isEdit) {
-      payload = memberFields;
-    } else {
-      payload = {
-        ...memberFields,
-        plan_id: formData.plan_id,
-        membership_start_date: formData.membership_start_date,
-        payment_method: formData.payment_method,
-        amount_paid: formData.amount_paid || 0,
-        discount_applied: formData.discount_applied || 0,
-        custom_due_date: dueDate, // ✅ Send null if empty
-      };
-    }
-
-    console.log('📤 FINAL PAYLOAD BEING SENT:');
-    console.log('  - custom_due_date:', payload.custom_due_date);
-    console.log('  - custom_due_date type:', typeof payload.custom_due_date);
-
-    const savedMember = await onSave(payload);
-
-    if (!isEdit && savedMember?.id) {
-      const pendingFile = getPendingFileRef.current?.();
-      if (pendingFile) {
-        try {
-          const fd = new FormData();
-          fd.append('file', pendingFile);
-          await api.post(
-            `/gym/members/${savedMember.id}/upload-photo`,
-            fd,
-            { headers: { 'Content-Type': 'multipart/form-data' } }
+        if (duplicate) {
+          toast.error(
+            `A member with phone number ${formData.phone.trim()} already exists (${duplicate.full_name}). Please use a different number.`,
+            { duration: 5000 }
           );
-          toast.success('Photo uploaded!');
-        } catch {
-          toast.error('Member saved, but photo upload failed. You can re-upload from edit mode.');
+          setActiveTab('personal');
+          return;
+        }
+      } catch {
+        // ignore
+      }
+    }
+  
+    setSaving(true);
+    try {
+      const memberFields = {
+        full_name: formData.full_name.trim(),
+        email: formData.email?.trim() || null,
+        phone: formData.phone.trim(),
+        address: formData.address?.trim() || null,
+        date_of_birth: formData.date_of_birth || null,
+        gender: formData.gender,
+        emergency_contact_name: formData.emergency_contact_name?.trim() || null,
+        emergency_contact_phone: formData.emergency_contact_phone?.trim() || null,
+        medical_conditions: formData.medical_conditions?.trim() || null,
+        allergies: formData.allergies?.trim() || null,
+        medications: formData.medications?.trim() || null,
+        id_proof_type: formData.id_proof_type || null,
+        id_proof_number: formData.id_proof_number?.trim() || null,
+      };
+
+      console.log('🔍 FORM DATA DEBUG:');
+      console.log('  - custom_due_date (raw):', formData.custom_due_date);
+      console.log('  - PT trainer_id:', formData.pt_trainer_id);
+      console.log('  - PT start_date:', formData.pt_start_date);
+      console.log('  - PT end_date:', formData.pt_end_date);
+      console.log('  - PT session_time:', formData.pt_session_time);
+
+      const dueDate = formData.custom_due_date && formData.custom_due_date.trim() !== '' 
+        ? formData.custom_due_date 
+        : null;
+      
+      let payload;
+      
+      // Prepare PT data with correct field names
+      const ptData = formData.pt_trainer_id ? {
+        trainer_id: formData.pt_trainer_id,
+        start_date: formData.pt_start_date,
+        end_date: formData.pt_end_date,
+        session_time: formData.pt_session_time,
+        session_days: formData.pt_session_days || '[]',
+        total_amount: formData.pt_total_amount ? parseFloat(formData.pt_total_amount) : null,
+        amount_paid: formData.pt_amount_paid ? parseFloat(formData.pt_amount_paid) : 0,
+        notes: formData.pt_notes || null
+      } : null;
+      
+      if (isEdit && formData.renew_membership) {
+        payload = {
+          ...memberFields,
+          plan_id: formData.plan_id,
+          membership_start_date: formData.membership_start_date,
+          payment_method: formData.payment_method,
+          amount_paid: formData.amount_paid || 0,
+          discount_applied: formData.discount_applied || 0,
+          renew_membership: true,
+          custom_due_date: dueDate,
+          pt_data: ptData,
+        };
+      } else if (isEdit) {
+        payload = memberFields;
+      } else {
+        payload = {
+          ...memberFields,
+          plan_id: formData.plan_id,
+          membership_start_date: formData.membership_start_date,
+          payment_method: formData.payment_method,
+          amount_paid: formData.amount_paid || 0,
+          discount_applied: formData.discount_applied || 0,
+          custom_due_date: dueDate,
+          pt_data: ptData,
+        };
+      }
+  
+      console.log('📤 Sending payload:', payload);
+  
+      const savedMember = await onSave(payload);
+  
+      if (!isEdit && savedMember?.id) {
+        const pendingFile = getPendingFileRef.current?.();
+        if (pendingFile) {
+          try {
+            const fd = new FormData();
+            fd.append('file', pendingFile);
+            await api.post(
+              `/gym/members/${savedMember.id}/upload-photo`,
+              fd,
+              { headers: { 'Content-Type': 'multipart/form-data' } }
+            );
+            toast.success('Photo uploaded!');
+          } catch {
+            toast.error('Member saved, but photo upload failed. You can re-upload from edit mode.');
+          }
         }
       }
+    } catch (error) {
+      console.error('Save error:', error);
+    } finally {
+      setSaving(false);
     }
-  } catch (error) {
-    console.error('Save error:', error);
-  } finally {
-    setSaving(false);
-  }
-};
-
+  };
 
   const set = (field) => (e) => setFormData(prev => ({ ...prev, [field]: e.target.value }));
 
@@ -1897,6 +2224,15 @@ const handleSubmit = async (e) => {
                     Toggle the switch above to renew or change this member's plan.
                   </p>
                 )}
+
+                {/* Personal Training Section */}
+                <PersonalTrainingSection 
+                  formData={formData}
+                  setFormData={setFormData}
+                  trainers={trainers}
+                  loadingTrainers={loadingTrainers}
+                  isEdit={isEdit}
+                />
               </div>
             )}
           </div>
