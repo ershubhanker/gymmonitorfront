@@ -1,8 +1,10 @@
+// MemberModal.jsx - Fixed custom due date picker (no auto-default date)
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, User, Phone, Heart, FileText, Camera, Plus, CheckCircle,
   Calendar, CreditCard, AlertCircle, ChevronRight, Loader2, RefreshCw,
-  ChevronUp, ChevronDown, Upload, Trash2, Edit
+  ChevronUp, ChevronDown, Upload, Trash2, Edit, CalendarDays
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
@@ -457,7 +459,6 @@ const PlanFormModal = ({ plan, onSave, onCancel }) => {
     discounted_price: plan?.discounted_price?.toString() || '',
     description: plan?.description || '',
     is_active: plan?.is_active ?? true,
-    attendance_id: '',
   });
 
   const handlePreset = (preset) => {
@@ -471,141 +472,34 @@ const PlanFormModal = ({ plan, onSave, onCancel }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-  
-    // Validate amount before submission
-    const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
-    if (selectedPlan && formData.amount_paid) {
-      const planPrice = selectedPlan.discounted_price || selectedPlan.price;
-      const discount = parseFloat(formData.discount_applied) || 0;
-      const finalPrice = planPrice - discount;
-      if (parseFloat(formData.amount_paid) > finalPrice) {
-        toast.error(`Amount paid cannot exceed ₹${finalPrice}`);
-        setActiveTab('membership');
-        return;
-      }
-    }
-  
-    if (!formData.full_name.trim()) {
-      toast.error('Full name is required');
-      setActiveTab('personal');
+    
+    if (!formData.name.trim()) {
+      toast.error('Plan name is required');
       return;
     }
-    if (!formData.phone.trim()) {
-      toast.error('Phone number is required');
-      setActiveTab('personal');
+    if (!formData.duration_days || formData.duration_days <= 0) {
+      toast.error('Duration must be at least 1 day');
       return;
     }
-    if (!/^[+]?[\d\s\-]{7,15}$/.test(formData.phone.trim())) {
-      toast.error('Enter a valid phone number (e.g. +91-9876543210)');
-      setActiveTab('personal');
+    if (!formData.price || parseFloat(formData.price) <= 0) {
+      toast.error('Price must be greater than 0');
       return;
     }
-    if (formData.emergency_contact_phone.trim() && !/^[+]?[\d\s\-]{7,15}$/.test(formData.emergency_contact_phone.trim())) {
-      toast.error('Enter a valid emergency contact phone number');
-      setActiveTab('contact');
-      return;
-    }
-    if (!isEdit && !formData.plan_id) {
-      toast.error('Please select a membership plan');
-      setActiveTab('membership');
-      return;
-    }
-    if (isEdit && formData.renew_membership && !formData.plan_id) {
-      toast.error('Please select a plan to renew');
-      setActiveTab('membership');
-      return;
-    }
-  
-    if (!isEdit) {
-      try {
-        const phoneCheck = await api.get(`/gym/members?search=${encodeURIComponent(formData.phone.trim())}`);
-        const duplicate = phoneCheck.data?.find(
-          m => m.phone === formData.phone.trim()
-        );
-        if (duplicate) {
-          toast.error(
-            `A member with phone number ${formData.phone.trim()} already exists (${duplicate.full_name}). Please use a different number.`,
-            { duration: 5000 }
-          );
-          setActiveTab('personal');
-          return;
-        }
-      } catch {
-        // ignore
-      }
-    }
-  
+
     setSaving(true);
     try {
-      const memberFields = {
-        full_name: formData.full_name.trim(),
-        email: formData.email?.trim() || null,
-        phone: formData.phone.trim(),
-        address: formData.address?.trim() || null,
-        date_of_birth: formData.date_of_birth || null,
-        gender: formData.gender,
-        emergency_contact_name: formData.emergency_contact_name?.trim() || null,
-        emergency_contact_phone: formData.emergency_contact_phone?.trim() || null,
-        medical_conditions: formData.medical_conditions?.trim() || null,
-        allergies: formData.allergies?.trim() || null,
-        medications: formData.medications?.trim() || null,
-        id_proof_type: formData.id_proof_type || null,
-        id_proof_number: formData.id_proof_number?.trim() || null,
+      const payload = {
+        name: formData.name.trim(),
+        plan_type: formData.plan_type,
+        duration_days: parseInt(formData.duration_days),
+        price: parseFloat(formData.price),
+        discounted_price: formData.discounted_price ? parseFloat(formData.discounted_price) : null,
+        description: formData.description.trim() || null,
+        is_active: formData.is_active,
       };
-  
-      let payload;
-      
-      if (isEdit && formData.renew_membership) {
-        // RENEWAL: Send the renewal data
-        // IMPORTANT: For renewal, we DON'T send amount_paid as a payment
-        // The backend will handle carrying over the existing payment
-        payload = {
-          ...memberFields,
-          plan_id: formData.plan_id,
-          membership_start_date: formData.membership_start_date,
-          payment_method: formData.payment_method,
-          // amount_paid: 0, // ← DON'T send amount_paid for renewal
-          // The backend will use the existing payment
-          discount_applied: formData.discount_applied || 0,
-          renew_membership: true,
-          // NEW: Send the current membership ID to help with renewal
-          current_membership_id: member?.id || null,
-        };
-      } else if (isEdit) {
-        payload = memberFields;
-      } else {
-        // NEW MEMBER: Send all data including amount_paid for initial payment
-        payload = {
-          ...memberFields,
-          plan_id: formData.plan_id,
-          membership_start_date: formData.membership_start_date,
-          payment_method: formData.payment_method,
-          amount_paid: formData.amount_paid || 0,
-          discount_applied: formData.discount_applied || 0,
-        };
-      }
-  
-      const savedMember = await onSave(payload);
-  
-      if (!isEdit && savedMember?.id) {
-        const pendingFile = getPendingFileRef.current?.();
-        if (pendingFile) {
-          try {
-            const fd = new FormData();
-            fd.append('file', pendingFile);
-            await api.post(
-              `/gym/members/${savedMember.id}/upload-photo`,
-              fd,
-              { headers: { 'Content-Type': 'multipart/form-data' } }
-            );
-            toast.success('Photo uploaded!');
-          } catch {
-            toast.error('Member saved, but photo upload failed. You can re-upload from edit mode.');
-          }
-        }
-      }
+      await onSave(payload);
     } catch (error) {
-      console.error('Save error:', error);
+      console.error('Plan save error:', error);
     } finally {
       setSaving(false);
     }
@@ -730,6 +624,130 @@ const PlanFormModal = ({ plan, onSave, onCancel }) => {
   );
 };
 
+// ─── Custom Due Date Picker ────────────────────────────────────────────────────
+const CustomDueDatePicker = ({ 
+  value, 
+  onChange, 
+  disabled, 
+  minDate,
+  onClear 
+}) => {
+  const [showPicker, setShowPicker] = useState(false);
+  const containerRef = useRef(null);
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr + 'T00:00:00');
+      return d.toLocaleDateString('en-IN', { 
+        day: 'numeric', 
+        month: 'short', 
+        year: 'numeric' 
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setShowPicker(false);
+      }
+    };
+    if (showPicker) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showPicker]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => !disabled && setShowPicker(!showPicker)}
+        disabled={disabled}
+        className={`w-full flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-all ${
+          disabled 
+            ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200'
+            : showPicker 
+              ? 'border-blue-500 ring-2 ring-blue-100 bg-white' 
+              : 'border-gray-300 hover:border-blue-400 bg-white'
+        } ${value ? 'text-gray-800' : 'text-gray-400'}`}
+      >
+        <CalendarDays className="h-4 w-4 flex-shrink-0" />
+        <span className="flex-1 text-left">
+          {value ? formatDate(value) : 'Select due date'}
+        </span>
+        {value && !disabled && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClear();
+            }}
+            className="text-gray-400 hover:text-red-500 transition-colors p-0.5"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {!disabled && (
+          <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${showPicker ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+      
+      {showPicker && !disabled && (
+        <div className="absolute left-0 mt-2 z-[60] bg-white border border-gray-200 rounded-2xl shadow-2xl p-5 min-w-[280px]">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider text-center mb-3">Select Due Date</p>
+          <input
+            type="date"
+            value={value || ''}
+            min={minDate}
+            onChange={(e) => {
+              onChange(e.target.value);
+              setShowPicker(false);
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          />
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const today = new Date();
+                const nextMonth = new Date(today);
+                nextMonth.setMonth(today.getMonth() + 1);
+                onChange(nextMonth.toISOString().split('T')[0]);
+                setShowPicker(false);
+              }}
+              className="flex-1 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              Next Month
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const today = new Date();
+                const nextWeek = new Date(today);
+                nextWeek.setDate(today.getDate() + 7);
+                onChange(nextWeek.toISOString().split('T')[0]);
+                setShowPicker(false);
+              }}
+              className="flex-1 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+            >
+              +7 Days
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowPicker(false)}
+            className="mt-3 w-full py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 active:bg-blue-800 transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Membership Selector (with Edit/Delete) ────────────────────────────────────
 const MembershipSelector = ({ 
   formData, 
@@ -745,37 +763,12 @@ const MembershipSelector = ({
   setUserManuallyChangedAmount,
   handleAmountChange,
   amountError,
-  setAmountError
+  setAmountError,
 }) => {
   const [editingPlan, setEditingPlan] = useState(null);
   const [deletingPlanId, setDeletingPlanId] = useState(null);
   const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
   
-  // FIXED: When plan is selected, only set amount if user hasn't manually changed it
-  const handlePlanSelect = (e) => {
-    const planId = e.target.value;
-    setFormData(prev => ({ ...prev, plan_id: planId }));
-    setAmountError(null); // Clear error when plan changes
-    
-    // If user hasn't manually changed the amount, auto-fill with plan price
-    if (!userManuallyChangedAmount) {
-      const plan = membershipPlans.find(p => String(p.id) === String(planId));
-      if (plan) {
-        const price = plan.discounted_price || plan.price;
-        setFormData(prev => ({ 
-          ...prev, 
-          amount_paid: String(price) 
-        }));
-        // Validate the auto-filled amount
-        if (parseFloat(price) > (plan.discounted_price || plan.price)) {
-          setAmountError('Amount cannot exceed plan price');
-        } else {
-          setAmountError(null);
-        }
-      }
-    }
-  };
-
   const calculatePriceWithDiscount = () => {
     if (!selectedPlan) return null;
     const originalPrice = selectedPlan.discounted_price || selectedPlan.price;
@@ -786,19 +779,47 @@ const MembershipSelector = ({
 
   const priceInfo = calculatePriceWithDiscount();
 
+  // Check if amount is partial (less than final plan price)
+  const isPartialPayment = () => {
+    if (!selectedPlan || !formData.amount_paid) return false;
+    const finalPrice = priceInfo?.finalPrice || selectedPlan.discounted_price || selectedPlan.price;
+    const paid = parseFloat(formData.amount_paid) || 0;
+    // Show due date picker if amount paid is less than final price AND greater than 0
+    return paid > 0 && paid < finalPrice;
+  };
+
+  const handlePlanSelect = (e) => {
+    const planId = e.target.value;
+    setFormData(prev => ({ ...prev, plan_id: planId }));
+    setAmountError(null);
+    
+    if (!userManuallyChangedAmount) {
+      const plan = membershipPlans.find(p => String(p.id) === String(planId));
+      if (plan) {
+        const price = plan.discounted_price || plan.price;
+        setFormData(prev => ({ 
+          ...prev, 
+          amount_paid: String(price),
+          custom_due_date: '' // Clear due date for full payment
+        }));
+        setAmountError(null);
+      }
+    }
+  };
+
   const handlePlanSave = async (planPayload) => {
     if (editingPlan) {
       const res = await api.put(`/gym/plans/${editingPlan.id}`, planPayload);
       toast.success(`Plan "${res.data.name}" updated`);
       setEditingPlan(null);
       await onRefreshPlans();
-      // Only update amount if user hasn't manually changed it
       if (String(formData.plan_id) === String(editingPlan.id) && !userManuallyChangedAmount) {
         const updatedPlan = res.data;
         const price = updatedPlan.discounted_price || updatedPlan.price;
         setFormData(prev => ({
           ...prev,
-          amount_paid: String(price)
+          amount_paid: String(price),
+          custom_due_date: ''
         }));
         setAmountError(null);
       }
@@ -810,7 +831,8 @@ const MembershipSelector = ({
       setFormData(prev => ({
         ...prev,
         plan_id: String(res.data.id),
-        amount_paid: String(price)
+        amount_paid: String(price),
+        custom_due_date: ''
       }));
       setUserManuallyChangedAmount(false);
       setAmountError(null);
@@ -827,7 +849,7 @@ const MembershipSelector = ({
       toast.success(response.data.message || 'Plan deleted/deactivated successfully');
       
       if (String(formData.plan_id) === String(plan.id)) {
-        setFormData(prev => ({ ...prev, plan_id: '', amount_paid: '' }));
+        setFormData(prev => ({ ...prev, plan_id: '', amount_paid: '', custom_due_date: '' }));
         setAmountError(null);
       }
       
@@ -855,13 +877,11 @@ const MembershipSelector = ({
     setShowPlanCreator(false);
   };
 
-
-
   const validateAmountPaid = (amount, selectedPlan) => {
     if (!selectedPlan) return;
     const planPrice = selectedPlan.discounted_price || selectedPlan.price;
     const discount = parseFloat(formData.discount_applied) || 0;
-    const finalPrice = planPrice - discount; // ✅ Use final price after discount
+    const finalPrice = planPrice - discount;
     
     if (parseFloat(amount) > finalPrice) {
       setAmountError(`Amount cannot exceed ₹${finalPrice}`);
@@ -1007,7 +1027,11 @@ const MembershipSelector = ({
               <input 
                 type="date" 
                 value={formData.membership_start_date} 
-                onChange={(e) => setFormData(prev => ({ ...prev, membership_start_date: e.target.value }))}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, membership_start_date: e.target.value }));
+                  // Clear due date if start date changes
+                  setFormData(prev => ({ ...prev, custom_due_date: '' }));
+                }}
                 className={inputCls} 
                 style={{ colorScheme: 'light' }} 
               />
@@ -1075,28 +1099,28 @@ const MembershipSelector = ({
             
             {/* Show price breakdown when discount is applied */}
             {priceInfo && priceInfo.discount > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p className="text-xs font-semibold text-blue-700 mb-2">Price Breakdown</p>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Original Price:</span>
-                  <span className="font-medium">₹{priceInfo.originalPrice}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-red-600">Discount:</span>
-                  <span className="text-red-600 font-medium">- ₹{priceInfo.discount}</span>
-                </div>
-                <div className="flex justify-between pt-1 border-t border-blue-200 font-semibold">
-                  <span className="text-green-600">Final Price (After Discount):</span>
-                  <span className="text-green-600 font-bold">₹{priceInfo.finalPrice}</span>
-                </div>
-                <div className="flex justify-between text-gray-500 text-xs pt-1">
-                  <span>GST (5% on final price):</span>
-                  <span>₹{(priceInfo.finalPrice - (priceInfo.finalPrice / 1.05)).toFixed(2)}</span>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs font-semibold text-blue-700 mb-2">Price Breakdown</p>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Original Price:</span>
+                    <span className="font-medium">₹{priceInfo.originalPrice}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-red-600">Discount:</span>
+                    <span className="text-red-600 font-medium">- ₹{priceInfo.discount}</span>
+                  </div>
+                  <div className="flex justify-between pt-1 border-t border-blue-200 font-semibold">
+                    <span className="text-green-600">Final Price (After Discount):</span>
+                    <span className="text-green-600 font-bold">₹{priceInfo.finalPrice}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-500 text-xs pt-1">
+                    <span>GST (5% on final price):</span>
+                    <span>₹{(priceInfo.finalPrice - (priceInfo.finalPrice / 1.05)).toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
             
             <div className="sm:col-span-2">
               <label className={labelCls}>Amount Paid (₹)</label>
@@ -1109,13 +1133,14 @@ const MembershipSelector = ({
                   value={formData.amount_paid}
                   onChange={(e) => {
                     const value = e.target.value;
+                    const finalPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
                     // Validate amount against plan price
-                    const planPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
-                    if (parseFloat(value) > planPrice) {
-                      setAmountError(`Amount cannot exceed plan price of ₹${planPrice}`);
+                    if (parseFloat(value) > finalPrice) {
+                      setAmountError(`Amount cannot exceed plan price of ₹${finalPrice}`);
                     } else {
                       setAmountError(null);
                     }
+                    // Call the parent handler
                     handleAmountChange(e);
                   }}
                   className={`${inputCls} pl-7 ${amountError ? 'border-red-500 ring-2 ring-red-100' : ''}`} 
@@ -1135,7 +1160,7 @@ const MembershipSelector = ({
                   onClick={() => {
                     const finalPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
                     setUserManuallyChangedAmount(true);
-                    setFormData(prev => ({ ...prev, amount_paid: String(finalPrice) }));
+                    setFormData(prev => ({ ...prev, amount_paid: String(finalPrice), custom_due_date: '' }));
                     setAmountError(null);
                   }}
                   className="flex-1 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
@@ -1159,7 +1184,7 @@ const MembershipSelector = ({
                   type="button"
                   onClick={() => {
                     setUserManuallyChangedAmount(true);
-                    setFormData(prev => ({ ...prev, amount_paid: '0' }));
+                    setFormData(prev => ({ ...prev, amount_paid: '0', custom_due_date: '' }));
                     setAmountError(null);
                   }}
                   className="flex-1 py-1.5 text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
@@ -1167,6 +1192,35 @@ const MembershipSelector = ({
                   Pay Later
                 </button>
               </div>
+
+              {/* Show due date picker for partial payments */}
+              {isPartialPayment() && (
+                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <label className="text-xs font-semibold text-blue-700 flex items-center gap-2 mb-1.5">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Due Date for Remaining Balance
+                  </label>
+                  <CustomDueDatePicker
+                    value={formData.custom_due_date}
+                    onChange={(date) => {
+                      console.log('📅 Due date selected in picker:', date);
+                      console.log('📅 Due date type:', typeof date);
+                      setFormData(prev => ({ ...prev, custom_due_date: date }));
+                      setUserManuallyChangedAmount(true);
+                    }}
+                    onClear={() => {
+                      console.log('🗑️ Due date cleared');
+                      setFormData(prev => ({ ...prev, custom_due_date: '' }));
+                    }}
+                    minDate={new Date().toISOString().split('T')[0]}
+                    disabled={false}
+                  />
+
+                  <p className="text-xs text-blue-600 mt-1.5">
+                    👆 Select the date when the remaining balance is due
+                  </p>
+                </div>
+              )}
 
               {formData.amount_paid !== '' && (() => {
                 const planPrice = priceInfo?.finalPrice || (selectedPlan?.discounted_price || selectedPlan?.price || 0);
@@ -1214,6 +1268,12 @@ const MembershipSelector = ({
                     </div>
                   );
                 } else {
+                  const dueDateDisplay = formData.custom_due_date 
+                    ? new Date(formData.custom_due_date + 'T00:00:00').toLocaleDateString('en-IN', {
+                        day: 'numeric', month: 'short', year: 'numeric'
+                      })
+                    : 'Not set';
+                  
                   return (
                     <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1">
                       <p className="text-xs text-amber-700 flex items-center gap-1.5 font-medium">
@@ -1232,6 +1292,10 @@ const MembershipSelector = ({
                         <span>Remaining balance due:</span>
                         <span>₹{balanceDue}</span>
                       </div>
+                      <div className="flex justify-between text-xs text-blue-600 pl-5 pt-0.5">
+                        <span>Due date:</span>
+                        <span className="font-medium">{dueDateDisplay}</span>
+                      </div>
                       <p className="text-xs text-amber-600 pl-5">Member can pay remaining from Balance tab</p>
                     </div>
                   );
@@ -1244,6 +1308,7 @@ const MembershipSelector = ({
     </div>
   );
 };
+
 
 // ─── Helper function to clean form data ──────────────────────────────────────
 const cleanFormData = (data) => {
@@ -1271,6 +1336,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
     plan_id: '', membership_start_date: today, payment_method: 'cash', amount_paid: '',
     discount_applied: '',
     renew_membership: false,
+    custom_due_date: '', // Custom due date for partial payments
   });
 
   const [activeTab, setActiveTab] = useState('personal');
@@ -1331,6 +1397,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         amount_paid: '',
         discount_applied: '',
         renew_membership: false,
+        custom_due_date: '',
       });
     } else {
       setFormData({
@@ -1344,18 +1411,19 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         amount_paid: '',
         discount_applied: '',
         renew_membership: false,
+        custom_due_date: '',
       });
     }
     refreshMembershipPlans();
   }, [isOpen, member, refreshMembershipPlans, today]);
 
-  // FIXED: Only set amount_paid automatically when plan is selected AND user hasn't manually changed it
+  // Only set amount_paid automatically when plan is selected AND user hasn't manually changed it
   useEffect(() => {
     if (formData.plan_id && !userManuallyChangedAmount) {
       const plan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
       if (plan) {
         const price = plan.discounted_price || plan.price;
-        setFormData(prev => ({ ...prev, amount_paid: String(price) }));
+        setFormData(prev => ({ ...prev, amount_paid: String(price), custom_due_date: '' }));
         setAmountError(null);
       }
     }
@@ -1374,6 +1442,8 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         setAmountError(`Amount cannot exceed ₹${finalPrice}`);
       } else {
         setAmountError(null);
+        // If partial payment, keep existing custom_due_date or let user set it
+        // Do NOT auto-set the date here - let the user choose
       }
     }
     setUserManuallyChangedAmount(true);
@@ -1382,140 +1452,169 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-  
-    // Validate amount before submission
-    const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
-    if (selectedPlan && formData.amount_paid) {
-      const planPrice = selectedPlan.discounted_price || selectedPlan.price;
-      const discount = parseFloat(formData.discount_applied) || 0;
-      const finalPrice = planPrice - discount;
-      if (parseFloat(formData.amount_paid) > finalPrice) {
-        toast.error(`Amount paid cannot exceed ₹${finalPrice}`);
-        setActiveTab('membership');
+  // In MemberModal.jsx - Update the handleSubmit function
+
+const handleSubmit = async (e) => {
+  e.preventDefault();
+
+  // Validate amount before submission
+  const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
+  if (selectedPlan && formData.amount_paid) {
+    const planPrice = selectedPlan.discounted_price || selectedPlan.price;
+    const discount = parseFloat(formData.discount_applied) || 0;
+    const finalPrice = planPrice - discount;
+    if (parseFloat(formData.amount_paid) > finalPrice) {
+      toast.error(`Amount paid cannot exceed ₹${finalPrice}`);
+      setActiveTab('membership');
+      return;
+    }
+  }
+
+  if (!formData.full_name.trim()) {
+    toast.error('Full name is required');
+    setActiveTab('personal');
+    return;
+  }
+  if (!formData.phone.trim()) {
+    toast.error('Phone number is required');
+    setActiveTab('personal');
+    return;
+  }
+  if (!/^[+]?[\d\s\-]{7,15}$/.test(formData.phone.trim())) {
+    toast.error('Enter a valid phone number (e.g. +91-9876543210)');
+    setActiveTab('personal');
+    return;
+  }
+  if (formData.emergency_contact_phone.trim() && !/^[+]?[\d\s\-]{7,15}$/.test(formData.emergency_contact_phone.trim())) {
+    toast.error('Enter a valid emergency contact phone number');
+    setActiveTab('contact');
+    return;
+  }
+  if (!isEdit && !formData.plan_id) {
+    toast.error('Please select a membership plan');
+    setActiveTab('membership');
+    return;
+  }
+  if (isEdit && formData.renew_membership && !formData.plan_id) {
+    toast.error('Please select a plan to renew');
+    setActiveTab('membership');
+    return;
+  }
+
+  if (!isEdit) {
+    try {
+      const phoneCheck = await api.get(`/gym/members?search=${encodeURIComponent(formData.phone.trim())}`);
+      const duplicate = phoneCheck.data?.find(
+        m => m.phone === formData.phone.trim()
+      );
+      if (duplicate) {
+        toast.error(
+          `A member with phone number ${formData.phone.trim()} already exists (${duplicate.full_name}). Please use a different number.`,
+          { duration: 5000 }
+        );
+        setActiveTab('personal');
         return;
       }
+    } catch {
+      // ignore
     }
-  
-    if (!formData.full_name.trim()) {
-      toast.error('Full name is required');
-      setActiveTab('personal');
-      return;
+  }
+
+  setSaving(true);
+  try {
+    const memberFields = {
+      full_name: formData.full_name.trim(),
+      email: formData.email?.trim() || null,
+      phone: formData.phone.trim(),
+      address: formData.address?.trim() || null,
+      date_of_birth: formData.date_of_birth || null,
+      gender: formData.gender,
+      emergency_contact_name: formData.emergency_contact_name?.trim() || null,
+      emergency_contact_phone: formData.emergency_contact_phone?.trim() || null,
+      medical_conditions: formData.medical_conditions?.trim() || null,
+      allergies: formData.allergies?.trim() || null,
+      medications: formData.medications?.trim() || null,
+      id_proof_type: formData.id_proof_type || null,
+      id_proof_number: formData.id_proof_number?.trim() || null,
+    };
+
+    console.log('🔍 FORM DATA DEBUG:');
+    console.log('  - amount_paid:', formData.amount_paid);
+    console.log('  - custom_due_date (raw):', formData.custom_due_date);
+    console.log('  - custom_due_date type:', typeof formData.custom_due_date);
+    console.log('  - custom_due_date length:', formData.custom_due_date?.length);
+
+    // ✅ FIX: Only send custom_due_date if it has a value and is not empty
+    // If it's empty string, undefined, or null, send null
+    let dueDate = null;
+    if (formData.custom_due_date && formData.custom_due_date.trim() !== '') {
+      dueDate = formData.custom_due_date.trim();
     }
-    if (!formData.phone.trim()) {
-      toast.error('Phone number is required');
-      setActiveTab('personal');
-      return;
+    // If it's the string "None" (which might come from somewhere), treat as null
+    if (dueDate === 'None') {
+      dueDate = null;
     }
-    if (!/^[+]?[\d\s\-]{7,15}$/.test(formData.phone.trim())) {
-      toast.error('Enter a valid phone number (e.g. +91-9876543210)');
-      setActiveTab('personal');
-      return;
-    }
-    if (formData.emergency_contact_phone.trim() && !/^[+]?[\d\s\-]{7,15}$/.test(formData.emergency_contact_phone.trim())) {
-      toast.error('Enter a valid emergency contact phone number');
-      setActiveTab('contact');
-      return;
-    }
-    if (!isEdit && !formData.plan_id) {
-      toast.error('Please select a membership plan');
-      setActiveTab('membership');
-      return;
-    }
-    if (isEdit && formData.renew_membership && !formData.plan_id) {
-      toast.error('Please select a plan to renew');
-      setActiveTab('membership');
-      return;
-    }
-  
-    if (!isEdit) {
-      try {
-        const phoneCheck = await api.get(`/gym/members?search=${encodeURIComponent(formData.phone.trim())}`);
-        const duplicate = phoneCheck.data?.find(
-          m => m.phone === formData.phone.trim()
-        );
-        if (duplicate) {
-          toast.error(
-            `A member with phone number ${formData.phone.trim()} already exists (${duplicate.full_name}). Please use a different number.`,
-            { duration: 5000 }
-          );
-          setActiveTab('personal');
-          return;
-        }
-      } catch {
-        // ignore
-      }
-    }
-  
-    setSaving(true);
-    try {
-      const memberFields = {
-        full_name: formData.full_name.trim(),
-        email: formData.email?.trim() || null,
-        phone: formData.phone.trim(),
-        address: formData.address?.trim() || null,
-        date_of_birth: formData.date_of_birth || null,
-        gender: formData.gender,
-        emergency_contact_name: formData.emergency_contact_name?.trim() || null,
-        emergency_contact_phone: formData.emergency_contact_phone?.trim() || null,
-        medical_conditions: formData.medical_conditions?.trim() || null,
-        allergies: formData.allergies?.trim() || null,
-        medications: formData.medications?.trim() || null,
-        id_proof_type: formData.id_proof_type || null,
-        id_proof_number: formData.id_proof_number?.trim() || null,
+    
+    console.log('  - dueDate (after processing):', dueDate);
+    console.log('  - dueDate type:', typeof dueDate);
+
+    let payload;
+    
+    if (isEdit && formData.renew_membership) {
+      payload = {
+        ...memberFields,
+        plan_id: formData.plan_id,
+        membership_start_date: formData.membership_start_date,
+        payment_method: formData.payment_method,
+        amount_paid: formData.amount_paid || 0,
+        discount_applied: formData.discount_applied || 0,
+        renew_membership: true,
+        custom_due_date: dueDate, // ✅ Send null if empty
       };
-  
-      let payload;
-      
-      if (isEdit && formData.renew_membership) {
-        payload = {
-          ...memberFields,
-          plan_id: formData.plan_id,
-          membership_start_date: formData.membership_start_date,
-          payment_method: formData.payment_method,
-          amount_paid: formData.amount_paid,
-          discount_applied: formData.discount_applied || 0,
-          renew_membership: true,
-        };
-      } else if (isEdit) {
-        payload = memberFields;
-      } else {
-        payload = {
-          ...memberFields,
-          plan_id: formData.plan_id,
-          membership_start_date: formData.membership_start_date,
-          payment_method: formData.payment_method,
-          amount_paid: formData.amount_paid,
-          discount_applied: formData.discount_applied || 0,
-        };
-      }
-  
-      const savedMember = await onSave(payload);
-  
-      if (!isEdit && savedMember?.id) {
-        const pendingFile = getPendingFileRef.current?.();
-        if (pendingFile) {
-          try {
-            const fd = new FormData();
-            fd.append('file', pendingFile);
-            await api.post(
-              `/gym/members/${savedMember.id}/upload-photo`,
-              fd,
-              { headers: { 'Content-Type': 'multipart/form-data' } }
-            );
-            toast.success('Photo uploaded!');
-          } catch {
-            toast.error('Member saved, but photo upload failed. You can re-upload from edit mode.');
-          }
+    } else if (isEdit) {
+      payload = memberFields;
+    } else {
+      payload = {
+        ...memberFields,
+        plan_id: formData.plan_id,
+        membership_start_date: formData.membership_start_date,
+        payment_method: formData.payment_method,
+        amount_paid: formData.amount_paid || 0,
+        discount_applied: formData.discount_applied || 0,
+        custom_due_date: dueDate, // ✅ Send null if empty
+      };
+    }
+
+    console.log('📤 FINAL PAYLOAD BEING SENT:');
+    console.log('  - custom_due_date:', payload.custom_due_date);
+    console.log('  - custom_due_date type:', typeof payload.custom_due_date);
+
+    const savedMember = await onSave(payload);
+
+    if (!isEdit && savedMember?.id) {
+      const pendingFile = getPendingFileRef.current?.();
+      if (pendingFile) {
+        try {
+          const fd = new FormData();
+          fd.append('file', pendingFile);
+          await api.post(
+            `/gym/members/${savedMember.id}/upload-photo`,
+            fd,
+            { headers: { 'Content-Type': 'multipart/form-data' } }
+          );
+          toast.success('Photo uploaded!');
+        } catch {
+          toast.error('Member saved, but photo upload failed. You can re-upload from edit mode.');
         }
       }
-    } catch (error) {
-      console.error('Save error:', error);
-    } finally {
-      setSaving(false);
     }
-  };
+  } catch (error) {
+    console.error('Save error:', error);
+  } finally {
+    setSaving(false);
+  }
+};
+
 
   const set = (field) => (e) => setFormData(prev => ({ ...prev, [field]: e.target.value }));
 
@@ -1754,6 +1853,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
                           renew_membership: !prev.renew_membership,
                           plan_id: '',
                           amount_paid: '',
+                          custom_due_date: '',
                         }))}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
                           formData.renew_membership ? 'bg-blue-600' : 'bg-gray-200'

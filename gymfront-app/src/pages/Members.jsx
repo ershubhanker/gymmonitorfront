@@ -785,7 +785,30 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   const handleAddMember = async (memberData) => {
-    const { plan_id, membership_start_date, payment_method, amount_paid, discount_applied, ...memberFields } = memberData;
+    // ✅ DEBUG: Log what's being received
+    console.log('📥 MemberModal sending data:', memberData);
+    console.log('📥 custom_due_date received:', memberData.custom_due_date);
+    console.log('📥 custom_due_date type:', typeof memberData.custom_due_date);
+    
+    // Destructure ALL fields including custom_due_date
+    const { 
+      plan_id, 
+      membership_start_date, 
+      payment_method, 
+      amount_paid, 
+      discount_applied, 
+      custom_due_date,  // ✅ Make sure this is extracted
+      ...memberFields 
+    } = memberData;
+  
+    console.log('📤 Extracted fields:');
+    console.log('  - plan_id:', plan_id);
+    console.log('  - membership_start_date:', membership_start_date);
+    console.log('  - amount_paid:', amount_paid);
+    console.log('  - discount_applied:', discount_applied);
+    console.log('  - custom_due_date (raw):', custom_due_date);
+    console.log('  - custom_due_date type:', typeof custom_due_date);
+    console.log('  - custom_due_date is null/undefined?', custom_due_date == null);
   
     let memberResponse;
     let createdMember = null;
@@ -794,6 +817,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     try {
       memberResponse = await api.post('/gym/members', memberFields);
       createdMember = memberResponse.data;
+      console.log('✅ Member created:', createdMember);
     } catch (error) {
       if (error.response?.status === 409) {
         toast.error(error.response.data.detail, { duration: 5000 });
@@ -810,18 +834,42 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
         const discount = discount_applied ? parseFloat(discount_applied) : 0;
         
-        // Create membership with amount_paid = 0
+        // ✅ FIX: Properly handle custom_due_date
+        // Check if custom_due_date is valid (not null, undefined, empty, or "None")
+        let dueDate = null;
+        if (custom_due_date && custom_due_date !== 'null' && custom_due_date !== 'None' && custom_due_date.trim() !== '') {
+          dueDate = custom_due_date.trim();
+        }
+        
+        console.log('📤 Final dueDate to send:', dueDate);
+        console.log('📤 dueDate type:', typeof dueDate);
+        
+        // ✅ Build membership payload with ALL fields
         const membershipPayload = {
           member_id: memberId,
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
-          amount_paid: 0,  // ← Always 0 when creating membership
+          amount_paid: 0,  // Always 0 for membership creation
           discount_applied: discount,
+          payment_method: payment_method || 'cash',  // Add payment method
         };
+        
+        // ✅ IMPORTANT: Only add custom_due_date if it has a valid value
+        if (dueDate) {
+          membershipPayload.custom_due_date = dueDate;
+          console.log('📤 ✅ Adding custom_due_date to payload:', dueDate);
+        } else {
+          console.log('📤 ❌ No custom_due_date - will use default (next month)');
+        }
+        
+        console.log('📤 📦 Final membership payload being sent:', JSON.stringify(membershipPayload, null, 2));
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
         
-        // ✅ Create a payment record for the amount paid
+        console.log('📥 Membership created:', membershipResponse.data);
+        console.log('📥 next_payment_date from response:', membershipResponse.data.next_payment_date);
+        
+        // Create a payment record for the amount paid
         if (paidAmount > 0) {
           try {
             await api.post('/gym/memberships/' + membershipResponse.data.id + '/partial-payment', {
@@ -853,9 +901,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     if (!hasError) {
       toast.success('Member added successfully!');
       
-      // ✅ Sync the new member to the attendance device via bridge
       if (createdMember && createdMember.id) {
-        // Don't block UI - sync in background
         setTimeout(async () => {
           const synced = await syncMemberToBridge(createdMember.id);
           if (synced) {
