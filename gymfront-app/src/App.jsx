@@ -19,6 +19,7 @@ import LeadCaptureForm from './components/LeadCaptureForm';
 import WhatsAppLogs from './components/WhatsAppLogs';
 import InvoicePage from './pages/InvoicePage';
 import PrivacyPolicy from './pages/PrivacyPolicy'; // ADD THIS IMPORT
+import TrainerSchedule from './components/TrainerSchedule';
 
 function AdminRoute({ children }) {
   const { user, initialLoading } = useAuth();

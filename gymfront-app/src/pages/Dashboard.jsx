@@ -80,6 +80,7 @@ import MembershipPlans from './MembershipPlans';
 import SearchBar from '../components/SearchBar';
 import FollowUpCard from '../components/FollowUpCard';
 import WhatsAppLogs from './WhatsAppLogs';
+import TrainerSchedule from '../components/TrainerSchedule';
 
 // Auto-refresh interval in milliseconds
 const AUTO_REFRESH_INTERVAL = 40000;
@@ -963,6 +964,7 @@ const Dashboard = () => {
     if (canSeeLeads) {
       nav.push({ name: 'Leads', icon: Target, id: 'leads' });
     }
+    nav.push({ name: 'Trainer Schedule', icon: Calendar, id: 'trainer-schedule' });
     // Add WhatsApp Logs to navigation
     nav.push({ name: 'WhatsApp Logs', icon: MessageSquare, id: 'whatsapp-logs' });
     
@@ -2355,6 +2357,7 @@ const Dashboard = () => {
               onLeadSelect={(id) => setSelectedLeadId(id)}
             />
           )}
+          {activeTab === 'trainer-schedule' && <TrainerSchedule />}
           {activeTab === 'classes' && (
             <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
               <CalendarIcon className="h-16 w-16 text-blue-300 mx-auto mb-4" />
