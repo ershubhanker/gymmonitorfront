@@ -1649,16 +1649,17 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                         <div className="text-sm text-gray-500">{member.phone}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{member.membership}</div>
-                        <div className="text-sm text-gray-500">
-                          {member.payments} payment{member.payments !== 1 ? 's' : ''}
-                          {member.membershipEndDate && (
-                            <span className="ml-1">
-                              · expires {new Date(member.membershipEndDate).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                      <div className="text-sm font-medium text-gray-900">{member.membership}</div>
+                      <div className="text-sm text-gray-500">
+                        {member.membershipEndDate ? (
+                          <span>
+                            Expires: {new Date(member.membershipEndDate).toLocaleDateString()}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">No active membership</span>
+                        )}
+                      </div>
+                    </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {getStatusBadge(member.status)}
                       </td>

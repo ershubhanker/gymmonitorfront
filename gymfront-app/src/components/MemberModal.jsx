@@ -759,6 +759,7 @@ const PersonalTrainingSection = ({
   const [showPTOption, setShowPTOption] = useState(false);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [ptAmountError, setPtAmountError] = useState(null);
   
   // Days of week for session scheduling
   const daysOfWeek = [
@@ -808,6 +809,77 @@ const PersonalTrainingSection = ({
       ? currentDays.filter(d => d !== day)
       : [...currentDays, day];
     setFormData(prev => ({ ...prev, pt_session_days: JSON.stringify(newDays) }));
+  };
+
+  // ✅ Validate PT amount paid against total amount
+  const validatePtAmountPaid = (value) => {
+    const totalAmount = parseFloat(formData.pt_total_amount) || 0;
+    const amountPaid = parseFloat(value) || 0;
+    
+    if (totalAmount > 0 && amountPaid > totalAmount) {
+      setPtAmountError(`Amount paid cannot exceed total amount (₹${totalAmount})`);
+      return false;
+    } else {
+      setPtAmountError(null);
+      return true;
+    }
+  };
+
+  // ✅ Handle PT amount paid change with validation
+  const handlePtAmountPaidChange = (value) => {
+    const totalAmount = parseFloat(formData.pt_total_amount) || 0;
+    const amountPaid = parseFloat(value) || 0;
+    
+    if (totalAmount > 0 && amountPaid > totalAmount) {
+      setPtAmountError(`Amount paid cannot exceed ₹${totalAmount}`);
+      setFormData(prev => ({ ...prev, pt_amount_paid: value }));
+    } else if (amountPaid < 0) {
+      setPtAmountError('Amount paid cannot be negative');
+      setFormData(prev => ({ ...prev, pt_amount_paid: value }));
+    } else {
+      setPtAmountError(null);
+      setFormData(prev => ({ ...prev, pt_amount_paid: value }));
+    }
+  };
+
+  // ✅ Handle PT total amount change - reset amount paid if it exceeds new total
+  const handlePtTotalAmountChange = (value) => {
+    const totalAmount = parseFloat(value) || 0;
+    const currentPaid = parseFloat(formData.pt_amount_paid) || 0;
+    
+    setFormData(prev => ({ ...prev, pt_total_amount: value }));
+    
+    // If current paid exceeds new total, update paid to match total
+    if (currentPaid > totalAmount && totalAmount > 0) {
+      setFormData(prev => ({ ...prev, pt_amount_paid: String(totalAmount) }));
+      setPtAmountError(null);
+    } else if (totalAmount === 0) {
+      // If total is 0, clear any error
+      setPtAmountError(null);
+    }
+  };
+
+  // ✅ Quick action buttons for PT amount
+  const setPtFullPayment = () => {
+    const totalAmount = parseFloat(formData.pt_total_amount) || 0;
+    if (totalAmount > 0) {
+      setFormData(prev => ({ ...prev, pt_amount_paid: String(totalAmount) }));
+      setPtAmountError(null);
+    }
+  };
+
+  const setPtHalfPayment = () => {
+    const totalAmount = parseFloat(formData.pt_total_amount) || 0;
+    if (totalAmount > 0) {
+      const halfAmount = Math.floor(totalAmount / 2);
+      setFormData(prev => ({ ...prev, pt_amount_paid: String(halfAmount) }));
+      setPtAmountError(null);
+    }
+  };
+
+  const setPtNoPayment = () => {
+    setFormData(prev => ({ ...prev, pt_amount_paid: '0' }));
+    setPtAmountError(null);
   };
 
   if (loadingTrainers) {
@@ -954,7 +1026,7 @@ const PersonalTrainingSection = ({
             </div>
           </div>
 
-          {/* ✅ Total Amount and Amount Paid */}
+          {/* ✅ Total Amount and Amount Paid - With Validation */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -965,7 +1037,7 @@ const PersonalTrainingSection = ({
                 min="0"
                 step="10"
                 value={formData.pt_total_amount || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, pt_total_amount: e.target.value }))}
+                onChange={(e) => handlePtTotalAmountChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                 placeholder="e.g., 5000"
               />
@@ -979,12 +1051,47 @@ const PersonalTrainingSection = ({
                 min="0"
                 step="10"
                 value={formData.pt_amount_paid || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, pt_amount_paid: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                onChange={(e) => handlePtAmountPaidChange(e.target.value)}
+                className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white ${
+                  ptAmountError ? 'border-red-500 ring-2 ring-red-100' : 'border-gray-300'
+                }`}
                 placeholder="0"
               />
+              {ptAmountError && (
+                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {ptAmountError}
+                </p>
+              )}
             </div>
           </div>
+
+          {/* ✅ Quick Action Buttons for PT Payment */}
+          {formData.pt_total_amount && parseFloat(formData.pt_total_amount) > 0 && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={setPtFullPayment}
+                className="flex-1 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+              >
+                Full (₹{formData.pt_total_amount})
+              </button>
+              <button
+                type="button"
+                onClick={setPtHalfPayment}
+                className="flex-1 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                Half (₹{Math.floor(parseFloat(formData.pt_total_amount) / 2)})
+              </button>
+              <button
+                type="button"
+                onClick={setPtNoPayment}
+                className="flex-1 py-1.5 text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Pay Later
+              </button>
+            </div>
+          )}
 
           {/* Show balance due */}
           {formData.pt_total_amount && formData.pt_total_amount > 0 && (
@@ -1002,6 +1109,10 @@ const PersonalTrainingSection = ({
                 }`}>
                   ₹{(parseFloat(formData.pt_total_amount || 0) - parseFloat(formData.pt_amount_paid || 0)).toFixed(2)}
                 </span>
+              </div>
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>Total: ₹{parseFloat(formData.pt_total_amount || 0).toFixed(2)}</span>
+                <span>Paid: ₹{parseFloat(formData.pt_amount_paid || 0).toFixed(2)}</span>
               </div>
             </div>
           )}

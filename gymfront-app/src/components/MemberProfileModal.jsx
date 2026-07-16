@@ -1,4 +1,4 @@
-// src/components/MemberProfileModal.jsx - FIXED
+// src/components/MemberProfileModal.jsx - COMPLETE CLEAN VERSION
 import React, { useState, useEffect } from 'react';
 import {
   X, Phone, Mail, Calendar, MapPin, DollarSign, Tag, 
@@ -6,7 +6,7 @@ import {
   Send, MessageSquare, History, CreditCard, Activity,
   Award, Calendar as CalendarIcon, FileText, Users,
   Edit, RefreshCw, Loader2, Trash2, Save, XCircle,
-  Dumbbell
+  Dumbbell, Pencil
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -50,6 +50,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // ===== PAYMENT EDIT STATE =====
+  const [isEditingPayment, setIsEditingPayment] = useState(false);
+  const [paymentEditData, setPaymentEditData] = useState({
+    amount_paid: '',
+    discount_applied: '',
+    payment_method: 'cash',
+    notes: '',
+  });
+  const [savingPayment, setSavingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState(null);
+
   useEffect(() => {
     fetchMemberDetails();
     fetchComments();
@@ -81,6 +92,16 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         id_proof_type: memberData.id_proof_type || 'aadhar',
         id_proof_number: memberData.id_proof_number || '',
       });
+      
+      // Initialize payment edit data from current membership
+      if (memberData.current_membership) {
+        setPaymentEditData({
+          amount_paid: memberData.current_membership.amount_paid?.toString() || '0',
+          discount_applied: memberData.current_membership.discount_applied?.toString() || '0',
+          payment_method: 'cash',
+          notes: memberData.current_membership.notes || '',
+        });
+      }
     } catch (error) {
       console.error('Error fetching member details:', error);
       if (error.response?.status === 404) {
@@ -299,6 +320,113 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     }
   };
 
+  // ===== PAYMENT EDIT FUNCTIONS =====
+  const handleEditPaymentClick = () => {
+    if (member?.current_membership) {
+      setPaymentEditData({
+        amount_paid: member.current_membership.amount_paid?.toString() || '0',
+        discount_applied: member.current_membership.discount_applied?.toString() || '0',
+        payment_method: 'cash',
+        notes: member.current_membership.notes || '',
+      });
+      setPaymentError(null);
+      setIsEditingPayment(true);
+    } else {
+      toast.error('No active membership to edit');
+    }
+  };
+
+  const handlePaymentEditChange = (e) => {
+    const { name, value } = e.target;
+    setPaymentEditData(prev => ({ ...prev, [name]: value }));
+    
+    // Clear error when user types
+    if (paymentError) setPaymentError(null);
+  };
+
+  const validatePaymentEdit = () => {
+    const planPrice = member?.current_membership?.plan?.price || 0;
+    const discountApplied = parseFloat(paymentEditData.discount_applied) || 0;
+    const amountPaid = parseFloat(paymentEditData.amount_paid) || 0;
+    const finalPrice = Math.max(0, planPrice - discountApplied);
+    
+    if (amountPaid < 0) {
+      setPaymentError('Amount paid cannot be negative');
+      return false;
+    }
+    
+    if (amountPaid > finalPrice) {
+      setPaymentError(`Amount paid cannot exceed final price of ₹${finalPrice}`);
+      return false;
+    }
+    
+    if (discountApplied < 0) {
+      setPaymentError('Discount cannot be negative');
+      return false;
+    }
+    
+    if (discountApplied > planPrice) {
+      setPaymentError(`Discount cannot exceed plan price of ₹${planPrice}`);
+      return false;
+    }
+    
+    return true;
+  };
+
+  // ===== SINGLE DECLARATION OF handlePaymentEditSubmit =====
+  const handlePaymentEditSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!member?.current_membership) {
+      toast.error('No active membership to update');
+      return;
+    }
+  
+    if (!validatePaymentEdit()) {
+      return;
+    }
+  
+    setSavingPayment(true);
+    try {
+      const membershipId = member.current_membership.id;
+      const discountApplied = parseFloat(paymentEditData.discount_applied) || 0;
+      const amountPaid = parseFloat(paymentEditData.amount_paid) || 0;
+  
+      // ✅ Send all fields including payment_method
+      const payload = {
+        amount_paid: amountPaid,
+        discount_applied: discountApplied,
+        notes: paymentEditData.notes || '',
+        payment_method: paymentEditData.payment_method || 'cash',  // ✅ Include payment_method
+      };
+      
+      console.log('📤 Updating payment with payload:', payload);
+      
+      const response = await api.put(`/gym/memberships/${membershipId}/payment`, payload);
+      
+      console.log('📥 Payment update response:', response.data);
+  
+      toast.success('Payment details updated successfully!');
+      setIsEditingPayment(false);
+      await fetchMemberDetails();
+      await fetchPayments();
+      await fetchBalanceDetails();
+      if (onUpdate) onUpdate();
+      
+    } catch (error) {
+      console.error('Error updating payment:', error);
+      const errorMessage = error.response?.data?.detail || 'Failed to update payment details';
+      toast.error(errorMessage);
+    } finally {
+      setSavingPayment(false);
+    }
+  };
+
+  const handlePaymentEditCancel = () => {
+    setIsEditingPayment(false);
+    setPaymentError(null);
+  };
+
   const handleAddComment = async () => {
     if (!newComment.trim()) {
       toast.error('Please enter a comment');
@@ -392,6 +520,26 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     );
   };
 
+  // Calculate payment summary
+  const getPaymentSummary = () => {
+    const membership = member?.current_membership;
+    if (!membership) return null;
+    
+    const planPrice = membership.plan?.price || 0;
+    const discountApplied = membership.discount_applied || 0;
+    const amountPaid = membership.amount_paid || 0;
+    const finalPrice = Math.max(0, planPrice - discountApplied);
+    const balanceDue = Math.max(0, finalPrice - amountPaid);
+    
+    return {
+      planPrice,
+      discountApplied,
+      amountPaid,
+      finalPrice,
+      balanceDue,
+    };
+  };
+
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -406,6 +554,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   if (!member) return null;
 
   const currentMembership = member.current_membership;
+  const paymentSummary = getPaymentSummary();
   
   // Calculate totals
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
@@ -490,8 +639,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           </div>
 
-          {/* Edit Button */}
-          <div className="flex justify-end">
+          {/* Edit Buttons Row */}
+          <div className="flex flex-wrap justify-end gap-2">
             {!isEditing ? (
               <button
                 onClick={handleEditClick}
@@ -523,7 +672,187 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 </button>
               </div>
             )}
+            
+            {currentMembership && !isEditingPayment && (
+              <button
+                onClick={handleEditPaymentClick}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+              >
+                <Pencil className="h-4 w-4" />
+                Edit Payment
+              </button>
+            )}
           </div>
+
+          {/* Payment Edit Modal */}
+          {isEditingPayment && currentMembership && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-purple-900 flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-purple-600" />
+                  Edit Payment Details
+                </h3>
+                <button
+                  onClick={handlePaymentEditCancel}
+                  className="text-purple-400 hover:text-purple-600 p-1"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <form onSubmit={handlePaymentEditSubmit} className="space-y-4">
+                {/* Plan Info Display */}
+                <div className="bg-white rounded-lg p-3 border border-purple-200">
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-gray-500">Plan:</span>
+                      <span className="font-medium ml-2">{currentMembership.plan?.name}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Plan Price:</span>
+                      <span className="font-medium ml-2">₹{currentMembership.plan?.price || 0}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Discount Applied (₹)
+                    </label>
+                    <input
+                      type="number"
+                      name="discount_applied"
+                      min="0"
+                      step="1"
+                      value={paymentEditData.discount_applied}
+                      onChange={handlePaymentEditChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                      placeholder="0"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Discount amount applied to this membership</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Amount Paid (₹)
+                    </label>
+                    <input
+                      type="number"
+                      name="amount_paid"
+                      min="0"
+                      step="1"
+                      value={paymentEditData.amount_paid}
+                      onChange={handlePaymentEditChange}
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white ${
+                        paymentError ? 'border-red-500 ring-2 ring-red-100' : 'border-gray-300'
+                      }`}
+                      placeholder="0"
+                    />
+                    {paymentError && (
+                      <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {paymentError}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Payment Method
+                    </label>
+                    <select
+                      name="payment_method"
+                      value={paymentEditData.payment_method}
+                      onChange={handlePaymentEditChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                    >
+                      <option value="cash">Cash</option>
+                      <option value="card">Card</option>
+                      <option value="upi">UPI</option>
+                      <option value="bank_transfer">Bank Transfer</option>
+                      <option value="online">Online</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Notes
+                    </label>
+                    <input
+                      type="text"
+                      name="notes"
+                      value={paymentEditData.notes}
+                      onChange={handlePaymentEditChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                      placeholder="Payment notes"
+                    />
+                  </div>
+                </div>
+                
+                {/* Payment Summary Preview */}
+                {(() => {
+                  const planPrice = currentMembership.plan?.price || 0;
+                  const discount = parseFloat(paymentEditData.discount_applied) || 0;
+                  const paid = parseFloat(paymentEditData.amount_paid) || 0;
+                  const finalPrice = Math.max(0, planPrice - discount);
+                  const balance = Math.max(0, finalPrice - paid);
+                  
+                  return (
+                    <div className="bg-white rounded-lg p-3 border border-gray-200">
+                      <p className="text-xs font-semibold text-gray-600 mb-2">Payment Summary</p>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Plan Price:</span>
+                          <span className="font-medium">₹{planPrice}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Discount:</span>
+                          <span className="font-medium text-red-600">- ₹{discount}</span>
+                        </div>
+                        <div className="flex justify-between pt-1 border-t border-gray-200">
+                          <span className="text-gray-600 font-medium">Final Price:</span>
+                          <span className="font-medium text-green-600">₹{finalPrice}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Amount Paid:</span>
+                          <span className="font-medium text-blue-600">₹{paid}</span>
+                        </div>
+                        <div className="flex justify-between pt-1 border-t border-gray-200">
+                          <span className="text-gray-700 font-semibold">Balance Due:</span>
+                          <span className={`font-bold ${balance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                            ₹{balance}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handlePaymentEditCancel}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingPayment || !!paymentError}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium disabled:opacity-50"
+                  >
+                    {savingPayment ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    {savingPayment ? 'Saving...' : 'Update Payment'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
 
           {/* Member Information Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -639,11 +968,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               )}
             </div>
 
-            {/* Current Membership */}
+            {/* Current Membership - UPDATED with Discount Display */}
             <div className="bg-gray-50 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <Award className="h-4 w-4" />
                 Current Membership
+                {isEditingPayment && <span className="text-xs text-purple-600 ml-2">(Editing Payment)</span>}
               </h3>
               {currentMembership ? (
                 <div className="space-y-2 text-sm">
@@ -667,6 +997,15 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     <span className="text-gray-500">Payment Status:</span>
                     {getPaymentStatusBadge(currentMembership.payment_status)}
                   </div>
+                  
+                  {/* Discount Applied Display */}
+                  {currentMembership.discount_applied > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Discount Applied:</span>
+                      <span className="font-medium text-red-600">- ₹{currentMembership.discount_applied.toLocaleString()}</span>
+                    </div>
+                  )}
+                  
                   <div className="flex justify-between">
                     <span className="text-gray-500">Amount Paid:</span>
                     <span className="font-medium text-green-600">₹{currentMembership.amount_paid?.toLocaleString() || 0}</span>
@@ -683,13 +1022,46 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       <span className="font-medium text-blue-600">{formatDate(currentMembership.next_payment_date)}</span>
                     </div>
                   )}
+                  
+                  {/* Payment Summary */}
+                  {paymentSummary && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-xs text-gray-400 mb-1">Payment Summary</p>
+                      <div className="space-y-0.5 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Plan Price:</span>
+                          <span className="text-gray-600">₹{paymentSummary.planPrice}</span>
+                        </div>
+                        {paymentSummary.discountApplied > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Discount:</span>
+                            <span className="text-red-500">- ₹{paymentSummary.discountApplied}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-medium">
+                          <span className="text-gray-500">Final Price:</span>
+                          <span className="text-gray-800">₹{paymentSummary.finalPrice}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Paid:</span>
+                          <span className="text-green-600">₹{paymentSummary.amountPaid}</span>
+                        </div>
+                        <div className="flex justify-between font-semibold">
+                          <span className="text-gray-600">Balance:</span>
+                          <span className={paymentSummary.balanceDue > 0 ? 'text-orange-600' : 'text-green-600'}>
+                            ₹{paymentSummary.balanceDue}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-gray-500 text-center py-4">No active membership</p>
               )}
             </div>
 
-            {/* Emergency Contact - Editable */}
+            {/* Emergency Contact */}
             <div className="bg-gray-50 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <AlertCircle className="h-4 w-4" />
@@ -740,7 +1112,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               )}
             </div>
 
-            {/* Medical Info - Editable */}
+            {/* Medical Info */}
             <div className="bg-gray-50 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <Activity className="h-4 w-4" />
@@ -810,7 +1182,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               )}
             </div>
 
-            {/* ID Proof - Editable */}
+            {/* ID Proof */}
             <div className="bg-gray-50 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <FileText className="h-4 w-4" />
@@ -867,7 +1239,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           </div>
 
-          {/* Personal Training Section - FIXED */}
+          {/* Personal Training Section */}
           <div className="border-t border-gray-100 pt-6">
             <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Dumbbell className="h-5 w-5 text-purple-600" />
@@ -881,7 +1253,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             ) : ptSessions.length > 0 ? (
               <div className="space-y-4">
                 {ptSessions.map((session) => {
-                  // ✅ FIX: Parse session days safely
                   const daysArray = parseSessionDays(session.session_days);
                   const daysDisplay = daysArray.length > 0 
                     ? daysArray.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ')
@@ -918,7 +1289,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                         </div>
                       </div>
                       
-                      {/* Payment Summary */}
                       <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 pt-3 border-t border-purple-200">
                         <div>
                           <span className="text-gray-500 text-xs">Total Amount:</span>

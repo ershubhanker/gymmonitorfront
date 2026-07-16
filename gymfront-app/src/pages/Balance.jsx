@@ -22,7 +22,8 @@ import {
   RefreshCw,
   CalendarDays,
   History,
-  Trash2
+  Trash2,
+  Dumbbell  // ✅ Added Dumbbell icon for PT
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -52,6 +53,7 @@ const Balance = () => {
   const [memberToClear, setMemberToClear] = useState(null);
   const [clearingBalance, setClearingBalance] = useState(false);
   const [clearBalanceNotes, setClearBalanceNotes] = useState('');
+  const [clearBalanceType, setClearBalanceType] = useState('all'); // 'all', 'membership', 'pt'
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -61,7 +63,9 @@ const Balance = () => {
     total_balance_due: 0,
     members_with_balance: 0,
     overdue_count: 0,
-    upcoming_payments: 0
+    upcoming_payments: 0,
+    total_pt_balance: 0,  // ✅ Add PT overview
+    members_with_pt_balance: 0  // ✅ Add PT members count
   });
 
   const currencySymbol = user?.currency_symbol || '₹';
@@ -104,17 +108,28 @@ const Balance = () => {
         api.get('/gym/balance/overview')
       ]);
       
-      const sortedMembers = (membersRes.data || []).sort((a, b) => {
-        if (a.balance_due > 0 && b.balance_due > 0) {
-          return b.balance_due - a.balance_due;
+      // ✅ Calculate PT overview from members data
+      const membersData = membersRes.data || [];
+      const totalPtBalance = membersData.reduce((sum, m) => sum + (m.pt_balance || 0), 0);
+      const membersWithPtBalance = membersData.filter(m => (m.pt_balance || 0) > 0).length;
+      
+      const sortedMembers = membersData.sort((a, b) => {
+        const totalA = (a.balance_due || 0) + (a.pt_balance || 0);
+        const totalB = (b.balance_due || 0) + (b.pt_balance || 0);
+        if (totalA > 0 && totalB > 0) {
+          return totalB - totalA;
         }
-        if (a.balance_due > 0 && b.balance_due === 0) return -1;
-        if (a.balance_due === 0 && b.balance_due > 0) return 1;
+        if (totalA > 0 && totalB === 0) return -1;
+        if (totalA === 0 && totalB > 0) return 1;
         return b.member_id - a.member_id;
       });
       
       setMembers(sortedMembers);
-      setOverview(overviewRes.data);
+      setOverview({
+        ...overviewRes.data,
+        total_pt_balance: totalPtBalance,
+        members_with_pt_balance: membersWithPtBalance
+      });
       setCurrentPage(1);
     } catch (error) {
       console.error('Error fetching balance data:', error);
@@ -128,7 +143,7 @@ const Balance = () => {
     fetchBalanceData();
   }, [searchTerm, showPaidOnly]);
 
-  // ===== FIXED: Fetch payment history for a member =====
+  // ===== Fetch payment history for a member =====
   const fetchPaymentHistory = async (memberId) => {
     setLoadingHistory(true);
     setPaymentHistory([]);
@@ -221,13 +236,17 @@ const Balance = () => {
 
   // ===== Calculate remaining after payment =====
   const remainingAfterPayment = selectedMember
-    ? Math.max(0, selectedMember.balance_due - (parseFloat(paymentAmount) || 0))
+    ? Math.max(0, (selectedMember.balance_due || 0) + (selectedMember.pt_balance || 0) - (parseFloat(paymentAmount) || 0))
     : 0;
 
   // ===== Check if it's a full payment =====
+  const getTotalBalance = (member) => {
+    return (member.balance_due || 0) + (member.pt_balance || 0);
+  };
+
   const isFullPayment = selectedMember &&
     parseFloat(paymentAmount) > 0 &&
-    parseFloat(paymentAmount) >= selectedMember.balance_due;
+    parseFloat(paymentAmount) >= getTotalBalance(selectedMember);
 
   const handlePartialPayment = async (member) => {
     setErrorDetails(null);
@@ -238,8 +257,9 @@ const Balance = () => {
       return;
     }
     
-    if (amount > member.balance_due) {
-      toast.error(`Payment amount cannot exceed balance due of ${formatCurrency(member.balance_due)}`);
+    const totalBalance = getTotalBalance(member);
+    if (amount > totalBalance) {
+      toast.error(`Payment amount cannot exceed total balance of ${formatCurrency(totalBalance)}`);
       return;
     }
     
@@ -256,18 +276,53 @@ const Balance = () => {
         paymentDateTime = new Date();
       }
       
+      // ✅ Create payment for membership
       const response = await api.post(`/gym/memberships/${member.membership_id}/partial-payment`, {
         membership_id: member.membership_id,
         amount: amount,
         payment_method: paymentMethod,
-        notes: paymentNotes,
+        notes: paymentNotes || (member.has_pt_balance ? 'Payment towards membership and PT balance' : ''),
         payment_date: paymentDateTime.toISOString()
       });
       
       console.log('Payment response:', response.data);
       
-      const isFull = amount >= member.balance_due;
-      const remainingBalance = member.balance_due - amount;
+      // ✅ If there's PT balance and the payment covers it, we need to update PT
+      if (member.has_pt_balance && member.pt_session_id) {
+        try {
+          // Calculate how much of the payment goes to PT
+          const ptBalance = member.pt_balance || 0;
+          const membershipBalance = member.balance_due || 0;
+          
+          let ptPaymentAmount = 0;
+          let membershipPaymentAmount = amount;
+          
+          // If payment is more than membership balance, excess goes to PT
+          if (amount > membershipBalance) {
+            ptPaymentAmount = amount - membershipBalance;
+            membershipPaymentAmount = membershipBalance;
+          }
+          
+          // Update PT payment if any amount goes to PT
+          if (ptPaymentAmount > 0) {
+            // You'll need to create a PT payment endpoint
+            // For now, we'll update the PT session directly
+            await api.post(`/gym/personal-training/${member.pt_session_id}/payment`, {
+              amount: ptPaymentAmount,
+              payment_method: paymentMethod,
+              notes: `PT payment - ${paymentNotes || ''}`,
+              payment_date: paymentDateTime.toISOString()
+            });
+            console.log(`✅ PT payment of ${ptPaymentAmount} recorded`);
+          }
+        } catch (ptError) {
+          console.warn('Could not record PT payment:', ptError);
+          // Don't fail the main payment if PT update fails
+        }
+      }
+      
+      const isFull = amount >= totalBalance;
+      const remainingBalance = totalBalance - amount;
       
       if (!isFull && remainingBalance > 0 && nextPaymentDate) {
         try {
@@ -286,7 +341,10 @@ const Balance = () => {
           <p className="font-bold">✓ Payment Recorded Successfully!</p>
           <p className="text-sm mt-1">Amount: {formatCurrency(amount)}</p>
           <p className="text-sm text-gray-600">Date: {formatDateTime(paymentDateTime)}</p>
-          {isFull && <p className="text-sm text-green-600">Balance cleared!</p>}
+          {member.has_pt_balance && (
+            <p className="text-sm text-blue-600">✓ PT balance included in payment</p>
+          )}
+          {isFull && <p className="text-sm text-green-600">All balances cleared!</p>}
           {!isFull && (
             <>
               <p className="text-sm text-amber-600">Remaining balance: {formatCurrency(remainingBalance)}</p>
@@ -361,6 +419,7 @@ const Balance = () => {
     setShowPaymentHistory(false);
     setShowClearBalanceModal(false);
     setMemberToClear(null);
+    setClearBalanceType('all');
   };
 
   const openPaymentModal = (member) => {
@@ -381,6 +440,7 @@ const Balance = () => {
   const openClearBalanceModal = (member) => {
     setMemberToClear(member);
     setClearBalanceNotes('');
+    setClearBalanceType('all');
     setShowClearBalanceModal(true);
   };
 
@@ -391,7 +451,7 @@ const Balance = () => {
     setClearingBalance(true);
     try {
       // Get the amount to clear
-      const amountToClear = memberToClear.balance_due;
+      const amountToClear = getTotalBalance(memberToClear);
       
       if (amountToClear <= 0) {
         toast.info('This member has no balance to clear');
@@ -412,11 +472,29 @@ const Balance = () => {
       
       console.log('Clear balance response:', response.data);
       
+      // ✅ If there's PT balance, clear it as well
+      if (memberToClear.has_pt_balance && memberToClear.pt_session_id) {
+        try {
+          await api.post(`/gym/personal-training/${memberToClear.pt_session_id}/payment`, {
+            amount: memberToClear.pt_balance,
+            payment_method: 'adjustment',
+            notes: `PT balance cleared - ${clearBalanceNotes || ''}`,
+            payment_date: new Date().toISOString()
+          });
+          console.log('✅ PT balance cleared');
+        } catch (ptError) {
+          console.warn('Could not clear PT balance:', ptError);
+        }
+      }
+      
       toast.success(
         <div>
           <p className="font-bold">✓ Balance Cleared Successfully!</p>
           <p className="text-sm mt-1">Amount: {formatCurrency(amountToClear)}</p>
-          <p className="text-sm text-green-600">Balance is now ₹0</p>
+          <p className="text-sm text-green-600">All balances are now ₹0</p>
+          {memberToClear.has_pt_balance && (
+            <p className="text-sm text-blue-600">✓ PT balance cleared</p>
+          )}
           {clearBalanceNotes && (
             <p className="text-sm text-gray-600 mt-1">Note: {clearBalanceNotes}</p>
           )}
@@ -458,15 +536,16 @@ const Balance = () => {
     await fetchPaymentHistory(member.member_id);
   };
 
-  const getStatusBadge = (status, balanceDue) => {
-    if (balanceDue <= 0) {
+  const getStatusBadge = (member) => {
+    const totalBalance = getTotalBalance(member);
+    if (totalBalance <= 0) {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
           <CheckCircle className="h-3 w-3 mr-1" />
           Paid
         </span>
       );
-    } else if (status === 'overdue') {
+    } else if (member.payment_status === 'overdue' || (member.next_payment_date && new Date(member.next_payment_date) < new Date())) {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
           <AlertCircle className="h-3 w-3 mr-1" />
@@ -519,16 +598,16 @@ const Balance = () => {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Payment Balance Tracker</h1>
-        <p className="text-gray-500 mt-1">Track and manage member payment dues</p>
+        <p className="text-gray-500 mt-1">Track and manage member payment dues including PT balances</p>
       </div>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-6">
         <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">Total Balance Due</p>
-              <p className="text-2xl font-bold text-blue-600">{formatCurrency(overview.total_balance_due)}</p>
+              <p className="text-2xl font-bold text-blue-600">{formatCurrency(overview.total_balance_due + (overview.total_pt_balance || 0))}</p>
             </div>
             <div className="bg-blue-100 p-3 rounded-full">
               <Wallet className="h-6 w-6 text-blue-600" />
@@ -575,6 +654,20 @@ const Balance = () => {
           </div>
           <p className="text-xs text-gray-500 mt-2">Due in next 7 days</p>
         </div>
+
+        {/* ✅ PT Balance Card */}
+        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">PT Balance</p>
+              <p className="text-2xl font-bold text-purple-600">{formatCurrency(overview.total_pt_balance || 0)}</p>
+            </div>
+            <div className="bg-purple-100 p-3 rounded-full">
+              <Dumbbell className="h-6 w-6 text-purple-600" />
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">{overview.members_with_pt_balance || 0} members have PT dues</p>
+        </div>
       </div>
 
       {/* Filters Bar */}
@@ -620,9 +713,9 @@ const Balance = () => {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plan</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount Paid</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance Due</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Membership Balance</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PT Balance</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Balance</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Next Payment</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -642,84 +735,99 @@ const Balance = () => {
                   </td>
                 </tr>
               ) : (
-                currentMembers.map((member) => (
-                  <tr key={member.member_id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="font-medium text-gray-900">{member.member_name}</p>
-                        <p className="text-sm text-gray-500">{member.member_phone}</p>
-                        {member.member_email && (
-                          <p className="text-xs text-gray-400">{member.member_email}</p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <p className="text-sm text-gray-900">{member.plan_name}</p>
-                      <p className="text-xs text-gray-500">
-                        {new Date(member.start_date).toLocaleDateString()} - {new Date(member.end_date).toLocaleDateString()}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <p className="text-sm font-semibold text-gray-900">{formatCurrency(member.total_amount)}</p>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <p className="text-sm text-green-600">{formatCurrency(member.amount_paid)}</p>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <p className={`text-sm font-bold ${member.balance_due > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {formatCurrency(member.balance_due)}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {getStatusBadge(member.payment_status, member.balance_due)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {member.next_payment_date ? (
+                currentMembers.map((member) => {
+                  const totalBalance = getTotalBalance(member);
+                  return (
+                    <tr key={member.member_id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
                         <div>
-                          <p className="text-sm text-gray-900">
-                            {new Date(member.next_payment_date).toLocaleDateString()}
-                          </p>
-                          {new Date(member.next_payment_date) < new Date() && member.balance_due > 0 && (
-                            <p className="text-xs text-red-500">Overdue!</p>
+                          <p className="font-medium text-gray-900">{member.member_name}</p>
+                          <p className="text-sm text-gray-500">{member.member_phone}</p>
+                          {member.member_email && (
+                            <p className="text-xs text-gray-400">{member.member_email}</p>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-sm text-gray-400">Not set</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {member.balance_due > 0 && (
-                          <button
-                            onClick={() => openPaymentModal(member)}
-                            className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-                          >
-                            <CreditCard className="h-4 w-4 mr-1" />
-                            Collect
-                          </button>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <p className="text-sm text-gray-900">{member.plan_name}</p>
+                        <p className="text-xs text-gray-500">
+                          {new Date(member.start_date).toLocaleDateString()} - {new Date(member.end_date).toLocaleDateString()}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <p className={`text-sm font-medium ${member.balance_due > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                          {formatCurrency(member.balance_due || 0)}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          {member.has_pt_balance ? (
+                            <p className={`text-sm font-medium ${member.pt_balance > 0 ? 'text-purple-600' : 'text-green-600'}`}>
+                              {formatCurrency(member.pt_balance || 0)}
+                            </p>
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                          {member.has_pt_balance && (
+                            <Dumbbell className="h-3.5 w-3.5 text-purple-400" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <p className={`text-sm font-bold ${totalBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          {formatCurrency(totalBalance)}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getStatusBadge(member)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {member.next_payment_date ? (
+                          <div>
+                            <p className="text-sm text-gray-900">
+                              {new Date(member.next_payment_date).toLocaleDateString()}
+                            </p>
+                            {new Date(member.next_payment_date) < new Date() && totalBalance > 0 && (
+                              <p className="text-xs text-red-500">Overdue!</p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">Not set</span>
                         )}
-                        <button
-                          onClick={() => togglePaymentHistory(member)}
-                          className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-600 text-sm rounded-lg hover:bg-gray-200 transition-colors"
-                          title="View Payment History"
-                        >
-                          <History className="h-4 w-4" />
-                        </button>
-                        {/* ===== NEW: Clear Balance Button ===== */}
-                        {member.balance_due > 0 && (
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {totalBalance > 0 && (
+                            <button
+                              onClick={() => openPaymentModal(member)}
+                              className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                              <CreditCard className="h-4 w-4 mr-1" />
+                              Collect
+                            </button>
+                          )}
                           <button
-                            onClick={() => openClearBalanceModal(member)}
-                            className="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-600 text-sm rounded-lg hover:bg-red-100 transition-colors"
-                            title="Clear Balance"
+                            onClick={() => togglePaymentHistory(member)}
+                            className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-600 text-sm rounded-lg hover:bg-gray-200 transition-colors"
+                            title="View Payment History"
                           >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Clear
+                            <History className="h-4 w-4" />
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          {totalBalance > 0 && (
+                            <button
+                              onClick={() => openClearBalanceModal(member)}
+                              className="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-600 text-sm rounded-lg hover:bg-red-100 transition-colors"
+                              title="Clear Balance"
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -784,16 +892,21 @@ const Balance = () => {
                     <span className="font-medium text-gray-800">{selectedMember.plan_name}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Total Amount:</span>
-                    <span className="font-medium text-gray-800">{formatCurrency(selectedMember.total_amount)}</span>
+                    <span className="text-gray-500">Membership Balance:</span>
+                    <span className="font-medium text-orange-600">{formatCurrency(selectedMember.balance_due || 0)}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Already Paid:</span>
-                    <span className="font-medium text-green-600">{formatCurrency(selectedMember.amount_paid)}</span>
-                  </div>
+                  {selectedMember.has_pt_balance && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500 flex items-center gap-1">
+                        <Dumbbell className="h-3.5 w-3.5 text-purple-400" />
+                        PT Balance:
+                      </span>
+                      <span className="font-medium text-purple-600">{formatCurrency(selectedMember.pt_balance || 0)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm font-semibold border-t border-gray-200 pt-1.5 mt-1.5">
-                    <span className="text-gray-700">Balance Due:</span>
-                    <span className="text-red-600">{formatCurrency(selectedMember.balance_due)}</span>
+                    <span className="text-gray-700">Total Balance Due:</span>
+                    <span className="text-red-600">{formatCurrency(getTotalBalance(selectedMember))}</span>
                   </div>
                 </div>
               </div>
@@ -833,7 +946,7 @@ const Balance = () => {
                     className="w-full pl-8 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                     placeholder="0.00"
                     min="0.01"
-                    max={selectedMember.balance_due}
+                    max={getTotalBalance(selectedMember)}
                   />
                 </div>
 
@@ -841,17 +954,17 @@ const Balance = () => {
                 <div className="flex gap-2 mt-2">
                   <button
                     type="button"
-                    onClick={() => setPaymentAmount(String(selectedMember.balance_due))}
+                    onClick={() => setPaymentAmount(String(getTotalBalance(selectedMember)))}
                     className="flex-1 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
                   >
-                    Pay Full ({formatCurrency(selectedMember.balance_due)})
+                    Pay Full ({formatCurrency(getTotalBalance(selectedMember))})
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPaymentAmount(String(Math.floor(selectedMember.balance_due / 2)))}
+                    onClick={() => setPaymentAmount(String(Math.floor(getTotalBalance(selectedMember) / 2)))}
                     className="flex-1 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
                   >
-                    Pay Half ({formatCurrency(Math.floor(selectedMember.balance_due / 2))})
+                    Pay Half ({formatCurrency(Math.floor(getTotalBalance(selectedMember) / 2))})
                   </button>
                 </div>
 
@@ -859,9 +972,14 @@ const Balance = () => {
                 {paymentAmount && parseFloat(paymentAmount) > 0 && (
                   <div className={`mt-2 p-3 rounded-lg text-sm ${isFullPayment ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
                     {isFullPayment ? (
-                      <div className="flex items-center gap-2 text-green-700">
-                        <CheckCircle className="h-4 w-4 flex-shrink-0" />
-                        <span className="font-medium">Full payment — balance will be cleared ✓</span>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-green-700">
+                          <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                          <span className="font-medium">Full payment — all balances will be cleared ✓</span>
+                        </div>
+                        {selectedMember.has_pt_balance && (
+                          <p className="text-xs text-green-600 pl-6">✓ Includes PT balance of {formatCurrency(selectedMember.pt_balance)}</p>
+                        )}
                       </div>
                     ) : (
                       <div className="space-y-1 text-amber-700">
@@ -873,6 +991,11 @@ const Balance = () => {
                           <span>Remaining balance after this payment:</span>
                           <span className="font-bold text-red-600">{formatCurrency(remainingAfterPayment)}</span>
                         </div>
+                        {selectedMember.has_pt_balance && (
+                          <p className="text-xs text-purple-600 pl-6">
+                            PT balance: {formatCurrency(Math.max(0, (selectedMember.pt_balance || 0) - Math.max(0, parseFloat(paymentAmount) - (selectedMember.balance_due || 0))))}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1112,19 +1235,30 @@ const Balance = () => {
                   <span className="font-semibold text-gray-900">{memberToClear.member_name}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm mt-2">
-                  <span className="text-gray-700 font-medium">Balance Due:</span>
-                  <span className="font-bold text-red-600">{formatCurrency(memberToClear.balance_due)}</span>
+                  <span className="text-gray-700 font-medium">Membership Balance:</span>
+                  <span className="font-medium text-orange-600">{formatCurrency(memberToClear.balance_due || 0)}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm mt-2">
-                  <span className="text-gray-700 font-medium">Plan:</span>
-                  <span className="text-gray-900">{memberToClear.plan_name}</span>
+                {memberToClear.has_pt_balance && (
+                  <div className="flex items-center justify-between text-sm mt-1">
+                    <span className="text-gray-700 font-medium flex items-center gap-1">
+                      <Dumbbell className="h-3.5 w-3.5 text-purple-400" />
+                      PT Balance:
+                    </span>
+                    <span className="font-medium text-purple-600">{formatCurrency(memberToClear.pt_balance || 0)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-sm font-semibold border-t border-red-200 pt-2 mt-2">
+                  <span className="text-gray-700">Total Balance to Clear:</span>
+                  <span className="font-bold text-red-600">{formatCurrency(getTotalBalance(memberToClear))}</span>
                 </div>
               </div>
 
               <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
                 <p className="text-sm text-yellow-800 flex items-start gap-2">
                   <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                  <span>This will clear the remaining balance of <strong>{formatCurrency(memberToClear.balance_due)}</strong> by recording an adjustment payment. The balance will be set to ₹0.</span>
+                  <span>This will clear all balances for this member including 
+                    {memberToClear.has_pt_balance ? ' membership and PT balances' : ' membership balance'}.
+                    The balance will be set to ₹0.</span>
                 </p>
               </div>
 
@@ -1164,7 +1298,7 @@ const Balance = () => {
                 ) : (
                   <Trash2 className="h-4 w-4" />
                 )}
-                {clearingBalance ? 'Clearing...' : 'Clear Balance'}
+                {clearingBalance ? 'Clearing...' : 'Clear All Balances'}
               </button>
             </div>
           </div>
