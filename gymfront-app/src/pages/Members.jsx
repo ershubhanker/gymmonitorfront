@@ -238,7 +238,20 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       const response = await api.get(`/gym/members/${memberId}`);
       const member = response.data;
       
-      // Transform to match the member format
+      // ✅ FIX: Proper avatar URL construction
+      let avatarUrl;
+      if (member.profile_image) {
+        if (member.profile_image.startsWith('http')) {
+          avatarUrl = member.profile_image;
+        } else {
+          const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+          const imagePath = member.profile_image.startsWith('/') ? member.profile_image : `/${member.profile_image}`;
+          avatarUrl = `${baseUrl}${imagePath}`;
+        }
+      } else {
+        avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
+      }
+      
       const transformed = {
         id: member.id,
         fullName: member.full_name,
@@ -252,9 +265,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         status: member.is_active ? 'active' : 'inactive',
         lastVisit: null,
         payments: member.memberships?.length || 0,
-        avatar: member.profile_image 
-          ? (member.profile_image.startsWith('http') ? member.profile_image : `${API_BASE_URL}${member.profile_image}`)
-          : `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`,
+        avatar: avatarUrl,  // ✅ Use the properly constructed URL
         profile_image: member.profile_image,
         raw: member,
         activeMembership: member.current_membership,
@@ -277,7 +288,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       setShowSingleMember(false);
       setSelectedMemberId(null);
       setSingleMemberData(null);
-      // Reset to show all members
       fetchMembers();
     } finally {
       setLoadingSingleMember(false);
@@ -457,7 +467,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   // OPTIMIZED: Fetch members using the new optimized endpoint
   // ============================================================
   const fetchMembersOptimizedFn = useCallback(async () => {
-    // Don't fetch if we're showing a single member
     if (showSingleMember) return;
     
     setLoading(true);
@@ -474,46 +483,63 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       
       console.log('API Response - Total:', data.total, 'Items:', data.items.length);
       
-      const transformed = data.items.map(item => ({
-        id: item.id,
-        fullName: item.full_name,
-        email: item.email || '',
-        phone: item.phone,
-        gender: item.gender || 'male',
-        joinDate: item.join_date,
-        membership: item.membership?.plan_name || 'No Plan',
-        membershipEndDate: item.membership?.end_date || null,
-        membershipStatus: item.membership?.status || null,
-        status: item.status || 'inactive',
-        lastVisit: null,
-        payments: 0,
-        avatar: item.avatar,
-        profile_image: item.profile_image,
-        raw: {
+      const transformed = data.items.map(item => {
+        // ✅ FIX: Properly construct avatar URL
+        let avatarUrl;
+        if (item.profile_image) {
+          if (item.profile_image.startsWith('http')) {
+            avatarUrl = item.profile_image;
+          } else {
+            // ✅ Ensure proper URL construction with API_BASE_URL
+            // Remove any duplicate slashes
+            const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+            const imagePath = item.profile_image.startsWith('/') ? item.profile_image : `/${item.profile_image}`;
+            avatarUrl = `${baseUrl}${imagePath}`;
+          }
+        } else {
+          avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.full_name)}&background=0D9488&color=fff&size=128`;
+        }
+        
+        return {
           id: item.id,
-          full_name: item.full_name,
+          fullName: item.full_name,
           email: item.email || '',
           phone: item.phone,
           gender: item.gender || 'male',
-          joined_date: item.join_date,
-          is_active: item.is_active,
+          joinDate: item.join_date,
+          membership: item.membership?.plan_name || 'No Plan',
+          membershipEndDate: item.membership?.end_date || null,
+          membershipStatus: item.membership?.status || null,
+          status: item.status || 'inactive',
+          lastVisit: null,
+          payments: 0,
+          avatar: avatarUrl,  // ✅ Use the properly constructed URL
           profile_image: item.profile_image,
-        },
-        activeMembership: item.membership ? {
-          plan: { name: item.membership.plan_name },
-          end_date: item.membership.end_date,
-          status: item.membership.status,
-        } : null,
-        memberPayments: [],
-        syncedToDevice: item.synced_to_device || false,
-        deviceUserId: item.device_user_id || null,
-      }));
+          raw: {
+            id: item.id,
+            full_name: item.full_name,
+            email: item.email || '',
+            phone: item.phone,
+            gender: item.gender || 'male',
+            joined_date: item.join_date,
+            is_active: item.is_active,
+            profile_image: item.profile_image,
+          },
+          activeMembership: item.membership ? {
+            plan: { name: item.membership.plan_name },
+            end_date: item.membership.end_date,
+            status: item.membership.status,
+          } : null,
+          memberPayments: [],
+          syncedToDevice: item.synced_to_device || false,
+          deviceUserId: item.device_user_id || null,
+        };
+      });
   
       setMembers(transformed);
       setTotalMembersCount(data.total || 0);
       setTotalPages(data.total_pages || 0);
       
-      // Fetch PT data after members are loaded
       await fetchPTData();
       
     } catch (error) {
@@ -523,7 +549,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       setLoading(false);
     }
   }, [debouncedSearchTerm, filters.status, currentPage, itemsPerPage, showSingleMember, fetchPTData]);
-  
+
+
   // ============================================================
   // OPTIMIZED: Fetch stats using the new optimized endpoint
   // ============================================================
@@ -596,20 +623,23 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         );
         const memberPayments = paymentsData.filter(p => p.member_id === member.id);
         const paymentCount = memberPayments.length;
-
+      
         let avatarUrl;
         if (member.profile_image) {
           if (member.profile_image.startsWith('http')) {
             avatarUrl = member.profile_image;
           } else {
-            avatarUrl = `${API_BASE_URL}${member.profile_image}`;
+            // ✅ FIX: Proper URL construction
+            const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+            const imagePath = member.profile_image.startsWith('/') ? member.profile_image : `/${member.profile_image}`;
+            avatarUrl = `${baseUrl}${imagePath}`;
           }
         } else {
           avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
         }
-
+      
         const deviceUserId = member.device_user_id || deviceIdMap[member.id] || null;
-
+      
         return {
           id: member.id,
           fullName: member.full_name,
@@ -623,7 +653,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           status: member.is_active ? 'active' : 'inactive',
           lastVisit: member.last_visit || null,
           payments: paymentCount,
-          avatar: avatarUrl,
+          avatar: avatarUrl,  // ✅ Use the properly constructed URL
           profile_image: member.profile_image,
           raw: member,
           activeMembership: activeMembership,
