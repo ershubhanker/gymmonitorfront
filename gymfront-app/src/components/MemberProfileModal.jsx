@@ -1,4 +1,4 @@
-// src/components/MemberProfileModal.jsx - COMPLETE CLEAN VERSION
+// src/components/MemberProfileModal.jsx - WITH MEMBERSHIP EDIT FEATURE
 import React, { useState, useEffect } from 'react';
 import {
   X, Phone, Mail, Calendar, MapPin, DollarSign, Tag, 
@@ -61,6 +61,18 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [savingPayment, setSavingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
 
+  // ===== MEMBERSHIP EDIT STATE =====
+  const [isEditingMembership, setIsEditingMembership] = useState(false);
+  const [membershipEditData, setMembershipEditData] = useState({
+    plan_id: '',
+    start_date: '',
+    end_date: '',
+    status: 'active',
+  });
+  const [savingMembership, setSavingMembership] = useState(false);
+  const [plans, setPlans] = useState([]);
+  const [loadingPlans, setLoadingPlans] = useState(false);
+
   useEffect(() => {
     fetchMemberDetails();
     fetchComments();
@@ -69,6 +81,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     fetchAttendanceHistory();
     fetchBalanceDetails();
     fetchPtSessions();
+    fetchPlans();
   }, [memberId]);
 
   const fetchMemberDetails = async () => {
@@ -101,6 +114,14 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
           payment_method: 'cash',
           notes: memberData.current_membership.notes || '',
         });
+        
+        // Initialize membership edit data from current membership
+        setMembershipEditData({
+          plan_id: memberData.current_membership.plan_id?.toString() || '',
+          start_date: memberData.current_membership.start_date || '',
+          end_date: memberData.current_membership.end_date || '',
+          status: memberData.current_membership.status || 'active',
+        });
       }
     } catch (error) {
       console.error('Error fetching member details:', error);
@@ -112,6 +133,19 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPlans = async () => {
+    try {
+      setLoadingPlans(true);
+      const response = await api.get('/gym/plans');
+      setPlans(response.data || []);
+    } catch (error) {
+      console.error('Error fetching plans:', error);
+      setPlans([]);
+    } finally {
+      setLoadingPlans(false);
     }
   };
 
@@ -373,7 +407,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     return true;
   };
 
-  // ===== SINGLE DECLARATION OF handlePaymentEditSubmit =====
   const handlePaymentEditSubmit = async (e) => {
     e.preventDefault();
     
@@ -392,12 +425,11 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       const discountApplied = parseFloat(paymentEditData.discount_applied) || 0;
       const amountPaid = parseFloat(paymentEditData.amount_paid) || 0;
   
-      // ✅ Send all fields including payment_method
       const payload = {
         amount_paid: amountPaid,
         discount_applied: discountApplied,
         notes: paymentEditData.notes || '',
-        payment_method: paymentEditData.payment_method || 'cash',  // ✅ Include payment_method
+        payment_method: paymentEditData.payment_method || 'cash',
       };
       
       console.log('📤 Updating payment with payload:', payload);
@@ -425,6 +457,94 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const handlePaymentEditCancel = () => {
     setIsEditingPayment(false);
     setPaymentError(null);
+  };
+
+  // ===== MEMBERSHIP EDIT FUNCTIONS =====
+  const handleEditMembershipClick = () => {
+    if (member?.current_membership) {
+      setMembershipEditData({
+        plan_id: member.current_membership.plan_id?.toString() || '',
+        start_date: member.current_membership.start_date || '',
+        end_date: member.current_membership.end_date || '',
+        status: member.current_membership.status || 'active',
+      });
+      setIsEditingMembership(true);
+    } else {
+      toast.error('No active membership to edit');
+    }
+  };
+
+  const handleMembershipEditChange = (e) => {
+    const { name, value } = e.target;
+    setMembershipEditData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleMembershipEditSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!member?.current_membership) {
+      toast.error('No active membership to update');
+      return;
+    }
+
+    if (!membershipEditData.plan_id) {
+      toast.error('Please select a plan');
+      return;
+    }
+
+    if (!membershipEditData.start_date) {
+      toast.error('Please select a start date');
+      return;
+    }
+
+    if (!membershipEditData.end_date) {
+      toast.error('Please select an end date');
+      return;
+    }
+
+    // Validate dates
+    const startDate = new Date(membershipEditData.start_date);
+    const endDate = new Date(membershipEditData.end_date);
+    
+    if (endDate <= startDate) {
+      toast.error('End date must be after start date');
+      return;
+    }
+
+    setSavingMembership(true);
+    try {
+      const membershipId = member.current_membership.id;
+      const payload = {
+        plan_id: parseInt(membershipEditData.plan_id),
+        start_date: membershipEditData.start_date,
+        end_date: membershipEditData.end_date,
+        status: membershipEditData.status,
+      };
+      
+      console.log('📤 Updating membership with payload:', payload);
+      
+      const response = await api.put(`/gym/memberships/${membershipId}`, payload);
+      
+      console.log('📥 Membership update response:', response.data);
+  
+      toast.success('Membership details updated successfully!');
+      setIsEditingMembership(false);
+      await fetchMemberDetails();
+      await fetchMembershipHistory();
+      await fetchBalanceDetails();
+      if (onUpdate) onUpdate();
+      
+    } catch (error) {
+      console.error('Error updating membership:', error);
+      const errorMessage = error.response?.data?.detail || 'Failed to update membership details';
+      toast.error(errorMessage);
+    } finally {
+      setSavingMembership(false);
+    }
+  };
+
+  const handleMembershipEditCancel = () => {
+    setIsEditingMembership(false);
   };
 
   const handleAddComment = async () => {
@@ -570,6 +690,14 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     { value: 'voter', label: 'Voter ID' },
   ];
 
+  // Status options for membership
+  const statusOptions = [
+    { value: 'active', label: 'Active' },
+    { value: 'inactive', label: 'Inactive' },
+    { value: 'expired', label: 'Expired' },
+    { value: 'pending', label: 'Pending' },
+  ];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
@@ -680,6 +808,16 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               >
                 <Pencil className="h-4 w-4" />
                 Edit Payment
+              </button>
+            )}
+
+            {currentMembership && !isEditingMembership && !isEditingPayment && !isEditing && (
+              <button
+                onClick={handleEditMembershipClick}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+              >
+                <Calendar className="h-4 w-4" />
+                Edit Membership
               </button>
             )}
           </div>
@@ -854,6 +992,149 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           )}
 
+          {/* Membership Edit Modal */}
+          {isEditingMembership && currentMembership && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-indigo-900 flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-indigo-600" />
+                  Edit Membership Details
+                </h3>
+                <button
+                  onClick={handleMembershipEditCancel}
+                  className="text-indigo-400 hover:text-indigo-600 p-1"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <form onSubmit={handleMembershipEditSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Plan *
+                    </label>
+                    <select
+                      name="plan_id"
+                      value={membershipEditData.plan_id}
+                      onChange={handleMembershipEditChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                      disabled={loadingPlans}
+                    >
+                      <option value="">Select a plan</option>
+                      {plans.map((plan) => (
+                        <option key={plan.id} value={plan.id.toString()}>
+                          {plan.name} - ₹{plan.price} ({plan.duration_days} days)
+                        </option>
+                      ))}
+                    </select>
+                    {loadingPlans && (
+                      <p className="text-xs text-gray-400 mt-1">Loading plans...</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Status
+                    </label>
+                    <select
+                      name="status"
+                      value={membershipEditData.status}
+                      onChange={handleMembershipEditChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                    >
+                      {statusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Start Date *
+                    </label>
+                    <input
+                      type="date"
+                      name="start_date"
+                      value={membershipEditData.start_date}
+                      onChange={handleMembershipEditChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      End Date *
+                    </label>
+                    <input
+                      type="date"
+                      name="end_date"
+                      value={membershipEditData.end_date}
+                      onChange={handleMembershipEditChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Selected Plan Preview */}
+                {membershipEditData.plan_id && (
+                  <div className="bg-white rounded-lg p-3 border border-indigo-200">
+                    <p className="text-xs font-semibold text-gray-600 mb-2">Selected Plan Details</p>
+                    {(() => {
+                      const selectedPlan = plans.find(p => p.id.toString() === membershipEditData.plan_id);
+                      if (!selectedPlan) return <p className="text-sm text-gray-400">Plan not found</p>;
+                      return (
+                        <div className="grid grid-cols-3 gap-4 text-sm">
+                          <div>
+                            <span className="text-gray-500">Name:</span>
+                            <span className="font-medium ml-2">{selectedPlan.name}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Price:</span>
+                            <span className="font-medium ml-2 text-green-600">₹{selectedPlan.price}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Duration:</span>
+                            <span className="font-medium ml-2">{selectedPlan.duration_days} days</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* Date Validation Info */}
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <p className="text-xs text-yellow-700">
+                    <AlertCircle className="h-3 w-3 inline mr-1" />
+                    Ensure the end date is after the start date. The membership duration will be calculated based on these dates.
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleMembershipEditCancel}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingMembership}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium disabled:opacity-50"
+                  >
+                    {savingMembership ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    {savingMembership ? 'Saving...' : 'Update Membership'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
           {/* Member Information Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Personal Info - Editable */}
@@ -968,13 +1249,15 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               )}
             </div>
 
-            {/* Current Membership - UPDATED with Discount Display */}
+            {/* Current Membership - UPDATED with Edit Membership button inside */}
             <div className="bg-gray-50 rounded-xl p-4">
-              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <Award className="h-4 w-4" />
-                Current Membership
-                {isEditingPayment && <span className="text-xs text-purple-600 ml-2">(Editing Payment)</span>}
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <Award className="h-4 w-4" />
+                  Current Membership
+                </h3>
+                {isEditingMembership && <span className="text-xs text-indigo-600">(Editing)</span>}
+              </div>
               {currentMembership ? (
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
