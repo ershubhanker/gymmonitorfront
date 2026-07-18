@@ -427,7 +427,7 @@ const DeviceManager = () => {
     
     try {
       const response = await api.post(
-        `/gym/attendance/devices/${device.id}/unlock-door?duration=5`
+        `/gym/attendance/devices/${device.id}/unlock-door?duration=10`
       );
       
       toast.dismiss(toastId);
