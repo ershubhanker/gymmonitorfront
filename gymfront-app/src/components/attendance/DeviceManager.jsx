@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Trash2, Wifi, WifiOff, Copy, RefreshCw, 
-  Eye, EyeOff, Edit, Check, X, AlertCircle, Loader2
+  Eye, EyeOff, Edit, Check, X, AlertCircle, Loader2,
+  DoorOpen, Lock, Unlock
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -15,10 +16,14 @@ const DeviceManager = () => {
   const [showApiKey, setShowApiKey] = useState(null);
   const [testingDevice, setTestingDevice] = useState(null);
   
-  // ===== NEW: Online status tracking with polling =====
+  // Online status tracking with polling
   const [onlineStatuses, setOnlineStatuses] = useState({});
   const [pollingInterval, setPollingInterval] = useState(null);
   const [statusLoading, setStatusLoading] = useState({});
+  
+  // Door control states
+  const [unlockingDevice, setUnlockingDevice] = useState(null);
+  const [doorStatuses, setDoorStatuses] = useState({});
   
   const [formData, setFormData] = useState({
     device_name: '',
@@ -29,7 +34,7 @@ const DeviceManager = () => {
   });
   const [formErrors, setFormErrors] = useState({});
 
-  // ===== Fetch devices on load =====
+  // Fetch devices on load
   const fetchDevices = async () => {
     setLoading(true);
     try {
@@ -39,6 +44,8 @@ const DeviceManager = () => {
       // After devices load, poll their status
       if (response.data.length > 0) {
         await pollDeviceStatus(response.data);
+        // Fetch door status for each device
+        await fetchDoorStatuses(response.data);
       }
     } catch (error) {
       console.error('Error fetching devices:', error);
@@ -52,15 +59,17 @@ const DeviceManager = () => {
     fetchDevices();
   }, []);
 
-  // ===== Polling setup =====
+  // Polling setup
   useEffect(() => {
     if (devices.length > 0) {
       // Initial poll after devices load
       pollDeviceStatus(devices);
+      fetchDoorStatuses(devices);
       
       // Set up polling every 15 seconds
       const interval = setInterval(() => {
         pollDeviceStatus(devices);
+        fetchDoorStatuses(devices);
       }, 15000);
       
       setPollingInterval(interval);
@@ -80,7 +89,7 @@ const DeviceManager = () => {
     };
   }, [pollingInterval]);
 
-  // ===== Poll device status =====
+  // Poll device status
   const pollDeviceStatus = async (deviceList = devices) => {
     if (deviceList.length === 0) return;
     
@@ -101,7 +110,42 @@ const DeviceManager = () => {
     }
   };
 
-  // ===== Check if device is online =====
+  // Fetch door status for all devices
+  const fetchDoorStatuses = async (deviceList = devices) => {
+    if (deviceList.length === 0) return;
+    
+    try {
+      for (const device of deviceList) {
+        try {
+          const response = await api.get(`/gym/attendance/devices/${device.id}/door-status`);
+          if (response.data) {
+            setDoorStatuses(prev => ({
+              ...prev,
+              [device.id]: {
+                status: response.data.door_status || 'unknown',
+                is_online: response.data.is_online,
+                last_updated: new Date()
+              }
+            }));
+          }
+        } catch (error) {
+          // If endpoint doesn't exist, set default status
+          setDoorStatuses(prev => ({
+            ...prev,
+            [device.id]: {
+              status: 'unknown',
+              is_online: device.is_online,
+              last_updated: new Date()
+            }
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching door statuses:', error);
+    }
+  };
+
+  // Check if device is online
   const isDeviceOnline = (device) => {
     // First check if we have a cached status from polling
     if (onlineStatuses[device.id] !== undefined) {
@@ -124,7 +168,7 @@ const DeviceManager = () => {
     return true;
   };
 
-  // ===== Validate form =====
+  // Validate form
   const validateForm = () => {
     const errors = {};
     if (!formData.device_name.trim()) errors.device_name = 'Device name is required';
@@ -141,7 +185,7 @@ const DeviceManager = () => {
     return Object.keys(errors).length === 0;
   };
 
-  // ===== Register new device =====
+  // Register new device
   const handleRegister = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -174,7 +218,7 @@ const DeviceManager = () => {
     }
   };
 
-  // ===== Update device =====
+  // Update device
   const handleUpdate = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -195,7 +239,7 @@ const DeviceManager = () => {
     }
   };
 
-  // ===== Delete device =====
+  // Delete device
   const handleDelete = async (deviceId, deviceName) => {
     if (!window.confirm(`Delete device "${deviceName}"? This action cannot be undone.`)) return;
     
@@ -212,7 +256,7 @@ const DeviceManager = () => {
     }
   };
 
-  // ===== Regenerate API key =====
+  // Regenerate API key
   const handleRegenerateKey = async (deviceId, deviceName) => {
     if (!window.confirm(`⚠️ WARNING: Regenerating API key for "${deviceName}" will immediately invalidate the old key. The bridge will stop working until you update the configuration. Continue?`)) {
       return;
@@ -240,7 +284,7 @@ const DeviceManager = () => {
     }
   };
 
-  // ===== UPDATED: Test device connection with real-time status =====
+  // Test device connection with real-time status
   const handleTestConnection = async (device) => {
     const toastId = toast.loading(`Checking ${device.device_name}...`);
     setTestingDevice(device.id);
@@ -371,13 +415,87 @@ const DeviceManager = () => {
     }
   };
 
-  // ===== Copy to clipboard =====
+  // ===== DOOR CONTROL FUNCTIONS =====
+  const handleUnlockDoor = async (device) => {
+    // Show confirmation dialog
+    if (!window.confirm(`Unlock the door for ${device.device_name}?`)) {
+      return;
+    }
+
+    setUnlockingDevice(device.id);
+    const toastId = toast.loading(`Unlocking door on ${device.device_name}...`);
+    
+    try {
+      const response = await api.post(
+        `/gym/attendance/devices/${device.id}/unlock-door?duration=5`
+      );
+      
+      toast.dismiss(toastId);
+      
+      if (response.data.success) {
+        toast.success(
+          <div className="p-2">
+            <p className="font-bold text-green-800 mb-1">🚪 Door Unlocked!</p>
+            <p className="text-sm text-gray-600">{response.data.message}</p>
+            <p className="text-xs text-gray-500 mt-1">Duration: {response.data.duration} seconds</p>
+          </div>,
+          { duration: 5000 }
+        );
+        
+        // Update door status
+        setDoorStatuses(prev => ({
+          ...prev,
+          [device.id]: { 
+            status: 'unlocked', 
+            is_online: true,
+            last_updated: new Date() 
+          }
+        }));
+        
+        // Reset door status after duration + 1 second
+        setTimeout(() => {
+          setDoorStatuses(prev => ({
+            ...prev,
+            [device.id]: { 
+              status: 'locked', 
+              is_online: true,
+              last_updated: new Date() 
+            }
+          }));
+        }, (response.data.duration + 1) * 1000);
+        
+      } else {
+        toast.error(response.data.message || 'Failed to unlock door');
+      }
+    } catch (error) {
+      toast.dismiss(toastId);
+      console.error('Unlock door error:', error);
+      const errorMsg = error.response?.data?.detail || 'Failed to unlock door';
+      toast.error(errorMsg);
+    } finally {
+      setUnlockingDevice(null);
+    }
+  };
+
+  const getDoorStatusDisplay = (deviceId) => {
+    const status = doorStatuses[deviceId];
+    if (!status) return 'Unknown';
+    return status.status === 'unlocked' ? 'Unlocked 🔓' : 'Locked 🔒';
+  };
+
+  const getDoorStatusColor = (deviceId) => {
+    const status = doorStatuses[deviceId];
+    if (!status) return 'text-gray-400';
+    return status.status === 'unlocked' ? 'text-green-600' : 'text-gray-500';
+  };
+
+  // Copy to clipboard
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     toast.success('API Key copied to clipboard');
   };
 
-  // ===== Reset form =====
+  // Reset form
   const resetForm = () => {
     setFormData({
       device_name: '',
@@ -390,7 +508,7 @@ const DeviceManager = () => {
     setEditingDevice(null);
   };
 
-  // ===== Open edit modal =====
+  // Open edit modal
   const openEditModal = (device) => {
     setEditingDevice(device);
     setFormData({
@@ -403,10 +521,11 @@ const DeviceManager = () => {
     setShowModal(true);
   };
 
-  // ===== Force refresh status =====
+  // Force refresh status
   const handleRefreshStatus = async () => {
     toast.loading('Refreshing device status...', { id: 'status-refresh' });
     await pollDeviceStatus(devices);
+    await fetchDoorStatuses(devices);
     toast.dismiss('status-refresh');
     toast.success('Device status updated!');
   };
@@ -470,6 +589,7 @@ const DeviceManager = () => {
             const isOnline = isDeviceOnline(device);
             const isTesting = testingDevice === device.id;
             const isStatusLoading = statusLoading[device.id] || false;
+            const isUnlocking = unlockingDevice === device.id;
             
             return (
               <div key={device.id} className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden hover:shadow-lg transition-all duration-300">
@@ -503,9 +623,18 @@ const DeviceManager = () => {
                       <span className="text-gray-500">Serial:</span>
                       <span className="text-gray-800 font-mono text-xs">{device.device_serial}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Created:</span>
-                      <span className="text-gray-600 text-xs">{new Date(device.created_at).toLocaleDateString()}</span>
+                    
+                    {/* Door Status */}
+                    <div className="flex justify-between items-center border-t border-gray-100 pt-2 mt-2">
+                      <span className="text-gray-500">Door Status:</span>
+                      <span className={`font-medium flex items-center gap-1 ${getDoorStatusColor(device.id)}`}>
+                        {doorStatuses[device.id]?.status === 'unlocked' ? (
+                          <Unlock className="h-3 w-3" />
+                        ) : (
+                          <Lock className="h-3 w-3" />
+                        )}
+                        {getDoorStatusDisplay(device.id)}
+                      </span>
                     </div>
                     
                     {/* API Key Section */}
@@ -542,7 +671,7 @@ const DeviceManager = () => {
                     </div>
                   </div>
 
-                  <div className="flex gap-2 pt-4 border-t">
+                  <div className="flex gap-2 pt-4 border-t flex-wrap">
                     <button
                       onClick={() => handleTestConnection(device)}
                       disabled={isTesting}
@@ -559,6 +688,26 @@ const DeviceManager = () => {
                       )}
                       {isTesting || isStatusLoading ? 'Checking...' : 'Test'}
                     </button>
+                    
+                    {/* Door Unlock Button */}
+                    <button
+                      onClick={() => handleUnlockDoor(device)}
+                      disabled={isUnlocking || !isOnline}
+                      className={`flex-1 px-3 py-2 rounded-lg transition-colors text-sm ${
+                        isOnline && !isUnlocking
+                          ? 'bg-green-50 text-green-600 hover:bg-green-100'
+                          : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                      }`}
+                      title={isOnline ? 'Unlock Door' : 'Device offline - cannot unlock door'}
+                    >
+                      {isUnlocking ? (
+                        <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
+                      ) : (
+                        <Unlock className="h-4 w-4 inline mr-1" />
+                      )}
+                      {isUnlocking ? 'Unlocking...' : 'Unlock Door'}
+                    </button>
+                    
                     <button
                       onClick={() => openEditModal(device)}
                       className="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm"
