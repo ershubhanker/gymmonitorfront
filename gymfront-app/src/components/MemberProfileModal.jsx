@@ -1,4 +1,4 @@
-// src/components/MemberProfileModal.jsx - WITH MEMBER ID AND IMAGE ZOOM
+// src/components/MemberProfileModal.jsx - FIXED IMAGE URL HANDLING
 import React, { useState, useEffect } from 'react';
 import {
   X, Phone, Mail, Calendar, MapPin, DollarSign, Tag, 
@@ -8,9 +8,46 @@ import {
   Edit, RefreshCw, Loader2, Trash2, Save, XCircle,
   Dumbbell, Pencil, Maximize2, Hash
 } from 'lucide-react';
-import api from '../services/api';
+import api, { API_BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 
+// ============================================================
+// HELPER: Properly construct image URL
+// ============================================================
+const getImageUrl = (profileImage, fullName) => {
+  if (!profileImage) {
+    // Fallback to avatar
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName || 'User')}&background=0D9488&color=fff&size=512`;
+  }
+  
+  // If it's already a full URL (starts with http)
+  if (profileImage.startsWith('http')) {
+    return profileImage;
+  }
+  
+  // Construct full URL from relative path
+  const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+  const imagePath = profileImage.startsWith('/') ? profileImage : `/${profileImage}`;
+  return `${baseUrl}${imagePath}`;
+};
+
+const getThumbnailUrl = (profileImage, fullName) => {
+  if (!profileImage) {
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName || 'User')}&background=0D9488&color=fff&size=128`;
+  }
+  
+  if (profileImage.startsWith('http')) {
+    return profileImage;
+  }
+  
+  const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+  const imagePath = profileImage.startsWith('/') ? profileImage : `/${profileImage}`;
+  return `${baseUrl}${imagePath}`;
+};
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -663,24 +700,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     };
   };
 
-  // Get profile image URL with proper handling
-  const getProfileImageUrl = () => {
-    if (member?.profile_image) {
-      // If it's a full URL or relative path
-      return member.profile_image;
-    }
-    // Fallback to avatar with larger size for zoom
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(member?.full_name || 'User')}&background=0D9488&color=fff&size=512`;
-  };
-
-  // Get thumbnail image URL
-  const getThumbnailImageUrl = () => {
-    if (member?.profile_image) {
-      return member.profile_image;
-    }
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(member?.full_name || 'User')}&background=0D9488&color=fff&size=128`;
-  };
-
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -719,6 +738,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     { value: 'pending', label: 'Pending' },
   ];
 
+  // Get image URLs using the helper functions
+  const profileImageUrl = getImageUrl(member.profile_image, member.full_name);
+  const thumbnailImageUrl = getThumbnailUrl(member.profile_image, member.full_name);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
@@ -731,7 +754,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               onClick={() => setIsImageZoomed(true)}
             >
               <img 
-                src={getThumbnailImageUrl()}
+                src={thumbnailImageUrl}
                 alt={member.full_name}
                 className="h-12 w-12 rounded-full object-cover border-2 border-transparent group-hover:border-blue-400 transition-all duration-200"
                 onError={(e) => {
@@ -750,7 +773,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 {/* Member ID Badge */}
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-mono border border-gray-200">
                   <Hash className="h-3 w-3" />
-                  {member.id}
+                  #{member.id}
                 </span>
               </div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -799,7 +822,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </button>
             <div className="max-w-[90vw] max-h-[90vh] flex items-center justify-center">
               <img
-                src={getProfileImageUrl()}
+                src={profileImageUrl}
                 alt={member.full_name}
                 className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl"
                 onError={(e) => {
