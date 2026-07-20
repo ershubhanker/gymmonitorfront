@@ -1,4 +1,4 @@
-// src/components/MemberProfileModal.jsx - WITH MEMBERSHIP EDIT FEATURE
+// src/components/MemberProfileModal.jsx - WITH MEMBER ID AND IMAGE ZOOM
 import React, { useState, useEffect } from 'react';
 import {
   X, Phone, Mail, Calendar, MapPin, DollarSign, Tag, 
@@ -6,7 +6,7 @@ import {
   Send, MessageSquare, History, CreditCard, Activity,
   Award, Calendar as CalendarIcon, FileText, Users,
   Edit, RefreshCw, Loader2, Trash2, Save, XCircle,
-  Dumbbell, Pencil
+  Dumbbell, Pencil, Maximize2, Hash
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -26,6 +26,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [deletingComment, setDeletingComment] = useState(null);
   const [balanceDetails, setBalanceDetails] = useState(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
+  
+  // ===== IMAGE ZOOM STATE =====
+  const [isImageZoomed, setIsImageZoomed] = useState(false);
   
   // ===== PT State =====
   const [ptSessions, setPtSessions] = useState([]);
@@ -660,6 +663,24 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     };
   };
 
+  // Get profile image URL with proper handling
+  const getProfileImageUrl = () => {
+    if (member?.profile_image) {
+      // If it's a full URL or relative path
+      return member.profile_image;
+    }
+    // Fallback to avatar with larger size for zoom
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(member?.full_name || 'User')}&background=0D9488&color=fff&size=512`;
+  };
+
+  // Get thumbnail image URL
+  const getThumbnailImageUrl = () => {
+    if (member?.profile_image) {
+      return member.profile_image;
+    }
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(member?.full_name || 'User')}&background=0D9488&color=fff&size=128`;
+  };
+
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -704,18 +725,35 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
-            <img 
-              src={member.profile_image || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`}
-              alt={member.full_name}
-              className="h-12 w-12 rounded-full object-cover"
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
-              }}
-            />
+            {/* Profile Image with click to zoom */}
+            <div 
+              className="relative cursor-pointer group flex-shrink-0"
+              onClick={() => setIsImageZoomed(true)}
+            >
+              <img 
+                src={getThumbnailImageUrl()}
+                alt={member.full_name}
+                className="h-12 w-12 rounded-full object-cover border-2 border-transparent group-hover:border-blue-400 transition-all duration-200"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
+                }}
+              />
+              {/* Hover overlay */}
+              <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/40 transition-all duration-200 flex items-center justify-center">
+                <Maximize2 className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+              </div>
+            </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">{member.full_name}</h2>
-              <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-bold text-gray-900">{member.full_name}</h2>
+                {/* Member ID Badge */}
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-mono border border-gray-200">
+                  <Hash className="h-3 w-3" />
+                  {member.id}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
                 {getStatusBadge(member.is_active ? 'active' : 'inactive')}
                 {currentMembership && (
                   <span className="text-xs text-gray-500">
@@ -746,6 +784,35 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </button>
           </div>
         </div>
+
+        {/* Image Zoom Modal */}
+        {isImageZoomed && (
+          <div 
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm"
+            onClick={() => setIsImageZoomed(false)}
+          >
+            <button
+              onClick={() => setIsImageZoomed(false)}
+              className="absolute top-4 right-4 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors z-10"
+            >
+              <X className="h-8 w-8" />
+            </button>
+            <div className="max-w-[90vw] max-h-[90vh] flex items-center justify-center">
+              <img
+                src={getProfileImageUrl()}
+                alt={member.full_name}
+                className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=512`;
+                }}
+              />
+            </div>
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/50 text-sm">
+              Click anywhere to close
+            </div>
+          </div>
+        )}
 
         <div className="p-6 space-y-6">
           {/* Financial Summary Cards */}
@@ -1218,6 +1285,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     <span className="font-medium text-gray-900">{member.full_name}</span>
                   </div>
                   <div className="flex justify-between">
+                    <span className="text-gray-500">Member ID:</span>
+                    <span className="font-medium text-gray-900 font-mono">#{member.id}</span>
+                  </div>
+                  <div className="flex justify-between">
                     <span className="text-gray-500">Phone:</span>
                     <span className="font-medium text-gray-900">{member.phone}</span>
                   </div>
@@ -1249,7 +1320,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               )}
             </div>
 
-            {/* Current Membership - UPDATED with Edit Membership button inside */}
+            {/* Current Membership */}
             <div className="bg-gray-50 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2">
