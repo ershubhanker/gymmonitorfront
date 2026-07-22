@@ -1,4 +1,4 @@
-// src/components/MemberProfileModal.jsx - FIXED IMAGE URL HANDLING
+// src/components/MemberProfileModal.jsx - WITH MEMBERSHIP FREEZE FEATURE
 import React, { useState, useEffect } from 'react';
 import {
   X, Phone, Mail, Calendar, MapPin, DollarSign, Tag, 
@@ -6,7 +6,8 @@ import {
   Send, MessageSquare, History, CreditCard, Activity,
   Award, Calendar as CalendarIcon, FileText, Users,
   Edit, RefreshCw, Loader2, Trash2, Save, XCircle,
-  Dumbbell, Pencil, Maximize2, Hash
+  Dumbbell, Pencil, Maximize2, Hash, Snowflake,
+  Heart, AlertTriangle
 } from 'lucide-react';
 import api, { API_BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
@@ -16,16 +17,13 @@ import toast from 'react-hot-toast';
 // ============================================================
 const getImageUrl = (profileImage, fullName) => {
   if (!profileImage) {
-    // Fallback to avatar
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName || 'User')}&background=0D9488&color=fff&size=512`;
   }
   
-  // If it's already a full URL (starts with http)
   if (profileImage.startsWith('http')) {
     return profileImage;
   }
   
-  // Construct full URL from relative path
   const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
   const imagePath = profileImage.startsWith('/') ? profileImage : `/${profileImage}`;
   return `${baseUrl}${imagePath}`;
@@ -113,6 +111,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [plans, setPlans] = useState([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
 
+  // ===== FREEZE STATE =====
+  const [showFreezeModal, setShowFreezeModal] = useState(false);
+  const [freezeType, setFreezeType] = useState('regular');
+  const [freezeStartDate, setFreezeStartDate] = useState('');
+  const [freezeEndDate, setFreezeEndDate] = useState('');
+  const [freezeNotes, setFreezeNotes] = useState('');
+  const [freezing, setFreezing] = useState(false);
+  const [freezeHistory, setFreezeHistory] = useState([]);
+  const [loadingFreezes, setLoadingFreezes] = useState(false);
+  const [cancellingFreeze, setCancellingFreeze] = useState(null);
+
   useEffect(() => {
     fetchMemberDetails();
     fetchComments();
@@ -122,6 +131,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     fetchBalanceDetails();
     fetchPtSessions();
     fetchPlans();
+    fetchFreezeHistory();
   }, [memberId]);
 
   const fetchMemberDetails = async () => {
@@ -146,7 +156,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         id_proof_number: memberData.id_proof_number || '',
       });
       
-      // Initialize payment edit data from current membership
       if (memberData.current_membership) {
         setPaymentEditData({
           amount_paid: memberData.current_membership.amount_paid?.toString() || '0',
@@ -155,7 +164,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
           notes: memberData.current_membership.notes || '',
         });
         
-        // Initialize membership edit data from current membership
         setMembershipEditData({
           plan_id: memberData.current_membership.plan_id?.toString() || '',
           start_date: memberData.current_membership.start_date || '',
@@ -253,7 +261,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     }
   };
 
-  // ===== Fetch PT Sessions =====
   const fetchPtSessions = async () => {
     try {
       setLoadingPt(true);
@@ -264,6 +271,20 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setPtSessions([]);
     } finally {
       setLoadingPt(false);
+    }
+  };
+
+  // ===== FETCH FREEZE HISTORY =====
+  const fetchFreezeHistory = async () => {
+    try {
+      setLoadingFreezes(true);
+      const response = await api.get(`/gym/members/${memberId}/freezes`);
+      setFreezeHistory(response.data || []);
+    } catch (error) {
+      console.error('Error fetching freeze history:', error);
+      setFreezeHistory([]);
+    } finally {
+      setLoadingFreezes(false);
     }
   };
 
@@ -285,7 +306,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     );
   };
 
-  // ===== Helper function to parse session days =====
   const parseSessionDays = (sessionDays) => {
     if (!sessionDays) return [];
     if (Array.isArray(sessionDays)) return sessionDays;
@@ -298,6 +318,95 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       }
     }
     return [];
+  };
+
+  // ===== FREEZE FUNCTIONS =====
+  const handleFreezeSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!member?.current_membership) {
+      toast.error('No active membership to freeze');
+      return;
+    }
+
+    if (!freezeStartDate || !freezeEndDate) {
+      toast.error('Please select both start and end dates');
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    if (freezeStartDate < today) {
+      toast.error('Start date cannot be in the past');
+      return;
+    }
+
+    if (freezeEndDate <= freezeStartDate) {
+      toast.error('End date must be after start date');
+      return;
+    }
+
+    setFreezing(true);
+    try {
+      const freezeData = {
+        membership_id: member.current_membership.id,
+        freeze_type: freezeType,
+        start_date: freezeStartDate,
+        end_date: freezeEndDate,
+        notes: freezeNotes || null
+      };
+
+      const response = await api.post('/gym/memberships/freeze', freezeData);
+      
+      const freezeDays = (new Date(freezeEndDate) - new Date(freezeStartDate)) / (1000 * 60 * 60 * 24);
+      
+      toast.success(`✅ Membership frozen for ${freezeDays} days!`);
+      toast.success(`📅 Membership extended to ${new Date(response.data.new_end_date).toLocaleDateString()}`);
+      
+      // Reset freeze form
+      setFreezeStartDate('');
+      setFreezeEndDate('');
+      setFreezeNotes('');
+      setFreezeType('regular');
+      setShowFreezeModal(false);
+      
+      // Refresh data
+      await fetchMemberDetails();
+      await fetchMembershipHistory();
+      await fetchFreezeHistory();
+      if (onUpdate) onUpdate();
+      
+    } catch (error) {
+      console.error('Freeze error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to freeze membership');
+    } finally {
+      setFreezing(false);
+    }
+  };
+
+  const handleCancelFreeze = async (freezeId) => {
+    if (!window.confirm('Are you sure you want to cancel this freeze? The membership end date will be reverted.')) {
+      return;
+    }
+
+    setCancellingFreeze(freezeId);
+    try {
+      const response = await api.put(`/gym/freezes/${freezeId}`, {
+        status: 'cancelled'
+      });
+      
+      toast.success('Freeze cancelled successfully! Membership end date has been reverted.');
+      
+      await fetchFreezeHistory();
+      await fetchMemberDetails();
+      await fetchMembershipHistory();
+      if (onUpdate) onUpdate();
+      
+    } catch (error) {
+      console.error('Error cancelling freeze:', error);
+      toast.error(error.response?.data?.detail || 'Failed to cancel freeze');
+    } finally {
+      setCancellingFreeze(null);
+    }
   };
 
   // ===== EDIT FUNCTIONS =====
@@ -413,8 +522,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const handlePaymentEditChange = (e) => {
     const { name, value } = e.target;
     setPaymentEditData(prev => ({ ...prev, [name]: value }));
-    
-    // Clear error when user types
     if (paymentError) setPaymentError(null);
   };
 
@@ -428,22 +535,18 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setPaymentError('Amount paid cannot be negative');
       return false;
     }
-    
     if (amountPaid > finalPrice) {
       setPaymentError(`Amount paid cannot exceed final price of ₹${finalPrice}`);
       return false;
     }
-    
     if (discountApplied < 0) {
       setPaymentError('Discount cannot be negative');
       return false;
     }
-    
     if (discountApplied > planPrice) {
       setPaymentError(`Discount cannot exceed plan price of ₹${planPrice}`);
       return false;
     }
-    
     return true;
   };
 
@@ -472,11 +575,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         payment_method: paymentEditData.payment_method || 'cash',
       };
       
-      console.log('📤 Updating payment with payload:', payload);
-      
-      const response = await api.put(`/gym/memberships/${membershipId}/payment`, payload);
-      
-      console.log('📥 Payment update response:', response.data);
+      await api.put(`/gym/memberships/${membershipId}/payment`, payload);
   
       toast.success('Payment details updated successfully!');
       setIsEditingPayment(false);
@@ -542,7 +641,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       return;
     }
 
-    // Validate dates
     const startDate = new Date(membershipEditData.start_date);
     const endDate = new Date(membershipEditData.end_date);
     
@@ -561,11 +659,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         status: membershipEditData.status,
       };
       
-      console.log('📤 Updating membership with payload:', payload);
-      
-      const response = await api.put(`/gym/memberships/${membershipId}`, payload);
-      
-      console.log('📥 Membership update response:', response.data);
+      await api.put(`/gym/memberships/${membershipId}`, payload);
   
       toast.success('Membership details updated successfully!');
       setIsEditingMembership(false);
@@ -680,7 +774,22 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     );
   };
 
-  // Calculate payment summary
+  const getFreezeStatusBadge = (status) => {
+    const statusConfig = {
+      active: { color: 'bg-blue-100 text-blue-700', icon: Snowflake },
+      expired: { color: 'bg-gray-100 text-gray-500', icon: Clock },
+      cancelled: { color: 'bg-red-100 text-red-700', icon: XCircle },
+    };
+    const config = statusConfig[status] || statusConfig.active;
+    const Icon = config.icon;
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${config.color}`}>
+        <Icon className="h-3 w-3" />
+        {status?.charAt(0).toUpperCase() + status?.slice(1) || 'Active'}
+      </span>
+    );
+  };
+
   const getPaymentSummary = () => {
     const membership = member?.current_membership;
     if (!membership) return null;
@@ -716,12 +825,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const currentMembership = member.current_membership;
   const paymentSummary = getPaymentSummary();
   
-  // Calculate totals
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
   const balanceDue = balanceDetails?.balance_due || currentMembership?.balance_due || 0;
   const totalPlanAmount = balanceDetails?.total_amount || currentMembership?.plan?.price || 0;
 
-  // ID Proof options
   const idProofOptions = [
     { value: 'aadhar', label: 'Aadhar Card' },
     { value: 'pan', label: 'PAN Card' },
@@ -730,7 +837,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     { value: 'voter', label: 'Voter ID' },
   ];
 
-  // Status options for membership
   const statusOptions = [
     { value: 'active', label: 'Active' },
     { value: 'inactive', label: 'Inactive' },
@@ -738,9 +844,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     { value: 'pending', label: 'Pending' },
   ];
 
-  // Get image URLs using the helper functions
   const profileImageUrl = getImageUrl(member.profile_image, member.full_name);
   const thumbnailImageUrl = getThumbnailUrl(member.profile_image, member.full_name);
+
+  // Check if there's an active freeze
+  const activeFreeze = freezeHistory.find(f => f.status === 'active');
+  const hasActiveFreeze = !!activeFreeze;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
@@ -748,7 +857,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
-            {/* Profile Image with click to zoom */}
             <div 
               className="relative cursor-pointer group flex-shrink-0"
               onClick={() => setIsImageZoomed(true)}
@@ -762,7 +870,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
                 }}
               />
-              {/* Hover overlay */}
               <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/40 transition-all duration-200 flex items-center justify-center">
                 <Maximize2 className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
               </div>
@@ -770,11 +877,16 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold text-gray-900">{member.full_name}</h2>
-                {/* Member ID Badge */}
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-mono border border-gray-200">
                   <Hash className="h-3 w-3" />
                   #{member.id}
                 </span>
+                {hasActiveFreeze && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium border border-blue-200">
+                    <Snowflake className="h-3 w-3" />
+                    Frozen
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 {getStatusBadge(member.is_active ? 'active' : 'inactive')}
@@ -796,6 +908,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 fetchAttendanceHistory();
                 fetchBalanceDetails();
                 fetchPtSessions();
+                fetchFreezeHistory();
               }}
               className="p-2 rounded-xl hover:bg-gray-100"
               title="Refresh"
@@ -839,7 +952,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
         <div className="p-6 space-y-6">
           {/* Financial Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-100">
               <p className="text-sm text-green-600 font-medium">Total Paid</p>
               <p className="text-2xl font-bold text-green-700">₹{totalPaid.toLocaleString()}</p>
@@ -855,10 +968,43 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               <p className="text-2xl font-bold text-blue-700">₹{balanceDue.toLocaleString()}</p>
               <p className="text-xs text-blue-500 mt-1">Remaining amount to be paid</p>
             </div>
+            <div className={`rounded-xl p-4 border ${hasActiveFreeze ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+              <p className="text-sm text-gray-600 font-medium">Freeze Status</p>
+              {hasActiveFreeze ? (
+                <>
+                  <p className="text-lg font-bold text-blue-700 flex items-center gap-2">
+                    <Snowflake className="h-5 w-5" />
+                    Active Freeze
+                  </p>
+                  <p className="text-xs text-blue-500 mt-1">
+                    {formatDate(activeFreeze.start_date)} - {formatDate(activeFreeze.end_date)}
+                  </p>
+                  <p className="text-xs text-blue-500">
+                    {activeFreeze.freeze_type === 'medical' ? '🏥 Medical' : '📅 Regular'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg font-bold text-gray-500">Not Frozen</p>
+                  <p className="text-xs text-gray-400 mt-1">No active freeze</p>
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Edit Buttons Row */}
+          {/* Action Buttons Row */}
           <div className="flex flex-wrap justify-end gap-2">
+            {/* Freeze Button */}
+            {currentMembership && !hasActiveFreeze && (
+              <button
+                onClick={() => setShowFreezeModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              >
+                <Snowflake className="h-4 w-4" />
+                Freeze Membership
+              </button>
+            )}
+
             {!isEditing ? (
               <button
                 onClick={handleEditClick}
@@ -912,9 +1058,197 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             )}
           </div>
 
-          {/* Payment Edit Modal */}
+          {/* ============================================================
+              FREEZE MODAL (Inline within the profile)
+              ============================================================ */}
+          {showFreezeModal && (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                {/* Freeze Modal Header */}
+                <div className="flex items-center justify-between p-5 border-b bg-gradient-to-r from-blue-50 to-purple-50 rounded-t-2xl">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                      <Snowflake className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">Freeze Membership</h3>
+                      <p className="text-sm text-gray-500">
+                        {member.full_name} • {member.membership || 'No Plan'}
+                      </p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setShowFreezeModal(false);
+                      setFreezeStartDate('');
+                      setFreezeEndDate('');
+                      setFreezeNotes('');
+                      setFreezeType('regular');
+                    }}
+                    className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    <X className="h-5 w-5 text-gray-500" />
+                  </button>
+                </div>
+
+                {/* Freeze Modal Body */}
+                <form onSubmit={handleFreezeSubmit} className="p-5 space-y-5">
+                  {/* Member Info */}
+                  <div className="bg-gray-50 rounded-xl p-4 flex items-center gap-4">
+                    <img 
+                      src={thumbnailImageUrl}
+                      alt={member.full_name}
+                      className="h-14 w-14 rounded-full object-cover border-2 border-white shadow"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
+                      }}
+                    />
+                    <div>
+                      <p className="font-semibold text-gray-900">{member.full_name}</p>
+                      <p className="text-sm text-gray-500">{member.phone}</p>
+                      <p className="text-xs text-gray-400">
+                        Membership: {currentMembership?.plan?.name || 'N/A'} • 
+                        Expires: {currentMembership?.end_date ? formatDate(currentMembership.end_date) : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Freeze Type */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Freeze Type
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setFreezeType('regular')}
+                        className={`p-3 rounded-xl border-2 text-center transition-all ${
+                          freezeType === 'regular'
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                        }`}
+                      >
+                        <Calendar className="h-5 w-5 mx-auto mb-1" />
+                        <span className="text-sm font-medium">Regular</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFreezeType('medical')}
+                        className={`p-3 rounded-xl border-2 text-center transition-all ${
+                          freezeType === 'medical'
+                            ? 'border-red-500 bg-red-50 text-red-700'
+                            : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                        }`}
+                      >
+                        <Heart className="h-5 w-5 mx-auto mb-1" />
+                        <span className="text-sm font-medium">Medical</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Dates */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Start Date
+                      </label>
+                      <input
+                        type="date"
+                        value={freezeStartDate}
+                        onChange={(e) => setFreezeStartDate(e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        End Date
+                      </label>
+                      <input
+                        type="date"
+                        value={freezeEndDate}
+                        onChange={(e) => setFreezeEndDate(e.target.value)}
+                        min={freezeStartDate || new Date().toISOString().split('T')[0]}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Info Banner */}
+                  {freezeStartDate && freezeEndDate && new Date(freezeEndDate) > new Date(freezeStartDate) && (
+                    <div className="bg-blue-50 rounded-xl p-3 border border-blue-200">
+                      <div className="flex items-center gap-2 text-blue-700">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span className="text-sm font-medium">
+                          Freeze Duration: {(new Date(freezeEndDate) - new Date(freezeStartDate)) / (1000 * 60 * 60 * 24)} days
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-1">
+                        Membership will be extended by {(new Date(freezeEndDate) - new Date(freezeStartDate)) / (1000 * 60 * 60 * 24)} days
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Notes (Optional)
+                    </label>
+                    <textarea
+                      value={freezeNotes}
+                      onChange={(e) => setFreezeNotes(e.target.value)}
+                      placeholder="Reason for freeze or additional notes..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 resize-none"
+                      rows={2}
+                    />
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex items-center justify-end gap-3 pt-4 border-t">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowFreezeModal(false);
+                        setFreezeStartDate('');
+                        setFreezeEndDate('');
+                        setFreezeNotes('');
+                        setFreezeType('regular');
+                      }}
+                      disabled={freezing}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={freezing || !freezeStartDate || !freezeEndDate}
+                      className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {freezing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Snowflake className="h-4 w-4" />
+                          Freeze Membership
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Payment Edit Modal - Same as before */}
           {isEditingPayment && currentMembership && (
             <div className="bg-purple-50 border border-purple-200 rounded-xl p-5">
+              {/* ... payment edit content ... */}
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-purple-900 flex items-center gap-2">
                   <CreditCard className="h-5 w-5 text-purple-600" />
@@ -929,7 +1263,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               </div>
               
               <form onSubmit={handlePaymentEditSubmit} className="space-y-4">
-                {/* Plan Info Display */}
                 <div className="bg-white rounded-lg p-3 border border-purple-200">
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
@@ -958,7 +1291,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white"
                       placeholder="0"
                     />
-                    <p className="text-xs text-gray-400 mt-1">Discount amount applied to this membership</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1018,7 +1350,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   </div>
                 </div>
                 
-                {/* Payment Summary Preview */}
                 {(() => {
                   const planPrice = currentMembership.plan?.price || 0;
                   const discount = parseFloat(paymentEditData.discount_applied) || 0;
@@ -1082,9 +1413,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           )}
 
-          {/* Membership Edit Modal */}
+          {/* Membership Edit Modal - Same as before */}
           {isEditingMembership && currentMembership && (
             <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5">
+              {/* ... membership edit content ... */}
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-indigo-900 flex items-center gap-2">
                   <Calendar className="h-5 w-5 text-indigo-600" />
@@ -1118,9 +1450,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                         </option>
                       ))}
                     </select>
-                    {loadingPlans && (
-                      <p className="text-xs text-gray-400 mt-1">Loading plans...</p>
-                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1165,7 +1494,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   </div>
                 </div>
 
-                {/* Selected Plan Preview */}
                 {membershipEditData.plan_id && (
                   <div className="bg-white rounded-lg p-3 border border-indigo-200">
                     <p className="text-xs font-semibold text-gray-600 mb-2">Selected Plan Details</p>
@@ -1192,7 +1520,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   </div>
                 )}
 
-                {/* Date Validation Info */}
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                   <p className="text-xs text-yellow-700">
                     <AlertCircle className="h-3 w-3 inline mr-1" />
@@ -1225,9 +1552,101 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           )}
 
-          {/* Member Information Grid */}
+          {/* Freeze History Section */}
+          <div className="border-t border-gray-100 pt-6">
+            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Snowflake className="h-5 w-5 text-blue-600" />
+              Freeze History
+            </h3>
+            
+            {loadingFreezes ? (
+              <div className="text-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400 mx-auto" />
+              </div>
+            ) : freezeHistory.length > 0 ? (
+              <div className="space-y-3">
+                {freezeHistory.map((freeze) => (
+                  <div key={freeze.id} className={`rounded-xl p-4 border ${
+                    freeze.status === 'active' 
+                      ? 'bg-blue-50 border-blue-200' 
+                      : freeze.status === 'cancelled'
+                      ? 'bg-red-50 border-red-200'
+                      : 'bg-gray-50 border-gray-200'
+                  }`}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          freeze.freeze_type === 'medical' 
+                            ? 'bg-red-100 text-red-700' 
+                            : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {freeze.freeze_type === 'medical' ? '🏥 Medical' : '📅 Regular'}
+                        </span>
+                        {getFreezeStatusBadge(freeze.status)}
+                        <span className="text-xs text-gray-400">
+                          {freeze.freeze_days} days
+                        </span>
+                      </div>
+                      {freeze.status === 'active' && (
+                        <button
+                          onClick={() => handleCancelFreeze(freeze.id)}
+                          disabled={cancellingFreeze === freeze.id}
+                          className="text-red-500 hover:text-red-700 text-xs font-medium flex items-center gap-1"
+                        >
+                          {cancellingFreeze === freeze.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <XCircle className="h-3 w-3" />
+                          )}
+                          Cancel Freeze
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                      <div>
+                        <span className="text-gray-500">Start:</span>
+                        <span className="ml-2 font-medium text-gray-900">{formatDate(freeze.start_date)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">End:</span>
+                        <span className="ml-2 font-medium text-gray-900">{formatDate(freeze.end_date)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Original End:</span>
+                        <span className="ml-2 font-medium text-gray-900">{formatDate(freeze.original_end_date)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">New End:</span>
+                        <span className="ml-2 font-medium text-blue-600">{formatDate(freeze.new_end_date)}</span>
+                      </div>
+                    </div>
+                    
+                    {freeze.notes && (
+                      <p className="text-xs text-gray-500 mt-2">{freeze.notes}</p>
+                    )}
+                    
+                    <div className="text-xs text-gray-400 mt-2">
+                      Created: {formatDateTime(freeze.created_at)}
+                      {freeze.created_by_name && ` by ${freeze.created_by_name}`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <div className="text-gray-300 mb-2">
+                  <Snowflake className="h-10 w-10 mx-auto" />
+                </div>
+                <p className="text-sm text-gray-400">No freeze history</p>
+                <p className="text-xs text-gray-300 mt-1">Freezes will appear here once applied</p>
+              </div>
+            )}
+          </div>
+
+          {/* Member Information Grid - Same as before */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Personal Info - Editable */}
+            {/* Personal Info */}
             <div className="bg-gray-50 rounded-xl p-4">
               <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <User className="h-4 w-4" />
@@ -1375,7 +1794,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     {getPaymentStatusBadge(currentMembership.payment_status)}
                   </div>
                   
-                  {/* Discount Applied Display */}
                   {currentMembership.discount_applied > 0 && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">Discount Applied:</span>
@@ -1400,7 +1818,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     </div>
                   )}
                   
-                  {/* Payment Summary */}
                   {paymentSummary && (
                     <div className="mt-3 pt-3 border-t border-gray-200">
                       <p className="text-xs text-gray-400 mb-1">Payment Summary</p>
@@ -1839,7 +2256,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               Comments & Communication History
             </h3>
 
-            {/* Add Comment */}
             <div className="flex gap-3 mb-6">
               <textarea
                 value={newComment}
@@ -1857,7 +2273,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               </button>
             </div>
 
-            {/* Comments List */}
             <div className="space-y-4 max-h-[400px] overflow-y-auto">
               {loadingComments ? (
                 <div className="text-center py-8">
