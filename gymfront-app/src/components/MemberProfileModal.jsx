@@ -1,4 +1,4 @@
-// src/components/MemberProfileModal.jsx - WITH MEMBERSHIP FREEZE FEATURE
+// src/components/MemberProfileModal.jsx - WITH COMMENT CATEGORIZATION
 import React, { useState, useEffect } from 'react';
 import {
   X, Phone, Mail, Calendar, MapPin, DollarSign, Tag, 
@@ -7,10 +7,52 @@ import {
   Award, Calendar as CalendarIcon, FileText, Users,
   Edit, RefreshCw, Loader2, Trash2, Save, XCircle,
   Dumbbell, Pencil, Maximize2, Hash, Snowflake,
-  Heart, AlertTriangle
+  Heart, AlertTriangle, Filter, Plus, ChevronDown
 } from 'lucide-react';
 import api, { API_BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
+
+// ============================================================
+// COMMENT CATEGORY CONFIGURATION
+// ============================================================
+const COMMENT_CATEGORIES = {
+  balance: {
+    label: 'Balance',
+    color: 'bg-blue-100 text-blue-700 border-blue-200',
+    icon: DollarSign,
+    description: 'Payment related discussions'
+  },
+  enquiry: {
+    label: 'Enquiry',
+    color: 'bg-purple-100 text-purple-700 border-purple-200',
+    icon: MessageSquare,
+    description: 'General enquiries and questions'
+  },
+  renewal: {
+    label: 'Renewal',
+    color: 'bg-green-100 text-green-700 border-green-200',
+    icon: RefreshCw,
+    description: 'Membership renewal discussions'
+  },
+  feedback: {
+    label: 'Feedback',
+    color: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    icon: AlertCircle,
+    description: 'Member feedback and reviews'
+  },
+  followup: {
+    label: 'Follow-up',
+    color: 'bg-orange-100 text-orange-700 border-orange-200',
+    icon: Clock,
+    description: 'Follow-up calls and reminders'
+  },
+  general: {
+    label: 'General',
+    color: 'bg-gray-100 text-gray-700 border-gray-200',
+    icon: MessageCircle,
+    description: 'General comments'
+  }
+};
 
 // ============================================================
 // HELPER: Properly construct image URL
@@ -44,12 +86,84 @@ const getThumbnailUrl = (profileImage, fullName) => {
 };
 
 // ============================================================
+// COMMENT CATEGORY BADGE COMPONENT
+// ============================================================
+const CommentCategoryBadge = ({ category, size = 'sm' }) => {
+  if (!category || !COMMENT_CATEGORIES[category]) {
+    return null;
+  }
+  
+  const config = COMMENT_CATEGORIES[category];
+  const Icon = config.icon;
+  const sizeClasses = size === 'sm' 
+    ? 'text-xs px-2 py-0.5 gap-1' 
+    : 'text-sm px-3 py-1 gap-1.5';
+  
+  return (
+    <span className={`inline-flex items-center rounded-full font-medium border ${config.color} ${sizeClasses}`}>
+      <Icon className={size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+      {config.label}
+    </span>
+  );
+};
+
+// ============================================================
+// CATEGORY FILTER COMPONENT
+// ============================================================
+const CategoryFilter = ({ selectedCategory, onSelect, countMap = {} }) => {
+  const categories = Object.keys(COMMENT_CATEGORIES);
+  
+  return (
+    <div className="flex flex-wrap gap-1.5 mb-3">
+      <button
+        onClick={() => onSelect(null)}
+        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+          !selectedCategory 
+            ? 'bg-gray-800 text-white' 
+            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+        }`}
+      >
+        All
+        {countMap.total > 0 && (
+          <span className="ml-0.5 text-xs opacity-70">({countMap.total})</span>
+        )}
+      </button>
+      {categories.map((key) => {
+        const config = COMMENT_CATEGORIES[key];
+        const count = countMap[key] || 0;
+        const Icon = config.icon;
+        const isSelected = selectedCategory === key;
+        
+        return (
+          <button
+            key={key}
+            onClick={() => onSelect(isSelected ? null : key)}
+            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+              isSelected
+                ? config.color.replace('bg-', 'bg-').replace('text-', 'text-').replace('border-', 'border-') + ' ring-2 ring-offset-1 ring-blue-400'
+                : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
+            }`}
+          >
+            <Icon className="h-3 w-3" />
+            {config.label}
+            {count > 0 && (
+              <span className="ml-0.5 text-xs opacity-70">({count})</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
+// ============================================================
 // MAIN COMPONENT
 // ============================================================
 const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('general');
   const [submitting, setSubmitting] = useState(false);
   const [comments, setComments] = useState([]);
   const [loadingComments, setLoadingComments] = useState(false);
@@ -121,6 +235,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [freezeHistory, setFreezeHistory] = useState([]);
   const [loadingFreezes, setLoadingFreezes] = useState(false);
   const [cancellingFreeze, setCancellingFreeze] = useState(null);
+
+  // ===== COMMENT FILTER STATE =====
+  const [commentFilter, setCommentFilter] = useState(null);
+
+  // ===== CATEGORY DROPDOWN STATE =====
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
   useEffect(() => {
     fetchMemberDetails();
@@ -681,6 +801,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     setIsEditingMembership(false);
   };
 
+  // ===== COMMENT FUNCTIONS WITH CATEGORY =====
   const handleAddComment = async () => {
     if (!newComment.trim()) {
       toast.error('Please enter a comment');
@@ -689,9 +810,18 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
     setSubmitting(true);
     try {
-      const response = await api.post(`/gym/members/${memberId}/comments`, { comment: newComment });
+      // Store comment with category - you may need to update the backend to store category
+      // For now, we'll store it as a prefix in the comment text
+      const categoryLabel = COMMENT_CATEGORIES[selectedCategory]?.label || 'General';
+      const commentWithCategory = `[${categoryLabel}] ${newComment}`;
+      
+      const response = await api.post(`/gym/members/${memberId}/comments`, { 
+        comment: commentWithCategory 
+      });
+      
       toast.success('Comment added successfully');
       setNewComment('');
+      setSelectedCategory('general');
       setComments(prev => [response.data, ...prev]);
       if (onUpdate) onUpdate();
     } catch (error) {
@@ -700,6 +830,34 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Helper function to detect category from comment text
+  const detectCategoryFromComment = (commentText) => {
+    if (!commentText) return 'general';
+    
+    // Check if comment starts with a category label in brackets
+    const match = commentText.match(/^\[([^\]]+)\]/);
+    if (match) {
+      const label = match[1];
+      // Find category by label
+      for (const [key, config] of Object.entries(COMMENT_CATEGORIES)) {
+        if (config.label === label) {
+          return key;
+        }
+      }
+    }
+    return 'general';
+  };
+
+  // Helper function to remove category prefix from comment
+  const cleanCommentText = (commentText) => {
+    if (!commentText) return '';
+    const match = commentText.match(/^\[[^\]]+\]\s*/);
+    if (match) {
+      return commentText.substring(match[0].length);
+    }
+    return commentText;
   };
 
   const handleDeleteComment = async (commentId) => {
@@ -720,6 +878,27 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setDeletingComment(null);
     }
   };
+
+  // Get filtered comments
+  const getFilteredComments = () => {
+    if (!commentFilter) return comments;
+    return comments.filter(comment => {
+      const category = detectCategoryFromComment(comment.comment);
+      return category === commentFilter;
+    });
+  };
+
+  // Get comment count by category
+  const getCommentCounts = () => {
+    const counts = { total: comments.length };
+    Object.keys(COMMENT_CATEGORIES).forEach(key => {
+      counts[key] = comments.filter(c => detectCategoryFromComment(c.comment) === key).length;
+    });
+    return counts;
+  };
+
+  const filteredComments = getFilteredComments();
+  const commentCounts = getCommentCounts();
 
   const formatDateTime = (dt) => {
     if (!dt) return '—';
@@ -1245,10 +1424,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           )}
 
-          {/* Payment Edit Modal - Same as before */}
+          {/* Payment Edit Modal */}
           {isEditingPayment && currentMembership && (
             <div className="bg-purple-50 border border-purple-200 rounded-xl p-5">
-              {/* ... payment edit content ... */}
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-purple-900 flex items-center gap-2">
                   <CreditCard className="h-5 w-5 text-purple-600" />
@@ -1413,10 +1591,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           )}
 
-          {/* Membership Edit Modal - Same as before */}
+          {/* Membership Edit Modal */}
           {isEditingMembership && currentMembership && (
             <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5">
-              {/* ... membership edit content ... */}
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-indigo-900 flex items-center gap-2">
                   <Calendar className="h-5 w-5 text-indigo-600" />
@@ -1644,7 +1821,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             )}
           </div>
 
-          {/* Member Information Grid - Same as before */}
+          {/* Member Information Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Personal Info */}
             <div className="bg-gray-50 rounded-xl p-4">
@@ -2249,72 +2426,176 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             )}
           </div>
 
-          {/* Comments Section */}
+          {/* Comments Section with Categories */}
           <div className="border-t border-gray-100 pt-6">
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <MessageCircle className="h-5 w-5" />
-              Comments & Communication History
-            </h3>
-
-            <div className="flex gap-3 mb-6">
-              <textarea
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Add a comment about this member (renewal discussion, upgrade conversation, payment follow-up, etc.)..."
-                rows={3}
-                className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-              />
-              <button
-                onClick={handleAddComment}
-                disabled={submitting || !newComment.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 h-fit"
-              >
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </button>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <MessageCircle className="h-5 w-5" />
+                Comments & Communication History
+                <span className="text-xs font-normal text-gray-400 ml-2">
+                  ({comments.length} comments)
+                </span>
+              </h3>
+              {commentFilter && (
+                <button
+                  onClick={() => setCommentFilter(null)}
+                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                >
+                  <X className="h-3 w-3" />
+                  Clear Filter
+                </button>
+              )}
             </div>
 
+            {/* Category Filter */}
+            <CategoryFilter 
+              selectedCategory={commentFilter}
+              onSelect={setCommentFilter}
+              countMap={commentCounts}
+            />
+
+            {/* Add Comment with Category */}
+            <div className="flex flex-col gap-3 mb-6">
+              <div className="flex gap-3">
+                <textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Add a comment about this member..."
+                  rows={3}
+                  className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                />
+                <button
+                  onClick={handleAddComment}
+                  disabled={submitting || !newComment.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 h-fit flex items-center gap-2"
+                >
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Send
+                </button>
+              </div>
+              
+              {/* Category Selector */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-gray-500">Tag as:</span>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                      COMMENT_CATEGORIES[selectedCategory]?.color || 'bg-gray-100 text-gray-700 border-gray-200'
+                    }`}
+                  >
+                    {selectedCategory && COMMENT_CATEGORIES[selectedCategory]?.icon && (
+                      <CommentCategoryBadge category={selectedCategory} size="sm" />
+                    )}
+                    <ChevronDown className="h-3 w-3" />
+                  </button>
+                  
+                  {showCategoryDropdown && (
+                    <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-[160px] py-1">
+                      {Object.entries(COMMENT_CATEGORIES).map(([key, config]) => {
+                        const Icon = config.icon;
+                        const isSelected = selectedCategory === key;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCategory(key);
+                              setShowCategoryDropdown(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
+                              isSelected ? 'bg-gray-100' : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${config.color}`}>
+                              <Icon className="h-3 w-3" />
+                              {config.label}
+                            </span>
+                            {isSelected && <CheckCircle className="h-3 w-3 text-blue-500 ml-auto" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                {selectedCategory && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory('general')}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+                <span className="text-xs text-gray-400 ml-2">
+                  Category: <span className="font-medium">{COMMENT_CATEGORIES[selectedCategory]?.label || 'General'}</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Comments List with Category Badges */}
             <div className="space-y-4 max-h-[400px] overflow-y-auto">
               {loadingComments ? (
                 <div className="text-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
                 </div>
-              ) : comments.length > 0 ? (
-                comments.map((comment) => (
-                  <div key={comment.id} className="bg-gray-50 rounded-xl p-4 group">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
-                          {comment.user_name?.charAt(0).toUpperCase() || 'U'}
+              ) : filteredComments.length > 0 ? (
+                filteredComments.map((comment) => {
+                  const category = detectCategoryFromComment(comment.comment);
+                  const cleanComment = cleanCommentText(comment.comment);
+                  const config = COMMENT_CATEGORIES[category] || COMMENT_CATEGORIES.general;
+                  const Icon = config.icon;
+                  
+                  return (
+                    <div key={comment.id} className="bg-gray-50 rounded-xl p-4 group">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                            {comment.user_name?.charAt(0).toUpperCase() || 'U'}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">{comment.user_name || 'Unknown User'}</p>
+                            <p className="text-xs text-gray-400">{formatDateTime(comment.created_at)}</p>
+                          </div>
+                          <CommentCategoryBadge category={category} size="sm" />
                         </div>
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">{comment.user_name || 'Unknown User'}</p>
-                          <p className="text-xs text-gray-400">{formatDateTime(comment.created_at)}</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400 capitalize">{comment.user_role?.replace('_', ' ')}</span>
+                          <button
+                            onClick={() => handleDeleteComment(comment.id)}
+                            disabled={deletingComment === comment.id}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-red-100 text-red-500 disabled:opacity-50"
+                            title="Delete comment"
+                          >
+                            {deletingComment === comment.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3 w-3" />
+                            )}
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400 capitalize">{comment.user_role?.replace('_', ' ')}</span>
-                        <button
-                          onClick={() => handleDeleteComment(comment.id)}
-                          disabled={deletingComment === comment.id}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-red-100 text-red-500 disabled:opacity-50"
-                          title="Delete comment"
-                        >
-                          {deletingComment === comment.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3 w-3" />
-                          )}
-                        </button>
-                      </div>
+                      <p className="text-sm text-gray-700 ml-10">{cleanComment}</p>
                     </div>
-                    <p className="text-sm text-gray-700 ml-10">{comment.comment}</p>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="text-center py-8 text-gray-400">
                   <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No comments yet. Add the first comment!</p>
-                  <p className="text-xs mt-1">Track renewals, upgrades, and payment discussions here</p>
+                  <p className="text-sm">
+                    {commentFilter 
+                      ? `No comments in "${COMMENT_CATEGORIES[commentFilter]?.label}" category` 
+                      : 'No comments yet. Add the first comment!'}
+                  </p>
+                  {commentFilter && (
+                    <button
+                      onClick={() => setCommentFilter(null)}
+                      className="text-xs text-blue-500 hover:text-blue-700 mt-2"
+                    >
+                      Show all comments
+                    </button>
+                  )}
                 </div>
               )}
             </div>
