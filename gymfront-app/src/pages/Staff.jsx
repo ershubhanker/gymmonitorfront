@@ -1,4 +1,4 @@
-// src/pages/Staff.jsx - FIXED SHIFT DISPLAY
+// src/pages/Staff.jsx - FIXED SHIFT DISPLAY WITH SALARY CALCULATOR
 import React, { useState, useEffect } from 'react';
 import {
   Search, UserPlus, Edit, Trash2, Phone, Mail,
@@ -7,7 +7,8 @@ import {
   Wifi, WifiOff, Database, Smartphone, CheckCircle, XCircle,
   Loader2, Cloud, Server, Eye, User, MapPin, Award, BookOpen,
   DollarSign, Calendar as CalendarIcon, Users, Settings, Copy,
-  Shield, Menu, MoreVertical, Plus, Trash2 as TrashIcon
+  Shield, Menu, MoreVertical, Plus, Trash2 as TrashIcon,
+  Calculator, TrendingDown, TrendingUp, FileSpreadsheet
 } from 'lucide-react';
 import { X as CloseIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -15,6 +16,7 @@ import api from '../services/api';
 import StaffUserSetup from '../components/StaffUserSetup';
 import StaffPermissionsModal from '../components/StaffPermissionsModal';
 import { usePermissions } from '../hooks/usePermissions';
+import StaffSalaryCalculator from '../components/staff/StaffSalaryCalculator';
 
 // ─── ALL POSITIONS CONSTANT ─────────────────────────────────────────────────────
 const ALL_POSITIONS = [
@@ -510,6 +512,7 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
+  const [showSalaryCalculator, setShowSalaryCalculator] = useState(false);
   const today = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
@@ -686,13 +689,22 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
           </div>
           <div className="flex items-center gap-2">
             {!isEditing && canEditStaff && (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-              >
-                <Edit className="h-4 w-4" />
-                Edit
-              </button>
+              <>
+                <button
+                  onClick={() => setShowSalaryCalculator(true)}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                >
+                  <Calculator className="h-4 w-4" />
+                  Salary
+                </button>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                >
+                  <Edit className="h-4 w-4" />
+                  Edit
+                </button>
+              </>
             )}
             <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
               <X className="h-5 w-5" />
@@ -963,6 +975,19 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
           )}
         </div>
       </div>
+
+      {/* Salary Calculator Modal */}
+      {showSalaryCalculator && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+            <StaffSalaryCalculator
+              staffId={staff.id}
+              staffName={staff.user?.full_name}
+              onClose={() => setShowSalaryCalculator(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1447,6 +1472,8 @@ const Staff = () => {
   const [devices, setDevices] = useState([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
   const [staffDeviceIds, setStaffDeviceIds] = useState({});
+  const [isSalaryCalculatorOpen, setIsSalaryCalculatorOpen] = useState(false);
+  const [selectedStaffForSalary, setSelectedStaffForSalary] = useState(null);
   const itemsPerPage = 10;
 
   useEffect(() => {
@@ -1698,6 +1725,11 @@ const Staff = () => {
     setIsPermissionsModalOpen(true);
   };
 
+  const openSalaryCalculator = (staff) => {
+    setSelectedStaffForSalary(staff);
+    setIsSalaryCalculatorOpen(true);
+  };
+
   const getPositionBadgeColor = (position) => {
     if (position === 'Head Trainer') return 'bg-purple-100 text-purple-800';
     if (position === 'Trainer' || position === 'Personal Trainer') return 'bg-blue-100 text-blue-800';
@@ -1812,6 +1844,15 @@ const Staff = () => {
           >
             <Wifi className="h-4 w-4" />
             <span className="hidden xs:inline">Devices</span>
+          </button>
+
+          {/* Salary Calculator Button */}
+          <button
+            onClick={() => setIsSalaryCalculatorOpen(true)}
+            className="px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1 sm:gap-2 text-sm whitespace-nowrap"
+          >
+            <Calculator className="h-4 w-4" />
+            <span className="hidden xs:inline">Salary</span>
           </button>
           
           {canAddStaff && (
@@ -1975,6 +2016,15 @@ const Staff = () => {
                       </td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-1 sm:gap-2">
+                          {/* Salary Calculator Button */}
+                          <button
+                            onClick={() => openSalaryCalculator(s)}
+                            className="text-green-600 hover:text-green-900 p-1"
+                            title="Salary Calculator"
+                          >
+                            <Calculator className="h-4 w-4" />
+                          </button>
+
                           {canManagePermissions && (
                             <button
                               onClick={() => openPermissionsModal(s)}
@@ -2120,6 +2170,22 @@ const Staff = () => {
           fetchStaff();
         }}
       />
+
+      {/* Salary Calculator Modal - Global */}
+      {isSalaryCalculatorOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+            <StaffSalaryCalculator
+              staffId={selectedStaffForSalary?.id}
+              staffName={selectedStaffForSalary?.user?.full_name}
+              onClose={() => {
+                setIsSalaryCalculatorOpen(false);
+                setSelectedStaffForSalary(null);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -9,7 +9,9 @@ import {
   DollarSign, CreditCard, Award, Star, Zap, Target,
   TrendingUp, TrendingDown, BarChart3, ChevronRight, Save, MessageSquare,
   Wallet, Receipt, FileText, Users as UsersIcon, Briefcase, Calendar as CalendarIcon,
-  ChevronLeft, PanelLeftClose, PanelLeftOpen
+  ChevronLeft, PanelLeftClose, PanelLeftOpen, ArrowLeft, ExternalLink,
+  BookOpen, Hash, Phone as PhoneIcon, Mail as MailIcon, Dumbbell, Gift,
+  PieChart, Layers, LayoutGrid, List, Grid, Maximize2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -17,7 +19,6 @@ import toast from 'react-hot-toast';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// Convert UTC to IST (Indian Standard Time UTC+5:30)
 const convertToIST = (utcDateString) => {
   if (!utcDateString) return null;
   const utcDate = new Date(utcDateString);
@@ -68,6 +69,7 @@ const statusBadge = (status) => {
     not_interested: 'bg-gray-700 text-gray-400 border border-gray-600',
     converted: 'bg-purple-900/60 text-purple-300 border border-purple-700',
     lost: 'bg-red-900/60 text-red-300 border border-red-700',
+    completed: 'bg-blue-900/60 text-blue-300 border border-blue-700',
   };
   return map[status] || 'bg-gray-700 text-gray-400';
 };
@@ -719,6 +721,11 @@ const StatCard = ({ icon: Icon, label, value, sub, color = 'purple', onClick }) 
     pink: 'border-pink-500 bg-pink-900/20 text-pink-400',
     yellow: 'border-yellow-500 bg-yellow-900/20 text-yellow-400',
     red: 'border-red-500 bg-red-900/20 text-red-400',
+    teal: 'border-teal-500 bg-teal-900/20 text-teal-400',
+    indigo: 'border-indigo-500 bg-indigo-900/20 text-indigo-400',
+    emerald: 'border-emerald-500 bg-emerald-900/20 text-emerald-400',
+    amber: 'border-amber-500 bg-amber-900/20 text-amber-400',
+    cyan: 'border-cyan-500 bg-cyan-900/20 text-cyan-400',
   };
   return (
     <div onClick={onClick}
@@ -739,6 +746,27 @@ const EmptyRow = ({ text }) => (
   <div className="py-16 text-center text-gray-500">
     <Database className="h-10 w-10 mx-auto mb-3 opacity-30" />
     <p className="text-sm">{text}</p>
+  </div>
+);
+
+// ─── Detail Section Components ──────────────────────────────────────────────
+
+const DetailSection = ({ title, icon, children, className = '' }) => (
+  <div className={`bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden ${className}`}>
+    <div className="px-5 py-3 border-b border-gray-700 flex items-center gap-2 bg-gray-800/80">
+      {icon}
+      <h3 className="font-semibold text-white text-sm">{title}</h3>
+    </div>
+    <div className="p-4">
+      {children}
+    </div>
+  </div>
+);
+
+const DetailItem = ({ label, value, className = '' }) => (
+  <div className={`flex justify-between py-1.5 border-b border-gray-700/50 last:border-0 ${className}`}>
+    <span className="text-sm text-gray-400">{label}</span>
+    <span className="text-sm text-white font-medium">{value || '—'}</span>
   </div>
 );
 
@@ -763,13 +791,13 @@ const AdminDashboard = () => {
   const [editModal, setEditModal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  // ===== GYM MEMBERS VIEW STATE =====
+  // ===== GYM DETAILS VIEW STATE =====
+  const [selectedGym, setSelectedGym] = useState(null);
   const [selectedGymId, setSelectedGymId] = useState(null);
-  const [selectedGymMembers, setSelectedGymMembers] = useState([]);
-  const [selectedGymName, setSelectedGymName] = useState('');
-  const [viewingGymMembers, setViewingGymMembers] = useState(false);
-  const [loadingGymMembers, setLoadingGymMembers] = useState(false);
+  const [viewingGymDetails, setViewingGymDetails] = useState(false);
+  const [loadingGymDetails, setLoadingGymDetails] = useState(false);
   const [gymMemberSearch, setGymMemberSearch] = useState('');
+  const [filteredGymMembers, setFilteredGymMembers] = useState([]);
 
   // Data
   const [stats, setStats] = useState({});
@@ -825,34 +853,58 @@ const AdminDashboard = () => {
     }
   };
 
-  // ===== GYM MEMBERS FUNCTIONS =====
-  const fetchGymMembers = async (gymId, gymName) => {
-    setLoadingGymMembers(true);
+  // ===== GYM DETAILS FUNCTIONS =====
+  const fetchGymDetails = async (gymId, gymName) => {
+    setLoadingGymDetails(true);
     setSelectedGymId(gymId);
-    setSelectedGymName(gymName);
-    setViewingGymMembers(true);
+    setViewingGymDetails(true);
+    setGymMemberSearch('');
     
     try {
-      const params = new URLSearchParams();
-      if (gymMemberSearch) params.append('search', gymMemberSearch);
-      const response = await api.get(`/admin/gyms/${gymId}/members?${params}`);
-      setSelectedGymMembers(response.data || []);
+      const response = await api.get(`/admin/gyms/${gymId}`);
+      setSelectedGym(response.data);
+      
+      // Also fetch members separately
+      const membersResponse = await api.get(`/admin/gyms/${gymId}/members?limit=1000`);
+      setSelectedGym(prev => ({
+        ...prev,
+        members: membersResponse.data || []
+      }));
+      
     } catch (error) {
-      console.error('Error fetching gym members:', error);
-      toast.error('Failed to load gym members');
-      setSelectedGymMembers([]);
+      console.error('Error fetching gym details:', error);
+      toast.error('Failed to load gym details');
+      setSelectedGym(null);
     } finally {
-      setLoadingGymMembers(false);
+      setLoadingGymDetails(false);
     }
   };
 
   const handleBackToGyms = () => {
-    setViewingGymMembers(false);
+    setViewingGymDetails(false);
+    setSelectedGym(null);
     setSelectedGymId(null);
-    setSelectedGymMembers([]);
-    setSelectedGymName('');
     setGymMemberSearch('');
+    setFilteredGymMembers([]);
   };
+
+  // Filter gym members when search changes
+  useEffect(() => {
+    if (selectedGym?.members) {
+      const search = gymMemberSearch.toLowerCase();
+      if (search) {
+        setFilteredGymMembers(
+          selectedGym.members.filter(m =>
+            m.full_name?.toLowerCase().includes(search) ||
+            m.email?.toLowerCase().includes(search) ||
+            m.phone?.includes(search)
+          )
+        );
+      } else {
+        setFilteredGymMembers(selectedGym.members);
+      }
+    }
+  }, [gymMemberSearch, selectedGym]);
 
   const openEdit = (type, data) => setEditModal({ type, data });
   const closeEdit = () => setEditModal(null);
@@ -865,9 +917,8 @@ const AdminDashboard = () => {
     await api.put(`/${endpoint}`, formData);
     toast.success('Updated successfully!');
     closeEdit();
-    // Refresh the current view
-    if (viewingGymMembers && selectedGymId) {
-      fetchGymMembers(selectedGymId, selectedGymName);
+    if (viewingGymDetails && selectedGymId) {
+      fetchGymDetails(selectedGymId, selectedGym?.name);
     } else {
       fetchAllData();
     }
@@ -877,9 +928,8 @@ const AdminDashboard = () => {
     await api.delete(`/${deleteTarget.endpoint}`);
     toast.success('Deleted successfully!');
     closeDelete();
-    // Refresh the current view
-    if (viewingGymMembers && selectedGymId) {
-      fetchGymMembers(selectedGymId, selectedGymName);
+    if (viewingGymDetails && selectedGymId) {
+      fetchGymDetails(selectedGymId, selectedGym?.name);
     } else {
       fetchAllData();
     }
@@ -983,12 +1033,10 @@ const AdminDashboard = () => {
                 setSearchTerm(''); 
                 setFilterStatus('all'); 
                 setFilterRole('all');
-                // Reset gym members view when switching tabs
                 if (item.id !== 'gyms') {
-                  setViewingGymMembers(false);
+                  setViewingGymDetails(false);
+                  setSelectedGym(null);
                   setSelectedGymId(null);
-                  setSelectedGymMembers([]);
-                  setSelectedGymName('');
                 }
               }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
@@ -1074,7 +1122,7 @@ const AdminDashboard = () => {
                 {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
               </button>
               <h1 className="text-sm font-semibold text-white capitalize">
-                {viewingGymMembers ? `${selectedGymName} - Members` : (selectedTab === 'overview' ? 'Dashboard Overview' : selectedTab)}
+                {viewingGymDetails ? `${selectedGym?.name || 'Gym'} - Details` : (selectedTab === 'overview' ? 'Dashboard Overview' : selectedTab)}
               </h1>
             </div>
 
@@ -1092,7 +1140,7 @@ const AdminDashboard = () => {
         </nav>
 
         {/* Search / Filter Bar */}
-        {selectedTab !== 'overview' && !viewingGymMembers && (
+        {selectedTab !== 'overview' && !viewingGymDetails && (
           <div className="bg-gray-900/60 border-b border-gray-800 px-4 lg:px-8 py-3 flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
@@ -1124,30 +1172,21 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* Gym Members Search Bar */}
-        {viewingGymMembers && (
+        {/* Gym Details Search Bar */}
+        {viewingGymDetails && (
           <div className="bg-gray-900/60 border-b border-gray-800 px-4 lg:px-8 py-3 flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
               <input
                 value={gymMemberSearch}
                 onChange={e => setGymMemberSearch(e.target.value)}
-                placeholder={`Search members in ${selectedGymName}...`}
+                placeholder={`Search members in ${selectedGym?.name || 'gym'}...`}
                 className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500"
               />
             </div>
-            <button
-              onClick={() => fetchGymMembers(selectedGymId, selectedGymName)}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-medium transition-colors"
-            >
-              Search
-            </button>
             {gymMemberSearch && (
               <button
-                onClick={() => {
-                  setGymMemberSearch('');
-                  fetchGymMembers(selectedGymId, selectedGymName);
-                }}
+                onClick={() => setGymMemberSearch('')}
                 className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-xl text-sm transition-colors"
               >
                 <X className="h-4 w-4" />
@@ -1163,18 +1202,18 @@ const AdminDashboard = () => {
           {/* OVERVIEW */}
           {selectedTab === 'overview' && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
                 <StatCard icon={Building2} label="Total Gyms" value={stats.total_gyms || 0}
                   sub={`${stats.active_gyms || 0} active`} color="purple"
                   onClick={() => setSelectedTab('gyms')} />
-                <StatCard icon={Users} label="Users" value={stats.total_users || 0}
+                <StatCard icon={Users} label="Total Users" value={stats.total_users || 0}
                   sub={`${stats.gym_owners || 0} owners · ${stats.gym_staff || 0} staff`} color="blue"
                   onClick={() => setSelectedTab('users')} />
                 <StatCard icon={User} label="Members" value={stats.total_members_across_gyms || 0}
                   sub={`${stats.total_active_members || 0} active`} color="green"
                   onClick={() => setSelectedTab('members')} />
                 <StatCard icon={Shield} label="Staff" value={stats.total_staff_across_gyms || 0}
-                  sub="across all gyms" color="orange"
+                  sub={`${stats.active_staff || 0} active`} color="orange"
                   onClick={() => setSelectedTab('staff')} />
                 <StatCard icon={Award} label="Plans" value={plans.length}
                   sub={`${plans.filter(p => p.is_active).length} active`} color="yellow"
@@ -1212,7 +1251,14 @@ const AdminDashboard = () => {
                   </div>
                   <div className="space-y-2">
                     {(stats.recent_gyms || gyms).slice(0, 6).map(g => (
-                      <div key={g.id} className="flex items-center justify-between p-2.5 bg-gray-800/60 rounded-xl hover:bg-gray-800 transition-colors">
+                      <div 
+                        key={g.id} 
+                        onClick={() => {
+                          setSelectedTab('gyms');
+                          fetchGymDetails(g.id, g.name);
+                        }}
+                        className="flex items-center justify-between p-2.5 bg-gray-800/60 rounded-xl hover:bg-gray-800 transition-colors cursor-pointer"
+                      >
                         <div className="flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
                             {g.name?.charAt(0)}
@@ -1266,6 +1312,24 @@ const AdminDashboard = () => {
                 </div>
               </div>
 
+              {/* Payment Methods Stats */}
+              {stats.payment_method_stats && stats.payment_method_stats.length > 0 && (
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+                  <h3 className="font-semibold text-white flex items-center gap-2 mb-4">
+                    <CreditCard className="h-4 w-4 text-green-400" /> Payment Methods
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {stats.payment_method_stats.map((pm, idx) => (
+                      <div key={idx} className="bg-gray-800/60 rounded-xl p-3 text-center">
+                        <p className="text-xs text-gray-400 capitalize">{pm.method}</p>
+                        <p className="text-lg font-bold text-white">{pm.count}</p>
+                        <p className="text-xs text-emerald-400">{formatCurrency(pm.total)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Recent Logins */}
               {stats.recent_logins && stats.recent_logins.length > 0 && (
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
@@ -1301,8 +1365,8 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* ==================== GYMS TABLE OR GYM MEMBERS VIEW ==================== */}
-          {selectedTab === 'gyms' && !viewingGymMembers && (
+          {/* ==================== GYMS TABLE OR GYM DETAILS VIEW ==================== */}
+          {selectedTab === 'gyms' && !viewingGymDetails && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
                 <p className="text-sm font-medium text-gray-300">{filteredGyms.length} gyms</p>
@@ -1316,25 +1380,26 @@ const AdminDashboard = () => {
                       <tr key={gym.id} className="hover:bg-gray-800/40 transition-colors">
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{gym.id}</td>
                         <td className="px-4 py-3">
-                          {/* Clickable Gym Name */}
                           <button 
-                            onClick={() => fetchGymMembers(gym.id, gym.name)}
+                            onClick={() => fetchGymDetails(gym.id, gym.name)}
                             className="flex items-center gap-2.5 hover:bg-gray-700/50 rounded-lg p-1 -m-1 transition-colors group w-full text-left"
                           >
                             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                               {gym.name?.charAt(0)}
                             </div>
-                            <div>
+                            <div className="flex-1">
                               <p className="text-sm text-white font-medium group-hover:text-purple-400 transition-colors">
                                 {gym.name}
                               </p>
                               <p className="text-xs text-gray-500 truncate max-w-[150px]">{gym.address}</p>
                             </div>
+                            <ExternalLink className="h-3.5 w-3.5 text-gray-500 group-hover:text-purple-400 transition-colors flex-shrink-0" />
                           </button>
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-sm text-white">{gym.owner_name}</p>
                           <p className="text-xs text-gray-500">{gym.owner_email}</p>
+                          <p className="text-xs text-gray-600">{gym.owner_phone}</p>
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-xs text-gray-400">{gym.email}</p>
@@ -1344,7 +1409,10 @@ const AdminDashboard = () => {
                           <span className="text-white font-medium">{gym.active_members}</span>
                           <span className="text-gray-600">/{gym.total_members}</span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-300">{gym.total_staff}</td>
+                        <td className="px-4 py-3 text-sm text-gray-300">
+                          <span className="text-white font-medium">{gym.active_staff}</span>
+                          <span className="text-gray-600">/{gym.total_staff}</span>
+                        </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-0.5 text-xs rounded-full font-medium capitalize ${statusBadge(gym.subscription_plan)}`}>
                             {gym.subscription_plan}
@@ -1372,174 +1440,336 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* ==================== GYM MEMBERS VIEW ==================== */}
-          {selectedTab === 'gyms' && viewingGymMembers && (
-  <div>
-    {/* Back Button */}
-    <button
-      onClick={handleBackToGyms}
-      className="mb-4 flex items-center gap-2 text-purple-400 hover:text-purple-300 transition-colors font-medium"
-    >
-      <ChevronLeft className="h-4 w-4" />
-      Back to Gyms
-    </button>
+          {/* ==================== GYM DETAILS VIEW ==================== */}
+          {selectedTab === 'gyms' && viewingGymDetails && selectedGym && (
+            <div className="space-y-6">
+              <button
+                onClick={handleBackToGyms}
+                className="flex items-center gap-2 text-purple-400 hover:text-purple-300 transition-colors font-medium"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to All Gyms
+              </button>
 
-    {/* Gym Header - UPDATED with address and phone */}
-    <div className="bg-gray-800 rounded-2xl p-5 mb-6 border border-gray-700">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-purple-400" />
-            {selectedGymName}
-          </h2>
-          
-          {/* Gym Details - Address and Phone */}
-          <div className="mt-2 space-y-1">
-            {(() => {
-              // Find the gym object from the gyms list to get full details
-              const gymDetails = gyms.find(g => g.id === selectedGymId);
-              return (
+              {loadingGymDetails ? (
+                <div className="text-center py-12">
+                  <Loader2 className="h-8 w-8 text-purple-500 animate-spin mx-auto" />
+                  <p className="text-gray-400 mt-3 text-sm">Loading gym details...</p>
+                </div>
+              ) : (
                 <>
-                  {gymDetails?.address && (
-                    <p className="text-sm text-gray-400 flex items-center gap-2">
-                      <MapPin className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" />
-                      <span>{gymDetails.address}</span>
-                    </p>
-                  )}
-                  {gymDetails?.phone && (
-                    <p className="text-sm text-gray-400 flex items-center gap-2">
-                      <Phone className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" />
-                      <span>{gymDetails.phone}</span>
-                    </p>
-                  )}
-                  {gymDetails?.email && (
-                    <p className="text-sm text-gray-400 flex items-center gap-2">
-                      <Mail className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" />
-                      <span>{gymDetails.email}</span>
-                    </p>
-                  )}
-                  {!gymDetails?.address && !gymDetails?.phone && (
-                    <p className="text-sm text-gray-500 italic">No contact details available</p>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-          
-          {/* Member count */}
-          <p className="text-sm text-gray-400 mt-2">
-            {selectedGymMembers.length} members in this gym
-          </p>
-        </div>
-        
-        {/* Badge */}
-        <div className="flex items-center gap-2">
-          <span className="px-3 py-1 rounded-full bg-purple-900/60 text-purple-300 text-xs border border-purple-700 whitespace-nowrap">
-            Gym Members
-          </span>
-          {(() => {
-            const gymDetails = gyms.find(g => g.id === selectedGymId);
-            if (gymDetails?.subscription_status) {
-              return (
-                <span className={`px-3 py-1 rounded-full text-xs border ${statusBadge(gymDetails.subscription_status)} whitespace-nowrap`}>
-                  {gymDetails.subscription_status}
-                </span>
-              );
-            }
-            return null;
-          })()}
-        </div>
-      </div>
-    </div>
-
-    {/* Members Table - keep the same */}
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
-        <p className="text-sm font-medium text-gray-300">{selectedGymMembers.length} members</p>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500">
-            Active: {selectedGymMembers.filter(m => m.is_active).length}
-          </span>
-          <span className="text-xs text-gray-500">
-            Inactive: {selectedGymMembers.filter(m => !m.is_active).length}
-          </span>
-        </div>
-      </div>
-      
-      {loadingGymMembers ? (
-        <div className="py-12 text-center">
-          <Loader2 className="h-8 w-8 text-purple-500 animate-spin mx-auto" />
-          <p className="text-gray-400 mt-3 text-sm">Loading members...</p>
-        </div>
-      ) : selectedGymMembers.length === 0 ? (
-        <div className="py-12 text-center text-gray-500">
-          <User className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="text-sm">No members found in this gym</p>
-          {gymMemberSearch && (
-            <button
-              onClick={() => {
-                setGymMemberSearch('');
-                fetchGymMembers(selectedGymId, selectedGymName);
-              }}
-              className="mt-3 text-purple-400 hover:text-purple-300 text-sm"
-            >
-              Clear search
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full">
-            <TableHeader cols={['ID', 'Member', 'Email', 'Phone', 'Gender', 'Plan', 'Status', 'Joined', 'Actions']} />
-            <tbody className="divide-y divide-gray-800">
-              {selectedGymMembers.map(member => (
-                <tr key={member.id} className="hover:bg-gray-800/40 transition-colors">
-                  <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{member.id}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-green-600 to-teal-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                        {member.full_name?.charAt(0)}
+                  {/* Gym Header */}
+                  <div className="bg-gradient-to-r from-purple-900/40 to-indigo-900/40 border border-purple-800/50 rounded-2xl p-6">
+                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                      <div className="flex items-start gap-4">
+                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
+                          {selectedGym.name?.charAt(0)}
+                        </div>
+                        <div>
+                          <h2 className="text-2xl font-bold text-white">{selectedGym.name}</h2>
+                          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                            <span className={`px-2.5 py-0.5 text-xs rounded-full ${statusBadge(selectedGym.subscription_status)}`}>
+                              {selectedGym.subscription_status}
+                            </span>
+                            <span className={`px-2.5 py-0.5 text-xs rounded-full font-medium capitalize ${statusBadge(selectedGym.subscription_plan)}`}>
+                              {selectedGym.subscription_plan}
+                            </span>
+                            {selectedGym.is_active ? (
+                              <span className="px-2.5 py-0.5 text-xs rounded-full bg-emerald-900/60 text-emerald-300 border border-emerald-700">
+                                Active
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-0.5 text-xs rounded-full bg-red-900/60 text-red-300 border border-red-700">
+                                Inactive
+                              </span>
+                            )}
+                          </div>
+                          {selectedGym.description && (
+                            <p className="text-sm text-gray-300 mt-2 max-w-2xl">{selectedGym.description}</p>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-sm text-white font-medium">{member.full_name}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => openEdit('gym', selectedGym)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition-colors"
+                        >
+                          <Edit className="h-3.5 w-3.5" /> Edit
+                        </button>
+                      </div>
                     </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-400">{member.email || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-400">{member.phone}</td>
-                  <td className="px-4 py-3 text-sm text-gray-400 capitalize">{member.gender || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{member.current_plan || '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 text-xs rounded-full ${member.is_active ? 'bg-emerald-900/60 text-emerald-300' : 'bg-red-900/60 text-red-300'}`}>
-                      {member.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{formatDate(member.joined_date)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => openEdit('member', member)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-blue-900/40 hover:bg-blue-900/70 text-blue-300 rounded-lg border border-blue-800/50 transition-colors"
-                      >
-                        <Edit className="h-3.5 w-3.5" /> Edit
-                      </button>
-                      <button
-                        onClick={() => openDelete('member', member.id, member.full_name, `admin/members/${member.id}`)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-red-900/40 hover:bg-red-900/70 text-red-300 rounded-lg border border-red-800/50 transition-colors"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" /> Del
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  </div>
-)}
 
-          {/* USERS TABLE */}
+                    {/* Contact Info */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4 pt-4 border-t border-purple-800/30">
+                      <div className="flex items-center gap-2">
+                        <MailIcon className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                        <span className="text-sm text-gray-300">{selectedGym.email || 'No email'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <PhoneIcon className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                        <span className="text-sm text-gray-300">{selectedGym.phone || 'No phone'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                        <span className="text-sm text-gray-300 truncate">{selectedGym.address || 'No address'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                        <span className="text-sm text-gray-300">
+                          {selectedGym.opening_time && selectedGym.closing_time 
+                            ? `${selectedGym.opening_time} - ${selectedGym.closing_time}`
+                            : 'Hours not set'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stats Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <StatCard icon={User} label="Members" value={selectedGym.members?.length || 0}
+                      sub={`${selectedGym.members?.filter(m => m.is_active).length || 0} active`} color="green" />
+                    <StatCard icon={Shield} label="Staff" value={selectedGym.total_staff || 0}
+                      sub={`${selectedGym.active_staff || 0} active`} color="orange" />
+                    <StatCard icon={Award} label="Plans" value={selectedGym.plans?.length || 0}
+                      sub="membership plans" color="yellow" />
+                    <StatCard icon={CreditCard} label="Memberships" value={selectedGym.stats?.total_memberships || 0}
+                      sub="active memberships" color="pink" />
+                    <StatCard icon={DollarSign} label="Revenue" value={formatCurrency(selectedGym.monthly_revenue || 0)}
+                      sub="monthly revenue" color="green" />
+                    <StatCard icon={Wallet} label="Expenses" value={formatCurrency(selectedGym.stats?.total_expenses || 0)}
+                      sub="total expenses" color="red" />
+                  </div>
+
+                  {/* Gym Details Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Owner Info */}
+                    <DetailSection title="Gym Owner" icon={<User className="h-4 w-4 text-blue-400" />}>
+                      {selectedGym.owner ? (
+                        <div className="space-y-1">
+                          <DetailItem label="Name" value={selectedGym.owner.name} />
+                          <DetailItem label="Email" value={selectedGym.owner.email} />
+                          <DetailItem label="Phone" value={selectedGym.owner.phone || '—'} />
+                          <DetailItem label="Username" value={selectedGym.owner.username || '—'} />
+                          <DetailItem label="Status" value={
+                            <span className={selectedGym.owner.is_verified ? 'text-emerald-400' : 'text-amber-400'}>
+                              {selectedGym.owner.is_verified ? '✅ Verified' : '⏳ Pending Verification'}
+                            </span>
+                          } />
+                          <DetailItem label="Joined" value={formatDate(selectedGym.owner.joined_at)} />
+                          {selectedGym.owner.last_login && (
+                            <DetailItem label="Last Login" value={formatDateTime(selectedGym.owner.last_login)} />
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 text-sm text-center py-4">No owner information available</p>
+                      )}
+                    </DetailSection>
+
+                    {/* Stats */}
+                    <DetailSection title="Gym Statistics" icon={<BarChart3 className="h-4 w-4 text-teal-400" />}>
+                      {selectedGym.stats && (
+                        <div className="space-y-1">
+                          <DetailItem label="Total Members" value={selectedGym.stats.total_members || 0} />
+                          <DetailItem label="Active Members" value={selectedGym.stats.active_members || 0} />
+                          <DetailItem label="Total Staff" value={selectedGym.stats.total_staff || 0} />
+                          <DetailItem label="Active Staff" value={selectedGym.stats.active_staff || 0} />
+                          <DetailItem label="Total Plans" value={selectedGym.stats.total_plans || 0} />
+                          <DetailItem label="Monthly Revenue" value={formatCurrency(selectedGym.monthly_revenue || 0)} />
+                        </div>
+                      )}
+                    </DetailSection>
+                  </div>
+
+                  {/* Staff Section */}
+                  <DetailSection title="Staff Members" icon={<Shield className="h-4 w-4 text-orange-400" />}>
+                    {selectedGym.staff && selectedGym.staff.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-gray-400 border-b border-gray-700">
+                              <th className="pb-2 pr-4 font-medium">Name</th>
+                              <th className="pb-2 pr-4 font-medium">Position</th>
+                              <th className="pb-2 pr-4 font-medium">Email</th>
+                              <th className="pb-2 pr-4 font-medium">Status</th>
+                              <th className="pb-2 font-medium">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-700/50">
+                            {selectedGym.staff.map(s => (
+                              <tr key={s.id} className="hover:bg-gray-800/30 transition-colors">
+                                <td className="py-2 pr-4 text-white">{s.name}</td>
+                                <td className="py-2 pr-4 text-gray-300">{s.position}</td>
+                                <td className="py-2 pr-4 text-gray-400">{s.email}</td>
+                                <td className="py-2 pr-4">
+                                  <span className={`px-2 py-0.5 text-xs rounded-full ${s.is_active ? 'bg-emerald-900/60 text-emerald-300' : 'bg-red-900/60 text-red-300'}`}>
+                                    {s.is_active ? 'Active' : 'Inactive'}
+                                  </span>
+                                </td>
+                                <td className="py-2">
+                                  <button
+                                    onClick={() => {
+                                      const staffToEdit = staff.find(st => st.id === s.id) || s;
+                                      openEdit('staff', staffToEdit);
+                                    }}
+                                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                                  >
+                                    Edit
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-sm text-center py-4">No staff members found</p>
+                    )}
+                  </DetailSection>
+
+                  {/* Membership Plans Section */}
+                  <DetailSection title="Membership Plans" icon={<Award className="h-4 w-4 text-yellow-400" />}>
+                    {selectedGym.plans && selectedGym.plans.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-gray-400 border-b border-gray-700">
+                              <th className="pb-2 pr-4 font-medium">Plan Name</th>
+                              <th className="pb-2 pr-4 font-medium">Type</th>
+                              <th className="pb-2 pr-4 font-medium">Duration</th>
+                              <th className="pb-2 pr-4 font-medium">Price</th>
+                              <th className="pb-2 pr-4 font-medium">Status</th>
+                              <th className="pb-2 font-medium">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-700/50">
+                            {selectedGym.plans.map(p => (
+                              <tr key={p.id} className="hover:bg-gray-800/30 transition-colors">
+                                <td className="py-2 pr-4 text-white font-medium">{p.name}</td>
+                                <td className="py-2 pr-4 text-gray-300 capitalize">{p.plan_type}</td>
+                                <td className="py-2 pr-4 text-gray-300">{p.duration_days} days</td>
+                                <td className="py-2 pr-4 text-emerald-400 font-medium">{formatCurrency(p.price)}</td>
+                                <td className="py-2 pr-4">
+                                  <span className={`px-2 py-0.5 text-xs rounded-full ${p.is_active ? 'bg-emerald-900/60 text-emerald-300' : 'bg-red-900/60 text-red-300'}`}>
+                                    {p.is_active ? 'Active' : 'Inactive'}
+                                  </span>
+                                </td>
+                                <td className="py-2">
+                                  <button
+                                    onClick={() => {
+                                      const planToEdit = plans.find(pl => pl.id === p.id) || p;
+                                      openEdit('plan', planToEdit);
+                                    }}
+                                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                                  >
+                                    Edit
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-sm text-center py-4">No membership plans found</p>
+                    )}
+                  </DetailSection>
+
+                  {/* Members Section */}
+                  <DetailSection title="Members" icon={<Users className="h-4 w-4 text-green-400" />}>
+                    {filteredGymMembers.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-gray-400 border-b border-gray-700">
+                              <th className="pb-2 pr-4 font-medium">Name</th>
+                              <th className="pb-2 pr-4 font-medium">Phone</th>
+                              <th className="pb-2 pr-4 font-medium">Email</th>
+                              <th className="pb-2 pr-4 font-medium">Plan</th>
+                              <th className="pb-2 pr-4 font-medium">Status</th>
+                              <th className="pb-2 pr-4 font-medium">Joined</th>
+                              <th className="pb-2 font-medium">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-700/50">
+                            {filteredGymMembers.slice(0, 50).map(m => (
+                              <tr key={m.id} className="hover:bg-gray-800/30 transition-colors">
+                                <td className="py-2 pr-4 text-white">{m.full_name}</td>
+                                <td className="py-2 pr-4 text-gray-300">{m.phone}</td>
+                                <td className="py-2 pr-4 text-gray-400">{m.email || '—'}</td>
+                                <td className="py-2 pr-4 text-gray-300">{m.current_plan || '—'}</td>
+                                <td className="py-2 pr-4">
+                                  <span className={`px-2 py-0.5 text-xs rounded-full ${m.is_active ? 'bg-emerald-900/60 text-emerald-300' : 'bg-red-900/60 text-red-300'}`}>
+                                    {m.is_active ? 'Active' : 'Inactive'}
+                                  </span>
+                                </td>
+                                <td className="py-2 pr-4 text-xs text-gray-500 whitespace-nowrap">{formatDate(m.joined_date)}</td>
+                                <td className="py-2">
+                                  <button
+                                    onClick={() => {
+                                      const memberToEdit = members.find(mem => mem.id === m.id) || m;
+                                      openEdit('member', memberToEdit);
+                                    }}
+                                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                                  >
+                                    Edit
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {filteredGymMembers.length > 50 && (
+                          <p className="text-xs text-gray-500 mt-2">Showing first 50 of {filteredGymMembers.length} members</p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-sm text-center py-4">
+                        {gymMemberSearch ? 'No members match your search' : 'No members found in this gym'}
+                      </p>
+                    )}
+                  </DetailSection>
+
+                  {/* Recent Payments Section */}
+                  <DetailSection title="Recent Payments" icon={<DollarSign className="h-4 w-4 text-emerald-400" />}>
+                    {selectedGym.recent_payments && selectedGym.recent_payments.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-gray-400 border-b border-gray-700">
+                              <th className="pb-2 pr-4 font-medium">Member</th>
+                              <th className="pb-2 pr-4 font-medium">Amount</th>
+                              <th className="pb-2 pr-4 font-medium">Method</th>
+                              <th className="pb-2 pr-4 font-medium">Date</th>
+                              <th className="pb-2 font-medium">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-700/50">
+                            {selectedGym.recent_payments.map(p => (
+                              <tr key={p.id} className="hover:bg-gray-800/30 transition-colors">
+                                <td className="py-2 pr-4 text-white">{p.member_name}</td>
+                                <td className="py-2 pr-4 text-emerald-400 font-medium">{formatCurrency(p.amount)}</td>
+                                <td className="py-2 pr-4 text-gray-300 capitalize">{p.payment_method}</td>
+                                <td className="py-2 pr-4 text-xs text-gray-400">{formatDate(p.payment_date)}</td>
+                                <td className="py-2">
+                                  <span className={`px-2 py-0.5 text-xs rounded-full ${statusBadge(p.status)}`}>
+                                    {p.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-sm text-center py-4">No recent payments found</p>
+                    )}
+                  </DetailSection>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ==================== USERS TABLE ==================== */}
           {selectedTab === 'users' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800">
@@ -1609,7 +1839,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* MEMBERS TABLE */}
+          {/* ==================== MEMBERS TABLE ==================== */}
           {selectedTab === 'members' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800">
@@ -1658,7 +1888,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* STAFF TABLE */}
+          {/* ==================== STAFF TABLE ==================== */}
           {selectedTab === 'staff' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800">
@@ -1709,7 +1939,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* PLANS TABLE */}
+          {/* ==================== PLANS TABLE ==================== */}
           {selectedTab === 'plans' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800">
@@ -1762,7 +1992,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* MEMBERSHIPS TABLE */}
+          {/* ==================== MEMBERSHIPS TABLE ==================== */}
           {selectedTab === 'memberships' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800">
@@ -1816,7 +2046,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* PAYMENTS TABLE */}
+          {/* ==================== PAYMENTS TABLE ==================== */}
           {selectedTab === 'payments' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
@@ -1859,7 +2089,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* LEADS TABLE */}
+          {/* ==================== LEADS TABLE ==================== */}
           {selectedTab === 'leads' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800">
@@ -1904,7 +2134,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* EXPENSES TABLE */}
+          {/* ==================== EXPENSES TABLE ==================== */}
           {selectedTab === 'expenses' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
@@ -1945,7 +2175,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* WHATSAPP LOGS */}
+          {/* ==================== WHATSAPP LOGS ==================== */}
           {selectedTab === 'whatsapp' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
               <div className="flex items-center justify-between mb-4">
