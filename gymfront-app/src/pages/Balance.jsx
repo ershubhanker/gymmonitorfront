@@ -255,9 +255,24 @@ const Balance = () => {
     const membershipBalance = member.balance_due || 0;
     const ptBalance = member.pt_balance || 0;
     
-    // First pay membership balance, then PT balance
+    // If there's no membership balance but there is PT balance,
+    // allocate everything to PT
+    if (membershipBalance === 0 && ptBalance > 0) {
+      const ptPayment = Math.min(amountNum, ptBalance);
+      return { membership: 0, pt: ptPayment };
+    }
+    
+    // If there's membership balance but no PT balance,
+    // allocate everything to membership
+    if (membershipBalance > 0 && ptBalance === 0) {
+      const membershipPayment = Math.min(amountNum, membershipBalance);
+      return { membership: membershipPayment, pt: 0 };
+    }
+    
+    // If both have balances, first pay membership, then PT
     let membershipPayment = Math.min(amountNum, membershipBalance);
-    let ptPayment = Math.min(amountNum - membershipPayment, ptBalance);
+    let remainingAfterMembership = amountNum - membershipPayment;
+    let ptPayment = Math.min(remainingAfterMembership, ptBalance);
     
     return { membership: membershipPayment, pt: ptPayment };
   };
@@ -265,8 +280,13 @@ const Balance = () => {
   // ===== Update allocation when amount changes =====
   useEffect(() => {
     if (selectedMember && paymentAmount) {
-      const allocation = calculateAllocation(paymentAmount, selectedMember);
-      setPaymentAllocation(allocation);
+      const amount = parseFloat(paymentAmount);
+      if (amount > 0) {
+        const allocation = calculateAllocation(amount, selectedMember);
+        setPaymentAllocation(allocation);
+      } else {
+        setPaymentAllocation({ membership: 0, pt: 0 });
+      }
     } else {
       setPaymentAllocation({ membership: 0, pt: 0 });
     }
@@ -276,160 +296,192 @@ const Balance = () => {
     parseFloat(paymentAmount) > 0 &&
     parseFloat(paymentAmount) >= getTotalBalance(selectedMember);
 
-  const handlePartialPayment = async (member) => {
-    setErrorDetails(null);
-    
-    const amount = parseFloat(paymentAmount);
-    if (isNaN(amount) || amount <= 0) {
-      toast.error('Please enter a valid amount greater than 0');
-      return;
-    }
-    
-    const totalBalance = getTotalBalance(member);
-    if (amount > totalBalance) {
-      toast.error(`Payment amount cannot exceed total balance of ${formatCurrency(totalBalance)}`);
-      return;
-    }
-    
-    setProcessingPayment(true);
-    
-    try {
-      let paymentDateTime;
-      if (paymentDate) {
-        paymentDateTime = new Date(paymentDate);
-        if (!paymentDate.includes('T')) {
-          paymentDateTime.setHours(12, 0, 0, 0);
-        }
-      } else {
-        paymentDateTime = new Date();
-      }
+    const handlePartialPayment = async (member) => {
+      setErrorDetails(null);
       
-      const allocation = calculateAllocation(amount, member);
-      let membershipPaymentAmount = allocation.membership;
-      let ptPaymentAmount = allocation.pt;
-      
-      console.log('Payment allocation:', { membershipPaymentAmount, ptPaymentAmount });
-      
-      let membershipPaymentSuccess = false;
-      let ptPaymentSuccess = false;
-      
-      // 1. Process membership payment
-      if (membershipPaymentAmount > 0 && member.membership_id) {
-        try {
-          const response = await api.post(`/gym/memberships/${member.membership_id}/partial-payment`, {
-            membership_id: member.membership_id,
-            amount: membershipPaymentAmount,
-            payment_method: paymentMethod,
-            notes: paymentNotes || 'Membership payment',
-            payment_date: paymentDateTime.toISOString()
-          });
-          console.log('Membership payment response:', response.data);
-          membershipPaymentSuccess = true;
-        } catch (membershipError) {
-          console.error('Membership payment failed:', membershipError);
-          toast.error('Failed to record membership payment');
-          setProcessingPayment(false);
-          return;
-        }
-      }
-      
-      // 2. Process PT payment
-      if (ptPaymentAmount > 0 && member.pt_session_id) {
-        try {
-          const response = await api.post(`/gym/personal-training/${member.pt_session_id}/payment`, {
-            amount: ptPaymentAmount,
-            payment_method: paymentMethod,
-            notes: paymentNotes || 'PT payment',
-            payment_date: paymentDateTime.toISOString()
-          });
-          console.log('PT payment response:', response.data);
-          ptPaymentSuccess = true;
-        } catch (ptError) {
-          console.error('PT payment failed:', ptError);
-          toast.error('Failed to record PT payment');
-          setProcessingPayment(false);
-          return;
-        }
-      }
-      
-      // If no payments were processed
-      if (!membershipPaymentSuccess && !ptPaymentSuccess) {
-        toast.error('No payment was processed. Please check the payment details.');
-        setProcessingPayment(false);
+      const amount = parseFloat(paymentAmount);
+      if (isNaN(amount) || amount <= 0) {
+        toast.error('Please enter a valid amount greater than 0');
         return;
       }
       
-      const remainingBalance = totalBalance - amount;
-      const isFull = amount >= totalBalance;
-      
-      toast.success(
-        <div>
-          <p className="font-bold">✓ Payment Recorded Successfully!</p>
-          <p className="text-sm mt-1">Amount: {formatCurrency(amount)}</p>
-          <p className="text-sm text-gray-600">Date: {formatDateTime(paymentDateTime)}</p>
-          {membershipPaymentAmount > 0 && (
-            <p className="text-sm text-blue-600">Membership: {formatCurrency(membershipPaymentAmount)}</p>
-          )}
-          {ptPaymentAmount > 0 && (
-            <p className="text-sm text-purple-600">PT: {formatCurrency(ptPaymentAmount)}</p>
-          )}
-          {isFull && <p className="text-sm text-green-600">All balances cleared!</p>}
-          {!isFull && (
-            <p className="text-sm text-amber-600">Remaining balance: {formatCurrency(remainingBalance)}</p>
-          )}
-        </div>,
-        { duration: 5000 }
-      );
-      
-      closeModal();
-      await fetchBalanceData();
-      
-    } catch (error) {
-      console.error('Payment error details:', error);
-      
-      let errorMessage = 'Failed to record payment';
-      let statusCode = error.response?.status;
-      let serverDetail = error.response?.data?.detail;
-      
-      if (statusCode === 401) {
-        errorMessage = 'Your session has expired. Please login again.';
-        setTimeout(() => {
-          window.location.href = '/login';
-        }, 2000);
-      } else if (statusCode === 403) {
-        errorMessage = 'You do not have permission to record payments';
-      } else if (statusCode === 404) {
-        errorMessage = 'Membership or PT session not found. Please refresh the page and try again.';
-      } else if (statusCode === 422) {
-        errorMessage = 'Validation error: ' + (serverDetail || 'Please check the payment details');
-      } else if (statusCode === 500) {
-        errorMessage = 'Server error. Please try again later.';
+      const totalBalance = getTotalBalance(member);
+      if (amount > totalBalance) {
+        toast.error(`Payment amount cannot exceed total balance of ${formatCurrency(totalBalance)}`);
+        return;
       }
       
-      if (serverDetail && typeof serverDetail === 'string') {
-        errorMessage = serverDetail;
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      }
+      setProcessingPayment(true);
       
-      toast.error(errorMessage);
-      
-      setErrorDetails({
-        status: statusCode,
-        message: serverDetail,
-        requestData: {
-          membership_id: member.membership_id,
-          pt_session_id: member.pt_session_id,
-          amount: amount,
-          payment_method: paymentMethod,
-          payment_date: paymentDate
+      try {
+        let paymentDateTime;
+        if (paymentDate) {
+          paymentDateTime = new Date(paymentDate);
+          if (!paymentDate.includes('T')) {
+            paymentDateTime.setHours(12, 0, 0, 0);
+          }
+        } else {
+          paymentDateTime = new Date();
         }
-      });
-      
-    } finally {
-      setProcessingPayment(false);
-    }
-  };
+        
+        const allocation = calculateAllocation(amount, member);
+        let membershipPaymentAmount = allocation.membership;
+        let ptPaymentAmount = allocation.pt;
+        
+        console.log('Payment allocation:', { membershipPaymentAmount, ptPaymentAmount });
+        console.log('Member balances:', { 
+          membershipBalance: member.balance_due, 
+          ptBalance: member.pt_balance 
+        });
+        
+        let membershipPaymentSuccess = false;
+        let ptPaymentSuccess = false;
+        let errorMessages = [];
+        
+        // 1. Process membership payment (if there's membership balance to pay)
+        if (membershipPaymentAmount > 0 && member.membership_id) {
+          try {
+            const response = await api.post(`/gym/memberships/${member.membership_id}/partial-payment`, {
+              membership_id: member.membership_id,
+              amount: membershipPaymentAmount,
+              payment_method: paymentMethod,
+              notes: paymentNotes || 'Membership payment',
+              payment_date: paymentDateTime.toISOString()
+            });
+            console.log('Membership payment response:', response.data);
+            membershipPaymentSuccess = true;
+          } catch (membershipError) {
+            console.error('Membership payment failed:', membershipError);
+            errorMessages.push('Failed to record membership payment');
+            // Don't return immediately - try PT payment anyway
+          }
+        } else if (member.balance_due === 0 && member.membership_id) {
+          // Membership balance is already 0, mark as success
+          membershipPaymentSuccess = true;
+          console.log('Membership balance is already 0, skipping membership payment');
+        }
+        
+        // 2. Process PT payment (always try if there's PT balance to pay)
+        if (ptPaymentAmount > 0 && member.pt_session_id) {
+          try {
+            const response = await api.post(`/gym/personal-training/${member.pt_session_id}/payment`, {
+              amount: ptPaymentAmount,
+              payment_method: paymentMethod,
+              notes: paymentNotes || 'PT payment',
+              payment_date: paymentDateTime.toISOString()
+            });
+            console.log('PT payment response:', response.data);
+            ptPaymentSuccess = true;
+          } catch (ptError) {
+            console.error('PT payment failed:', ptError);
+            errorMessages.push('Failed to record PT payment');
+          }
+        } else if (member.pt_balance === 0 && member.pt_session_id) {
+          // PT balance is already 0, mark as success
+          ptPaymentSuccess = true;
+          console.log('PT balance is already 0, skipping PT payment');
+        }
+        
+        // Check if at least one payment succeeded
+        if (!membershipPaymentSuccess && !ptPaymentSuccess) {
+          // If both failed, show error
+          const errorMsg = errorMessages.join('; ') || 'No payment was processed';
+          toast.error(errorMsg);
+          setProcessingPayment(false);
+          return;
+        }
+        
+        const remainingBalance = totalBalance - amount;
+        const isFull = amount >= totalBalance;
+        
+        // Build success message
+        let successMessage = (
+          <div>
+            <p className="font-bold">✓ Payment Recorded Successfully!</p>
+            <p className="text-sm mt-1">Amount: {formatCurrency(amount)}</p>
+            <p className="text-sm text-gray-600">Date: {formatDateTime(paymentDateTime)}</p>
+          </div>
+        );
+        
+        if (membershipPaymentAmount > 0) {
+          successMessage = (
+            <>
+              {successMessage}
+              <p className="text-sm text-blue-600">Membership: {formatCurrency(membershipPaymentAmount)}</p>
+            </>
+          );
+        }
+        
+        if (ptPaymentAmount > 0) {
+          successMessage = (
+            <>
+              {successMessage}
+              <p className="text-sm text-purple-600">PT: {formatCurrency(ptPaymentAmount)}</p>
+            </>
+          );
+        }
+        
+        successMessage = (
+          <>
+            {successMessage}
+            {isFull && <p className="text-sm text-green-600">All balances cleared!</p>}
+            {!isFull && (
+              <p className="text-sm text-amber-600">Remaining balance: {formatCurrency(remainingBalance)}</p>
+            )}
+          </>
+        );
+        
+        toast.success(successMessage, { duration: 5000 });
+        
+        closeModal();
+        await fetchBalanceData();
+        
+      } catch (error) {
+        console.error('Payment error details:', error);
+        
+        let errorMessage = 'Failed to record payment';
+        let statusCode = error.response?.status;
+        let serverDetail = error.response?.data?.detail;
+        
+        if (statusCode === 401) {
+          errorMessage = 'Your session has expired. Please login again.';
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 2000);
+        } else if (statusCode === 403) {
+          errorMessage = 'You do not have permission to record payments';
+        } else if (statusCode === 404) {
+          errorMessage = 'Membership or PT session not found. Please refresh the page and try again.';
+        } else if (statusCode === 422) {
+          errorMessage = 'Validation error: ' + (serverDetail || 'Please check the payment details');
+        } else if (statusCode === 500) {
+          errorMessage = 'Server error. Please try again later.';
+        }
+        
+        if (serverDetail && typeof serverDetail === 'string') {
+          errorMessage = serverDetail;
+        } else if (error.response?.data?.message) {
+          errorMessage = error.response.data.message;
+        }
+        
+        toast.error(errorMessage);
+        
+        setErrorDetails({
+          status: statusCode,
+          message: serverDetail,
+          requestData: {
+            membership_id: member.membership_id,
+            pt_session_id: member.pt_session_id,
+            amount: amount,
+            payment_method: paymentMethod,
+            payment_date: paymentDate
+          }
+        });
+        
+      } finally {
+        setProcessingPayment(false);
+      }
+    };
 
   const closeModal = () => {
     setShowPaymentModal(false);
