@@ -1,13 +1,14 @@
-// MemberModal.jsx - Updated with Personal Training
-
+// MemberModal.jsx - Updated with Personal Training AND ADD-ONS
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, User, Phone, Heart, FileText, Camera, Plus, CheckCircle,
   Calendar, CreditCard, AlertCircle, ChevronRight, Loader2, RefreshCw,
-  ChevronUp, ChevronDown, Upload, Trash2, Edit, CalendarDays, Dumbbell
+  ChevronUp, ChevronDown, Upload, Trash2, Edit, CalendarDays, Dumbbell,
+  Tag
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
+import AddonManager from './addons/AddonManager';
 
 // ─── Plan type presets ────────────────────────────────────────────────────────
 const PLAN_PRESETS = [
@@ -1136,6 +1137,145 @@ const PersonalTrainingSection = ({
   );
 };
 
+// ─── ADD-ONS SELECTION SECTION ──────────────────────────────────────────────
+const AddonSelectionSection = ({ 
+  formData, 
+  setFormData, 
+  selectedAddons, 
+  setSelectedAddons,
+  addons,
+  loadingAddons,
+  addonTotal,
+  setShowAddonManager
+}) => {
+  const toggleAddon = (addon) => {
+    setSelectedAddons(prev => {
+      const exists = prev.find(a => a.id === addon.id);
+      if (exists) {
+        return prev.filter(a => a.id !== addon.id);
+      } else {
+        return [...prev, addon];
+      }
+    });
+  };
+
+  const getCategoryIcon = (category) => {
+    const icons = {
+      locker: '🔒',
+      protein: '💪',
+      towel: '🧺',
+      supplement: '🧪',
+      training: '🏋️',
+      parking: '🅿️',
+      other: '📦'
+    };
+    return icons[category] || '📦';
+  };
+
+  return (
+    <div className="mt-6 border-t border-gray-200 pt-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h4 className="text-md font-semibold text-gray-900 flex items-center gap-2">
+            <Tag className="h-5 w-5 text-blue-600" />
+            Add-Ons
+          </h4>
+          <p className="text-sm text-gray-500">Add extra services like lockers, protein powder, towels, etc.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddonManager(true)}
+          className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+        >
+          <Plus className="h-4 w-4" />
+          Manage Add-Ons
+        </button>
+      </div>
+
+      {loadingAddons ? (
+        <div className="flex justify-center py-4">
+          <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+        </div>
+      ) : addons.length === 0 ? (
+        <div className="bg-gray-50 rounded-xl p-4 text-center text-gray-400">
+          <p className="text-sm">No add-ons available</p>
+          <p className="text-xs mt-1">Create add-ons from the "Manage Add-Ons" button</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {addons.map(addon => {
+            const isSelected = selectedAddons.some(a => a.id === addon.id);
+            return (
+              <button
+                key={addon.id}
+                type="button"
+                onClick={() => toggleAddon(addon)}
+                className={`w-full p-3 rounded-xl border-2 text-left transition-all ${
+                  isSelected
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-blue-300'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${
+                      isSelected ? 'bg-blue-200' : 'bg-gray-100'
+                    }`}>
+                      <span className="text-xl">{getCategoryIcon(addon.category)}</span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">{addon.name}</p>
+                      <p className="text-xs text-gray-500">{addon.description || addon.category}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-green-600">₹{addon.price}</span>
+                    {isSelected ? (
+                      <CheckCircle className="h-5 w-5 text-blue-600" />
+                    ) : (
+                      <div className="h-5 w-5 border-2 border-gray-300 rounded-full" />
+                    )}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {selectedAddons.length > 0 && (
+        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex justify-between items-center">
+            <span className="font-medium text-blue-700">
+              {selectedAddons.length} add-on(s) selected
+            </span>
+            <span className="font-bold text-blue-700">
+              Total: ₹{addonTotal}
+            </span>
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {selectedAddons.map(addon => (
+              <span key={addon.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white rounded-full text-xs border border-blue-200 text-gray-700">
+                {getCategoryIcon(addon.category)} {addon.name}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleAddon(addon);
+                  }}
+                  className="text-red-400 hover:text-red-600"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Membership Selector (with Edit/Delete) ────────────────────────────────────
 const MembershipSelector = ({ 
   formData, 
@@ -1710,8 +1850,8 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
     pt_end_date: '',
     pt_session_time: '',
     pt_session_days: '[]',
-    pt_total_amount: '',  // ✅ Total amount for PT
-    pt_amount_paid: '',    // ✅ Amount paid for PT
+    pt_total_amount: '',
+    pt_amount_paid: '',
     pt_notes: '',
   });
 
@@ -1725,7 +1865,28 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
   const [trainers, setTrainers] = useState([]);
   const [loadingTrainers, setLoadingTrainers] = useState(false);
 
+  // ===== ADD-ONS STATE =====
+  const [showAddonManager, setShowAddonManager] = useState(false);
+  const [selectedAddons, setSelectedAddons] = useState([]);
+  const [addons, setAddons] = useState([]);
+  const [loadingAddons, setLoadingAddons] = useState(false);
+  const [addonTotal, setAddonTotal] = useState(0);
+
   const getPendingFileRef = useRef(null);
+
+  // ===== FETCH ADD-ONS =====
+  const fetchAddons = useCallback(async () => {
+    setLoadingAddons(true);
+    try {
+      const response = await api.get('/gym/addons?active_only=true');
+      setAddons(response.data || []);
+    } catch (error) {
+      console.error('Error fetching addons:', error);
+      setAddons([]);
+    } finally {
+      setLoadingAddons(false);
+    }
+  }, []);
 
   const refreshMembershipPlans = useCallback(async () => {
     setLoadingPlans(true);
@@ -1748,16 +1909,11 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
   const fetchTrainers = useCallback(async () => {
     setLoadingTrainers(true);
     try {
-      // ✅ Try the trainers endpoint first
       const response = await api.get('/gym/trainers');
       setTrainers(response.data || []);
-      console.log('✅ Trainers loaded from /gym/trainers:', response.data);
     } catch (error) {
-      console.error('Error fetching trainers from /gym/trainers:', error);
-      
-      // ✅ Fallback: Try to get staff with trainer positions
+      console.error('Error fetching trainers:', error);
       try {
-        console.log('🔄 Falling back to /gym/staff endpoint...');
         const staffResponse = await api.get('/gym/staff');
         const trainerPositions = [
           'Head Trainer', 'Trainer', 'Personal Trainer', 
@@ -1778,13 +1934,11 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
             position: s.position,
             role: 'trainer'
           })));
-          console.log('✅ Trainers loaded from fallback:', trainers.length);
         } else {
-          console.warn('⚠️ No trainers found in staff list');
           setTrainers([]);
         }
       } catch (fallbackError) {
-        console.error('❌ Fallback trainer fetch failed:', fallbackError);
+        console.error('Fallback trainer fetch failed:', fallbackError);
         setTrainers([]);
       }
     } finally {
@@ -1800,6 +1954,8 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
     setShowPlanCreator(false);
     setUserManuallyChangedAmount(false);
     setAmountError(null);
+    setSelectedAddons([]);
+    setAddonTotal(0);
 
     if (member) {
       setFormData({
@@ -1857,7 +2013,14 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
     }
     refreshMembershipPlans();
     fetchTrainers();
-  }, [isOpen, member, refreshMembershipPlans, fetchTrainers, today]);
+    fetchAddons();
+  }, [isOpen, member, refreshMembershipPlans, fetchTrainers, fetchAddons, today]);
+
+  // Calculate addon total
+  useEffect(() => {
+    const total = selectedAddons.reduce((sum, addon) => sum + addon.price, 0);
+    setAddonTotal(total);
+  }, [selectedAddons]);
 
   // Only set amount_paid automatically when plan is selected AND user hasn't manually changed it
   useEffect(() => {
@@ -1973,21 +2136,19 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         id_proof_type: formData.id_proof_type || null,
         id_proof_number: formData.id_proof_number?.trim() || null,
       };
-
+  
       console.log('🔍 FORM DATA DEBUG:');
       console.log('  - custom_due_date (raw):', formData.custom_due_date);
       console.log('  - PT trainer_id:', formData.pt_trainer_id);
       console.log('  - PT start_date:', formData.pt_start_date);
       console.log('  - PT end_date:', formData.pt_end_date);
       console.log('  - PT session_time:', formData.pt_session_time);
-
+  
       const dueDate = formData.custom_due_date && formData.custom_due_date.trim() !== '' 
         ? formData.custom_due_date 
         : null;
       
-      let payload;
-      
-      // Prepare PT data with correct field names
+      // Prepare PT data with correct field names - ALWAYS include if PT is filled
       const ptData = formData.pt_trainer_id ? {
         trainer_id: formData.pt_trainer_id,
         start_date: formData.pt_start_date,
@@ -1998,6 +2159,8 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
         amount_paid: formData.pt_amount_paid ? parseFloat(formData.pt_amount_paid) : 0,
         notes: formData.pt_notes || null
       } : null;
+      
+      let payload;
       
       if (isEdit && formData.renew_membership) {
         payload = {
@@ -2010,9 +2173,19 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
           renew_membership: true,
           custom_due_date: dueDate,
           pt_data: ptData,
+          // Add add-ons data
+          addons: selectedAddons.map(a => ({
+            addon_id: a.id,
+            start_date: formData.membership_start_date,
+            amount_paid: 0,
+          })),
         };
       } else if (isEdit) {
-        payload = memberFields;
+        // ✅ For edit WITHOUT renewal, also include PT data
+        payload = {
+          ...memberFields,
+          pt_data: ptData,  // ✅ Include PT data for edit
+        };
       } else {
         payload = {
           ...memberFields,
@@ -2023,6 +2196,11 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
           discount_applied: formData.discount_applied || 0,
           custom_due_date: dueDate,
           pt_data: ptData,
+          addons: selectedAddons.map(a => ({
+            addon_id: a.id,
+            start_date: formData.membership_start_date,
+            amount_paid: 0,
+          })),
         };
       }
   
@@ -2046,6 +2224,24 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
             toast.error('Member saved, but photo upload failed. You can re-upload from edit mode.');
           }
         }
+        
+        // If addons were selected, assign them to the member
+        if (selectedAddons.length > 0 && savedMember.id) {
+          try {
+            for (const addon of selectedAddons) {
+              await api.post(`/gym/members/${savedMember.id}/addons`, {
+                addon_id: addon.id,
+                start_date: formData.membership_start_date,
+                amount_paid: 0,
+                notes: 'Added during membership signup'
+              });
+            }
+            toast.success(`${selectedAddons.length} add-on(s) assigned to member!`);
+          } catch (addonError) {
+            console.error('Error assigning addons:', addonError);
+            toast.warning('Member created but some add-ons could not be assigned.');
+          }
+        }
       }
     } catch (error) {
       console.error('Save error:', error);
@@ -2054,6 +2250,7 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
     }
   };
 
+  
   const set = (field) => (e) => setFormData(prev => ({ ...prev, [field]: e.target.value }));
 
   const tabs = [
@@ -2344,6 +2541,20 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
                   loadingTrainers={loadingTrainers}
                   isEdit={isEdit}
                 />
+
+                {/* ===== ADD-ONS SELECTION SECTION ===== */}
+                {(!isEdit || formData.renew_membership) && (
+                  <AddonSelectionSection 
+                    formData={formData}
+                    setFormData={setFormData}
+                    selectedAddons={selectedAddons}
+                    setSelectedAddons={setSelectedAddons}
+                    addons={addons}
+                    loadingAddons={loadingAddons}
+                    addonTotal={addonTotal}
+                    setShowAddonManager={setShowAddonManager}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -2382,6 +2593,18 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
           </div>
         </form>
       </div>
+
+      {/* Addon Manager Modal */}
+      <AddonManager
+        isOpen={showAddonManager}
+        onClose={() => {
+          setShowAddonManager(false);
+          fetchAddons();
+        }}
+        onAddonAssigned={() => {
+          fetchAddons();
+        }}
+      />
     </div>
   );
 };

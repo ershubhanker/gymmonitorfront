@@ -1020,19 +1020,26 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       discount_applied,
       renew_membership,
       current_membership_id,
+      pt_data,  // ✅ Extract PT data
       ...memberFields
     } = memberData;
   
+    console.log('📤 handleUpdateMember - Received data:', memberData);
+    console.log('📤 pt_data received:', pt_data);
+  
     let hasError = false;
   
+    // 1. Update member details
     try {
       await api.put(`/gym/members/${selectedMember.id}`, memberFields);
+      console.log('✅ Member details updated');
     } catch (error) {
       console.error('Member update error:', error);
       toast.error(error.response?.data?.detail || 'Failed to update member details');
       throw error;
     }
   
+    // 2. Handle membership renewal if requested
     if (renew_membership && plan_id && membership_start_date) {
       try {
         const membershipPayload = {
@@ -1046,11 +1053,54 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         };
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
+        console.log('✅ Membership renewed:', membershipResponse.data);
         
       } catch (err) {
         console.error('Membership renewal error:', err);
         hasError = true;
         toast.error(`Details saved but membership renewal failed. Please assign membership manually.`);
+      }
+    }
+  
+    // ✅ 3. Handle Personal Training update (for both new and existing members)
+    if (pt_data && pt_data.trainer_id) {
+      try {
+        // First, check if member already has an active PT session
+        const existingPtResponse = await api.get(`/gym/members/${selectedMember.id}/personal-training`);
+        const existingPtSessions = existingPtResponse.data || [];
+        
+        // Find active PT session
+        const activePt = existingPtSessions.find(s => s.status === 'active' || s.status === 'pending');
+        
+        const ptPayload = {
+          member_id: selectedMember.id,
+          trainer_id: parseInt(pt_data.trainer_id),
+          start_date: pt_data.start_date,
+          end_date: pt_data.end_date,
+          session_time: pt_data.session_time,
+          session_days: pt_data.session_days || '[]',
+          total_amount: pt_data.total_amount ? parseFloat(pt_data.total_amount) : null,
+          amount_paid: pt_data.amount_paid ? parseFloat(pt_data.amount_paid) : 0,
+          notes: pt_data.notes || null
+        };
+        
+        console.log('📤 Creating/Updating PT session:', ptPayload);
+        
+        if (activePt) {
+          // Update existing PT session
+          await api.put(`/gym/personal-training/${activePt.id}`, ptPayload);
+          console.log('✅ PT session updated:', activePt.id);
+          toast.success('Personal training session updated!');
+        } else {
+          // Create new PT session
+          await api.post('/gym/personal-training', ptPayload);
+          console.log('✅ New PT session created');
+          toast.success('Personal training session added!');
+        }
+      } catch (ptError) {
+        console.error('Error updating PT session:', ptError);
+        toast.error('Failed to update personal training session');
+        hasError = true;
       }
     }
   

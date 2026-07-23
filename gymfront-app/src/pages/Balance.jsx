@@ -1,3 +1,4 @@
+// Balance.jsx - Updated with PT Balance Collection Support
 import React, { useState, useEffect } from 'react';
 import {
   Search,
@@ -23,7 +24,7 @@ import {
   CalendarDays,
   History,
   Trash2,
-  Dumbbell  // ✅ Added Dumbbell icon for PT
+  Dumbbell
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -48,12 +49,18 @@ const Balance = () => {
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   
-  // ===== NEW: Delete/Clear Balance State =====
+  // ===== Clear Balance State =====
   const [showClearBalanceModal, setShowClearBalanceModal] = useState(false);
   const [memberToClear, setMemberToClear] = useState(null);
   const [clearingBalance, setClearingBalance] = useState(false);
   const [clearBalanceNotes, setClearBalanceNotes] = useState('');
-  const [clearBalanceType, setClearBalanceType] = useState('all'); // 'all', 'membership', 'pt'
+  const [clearBalanceType, setClearBalanceType] = useState('all');
+  
+  // ===== NEW: Payment allocation state =====
+  const [paymentAllocation, setPaymentAllocation] = useState({
+    membership: 0,
+    pt: 0
+  });
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -64,8 +71,8 @@ const Balance = () => {
     members_with_balance: 0,
     overdue_count: 0,
     upcoming_payments: 0,
-    total_pt_balance: 0,  // ✅ Add PT overview
-    members_with_pt_balance: 0  // ✅ Add PT members count
+    total_pt_balance: 0,
+    members_with_pt_balance: 0
   });
 
   const currencySymbol = user?.currency_symbol || '₹';
@@ -108,7 +115,6 @@ const Balance = () => {
         api.get('/gym/balance/overview')
       ]);
       
-      // ✅ Calculate PT overview from members data
       const membersData = membersRes.data || [];
       const totalPtBalance = membersData.reduce((sum, m) => sum + (m.pt_balance || 0), 0);
       const membersWithPtBalance = membersData.filter(m => (m.pt_balance || 0) > 0).length;
@@ -235,14 +241,36 @@ const Balance = () => {
   };
 
   // ===== Calculate remaining after payment =====
-  const remainingAfterPayment = selectedMember
-    ? Math.max(0, (selectedMember.balance_due || 0) + (selectedMember.pt_balance || 0) - (parseFloat(paymentAmount) || 0))
-    : 0;
-
-  // ===== Check if it's a full payment =====
   const getTotalBalance = (member) => {
     return (member.balance_due || 0) + (member.pt_balance || 0);
   };
+
+  // ===== Calculate allocation based on payment amount =====
+  const calculateAllocation = (amount, member) => {
+    if (!member || !amount || parseFloat(amount) <= 0) {
+      return { membership: 0, pt: 0 };
+    }
+    
+    const amountNum = parseFloat(amount);
+    const membershipBalance = member.balance_due || 0;
+    const ptBalance = member.pt_balance || 0;
+    
+    // First pay membership balance, then PT balance
+    let membershipPayment = Math.min(amountNum, membershipBalance);
+    let ptPayment = Math.min(amountNum - membershipPayment, ptBalance);
+    
+    return { membership: membershipPayment, pt: ptPayment };
+  };
+
+  // ===== Update allocation when amount changes =====
+  useEffect(() => {
+    if (selectedMember && paymentAmount) {
+      const allocation = calculateAllocation(paymentAmount, selectedMember);
+      setPaymentAllocation(allocation);
+    } else {
+      setPaymentAllocation({ membership: 0, pt: 0 });
+    }
+  }, [paymentAmount, selectedMember]);
 
   const isFullPayment = selectedMember &&
     parseFloat(paymentAmount) > 0 &&
@@ -276,82 +304,78 @@ const Balance = () => {
         paymentDateTime = new Date();
       }
       
-      // ✅ Create payment for membership
-      const response = await api.post(`/gym/memberships/${member.membership_id}/partial-payment`, {
-        membership_id: member.membership_id,
-        amount: amount,
-        payment_method: paymentMethod,
-        notes: paymentNotes || (member.has_pt_balance ? 'Payment towards membership and PT balance' : ''),
-        payment_date: paymentDateTime.toISOString()
-      });
+      const allocation = calculateAllocation(amount, member);
+      let membershipPaymentAmount = allocation.membership;
+      let ptPaymentAmount = allocation.pt;
       
-      console.log('Payment response:', response.data);
+      console.log('Payment allocation:', { membershipPaymentAmount, ptPaymentAmount });
       
-      // ✅ If there's PT balance and the payment covers it, we need to update PT
-      if (member.has_pt_balance && member.pt_session_id) {
+      let membershipPaymentSuccess = false;
+      let ptPaymentSuccess = false;
+      
+      // 1. Process membership payment
+      if (membershipPaymentAmount > 0 && member.membership_id) {
         try {
-          // Calculate how much of the payment goes to PT
-          const ptBalance = member.pt_balance || 0;
-          const membershipBalance = member.balance_due || 0;
-          
-          let ptPaymentAmount = 0;
-          let membershipPaymentAmount = amount;
-          
-          // If payment is more than membership balance, excess goes to PT
-          if (amount > membershipBalance) {
-            ptPaymentAmount = amount - membershipBalance;
-            membershipPaymentAmount = membershipBalance;
-          }
-          
-          // Update PT payment if any amount goes to PT
-          if (ptPaymentAmount > 0) {
-            // You'll need to create a PT payment endpoint
-            // For now, we'll update the PT session directly
-            await api.post(`/gym/personal-training/${member.pt_session_id}/payment`, {
-              amount: ptPaymentAmount,
-              payment_method: paymentMethod,
-              notes: `PT payment - ${paymentNotes || ''}`,
-              payment_date: paymentDateTime.toISOString()
-            });
-            console.log(`✅ PT payment of ${ptPaymentAmount} recorded`);
-          }
-        } catch (ptError) {
-          console.warn('Could not record PT payment:', ptError);
-          // Don't fail the main payment if PT update fails
-        }
-      }
-      
-      const isFull = amount >= totalBalance;
-      const remainingBalance = totalBalance - amount;
-      
-      if (!isFull && remainingBalance > 0 && nextPaymentDate) {
-        try {
-          await api.put(`/gym/memberships/${member.membership_id}/payment-schedule`, {
+          const response = await api.post(`/gym/memberships/${member.membership_id}/partial-payment`, {
             membership_id: member.membership_id,
-            next_payment_date: nextPaymentDate,
-            notes: paymentNotes || `Next payment scheduled for ${formatDate(nextPaymentDate)}`
+            amount: membershipPaymentAmount,
+            payment_method: paymentMethod,
+            notes: paymentNotes || 'Membership payment',
+            payment_date: paymentDateTime.toISOString()
           });
-        } catch (scheduleError) {
-          console.warn('Could not update payment schedule:', scheduleError);
+          console.log('Membership payment response:', response.data);
+          membershipPaymentSuccess = true;
+        } catch (membershipError) {
+          console.error('Membership payment failed:', membershipError);
+          toast.error('Failed to record membership payment');
+          setProcessingPayment(false);
+          return;
         }
       }
+      
+      // 2. Process PT payment
+      if (ptPaymentAmount > 0 && member.pt_session_id) {
+        try {
+          const response = await api.post(`/gym/personal-training/${member.pt_session_id}/payment`, {
+            amount: ptPaymentAmount,
+            payment_method: paymentMethod,
+            notes: paymentNotes || 'PT payment',
+            payment_date: paymentDateTime.toISOString()
+          });
+          console.log('PT payment response:', response.data);
+          ptPaymentSuccess = true;
+        } catch (ptError) {
+          console.error('PT payment failed:', ptError);
+          toast.error('Failed to record PT payment');
+          setProcessingPayment(false);
+          return;
+        }
+      }
+      
+      // If no payments were processed
+      if (!membershipPaymentSuccess && !ptPaymentSuccess) {
+        toast.error('No payment was processed. Please check the payment details.');
+        setProcessingPayment(false);
+        return;
+      }
+      
+      const remainingBalance = totalBalance - amount;
+      const isFull = amount >= totalBalance;
       
       toast.success(
         <div>
           <p className="font-bold">✓ Payment Recorded Successfully!</p>
           <p className="text-sm mt-1">Amount: {formatCurrency(amount)}</p>
           <p className="text-sm text-gray-600">Date: {formatDateTime(paymentDateTime)}</p>
-          {member.has_pt_balance && (
-            <p className="text-sm text-blue-600">✓ PT balance included in payment</p>
+          {membershipPaymentAmount > 0 && (
+            <p className="text-sm text-blue-600">Membership: {formatCurrency(membershipPaymentAmount)}</p>
+          )}
+          {ptPaymentAmount > 0 && (
+            <p className="text-sm text-purple-600">PT: {formatCurrency(ptPaymentAmount)}</p>
           )}
           {isFull && <p className="text-sm text-green-600">All balances cleared!</p>}
           {!isFull && (
-            <>
-              <p className="text-sm text-amber-600">Remaining balance: {formatCurrency(remainingBalance)}</p>
-              {nextPaymentDate && (
-                <p className="text-sm text-blue-600">Next payment scheduled: {formatDate(nextPaymentDate)}</p>
-              )}
-            </>
+            <p className="text-sm text-amber-600">Remaining balance: {formatCurrency(remainingBalance)}</p>
           )}
         </div>,
         { duration: 5000 }
@@ -375,7 +399,7 @@ const Balance = () => {
       } else if (statusCode === 403) {
         errorMessage = 'You do not have permission to record payments';
       } else if (statusCode === 404) {
-        errorMessage = 'Membership not found. Please refresh the page and try again.';
+        errorMessage = 'Membership or PT session not found. Please refresh the page and try again.';
       } else if (statusCode === 422) {
         errorMessage = 'Validation error: ' + (serverDetail || 'Please check the payment details');
       } else if (statusCode === 500) {
@@ -395,6 +419,7 @@ const Balance = () => {
         message: serverDetail,
         requestData: {
           membership_id: member.membership_id,
+          pt_session_id: member.pt_session_id,
           amount: amount,
           payment_method: paymentMethod,
           payment_date: paymentDate
@@ -420,6 +445,7 @@ const Balance = () => {
     setShowClearBalanceModal(false);
     setMemberToClear(null);
     setClearBalanceType('all');
+    setPaymentAllocation({ membership: 0, pt: 0 });
   };
 
   const openPaymentModal = (member) => {
@@ -433,10 +459,11 @@ const Balance = () => {
     setErrorDetails(null);
     setPaymentHistory([]);
     setShowPaymentHistory(false);
+    setPaymentAllocation({ membership: 0, pt: 0 });
     setShowPaymentModal(true);
   };
 
-  // ===== NEW: Open Clear Balance Modal =====
+  // ===== Clear Balance Modal =====
   const openClearBalanceModal = (member) => {
     setMemberToClear(member);
     setClearBalanceNotes('');
@@ -444,13 +471,11 @@ const Balance = () => {
     setShowClearBalanceModal(true);
   };
 
-  // ===== NEW: Handle Clear Balance =====
   const handleClearBalance = async () => {
     if (!memberToClear) return;
     
     setClearingBalance(true);
     try {
-      // Get the amount to clear
       const amountToClear = getTotalBalance(memberToClear);
       
       if (amountToClear <= 0) {
@@ -461,30 +486,29 @@ const Balance = () => {
         return;
       }
       
-      // Create a payment record for the full amount to clear the balance
-      const response = await api.post(`/gym/memberships/${memberToClear.membership_id}/partial-payment`, {
-        membership_id: memberToClear.membership_id,
-        amount: amountToClear,
-        payment_method: 'adjustment',
-        notes: clearBalanceNotes || `Balance cleared - ${formatCurrency(amountToClear)} adjusted`,
-        payment_date: new Date().toISOString()
-      });
+      const allocation = calculateAllocation(amountToClear, memberToClear);
       
-      console.log('Clear balance response:', response.data);
+      // Clear membership balance
+      if (allocation.membership > 0 && memberToClear.membership_id) {
+        await api.post(`/gym/memberships/${memberToClear.membership_id}/partial-payment`, {
+          membership_id: memberToClear.membership_id,
+          amount: allocation.membership,
+          payment_method: 'adjustment',
+          notes: clearBalanceNotes || `Membership balance cleared - ${formatCurrency(allocation.membership)} adjusted`,
+          payment_date: new Date().toISOString()
+        });
+        console.log('✅ Membership balance cleared');
+      }
       
-      // ✅ If there's PT balance, clear it as well
-      if (memberToClear.has_pt_balance && memberToClear.pt_session_id) {
-        try {
-          await api.post(`/gym/personal-training/${memberToClear.pt_session_id}/payment`, {
-            amount: memberToClear.pt_balance,
-            payment_method: 'adjustment',
-            notes: `PT balance cleared - ${clearBalanceNotes || ''}`,
-            payment_date: new Date().toISOString()
-          });
-          console.log('✅ PT balance cleared');
-        } catch (ptError) {
-          console.warn('Could not clear PT balance:', ptError);
-        }
+      // Clear PT balance
+      if (allocation.pt > 0 && memberToClear.pt_session_id) {
+        await api.post(`/gym/personal-training/${memberToClear.pt_session_id}/payment`, {
+          amount: allocation.pt,
+          payment_method: 'adjustment',
+          notes: clearBalanceNotes || `PT balance cleared - ${formatCurrency(allocation.pt)} adjusted`,
+          payment_date: new Date().toISOString()
+        });
+        console.log('✅ PT balance cleared');
       }
       
       toast.success(
@@ -492,8 +516,8 @@ const Balance = () => {
           <p className="font-bold">✓ Balance Cleared Successfully!</p>
           <p className="text-sm mt-1">Amount: {formatCurrency(amountToClear)}</p>
           <p className="text-sm text-green-600">All balances are now ₹0</p>
-          {memberToClear.has_pt_balance && (
-            <p className="text-sm text-blue-600">✓ PT balance cleared</p>
+          {allocation.pt > 0 && (
+            <p className="text-sm text-purple-600">✓ PT balance cleared</p>
           )}
           {clearBalanceNotes && (
             <p className="text-sm text-gray-600 mt-1">Note: {clearBalanceNotes}</p>
@@ -655,7 +679,7 @@ const Balance = () => {
           <p className="text-xs text-gray-500 mt-2">Due in next 7 days</p>
         </div>
 
-        {/* ✅ PT Balance Card */}
+        {/* PT Balance Card */}
         <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-500">
           <div className="flex items-center justify-between">
             <div>
@@ -865,7 +889,7 @@ const Balance = () => {
         )}
       </div>
 
-      {/* Payment Modal with Payment History */}
+      {/* Payment Modal with PT Support */}
       {showPaymentModal && selectedMember && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -925,10 +949,6 @@ const Balance = () => {
                     className="w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                   />
                 </div>
-                <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  Current date is set by default. Change to record past or future payments.
-                </p>
               </div>
 
               {/* Payment Amount */}
@@ -968,6 +988,37 @@ const Balance = () => {
                   </button>
                 </div>
 
+                {/* Payment Allocation Breakdown */}
+                {paymentAmount && parseFloat(paymentAmount) > 0 && selectedMember && (
+                  <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-xs font-semibold text-gray-600 mb-1.5">Payment Allocation</p>
+                    <div className="space-y-1 text-sm">
+                      {paymentAllocation.membership > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Membership:</span>
+                          <span className="font-medium text-blue-600">{formatCurrency(paymentAllocation.membership)}</span>
+                        </div>
+                      )}
+                      {paymentAllocation.pt > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600 flex items-center gap-1">
+                            <Dumbbell className="h-3 w-3 text-purple-400" />
+                            PT:
+                          </span>
+                          <span className="font-medium text-purple-600">{formatCurrency(paymentAllocation.pt)}</span>
+                        </div>
+                      )}
+                      {paymentAllocation.membership === 0 && paymentAllocation.pt === 0 && (
+                        <p className="text-xs text-gray-400">No allocation (amount exceeds total balance)</p>
+                      )}
+                      <div className="flex justify-between pt-1 border-t border-gray-200 font-medium">
+                        <span className="text-gray-700">Total:</span>
+                        <span className="text-gray-900">{formatCurrency(parseFloat(paymentAmount) || 0)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Payment feedback */}
                 {paymentAmount && parseFloat(paymentAmount) > 0 && (
                   <div className={`mt-2 p-3 rounded-lg text-sm ${isFullPayment ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
@@ -978,7 +1029,7 @@ const Balance = () => {
                           <span className="font-medium">Full payment — all balances will be cleared ✓</span>
                         </div>
                         {selectedMember.has_pt_balance && (
-                          <p className="text-xs text-green-600 pl-6">✓ Includes PT balance of {formatCurrency(selectedMember.pt_balance)}</p>
+                          <p className="text-xs text-purple-600 pl-6">✓ PT balance will be cleared</p>
                         )}
                       </div>
                     ) : (
@@ -989,13 +1040,8 @@ const Balance = () => {
                         </div>
                         <div className="flex justify-between text-xs pl-6">
                           <span>Remaining balance after this payment:</span>
-                          <span className="font-bold text-red-600">{formatCurrency(remainingAfterPayment)}</span>
+                          <span className="font-bold text-red-600">{formatCurrency(getTotalBalance(selectedMember) - parseFloat(paymentAmount))}</span>
                         </div>
-                        {selectedMember.has_pt_balance && (
-                          <p className="text-xs text-purple-600 pl-6">
-                            PT balance: {formatCurrency(Math.max(0, (selectedMember.pt_balance || 0) - Math.max(0, parseFloat(paymentAmount) - (selectedMember.balance_due || 0))))}
-                          </p>
-                        )}
                       </div>
                     )}
                   </div>
@@ -1020,7 +1066,7 @@ const Balance = () => {
               </div>
 
               {/* Next Payment Date - Only show for partial payments */}
-              {!isFullPayment && parseFloat(paymentAmount) > 0 && remainingAfterPayment > 0 && (
+              {!isFullPayment && parseFloat(paymentAmount) > 0 && getTotalBalance(selectedMember) - parseFloat(paymentAmount) > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Next Payment Date
@@ -1053,11 +1099,6 @@ const Balance = () => {
                       ))}
                     </div>
                   </div>
-                  
-                  <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    Set a date for when the customer will pay the remaining
-                  </p>
                 </div>
               )}
 
@@ -1200,7 +1241,7 @@ const Balance = () => {
         </div>
       )}
 
-      {/* ===== NEW: Clear Balance Confirmation Modal ===== */}
+      {/* Clear Balance Confirmation Modal */}
       {showClearBalanceModal && memberToClear && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">

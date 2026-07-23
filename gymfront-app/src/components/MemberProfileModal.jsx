@@ -1058,7 +1058,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 <h2 className="text-xl font-bold text-gray-900">{member.full_name}</h2>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-mono border border-gray-200">
                   <Hash className="h-3 w-3" />
-                  #{member.id}
+                  {member.id}
                 </span>
                 {hasActiveFreeze && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium border border-blue-200">
