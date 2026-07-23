@@ -69,18 +69,34 @@ const DeleteConfirmationModal = ({
 
   const hasDeviceSync = member.syncedToDevice || member.deviceUserId;
   const deviceInfo = member.deviceUserId || 'Unknown Device ID';
+  
+  // Check if member has active freeze
+  const hasFreeze = member.freezes?.some(f => f.status === 'active') || false;
+  const freezeInfo = member.freezes?.filter(f => f.status === 'active') || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 transform transition-all">
         {/* Header - Compact */}
-        <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b">
-          <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-            <AlertTriangle className="h-5 w-5 text-red-600" />
+        <div className={`flex items-center gap-3 px-5 pt-5 pb-3 border-b ${
+          hasFreeze ? 'border-amber-300' : ''
+        }`}>
+          <div className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+            hasFreeze ? 'bg-amber-100' : 'bg-red-100'
+          }`}>
+            {hasFreeze ? (
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+            ) : (
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+            )}
           </div>
           <div>
-            <h3 className="text-base font-bold text-gray-900">Delete Member</h3>
-            <p className="text-xs text-gray-500">This action cannot be undone</p>
+            <h3 className={`text-base font-bold ${hasFreeze ? 'text-amber-700' : 'text-gray-900'}`}>
+              {hasFreeze ? 'Cannot Delete Member' : 'Delete Member'}
+            </h3>
+            <p className="text-xs text-gray-500">
+              {hasFreeze ? 'This member has an active freeze' : 'This action cannot be undone'}
+            </p>
           </div>
         </div>
 
@@ -105,47 +121,69 @@ const DeleteConfirmationModal = ({
             </div>
           </div>
 
-          {/* Confirmation Question - Compact */}
-          <div className="text-center py-2">
-            <p className="text-gray-700 text-sm font-medium">
-              Delete <span className="font-bold text-red-600">{member.fullName}</span>?
+          {/* ✅ Show freeze warning if exists */}
+          {hasFreeze && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-amber-800">Active Freeze Detected</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    This member has an active freeze. Please cancel the freeze before deleting.
+                  </p>
+                  {freezeInfo.map((freeze, idx) => (
+                    <div key={idx} className="mt-1 text-xs text-amber-600">
+                      {freeze.freeze_type === 'medical' ? '🏥 Medical' : '📅 Regular'} Freeze: 
+                      {new Date(freeze.start_date).toLocaleDateString()} - {new Date(freeze.end_date).toLocaleDateString()}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {hasDeviceSync && !hasFreeze && (
+            <p className="text-xs text-yellow-600 mt-1.5 flex items-center justify-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Synced to device: {deviceInfo}
             </p>
-            {hasDeviceSync && (
-              <p className="text-xs text-yellow-600 mt-1.5 flex items-center justify-center gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Synced to device: {deviceInfo}
-              </p>
-            )}
-            <p className="text-xs text-gray-400 mt-1">All data will be permanently removed.</p>
-          </div>
+          )}
+          
+          {!hasFreeze && (
+            <p className="text-xs text-gray-400 mt-1 text-center">All data will be permanently removed.</p>
+          )}
         </div>
 
         {/* Footer - Compact */}
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t bg-gray-50 rounded-b-xl">
+        <div className={`flex items-center justify-end gap-2 px-5 py-4 border-t rounded-b-xl ${
+          hasFreeze ? 'bg-amber-50 border-amber-200' : 'bg-gray-50'
+        }`}>
           <button
             onClick={onClose}
             disabled={loading}
             className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 font-medium"
           >
-            Cancel
+            {hasFreeze ? 'Close' : 'Cancel'}
           </button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
-            className="px-5 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 text-sm font-medium"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Deleting...
-              </>
-            ) : (
-              <>
-                <Trash2 className="h-3.5 w-3.5" />
-                Delete
-              </>
-            )}
-          </button>
+          {!hasFreeze && (
+            <button
+              onClick={onConfirm}
+              disabled={loading}
+              className="px-5 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 text-sm font-medium"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -415,6 +453,71 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       if (error.response) {
         console.error('Error response:', error.response.data);
         console.error('Error status:', error.response.status);
+        
+        // ✅ CHECK FOR FREEZE ERROR
+        if (error.response.status === 400 && error.response.data?.detail?.message === "Cannot delete member with active freeze") {
+          const freezeInfo = error.response.data.detail.freezes || [];
+          const actionRequired = error.response.data.detail.action_required || "Please cancel the freeze before deleting this member";
+          
+          // Show a detailed alert
+          let freezeDetails = freezeInfo.map(f => 
+            `• ${f.freeze_type.charAt(0).toUpperCase() + f.freeze_type.slice(1)} Freeze: ${new Date(f.start_date).toLocaleDateString()} to ${new Date(f.end_date).toLocaleDateString()}`
+          ).join('\n');
+          
+          toast.error(
+            (t) => (
+              <div className="max-w-sm">
+                <div className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <AlertTriangle className="h-4 w-4 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-red-700">Cannot Delete Member</p>
+                    <p className="text-sm text-gray-700 mt-1">{memberToDelete.fullName} has an active freeze.</p>
+                    {freezeDetails && (
+                      <div className="mt-2 text-xs text-gray-600 bg-gray-50 rounded-lg p-2">
+                        <p className="font-medium">Active Freeze:</p>
+                        <pre className="whitespace-pre-wrap">{freezeDetails}</pre>
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2">{actionRequired}</p>
+                    <button
+                      onClick={() => toast.dismiss(t.id)}
+                      className="mt-3 px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700"
+                    >
+                      Got it
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ),
+            { duration: 8000, id: 'freeze-error' }
+          );
+          
+          // Also show a secondary toast with a link to the profile
+          toast(
+            (t) => (
+              <div className="flex items-center gap-3">
+                <span>Go to member profile to cancel the freeze</span>
+                <button
+                  onClick={() => {
+                    toast.dismiss(t.id);
+                    // Open the member profile
+                    openProfileModal(memberToDelete);
+                  }}
+                  className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700"
+                >
+                  Open Profile
+                </button>
+              </div>
+            ),
+            { duration: 6000 }
+          );
+          
+          setShowDeleteModal(false);
+          setMemberToDelete(null);
+          return;
+        }
         
         if (error.response.status === 405) {
           toast.error('API endpoint not found. Please check the server configuration.');
