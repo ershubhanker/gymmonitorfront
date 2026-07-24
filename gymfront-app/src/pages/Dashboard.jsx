@@ -2027,7 +2027,7 @@ const Dashboard = () => {
       {(stats.expiringThisMonth > 0 || stats.pendingPayments > 0 || stats.overdueCount > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
-          
+{/*           
           {canSeePayments && stats.pendingPayments > 0 && (
             <div className="bg-gradient-to-r from-red-400 to-pink-500 rounded-2xl p-6 shadow-lg text-white">
               <div className="flex items-start gap-4">
@@ -2046,7 +2046,7 @@ const Dashboard = () => {
                 </div>
               </div>
             </div>
-          )}
+          )} */}
   
           {canSeeBalances && stats.overdueCount > 0 && (
             <div className="bg-gradient-to-r from-red-600 to-red-800 rounded-2xl p-6 shadow-lg text-white">
