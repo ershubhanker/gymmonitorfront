@@ -860,7 +860,7 @@ const Balance = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">Total Balance Due</p>
-              <p className="text-2xl font-bold text-blue-600">{formatCurrency(overview.total_balance_due + (overview.total_pt_balance || 0))}</p>
+              <p className="text-2xl font-bold text-blue-600">{formatCurrency(overview.total_balance_due || 0)}</p>
             </div>
             <div className="bg-blue-100 p-3 rounded-full">
               <Wallet className="h-6 w-6 text-blue-600" />
