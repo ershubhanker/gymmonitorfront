@@ -1,5 +1,5 @@
-// src/pages/Staff.jsx - FIXED SHIFT DISPLAY WITH SALARY CALCULATOR
-import React, { useState, useEffect } from 'react';
+// src/pages/Staff.jsx - FULL UPDATED WITH FIXED IMAGE DISPLAY
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Search, UserPlus, Edit, Trash2, Phone, Mail,
   Briefcase, ChevronLeft, ChevronRight, X, RefreshCw, Calendar,
@@ -8,7 +8,8 @@ import {
   Loader2, Cloud, Server, Eye, User, MapPin, Award, BookOpen,
   DollarSign, Calendar as CalendarIcon, Users, Settings, Copy,
   Shield, Menu, MoreVertical, Plus, Trash2 as TrashIcon,
-  Calculator, TrendingDown, TrendingUp, FileSpreadsheet
+  Calculator, TrendingDown, TrendingUp, FileSpreadsheet, Camera,
+  Image as ImageIcon
 } from 'lucide-react';
 import { X as CloseIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -195,6 +196,49 @@ const DOBPicker = ({ value, onChange, maxDate }) => {
   );
 };
 
+// ─── IMAGE VIEWER MODAL ─────────────────────────────────────────────────────────
+const ImageViewerModal = ({ imageUrl, staffName, onClose }) => {
+  const [isLoading, setIsLoading] = useState(true);
+
+  if (!imageUrl) return null;
+
+  return (
+    <div 
+      className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div className="relative max-w-4xl max-h-[90vh] w-full">
+        <button
+          onClick={onClose}
+          className="absolute -top-12 right-0 text-white hover:text-gray-300 transition-colors p-2"
+        >
+          <X className="h-8 w-8" />
+        </button>
+        <div className="bg-white/10 rounded-2xl overflow-hidden">
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader2 className="h-12 w-12 animate-spin text-white" />
+            </div>
+          )}
+          <img
+            src={imageUrl}
+            alt={staffName || 'Staff Profile'}
+            className="w-full h-auto max-h-[80vh] object-contain"
+            onLoad={() => setIsLoading(false)}
+            onError={() => setIsLoading(false)}
+          />
+          {staffName && (
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
+              <p className="text-white text-lg font-semibold">{staffName}</p>
+            </div>
+          )}
+        </div>
+        <p className="text-white/50 text-sm text-center mt-4">Click anywhere to close</p>
+      </div>
+    </div>
+  );
+};
+
 // ─── FORMAT TIME HELPER ──────────────────────────────────────────────────────
 const formatTime = (time) => {
   if (!time) return '—';
@@ -221,7 +265,6 @@ const parseShiftSlots = (shiftSlots) => {
 
 // ─── GET SHIFT DISPLAY ──────────────────────────────────────────────────────
 const getShiftDisplay = (staff) => {
-  // First check for shift_slots (new format)
   if (staff.shift_slots) {
     try {
       const slots = JSON.parse(staff.shift_slots);
@@ -233,7 +276,6 @@ const getShiftDisplay = (staff) => {
     }
   }
   
-  // Legacy shift display (single shift)
   if (staff.shift_start_time && staff.shift_end_time) {
     let display = `${formatTime(staff.shift_start_time)} - ${formatTime(staff.shift_end_time)}`;
     if (staff.shift_days) {
@@ -267,16 +309,13 @@ const ShiftEditor = ({ shiftSlots, shiftStartTime, shiftEndTime, shiftDays, brea
     { value: 'sun', label: 'Sun' }
   ];
 
-  // Initialize shift mode and slots
   useEffect(() => {
-    // Check if there are existing shift slots
     const parsedSlots = parseShiftSlots(shiftSlots);
     if (parsedSlots.length > 0) {
       setUseSplitShift(true);
       setSlots(parsedSlots.map(s => ({ ...s })));
     } else {
       setUseSplitShift(false);
-      // Initialize with single shift if exists
       if (shiftStartTime && shiftEndTime) {
         setSlots([{ start: shiftStartTime, end: shiftEndTime }]);
       } else {
@@ -344,7 +383,6 @@ const ShiftEditor = ({ shiftSlots, shiftStartTime, shiftEndTime, shiftDays, brea
 
   return (
     <div className="space-y-4">
-      {/* Shift Mode Toggle */}
       <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
         <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
           <input
@@ -379,7 +417,6 @@ const ShiftEditor = ({ shiftSlots, shiftStartTime, shiftEndTime, shiftDays, brea
         </label>
       </div>
 
-      {/* Shift Slots */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -439,7 +476,6 @@ const ShiftEditor = ({ shiftSlots, shiftStartTime, shiftEndTime, shiftDays, brea
         </div>
       </div>
 
-      {/* Working Days */}
       <div>
         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Working Days</label>
         <div className="grid grid-cols-7 gap-1">
@@ -463,7 +499,6 @@ const ShiftEditor = ({ shiftSlots, shiftStartTime, shiftEndTime, shiftDays, brea
         </p>
       </div>
 
-      {/* Break Duration */}
       <div>
         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Break Duration (minutes)</label>
         <div className="relative">
@@ -484,7 +519,6 @@ const ShiftEditor = ({ shiftSlots, shiftStartTime, shiftEndTime, shiftDays, brea
         </div>
       </div>
 
-      {/* Preview */}
       <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
         <p className="text-xs font-semibold text-blue-700 mb-1">Shift Preview:</p>
         <p className="text-xs text-blue-600">
@@ -505,6 +539,27 @@ const ShiftEditor = ({ shiftSlots, shiftStartTime, shiftEndTime, shiftDays, brea
   );
 };
 
+// ─── HELPER: Get full image URL ──────────────────────────────────────────────
+const getFullImageUrl = (imageUrl) => {
+  if (!imageUrl) return null;
+  // If it's already a full URL (starts with http), return as is
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    return imageUrl;
+  }
+  // If it's a relative URL starting with /static, prepend the API base URL
+  if (imageUrl.startsWith('/static/')) {
+    // Get the base URL from the API service
+    const baseUrl = api.defaults.baseURL || '';
+    return `${baseUrl}${imageUrl}`;
+  }
+  // If it's a relative path without /static, prepend /static
+  if (!imageUrl.startsWith('/')) {
+    const baseUrl = api.defaults.baseURL || '';
+    return `${baseUrl}/static/${imageUrl}`;
+  }
+  return imageUrl;
+};
+
 // ─── STAFF PROFILE MODAL ──────────────────────────────────────────────────────
 const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDevice, canEditStaff, canSyncToDevice }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -513,11 +568,14 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
   const [syncing, setSyncing] = useState(false);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [showSalaryCalculator, setShowSalaryCalculator] = useState(false);
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const fileInputRef = useRef(null);
   const today = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
     if (staff) {
-      // Parse shift slots
       const parsedSlots = parseShiftSlots(staff.shift_slots);
       
       setFormData({
@@ -533,7 +591,9 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
         break_duration: staff.break_duration?.toString() || '',
         shift_slots: staff.shift_slots || '',
         shift_slots_parsed: parsedSlots,
+        profile_image: staff.profile_image || null,
       });
+      setImageError(false);
     }
   }, [staff]);
 
@@ -549,6 +609,66 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
       shift_slots: shiftData.shift_slots || '',
       shift_slots_parsed: parseShiftSlots(shiftData.shift_slots),
     }));
+  };
+
+  const handleImageUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a valid image (JPEG, PNG, WebP, or GIF)');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size must be less than 5MB');
+      return;
+    }
+
+    setUploadingImage(true);
+    const formDataUpload = new FormData();
+    formDataUpload.append('file', file);
+
+    try {
+      const response = await api.post(`/gym/staff/${staff.id}/upload-photo`, formDataUpload, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const photoUrl = response.data.photo_url;
+      setFormData(prev => ({ ...prev, profile_image: photoUrl }));
+      setImageError(false);
+      toast.success('Profile photo uploaded successfully!');
+      onUpdate();
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error(error.response?.data?.detail || 'Failed to upload image');
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    if (!window.confirm('Are you sure you want to remove this profile photo?')) return;
+
+    setUploadingImage(true);
+    try {
+      await api.delete(`/gym/staff/${staff.id}/photo`);
+      setFormData(prev => ({ ...prev, profile_image: null }));
+      setImageError(false);
+      toast.success('Profile photo removed successfully!');
+      onUpdate();
+    } catch (error) {
+      console.error('Error removing image:', error);
+      toast.error(error.response?.data?.detail || 'Failed to remove image');
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -642,36 +762,98 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
     }
   };
 
-  const hasShift = (formData.shift_slots_parsed && formData.shift_slots_parsed.length > 0) || 
-                   (formData.shift_start_time && formData.shift_end_time);
   const deviceUserId = staff.device_user_id;
   const salaryValue = staff.salary || staff.salary_amount || staff.monthly_salary || 0;
+
+  // ✅ FIX: Get the full image URL using the helper function
+  const rawProfileImage = formData.profile_image || staff.profile_image || staff.user?.profile_image;
+  const profileImageUrl = rawProfileImage ? getFullImageUrl(rawProfileImage) : null;
+  const avatarUrl = `https://ui-avatars.com/api/?name=${staff.user?.full_name || staff.id}&background=0D9488&color=fff&size=200`;
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 border-b px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`h-12 w-12 rounded-full flex items-center justify-center ${
-              staff.position === 'Head Trainer' ? 'bg-purple-100' : 
-              staff.position === 'Sales Executive' ? 'bg-orange-100' : 
-              staff.position === 'Floor Manager' ? 'bg-indigo-100' :
-              staff.position === 'Sales Manager' ? 'bg-orange-100' :
-              staff.position === 'Gym Manager' ? 'bg-red-100' :
-              staff.position === 'Club Manager' ? 'bg-pink-100' :
-              'bg-indigo-100'
-            }`}>
-              <span className={`text-xl font-bold ${
-                staff.position === 'Head Trainer' ? 'text-purple-700' : 
-                staff.position === 'Sales Executive' ? 'text-orange-700' : 
-                staff.position === 'Floor Manager' ? 'text-indigo-700' :
-                staff.position === 'Sales Manager' ? 'text-orange-700' :
-                staff.position === 'Gym Manager' ? 'text-red-700' :
-                staff.position === 'Club Manager' ? 'text-pink-700' :
-                'text-indigo-700'
-              }`}>
-                {(staff.user?.full_name || 'S').charAt(0).toUpperCase()}
-              </span>
+            {/* Profile Image with click to enlarge */}
+            <div className="relative group">
+              <div 
+                className={`h-14 w-14 rounded-full flex items-center justify-center cursor-pointer overflow-hidden ${
+                  staff.position === 'Head Trainer' ? 'bg-purple-100' : 
+                  staff.position === 'Sales Executive' ? 'bg-orange-100' : 
+                  staff.position === 'Floor Manager' ? 'bg-indigo-100' :
+                  staff.position === 'Sales Manager' ? 'bg-orange-100' :
+                  staff.position === 'Gym Manager' ? 'bg-red-100' :
+                  staff.position === 'Club Manager' ? 'bg-pink-100' :
+                  'bg-indigo-100'
+                }`}
+                onClick={() => {
+                  if (profileImageUrl) {
+                    setImageViewerOpen(true);
+                  }
+                }}
+              >
+                {profileImageUrl && !imageError ? (
+                  <img 
+                    src={profileImageUrl} 
+                    alt={staff.user?.full_name || 'Staff'} 
+                    className="h-full w-full object-cover"
+                    onError={() => setImageError(true)}
+                  />
+                ) : (
+                  <span className={`text-2xl font-bold ${
+                    staff.position === 'Head Trainer' ? 'text-purple-700' : 
+                    staff.position === 'Sales Executive' ? 'text-orange-700' : 
+                    staff.position === 'Floor Manager' ? 'text-indigo-700' :
+                    staff.position === 'Sales Manager' ? 'text-orange-700' :
+                    staff.position === 'Gym Manager' ? 'text-red-700' :
+                    staff.position === 'Club Manager' ? 'text-pink-700' :
+                    'text-indigo-700'
+                  }`}>
+                    {(staff.user?.full_name || 'S').charAt(0).toUpperCase()}
+                  </span>
+                )}
+                {profileImageUrl && !isEditing && (
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-full">
+                    <Eye className="h-5 w-5 text-white" />
+                  </div>
+                )}
+              </div>
+              {isEditing && (
+                <div className="absolute -bottom-1 -right-1">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageUpload}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingImage}
+                    className="p-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    title="Upload profile photo"
+                  >
+                    {uploadingImage ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Camera className="h-3 w-3" />
+                    )}
+                  </button>
+                </div>
+              )}
+              {isEditing && profileImageUrl && (
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  disabled={uploadingImage}
+                  className="absolute -bottom-1 -right-8 p-1 text-red-500 hover:bg-red-50 rounded-full transition-colors disabled:opacity-50"
+                  title="Remove photo"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900">{staff.user?.full_name || '—'}</h2>
@@ -819,7 +1001,9 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                       break_duration: staff.break_duration?.toString() || '',
                       shift_slots: staff.shift_slots || '',
                       shift_slots_parsed: parsedSlots,
+                      profile_image: staff.profile_image || null,
                     });
+                    setImageError(false);
                   }}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
                 >
@@ -975,6 +1159,15 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
           )}
         </div>
       </div>
+
+      {/* Image Viewer Modal */}
+      {imageViewerOpen && profileImageUrl && (
+        <ImageViewerModal
+          imageUrl={profileImageUrl}
+          staffName={staff.user?.full_name}
+          onClose={() => setImageViewerOpen(false)}
+        />
+      )}
 
       {/* Salary Calculator Modal */}
       {showSalaryCalculator && (
@@ -1743,6 +1936,24 @@ const Staff = () => {
     return 'bg-gray-100 text-gray-800';
   };
 
+  // Helper to get full image URL for staff list
+  const getStaffImageUrl = (staff) => {
+    const image = staff.profile_image || staff.user?.profile_image;
+    if (!image) return null;
+    if (image.startsWith('http://') || image.startsWith('https://')) {
+      return image;
+    }
+    if (image.startsWith('/static/')) {
+      const baseUrl = api.defaults.baseURL || '';
+      return `${baseUrl}${image}`;
+    }
+    if (!image.startsWith('/')) {
+      const baseUrl = api.defaults.baseURL || '';
+      return `${baseUrl}/static/${image}`;
+    }
+    return image;
+  };
+
   if (permissionsLoading) {
     return (
       <div className="p-6 flex justify-center items-center min-h-[400px]">
@@ -1846,7 +2057,6 @@ const Staff = () => {
             <span className="hidden xs:inline">Devices</span>
           </button>
 
-          {/* Salary Calculator Button */}
           <button
             onClick={() => setIsSalaryCalculatorOpen(true)}
             className="px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1 sm:gap-2 text-sm whitespace-nowrap"
@@ -1924,6 +2134,8 @@ const Staff = () => {
                 paginated.map((s) => {
                   const deviceUserId = staffDeviceIds[s.id] || s.device_user_id;
                   const shiftDisplay = getShiftDisplay(s);
+                  const staffImage = getStaffImageUrl(s);
+                  
                   return (
                     <tr key={s.id} className="hover:bg-gray-50">
                       <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
@@ -1931,7 +2143,7 @@ const Staff = () => {
                           className="flex items-center gap-2 sm:gap-3 cursor-pointer"
                           onClick={() => openProfileModal(s)}
                         >
-                          <div className={`h-8 w-8 sm:h-10 sm:w-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          <div className={`h-8 w-8 sm:h-10 sm:w-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden ${
                             s.position === 'Head Trainer' ? 'bg-purple-100' : 
                             s.position === 'Sales Executive' ? 'bg-orange-100' : 
                             s.position === 'Floor Manager' ? 'bg-indigo-100' :
@@ -1940,17 +2152,29 @@ const Staff = () => {
                             s.position === 'Club Manager' ? 'bg-pink-100' :
                             'bg-indigo-100'
                           }`}>
-                            <span className={`font-semibold text-xs sm:text-sm ${
-                              s.position === 'Head Trainer' ? 'text-purple-700' : 
-                              s.position === 'Sales Executive' ? 'text-orange-700' : 
-                              s.position === 'Floor Manager' ? 'text-indigo-700' :
-                              s.position === 'Sales Manager' ? 'text-orange-700' :
-                              s.position === 'Gym Manager' ? 'text-red-700' :
-                              s.position === 'Club Manager' ? 'text-pink-700' :
-                              'text-indigo-700'
-                            }`}>
-                              {(s.user?.full_name || 'S').charAt(0).toUpperCase()}
-                            </span>
+                            {staffImage ? (
+                              <img 
+                                src={staffImage} 
+                                alt={s.user?.full_name || 'Staff'}
+                                className="h-full w-full object-cover"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  e.target.parentElement.innerHTML = `<span class="font-semibold text-xs sm:text-sm ${s.position === 'Head Trainer' ? 'text-purple-700' : s.position === 'Sales Executive' ? 'text-orange-700' : s.position === 'Floor Manager' ? 'text-indigo-700' : s.position === 'Sales Manager' ? 'text-orange-700' : s.position === 'Gym Manager' ? 'text-red-700' : s.position === 'Club Manager' ? 'text-pink-700' : 'text-indigo-700'}">${(s.user?.full_name || 'S').charAt(0).toUpperCase()}</span>`;
+                                }}
+                              />
+                            ) : (
+                              <span className={`font-semibold text-xs sm:text-sm ${
+                                s.position === 'Head Trainer' ? 'text-purple-700' : 
+                                s.position === 'Sales Executive' ? 'text-orange-700' : 
+                                s.position === 'Floor Manager' ? 'text-indigo-700' :
+                                s.position === 'Sales Manager' ? 'text-orange-700' :
+                                s.position === 'Gym Manager' ? 'text-red-700' :
+                                s.position === 'Club Manager' ? 'text-pink-700' :
+                                'text-indigo-700'
+                              }`}>
+                                {(s.user?.full_name || 'S').charAt(0).toUpperCase()}
+                              </span>
+                            )}
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors truncate max-w-[100px] sm:max-w-[150px]">
@@ -2016,7 +2240,6 @@ const Staff = () => {
                       </td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-1 sm:gap-2">
-                          {/* Salary Calculator Button */}
                           <button
                             onClick={() => openSalaryCalculator(s)}
                             className="text-green-600 hover:text-green-900 p-1"
