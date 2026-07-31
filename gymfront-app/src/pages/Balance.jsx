@@ -107,21 +107,42 @@ const Balance = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return '';
+      return date.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return '';
+    }
   };
+  
 
   const formatDateTime = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleString('en-IN', { 
-      day: 'numeric', 
-      month: 'short', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return '';
+      return date.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      console.error('Error formatting date time:', error);
+      return '';
+    }
   };
+  
 
   const fetchBalanceData = async () => {
     setLoading(true);
