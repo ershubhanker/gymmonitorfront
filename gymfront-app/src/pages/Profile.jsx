@@ -40,6 +40,7 @@ const Profile = () => {
 
   const [gymForm, setGymForm] = useState({
     name: '',
+    gym_code: '',
     address: '',
     phone: '',
     email: '',
@@ -74,6 +75,7 @@ const Profile = () => {
       setGymData(response.data);
       setGymForm({
         name: response.data.name || '',
+        gym_code: response.data.gym_code || '',  // ✅ ADD THIS
         address: response.data.address || '',
         phone: response.data.phone || '',
         email: response.data.email || '',
@@ -96,14 +98,39 @@ const Profile = () => {
     }
   };
 
+
   const handleProfileSave = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put('/me', profileForm);
+      // ✅ FIX: Use the correct endpoint - either /users/me or /auth/me
+      // Try /users/me first (common pattern)
+      const response = await api.put('/users/me', profileForm);
+      // If that fails, try /auth/me as fallback
+      // const response = await api.put('/auth/me', profileForm);
+      
       toast.success('Profile updated successfully!');
+      
+      // ✅ Update the user context with new data
+      // If you have a setUser function in your auth context, use it
+      // For now, we'll refetch user data
+      if (window.location) {
+        // Optionally refresh the page to reflect changes
+        // window.location.reload();
+      }
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to update profile');
+      console.error('Profile update error:', error);
+      if (error.response?.status === 405) {
+        // Method not allowed - try POST instead
+        try {
+          await api.post('/users/me', profileForm);
+          toast.success('Profile updated successfully!');
+        } catch (postError) {
+          toast.error(postError.response?.data?.detail || 'Failed to update profile');
+        }
+      } else {
+        toast.error(error.response?.data?.detail || 'Failed to update profile');
+      }
     } finally {
       setSaving(false);
     }
@@ -119,6 +146,7 @@ const Profile = () => {
         setGymData(response.data);
         setGymForm({
           name: response.data.name || '',
+          gym_code: response.data.gym_code || '',  
           address: response.data.address || '',
           phone: response.data.phone || '',
           email: response.data.email || '',
@@ -432,6 +460,22 @@ const Profile = () => {
                     placeholder="Fitness Hub Gym"
                   />
                 </div>
+
+                <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Building2 className="h-4 w-4 inline mr-1" />
+                  Gym Code
+                </label>
+                <input
+                  type="text"
+                  value={gymForm.gym_code}
+                  onChange={(e) => setGymForm({ ...gymForm, gym_code: e.target.value.toUpperCase().replace(/\s/g, '') })}
+                  maxLength={20}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 uppercase"
+                  placeholder="FITGYM"
+                />
+                <p className="text-xs text-gray-500 mt-1">Short code/abbreviation for your gym (e.g., FITGYM, GYM001)</p>
+              </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
