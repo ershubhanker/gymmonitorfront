@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   User, Mail, Phone, Shield, Key, Save, Camera, Building2, 
   MapPin, Clock, Users, CreditCard, AlertCircle,
-  CheckCircle, Loader2, IndianRupee
+  CheckCircle, Loader2, IndianRupee,
+  X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -24,12 +25,14 @@ const CURRENCIES = [
 ];
 
 const Profile = () => {
-  const { user, logout, updateCurrencySymbol } = useAuth();
+  const { user, setUser, logout, updateCurrencySymbol } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedCurrency, setSelectedCurrency] = useState(user?.currency_symbol || '₹');
   const [currencySaving, setCurrencySaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [imageKey, setImageKey] = useState(Date.now()); // ✅ Force image reload
 
   const [profileForm, setProfileForm] = useState({
     full_name: user?.full_name || '',
@@ -67,6 +70,30 @@ const Profile = () => {
     }
   }, [user]);
 
+  // ✅ Get profile image URL - Fixed with proper URL construction
+  const getProfileImageUrl = () => {
+    if (!user?.profile_image) return null;
+    
+    const imageUrl = user.profile_image;
+    
+    // If it's already a full URL (starts with http), use it directly
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return imageUrl;
+    }
+    
+    // If it starts with /, it's a relative path from root
+    if (imageUrl.startsWith('/')) {
+      const baseUrl = import.meta.env?.VITE_API_URL || 'http://localhost:8001';
+      const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+      return `${cleanBase}${imageUrl}`;
+    }
+    
+    // Otherwise, treat as relative path
+    const baseUrl = import.meta.env?.VITE_API_URL || 'http://localhost:8001';
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    return `${cleanBase}/${imageUrl}`;
+  };
+
   const fetchGymDetails = async () => {
     setLoading(true);
     try {
@@ -75,7 +102,7 @@ const Profile = () => {
       setGymData(response.data);
       setGymForm({
         name: response.data.name || '',
-        gym_code: response.data.gym_code || '',  // ✅ ADD THIS
+        gym_code: response.data.gym_code || '',
         address: response.data.address || '',
         phone: response.data.phone || '',
         email: response.data.email || '',
@@ -98,39 +125,169 @@ const Profile = () => {
     }
   };
 
+  // ✅ Handle profile photo upload
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a valid image (JPEG, PNG, WebP, GIF)');
+      return;
+    }
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File too large. Maximum size is 5 MB.');
+      return;
+    }
+    
+    setUploadingPhoto(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      const response = await api.post('/users/me/upload-photo', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      toast.success('Profile photo updated successfully!');
+      
+      const photoUrl = response.data.photo_url;
+      console.log('✅ Photo uploaded:', photoUrl);
+      
+      // ✅ Update user context with new photo URL
+      if (setUser && user) {
+        setUser({
+          ...user,
+          profile_image: photoUrl,
+        });
+      }
+      
+      // ✅ Update localStorage
+      try {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          const userData = JSON.parse(storedUser);
+          localStorage.setItem('user', JSON.stringify({
+            ...userData,
+            profile_image: photoUrl,
+          }));
+        }
+      } catch (e) {
+        console.warn('Could not update localStorage:', e);
+      }
+      
+      // ✅ Force image reload by updating key
+      setImageKey(Date.now());
+      
+    } catch (error) {
+      console.error('Photo upload error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to upload photo');
+    } finally {
+      setUploadingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  // ✅ Handle photo deletion
+  const handlePhotoDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete your profile photo?')) return;
+    
+    setUploadingPhoto(true);
+    try {
+      await api.delete('/users/me/photo');
+      
+      toast.success('Profile photo deleted successfully!');
+      
+      // ✅ Update user context - set profile_image to null
+      if (setUser && user) {
+        setUser({
+          ...user,
+          profile_image: null,
+        });
+      }
+      
+      // ✅ Update localStorage
+      try {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          const userData = JSON.parse(storedUser);
+          localStorage.setItem('user', JSON.stringify({
+            ...userData,
+            profile_image: null,
+          }));
+        }
+      } catch (e) {
+        console.warn('Could not update localStorage:', e);
+      }
+      
+      // ✅ Force image reload by updating key
+      setImageKey(Date.now());
+      
+    } catch (error) {
+      console.error('Photo delete error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to delete photo');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const handleProfileSave = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      // ✅ FIX: Use the correct endpoint - either /users/me or /auth/me
-      // Try /users/me first (common pattern)
       const response = await api.put('/users/me', profileForm);
-      // If that fails, try /auth/me as fallback
-      // const response = await api.put('/auth/me', profileForm);
+      const updatedUser = response.data;
+      
+      // Update local state
+      setProfileForm({
+        full_name: updatedUser.full_name || '',
+        email: updatedUser.email || '',
+        username: updatedUser.username || '',
+        phone: updatedUser.phone || '',
+      });
+      
+      // Update user context
+      if (setUser) {
+        setUser({
+          ...user,
+          ...updatedUser,
+        });
+      }
+      
+      // Update localStorage
+      try {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          const userData = JSON.parse(storedUser);
+          localStorage.setItem('user', JSON.stringify({
+            ...userData,
+            ...updatedUser,
+          }));
+        }
+      } catch (e) {
+        console.warn('Could not update localStorage:', e);
+      }
       
       toast.success('Profile updated successfully!');
       
-      // ✅ Update the user context with new data
-      // If you have a setUser function in your auth context, use it
-      // For now, we'll refetch user data
-      if (window.location) {
-        // Optionally refresh the page to reflect changes
-        // window.location.reload();
-      }
     } catch (error) {
       console.error('Profile update error:', error);
-      if (error.response?.status === 405) {
-        // Method not allowed - try POST instead
-        try {
-          await api.post('/users/me', profileForm);
-          toast.success('Profile updated successfully!');
-        } catch (postError) {
-          toast.error(postError.response?.data?.detail || 'Failed to update profile');
-        }
-      } else {
-        toast.error(error.response?.data?.detail || 'Failed to update profile');
+      
+      let errorMessage = 'Failed to update profile';
+      if (error.response?.status === 404) {
+        errorMessage = 'Profile endpoint not found. Please contact support.';
+      } else if (error.response?.status === 409) {
+        errorMessage = error.response?.data?.detail || 'Username or email already taken';
+      } else if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
       }
+      
+      toast.error(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -146,7 +303,7 @@ const Profile = () => {
         setGymData(response.data);
         setGymForm({
           name: response.data.name || '',
-          gym_code: response.data.gym_code || '',  
+          gym_code: response.data.gym_code || '',
           address: response.data.address || '',
           phone: response.data.phone || '',
           email: response.data.email || '',
@@ -174,7 +331,6 @@ const Profile = () => {
   const handlePasswordChange = async (e) => {
     e.preventDefault();
     
-    // Validation
     if (!passwordForm.current_password) {
       toast.error('Please enter your current password');
       return;
@@ -200,21 +356,16 @@ const Profile = () => {
       });
       
       toast.success('Password changed successfully! Please log in again.');
-      
-      // Clear form
       setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
       
-      // Logout after 1.5 seconds
       setTimeout(() => {
         logout();
-        // Redirect to login page
         window.location.href = '/login';
       }, 1500);
       
     } catch (error) {
       console.error('Password change error:', error);
-      const errorMsg = error.response?.data?.detail || 'Failed to change password';
-      toast.error(errorMsg);
+      toast.error(error.response?.data?.detail || 'Failed to change password');
     } finally {
       setSaving(false);
     }
@@ -257,7 +408,6 @@ const Profile = () => {
     { id: 'security', label: 'Security', icon: Key, roles: ['super_admin', 'gym_owner', 'gym_staff'] },
   ];
 
-  // Filter tabs based on user role
   const visibleTabs = tabs.filter(tab => tab.roles.includes(user?.role));
 
   if (loading) {
@@ -277,15 +427,64 @@ const Profile = () => {
 
       {/* Avatar and Role Card */}
       <div className="bg-white rounded-xl shadow-sm p-4 md:p-6 mb-4 md:mb-6 flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
-        <div className="relative">
-          <div className="h-16 w-16 md:h-20 md:w-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl md:text-3xl font-bold">
-            {(user?.full_name || user?.username || 'U').charAt(0).toUpperCase()}
+        <div className="relative group">
+          <div className="h-16 w-16 md:h-20 md:w-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl md:text-3xl font-bold overflow-hidden ring-4 ring-gray-100 flex-shrink-0">
+            {user?.profile_image ? (
+              <img 
+                key={imageKey} // ✅ Force re-render on image change
+                src={getProfileImageUrl()} 
+                alt={user?.full_name || user?.username || 'User'}
+                className="h-full w-full object-cover"
+                onError={(e) => {
+                  // ✅ Handle image load error - show fallback
+                  console.warn('Image failed to load:', getProfileImageUrl());
+                  e.target.style.display = 'none';
+                  const parent = e.target.parentElement;
+                  parent.textContent = (user?.full_name || user?.username || 'U').charAt(0).toUpperCase();
+                  parent.className = 'h-full w-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 text-white text-2xl md:text-3xl font-bold';
+                }}
+              />
+            ) : (
+              <span className="h-full w-full flex items-center justify-center">
+                {(user?.full_name || user?.username || 'U').charAt(0).toUpperCase()}
+              </span>
+            )}
           </div>
-          <button className="absolute bottom-0 right-0 bg-white border border-gray-200 p-1 rounded-full shadow hover:bg-gray-50">
-            <Camera className="h-3 w-3 text-gray-600" />
-          </button>
+          
+          {/* Upload button overlay */}
+          <label 
+            className={`absolute bottom-0 right-0 bg-white border-2 border-gray-200 p-1 rounded-full shadow-lg hover:bg-gray-50 cursor-pointer transition-all ${
+              uploadingPhoto ? 'opacity-50 pointer-events-none' : 'hover:scale-110'
+            }`}
+          >
+            {uploadingPhoto ? (
+              <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />
+            ) : (
+              <Camera className="h-3.5 w-3.5 text-gray-600" />
+            )}
+            <input 
+              type="file" 
+              className="hidden" 
+              accept="image/*"
+              onChange={handlePhotoUpload}
+              disabled={uploadingPhoto}
+            />
+          </label>
+          
+          {/* Delete photo button - only show if photo exists */}
+          {user?.profile_image && (
+            <button
+              onClick={handlePhotoDelete}
+              disabled={uploadingPhoto}
+              className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 shadow-lg hover:bg-red-600 transition-all hover:scale-110 disabled:opacity-50"
+              title="Remove photo"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
-        <div className="text-center sm:text-left">
+        
+        <div className="text-center sm:text-left flex-1">
           <h2 className="text-lg md:text-xl font-semibold text-gray-900">{user?.full_name || user?.username}</h2>
           <p className="text-gray-500 text-xs md:text-sm mb-2">{user?.email}</p>
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
@@ -299,10 +498,10 @@ const Profile = () => {
         </div>
       </div>
 
-      {/* Tabs - Horizontally Scrollable on Mobile */}
+      {/* Rest of the component remains the same */}
+      {/* Tabs */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="border-b border-gray-200">
-          {/* Horizontal scroll container for mobile */}
           <div className="relative">
             <div className="overflow-x-auto scrollbar-hide">
               <nav className="flex min-w-max md:min-w-0 px-4 md:px-6">
@@ -321,7 +520,6 @@ const Profile = () => {
                 ))}
               </nav>
             </div>
-            {/* Gradient fade indicators on edges for mobile */}
             <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent pointer-events-none md:hidden" />
             <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none md:hidden" />
           </div>
@@ -389,7 +587,6 @@ const Profile = () => {
                 </div>
               </div>
 
-              {/* Read-only info */}
               <div className="bg-gray-50 rounded-lg p-4 mt-4">
                 <p className="text-xs font-medium text-gray-500 uppercase mb-2">Account Info</p>
                 <div className="grid grid-cols-2 gap-3 text-sm">
@@ -462,20 +659,20 @@ const Profile = () => {
                 </div>
 
                 <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Building2 className="h-4 w-4 inline mr-1" />
-                  Gym Code
-                </label>
-                <input
-                  type="text"
-                  value={gymForm.gym_code}
-                  onChange={(e) => setGymForm({ ...gymForm, gym_code: e.target.value.toUpperCase().replace(/\s/g, '') })}
-                  maxLength={20}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 uppercase"
-                  placeholder="FITGYM"
-                />
-                <p className="text-xs text-gray-500 mt-1">Short code/abbreviation for your gym (e.g., FITGYM, GYM001)</p>
-              </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Building2 className="h-4 w-4 inline mr-1" />
+                    Gym Code
+                  </label>
+                  <input
+                    type="text"
+                    value={gymForm.gym_code}
+                    onChange={(e) => setGymForm({ ...gymForm, gym_code: e.target.value.toUpperCase().replace(/\s/g, '') })}
+                    maxLength={20}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 uppercase"
+                    placeholder="FITGYM"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Short code/abbreviation for your gym (e.g., FITGYM, GYM001)</p>
+                </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -738,7 +935,7 @@ const Profile = () => {
             </div>
           )}
 
-          {/* Security Tab - FIXED PASSWORD CHANGE */}
+          {/* Security Tab */}
           {activeTab === 'security' && (
             <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
