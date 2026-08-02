@@ -83,13 +83,13 @@ const Profile = () => {
     
     // If it starts with /, it's a relative path from root
     if (imageUrl.startsWith('/')) {
-      const baseUrl = import.meta.env?.VITE_API_URL || 'http://localhost:8001';
+      const baseUrl = 'https://api.gymmonitor.in' || 'http://localhost:8001';
       const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
       return `${cleanBase}${imageUrl}`;
     }
     
     // Otherwise, treat as relative path
-    const baseUrl = import.meta.env?.VITE_API_URL || 'http://localhost:8001';
+    const baseUrl = 'https://api.gymmonitor.in' || 'http://localhost:8001';
     const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
     return `${cleanBase}/${imageUrl}`;
   };
