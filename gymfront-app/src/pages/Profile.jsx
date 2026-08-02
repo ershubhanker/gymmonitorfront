@@ -6,7 +6,7 @@ import {
   X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import api from '../services/api';
+import api, { API_BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 
 const CURRENCIES = [
@@ -32,7 +32,7 @@ const Profile = () => {
   const [selectedCurrency, setSelectedCurrency] = useState(user?.currency_symbol || '₹');
   const [currencySaving, setCurrencySaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [imageKey, setImageKey] = useState(Date.now()); // ✅ Force image reload
+  const [imageKey, setImageKey] = useState(Date.now());
 
   const [profileForm, setProfileForm] = useState({
     full_name: user?.full_name || '',
@@ -70,7 +70,7 @@ const Profile = () => {
     }
   }, [user]);
 
-  // ✅ Get profile image URL - Fixed with proper URL construction
+  // ✅ Get profile image URL - Uses API_BASE_URL from api.js
   const getProfileImageUrl = () => {
     if (!user?.profile_image) return null;
     
@@ -81,16 +81,13 @@ const Profile = () => {
       return imageUrl;
     }
     
-    // If it starts with /, it's a relative path from root
+    // Use the API_BASE_URL from api.js (auto-switches between local and production)
+    const cleanBase = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+    
     if (imageUrl.startsWith('/')) {
-      const baseUrl = 'https://api.gymmonitor.in' || 'http://localhost:8001';
-      const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
       return `${cleanBase}${imageUrl}`;
     }
     
-    // Otherwise, treat as relative path
-    const baseUrl = 'https://api.gymmonitor.in' || 'http://localhost:8001';
-    const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
     return `${cleanBase}/${imageUrl}`;
   };
 
@@ -431,12 +428,11 @@ const Profile = () => {
           <div className="h-16 w-16 md:h-20 md:w-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl md:text-3xl font-bold overflow-hidden ring-4 ring-gray-100 flex-shrink-0">
             {user?.profile_image ? (
               <img 
-                key={imageKey} // ✅ Force re-render on image change
+                key={imageKey}
                 src={getProfileImageUrl()} 
                 alt={user?.full_name || user?.username || 'User'}
                 className="h-full w-full object-cover"
                 onError={(e) => {
-                  // ✅ Handle image load error - show fallback
                   console.warn('Image failed to load:', getProfileImageUrl());
                   e.target.style.display = 'none';
                   const parent = e.target.parentElement;
