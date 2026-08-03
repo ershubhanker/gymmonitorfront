@@ -20,6 +20,7 @@ import WhatsAppLogs from './components/WhatsAppLogs';
 import InvoicePage from './pages/InvoicePage';
 import PrivacyPolicy from './pages/PrivacyPolicy'; // ADD THIS IMPORT
 import TrainerSchedule from './components/TrainerSchedule';
+import HistoricalInvoices from './pages/HistoricalInvoices';
 
 function AdminRoute({ children }) {
   const { user, initialLoading } = useAuth();
@@ -81,7 +82,7 @@ function App() {
                 
                 {/* Public invoice view (no auth required) */}
                 <Route path="/invoice/:memberId/:membershipId" element={<InvoicePage />} />
-                
+                <Route path="/historical-invoices" element={<HistoricalInvoices />} />
                 {/* Protected Routes - Require authentication */}
                 <Route path="/gym-setup" element={<PrivateRoute><GymSetup /></PrivateRoute>} />
                 <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />

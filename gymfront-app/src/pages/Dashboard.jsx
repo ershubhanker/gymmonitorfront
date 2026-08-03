@@ -2,60 +2,25 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  LogOut, 
-  User, 
-  Bell, 
-  Settings, 
-  Activity, 
-  Users,
-  DollarSign,
-  TrendingUp,
-  Dumbbell,
-  CreditCard,
-  Award,
-  BarChart3,
-  Clock as ClockIcon,
-  AlertCircle,
-  Menu,
-  X,
-  Home,
-  UserPlus,
-  Users as UsersIcon,
-  Calendar as CalendarIcon,
+  LogOut, User, Bell, Settings, Activity, 
+  Users,DollarSign,TrendingUp,Dumbbell,CreditCard,
+  Award,BarChart3,Clock as ClockIcon,AlertCircle,Menu,X,Home,UserPlus,
+  Users as UsersIcon,Calendar as CalendarIcon,
   CreditCard as CreditCardIcon,
-  BarChart,
-  Target,
-  ChevronDown,
-  Loader,
-  TrendingDown,
+  BarChart,Target,ChevronDown,
+  Loader,TrendingDown,
   UserCheck,
   UserMinus,
   Calendar,
-  IndianRupee,
-  Gift,
-  Star,
-  Flame,
-  Zap,
-  TrendingUp as TrendUp,
-  MessageCircle,
-  Mail,
-  CheckCircle,
-  Briefcase,
-  Wallet,
-  ChevronLeft,
-  ChevronRight,
-  Wifi,
-  Phone,
+  IndianRupee,Gift,Star,Flame,Zap,TrendingUp as TrendUp,MessageCircle,
+  Mail,CheckCircle,Briefcase,Wallet,ChevronLeft,ChevronRight,Wifi,Phone,
   Mail as MailIcon,
   Clock,
   AlertTriangle,
   Eye,
-  Shield,
-  RefreshCw,
-  MessageSquare,
-  Send,
+  Shield,RefreshCw,MessageSquare,Send,
   Download,
-  Filter
+  Filter,FileText 
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api, { API_BASE_URL, fetchMemberStatsOptimized } from '../services/api';
@@ -81,7 +46,7 @@ import SearchBar from '../components/SearchBar';
 import FollowUpCard from '../components/FollowUpCard';
 import WhatsAppLogs from './WhatsAppLogs';
 import TrainerSchedule from '../components/TrainerSchedule';
-
+import HistoricalInvoices from './HistoricalInvoices';
 // Auto-refresh interval in milliseconds
 const AUTO_REFRESH_INTERVAL = 40000;
 
@@ -965,6 +930,13 @@ const Dashboard = () => {
       nav.push({ name: 'Leads', icon: Target, id: 'leads' });
     }
     nav.push({ name: 'Trainer Schedule', icon: Calendar, id: 'trainer-schedule' });
+
+    nav.push({ 
+      name: 'Historical Invoices', 
+      icon: FileText,  // Make sure FileText is imported
+      id: 'historical-invoices' 
+    });
+
     // Add WhatsApp Logs to navigation
     nav.push({ name: 'WhatsApp Logs', icon: MessageSquare, id: 'whatsapp-logs' });
     
@@ -2358,6 +2330,9 @@ const Dashboard = () => {
             />
           )}
           {activeTab === 'trainer-schedule' && <TrainerSchedule />}
+          
+          {activeTab === 'historical-invoices' && <HistoricalInvoices />}
+  
           {activeTab === 'classes' && (
             <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
               <CalendarIcon className="h-16 w-16 text-blue-300 mx-auto mb-4" />
