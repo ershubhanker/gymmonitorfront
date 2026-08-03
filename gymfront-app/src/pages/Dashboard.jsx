@@ -1,26 +1,65 @@
-// src/pages/Dashboard.jsx - Updated with Search Bar, Follow-Up Card, and WhatsApp Logs
+// src/pages/Dashboard.jsx - Complete Updated Version
+// Features: Sidebar with scroll, grouped navigation, Historical Invoices, WhatsApp Logs
+// INCLUDES: All dashboard cards, stats, and data
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  LogOut, User, Bell, Settings, Activity, 
-  Users,DollarSign,TrendingUp,Dumbbell,CreditCard,
-  Award,BarChart3,Clock as ClockIcon,AlertCircle,Menu,X,Home,UserPlus,
-  Users as UsersIcon,Calendar as CalendarIcon,
+  LogOut, 
+  User, 
+  Bell, 
+  Settings, 
+  Activity, 
+  Users,
+  DollarSign,
+  TrendingUp,
+  Dumbbell,
+  CreditCard,
+  Award,
+  BarChart3,
+  Clock as ClockIcon,
+  AlertCircle,
+  Menu,
+  X,
+  Home,
+  UserPlus,
+  Users as UsersIcon,
+  Calendar as CalendarIcon,
   CreditCard as CreditCardIcon,
-  BarChart,Target,ChevronDown,
-  Loader,TrendingDown,
+  BarChart,
+  Target,
+  ChevronDown,
+  Loader,
+  TrendingDown,
   UserCheck,
   UserMinus,
   Calendar,
-  IndianRupee,Gift,Star,Flame,Zap,TrendingUp as TrendUp,MessageCircle,
-  Mail,CheckCircle,Briefcase,Wallet,ChevronLeft,ChevronRight,Wifi,Phone,
+  IndianRupee,
+  Gift,
+  Star,
+  Flame,
+  Zap,
+  TrendingUp as TrendUp,
+  MessageCircle,
+  Mail,
+  CheckCircle,
+  Briefcase,
+  Wallet,
+  ChevronLeft,
+  ChevronRight,
+  Wifi,
+  Phone,
   Mail as MailIcon,
   Clock,
   AlertTriangle,
   Eye,
-  Shield,RefreshCw,MessageSquare,Send,
+  Shield,
+  RefreshCw,
+  MessageSquare,
+  Send,
   Download,
-  Filter,FileText 
+  Filter,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api, { API_BASE_URL, fetchMemberStatsOptimized } from '../services/api';
@@ -40,13 +79,14 @@ import LiveMonitoring from '../components/attendance/LiveMonitoring';
 import AttendanceHistory from '../components/attendance/AttendanceHistory';
 import StaffHours from '../components/attendance/StaffHours';
 import MembershipPlans from './MembershipPlans';
+import HistoricalInvoices from './HistoricalInvoices';
 
 // Import Search Bar and Follow-Up Card
 import SearchBar from '../components/SearchBar';
 import FollowUpCard from '../components/FollowUpCard';
 import WhatsAppLogs from './WhatsAppLogs';
 import TrainerSchedule from '../components/TrainerSchedule';
-import HistoricalInvoices from './HistoricalInvoices';
+
 // Auto-refresh interval in milliseconds
 const AUTO_REFRESH_INTERVAL = 40000;
 
@@ -896,54 +936,93 @@ const Dashboard = () => {
     }
   }, [activeTab, fetchWhatsAppLogs, fetchWhatsAppStats]);
 
-  // Navigation items based on permissions
+  // ============================================================
+  // NAVIGATION - Grouped and organized
+  // ============================================================
   const getNavigation = () => {
     const nav = [];
     
+    // Main Section
     if (canSeeDashboard) {
-      nav.push({ name: 'Dashboard', icon: Home, id: 'dashboard' });
+      nav.push({ name: 'Dashboard', icon: Home, id: 'dashboard', section: 'main' });
     }
+    
+    // Management Section
     if (canSeeMembers) {
-      nav.push({ name: 'Members', icon: UsersIcon, id: 'members' });
+      nav.push({ name: 'Members', icon: UsersIcon, id: 'members', section: 'management' });
     }
-    nav.push({ name: 'Membership Plans', icon: Dumbbell, id: 'membership-plans' });
+    nav.push({ name: 'Membership Plans', icon: Dumbbell, id: 'membership-plans', section: 'management' });
     if (canSeeBalances) {
-      nav.push({ name: 'Balance', icon: Wallet, id: 'balance' });
-    }
-    if (canSeeDevices) {
-      nav.push({ name: 'Devices', icon: Wifi, id: 'devices' });
-    }
-    if (canSeeAttendance) {
-      nav.push({ name: 'Live Attendance', icon: Activity, id: 'attendance' });
-      nav.push({ name: 'Attendance History', icon: CalendarIcon, id: 'history' });
-    }
-    if (canSeeExpenses) {
-      nav.push({ name: 'Expenses', icon: TrendingDown, id: 'expenses' });
-    }
-    if (canSeeStaff) {
-      nav.push({ name: 'Staff', icon: UserPlus, id: 'staff' });
+      nav.push({ name: 'Balance', icon: Wallet, id: 'balance', section: 'management' });
     }
     if (canSeePayments) {
-      nav.push({ name: 'Payments', icon: CreditCardIcon, id: 'payments' });
+      nav.push({ name: 'Payments', icon: CreditCardIcon, id: 'payments', section: 'management' });
     }
     if (canSeeLeads) {
-      nav.push({ name: 'Leads', icon: Target, id: 'leads' });
+      nav.push({ name: 'Leads', icon: Target, id: 'leads', section: 'management' });
     }
-    nav.push({ name: 'Trainer Schedule', icon: Calendar, id: 'trainer-schedule' });
-
-    nav.push({ 
-      name: 'Historical Invoices', 
-      icon: FileText,  // Make sure FileText is imported
-      id: 'historical-invoices' 
-    });
-
-    // Add WhatsApp Logs to navigation
-    nav.push({ name: 'WhatsApp Logs', icon: MessageSquare, id: 'whatsapp-logs' });
+    
+    // Staff & Attendance Section
+    if (canSeeStaff) {
+      nav.push({ name: 'Staff', icon: UserPlus, id: 'staff', section: 'staff' });
+    }
+    nav.push({ name: 'Trainer Schedule', icon: Calendar, id: 'trainer-schedule', section: 'staff' });
+    if (canSeeAttendance) {
+      nav.push({ name: 'Live Attendance', icon: Activity, id: 'attendance', section: 'staff' });
+      nav.push({ name: 'Attendance History', icon: CalendarIcon, id: 'history', section: 'staff' });
+    }
+    if (canSeeDevices) {
+      nav.push({ name: 'Devices', icon: Wifi, id: 'devices', section: 'staff' });
+    }
+    
+    // Finance Section
+    if (canSeeExpenses) {
+      nav.push({ name: 'Expenses', icon: TrendingDown, id: 'expenses', section: 'finance' });
+    }
+    
+    // Reports Section
+    const canViewHistoricalInvoices = canSeeMembers || canSeePayments;
+    if (canViewHistoricalInvoices) {
+      nav.push({ 
+        name: 'Historical Invoices', 
+        icon: FileText, 
+        id: 'historical-invoices',
+        section: 'reports'
+      });
+    }
+    nav.push({ name: 'WhatsApp Logs', icon: MessageSquare, id: 'whatsapp-logs', section: 'reports' });
     
     return nav;
   };
 
   const navigation = getNavigation();
+
+  // Group navigation items
+  const groupedNav = navigation.reduce((acc, item) => {
+    const section = item.section || 'other';
+    if (!acc[section]) acc[section] = [];
+    acc[section].push(item);
+    return acc;
+  }, {});
+
+  const sectionLabels = {
+    main: 'Main',
+    management: 'Management',
+    staff: 'Staff & Attendance',
+    finance: 'Finance',
+    reports: 'Reports & History',
+    other: 'Other'
+  };
+
+  const currencySymbol = user?.currency_symbol || '₹';
+
+  const formatCurrency = (amount) => {
+    const formatted = new Intl.NumberFormat('en-IN', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+    return `${currencySymbol} ${formatted}`;
+  };
 
   const getActivityColor = (type) => {
     const colors = {
@@ -990,16 +1069,6 @@ const Dashboard = () => {
     return labels[status] || status;
   };
 
-  const currencySymbol = user?.currency_symbol || '₹';
-
-  const formatCurrency = (amount) => {
-    const formatted = new Intl.NumberFormat('en-IN', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-    return `${currencySymbol} ${formatted}`;
-  };
-
   // If user doesn't have permission to view dashboard
   if (!permissionsLoading && !canSeeDashboard && !isAdmin) {
     return (
@@ -1025,6 +1094,9 @@ const Dashboard = () => {
     );
   }
 
+  // ============================================================
+  // RENDER DASHBOARD - ALL CARDS AND DATA
+  // ============================================================
   const renderDashboard = () => (
     <div className="space-y-6">
       {/* Welcome Header */}
@@ -1122,8 +1194,6 @@ const Dashboard = () => {
             </div>
           </div>
         )}
-
-        
   
         {canSeePayments && (
           <div 
@@ -1451,7 +1521,7 @@ const Dashboard = () => {
           </div>
         )}
   
-        {/* UPDATED: Expiring Memberships Card with working click handler */}
+        {/* Expiring Memberships Card */}
         {canSeeMembers && stats.expiringMembers.length > 0 && (
           <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
             <div className="flex items-center justify-between mb-6">
@@ -1478,7 +1548,6 @@ const Dashboard = () => {
                       : 'bg-gradient-to-r from-orange-50 to-yellow-50 border-l-4 border-orange-400'
                   }`}
                   onClick={() => {
-                    // Reset first so useEffect always fires, even if same member clicked again
                     setSelectedMemberId(null);
                     setTimeout(() => {
                       setSelectedMemberId(member.memberId);
@@ -1516,7 +1585,6 @@ const Dashboard = () => {
                       </div>
                     </div>
                   </div>
-                  {/* Renew Now button */}
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1774,7 +1842,7 @@ const Dashboard = () => {
         )}
       </div>
   
-      {/* ===== FOLLOW-UP CARD - NEW SECTION ===== */}
+      {/* Follow-Up Card */}
       {canSeeLeads && (
         <div className="grid grid-cols-1 gap-6">
           <FollowUpCard 
@@ -1998,28 +2066,6 @@ const Dashboard = () => {
       {/* Alerts Section */}
       {(stats.expiringThisMonth > 0 || stats.pendingPayments > 0 || stats.overdueCount > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
-{/*           
-          {canSeePayments && stats.pendingPayments > 0 && (
-            <div className="bg-gradient-to-r from-red-400 to-pink-500 rounded-2xl p-6 shadow-lg text-white">
-              <div className="flex items-start gap-4">
-                <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
-                  <CreditCardIcon className="h-6 w-6" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-bold text-lg mb-1">Pending Payments</h4>
-                  <p className="text-white/90 mb-3">{stats.pendingPayments} payments are pending</p>
-                  <button 
-                    onClick={() => setActiveTab('payments')}
-                    className="bg-white text-red-600 px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
-                  >
-                    View Pending Payments →
-                  </button>
-                </div>
-              </div>
-            </div>
-          )} */}
-  
           {canSeeBalances && stats.overdueCount > 0 && (
             <div className="bg-gradient-to-r from-red-600 to-red-800 rounded-2xl p-6 shadow-lg text-white">
               <div className="flex items-start gap-4">
@@ -2082,15 +2128,17 @@ const Dashboard = () => {
         <Menu className="h-5 w-5" />
       </button>
 
-      {/* Sidebar */}
+      {/* ============================================================
+          SIDEBAR - UPDATED WITH SCROLLING AND GROUPS
+          ============================================================ */}
       <aside className={`
         fixed top-0 left-0 z-40 h-screen bg-gradient-to-b from-blue-900 to-purple-900 
-        transition-all duration-300 shadow-xl
+        transition-all duration-300 shadow-xl flex flex-col
         ${sidebarCollapsed ? 'w-20' : 'w-64'}
         ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
-        {/* Logo */}
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
+        {/* Logo - Fixed at top */}
+        <div className="flex items-center justify-between p-4 border-b border-white/10 flex-shrink-0">
           {!sidebarCollapsed && (
             <div className="flex items-center gap-2 cursor-pointer" onClick={goToDashboard}>
               <Dumbbell className="h-8 w-8 text-white" />
@@ -2102,22 +2150,22 @@ const Dashboard = () => {
           )}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="hidden md:block text-white/70 hover:text-white"
+            className="hidden md:block text-white/70 hover:text-white flex-shrink-0"
           >
             {sidebarCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
           </button>
           <button
             onClick={() => setMobileMenuOpen(false)}
-            className="md:hidden text-white/70 hover:text-white"
+            className="md:hidden text-white/70 hover:text-white flex-shrink-0"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* User Info */}
-        <div className={`p-4 border-b border-white/10 ${sidebarCollapsed ? 'text-center' : ''}`}>
-          <div className={`flex ${sidebarCollapsed ? 'flex-col' : 'items-center gap-3'}`}>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold">
+        {/* User Info - Fixed */}
+        <div className={`p-4 border-b border-white/10 flex-shrink-0 ${sidebarCollapsed ? 'text-center' : ''}`}>
+          <div className={`flex ${sidebarCollapsed ? 'flex-col items-center' : 'items-center gap-3'}`}>
+            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold flex-shrink-0">
               {user?.full_name?.charAt(0) || 'U'}
             </div>
             {!sidebarCollapsed && (
@@ -2129,54 +2177,106 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4">
-          {navigation.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => {
-                setActiveTab(item.id);
-                setMobileMenuOpen(false);
-              }}
-              className={`
-                w-full flex items-center gap-3 px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors
-                ${activeTab === item.id ? 'bg-white/10 text-white border-r-4 border-blue-400' : ''}
-                ${sidebarCollapsed ? 'justify-center' : ''}
-              `}
-              title={sidebarCollapsed ? item.name : ''}
-            >
-              <item.icon className="h-5 w-5 flex-shrink-0" />
-              {!sidebarCollapsed && <span className="text-sm">{item.name}</span>}
-            </button>
-          ))}
-        </nav>
+        {/* Navigation - Scrollable area with custom scrollbar */}
+        <div className="flex-1 overflow-y-auto py-3 px-2 custom-scrollbar">
+          {Object.entries(groupedNav).map(([section, items]) => {
+            // Skip empty sections
+            if (items.length === 0) return null;
+            
+            return (
+              <div key={section} className="mb-3">
+                {/* Section Label - Only show when sidebar is expanded */}
+                {!sidebarCollapsed && (
+                  <div className="px-3 py-2">
+                    <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+                      {sectionLabels[section] || section}
+                    </span>
+                  </div>
+                )}
+                {items.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`
+                      w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                      text-white/70 hover:text-white hover:bg-white/10 
+                      transition-all duration-200
+                      ${activeTab === item.id ? 'bg-white/15 text-white shadow-lg' : ''}
+                      ${sidebarCollapsed ? 'justify-center' : ''}
+                      group relative
+                    `}
+                    title={sidebarCollapsed ? item.name : ''}
+                  >
+                    <item.icon className={`h-5 w-5 flex-shrink-0 ${activeTab === item.id ? 'text-blue-400' : ''}`} />
+                    {!sidebarCollapsed && (
+                      <span className="text-sm font-medium truncate">{item.name}</span>
+                    )}
+                    {/* Tooltip for collapsed mode */}
+                    {sidebarCollapsed && (
+                      <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded 
+                                    opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity 
+                                    whitespace-nowrap z-50 shadow-lg">
+                        {item.name}
+                      </div>
+                    )}
+                    {/* Active indicator */}
+                    {activeTab === item.id && !sidebarCollapsed && (
+                      <div className="ml-auto w-1 h-6 bg-blue-400 rounded-full flex-shrink-0" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
 
-        {/* Bottom Actions */}
-        <div className="p-4 border-t border-white/10">
+        {/* Bottom Actions - Fixed at bottom */}
+        <div className="p-3 border-t border-white/10 flex-shrink-0">
           <button
             onClick={() => {
               setActiveTab('profile');
               setMobileMenuOpen(false);
             }}
             className={`
-              w-full flex items-center gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors
+              w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+              text-white/70 hover:text-white hover:bg-white/10 transition-all duration-200
               ${sidebarCollapsed ? 'justify-center' : ''}
+              group relative
             `}
             title={sidebarCollapsed ? 'Profile' : ''}
           >
-            <User className="h-5 w-5" />
-            {!sidebarCollapsed && <span className="text-sm">Profile</span>}
+            <User className="h-5 w-5 flex-shrink-0" />
+            {!sidebarCollapsed && <span className="text-sm font-medium">Profile</span>}
+            {sidebarCollapsed && (
+              <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded 
+                            opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity 
+                            whitespace-nowrap z-50 shadow-lg">
+                Profile
+              </div>
+            )}
           </button>
           <button
             onClick={handleLogout}
             className={`
-              w-full flex items-center gap-3 px-4 py-2 text-red-300 hover:text-red-400 hover:bg-white/10 rounded-lg transition-colors mt-2
+              w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+              text-red-300 hover:text-red-400 hover:bg-white/10 transition-all duration-200 mt-1
               ${sidebarCollapsed ? 'justify-center' : ''}
+              group relative
             `}
             title={sidebarCollapsed ? 'Logout' : ''}
           >
-            <LogOut className="h-5 w-5" />
-            {!sidebarCollapsed && <span className="text-sm">Logout</span>}
+            <LogOut className="h-5 w-5 flex-shrink-0" />
+            {!sidebarCollapsed && <span className="text-sm font-medium">Logout</span>}
+            {sidebarCollapsed && (
+              <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded 
+                            opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity 
+                            whitespace-nowrap z-50 shadow-lg">
+                Logout
+              </div>
+            )}
           </button>
         </div>
       </aside>
@@ -2189,11 +2289,14 @@ const Dashboard = () => {
         />
       )}
 
-      {/* Main Content */}
+      {/* ============================================================
+          MAIN CONTENT
+          ============================================================ */}
       <main className={`
         transition-all duration-300
         ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-64'}
         ml-0
+        min-h-screen
       `}>
         {/* Header */}
         <header className="bg-white shadow-sm sticky top-0 z-30">
@@ -2330,9 +2433,8 @@ const Dashboard = () => {
             />
           )}
           {activeTab === 'trainer-schedule' && <TrainerSchedule />}
-          
           {activeTab === 'historical-invoices' && <HistoricalInvoices />}
-  
+          {activeTab === 'whatsapp-logs' && <WhatsAppLogs />}
           {activeTab === 'classes' && (
             <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
               <CalendarIcon className="h-16 w-16 text-blue-300 mx-auto mb-4" />
@@ -2347,7 +2449,6 @@ const Dashboard = () => {
               <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
             </div>
           )}
-          {activeTab === 'whatsapp-logs' && <WhatsAppLogs />}
 
           {/* Access denied for tabs user doesn't have permission for */}
           {activeTab === 'members' && !canSeeMembers && (
