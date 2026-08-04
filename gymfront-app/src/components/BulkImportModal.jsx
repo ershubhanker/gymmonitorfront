@@ -1,4 +1,4 @@
-// src/components/BulkImportModal.jsx - SMART FILTERING VERSION
+// src/components/BulkImportModal.jsx - FIXED VERSION
 
 import React, { useState, useRef, useMemo } from 'react';
 import { X, Upload, FileSpreadsheet, Loader2, CheckCircle, XCircle, AlertCircle, FileText } from 'lucide-react';
@@ -211,6 +211,19 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   // ============================================================
+  // VALIDATE EMAIL
+  // ============================================================
+  const isValidEmail = (email) => {
+    if (!email) return false;
+    if (typeof email !== 'string') return false;
+    const trimmed = email.trim();
+    if (!trimmed) return false;
+    // Basic email validation - checks for @ and dot
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(trimmed);
+  };
+
+  // ============================================================
   // SMART COLUMN MAPPING
   // ============================================================
   const mapColumns = (row) => {
@@ -218,11 +231,17 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     
     const findKey = (patterns) => {
       for (const pattern of patterns) {
-        const found = keys.find(k => k.toLowerCase().trim() === pattern.toLowerCase().trim());
+        const found = keys.find(k => {
+          if (!k || typeof k !== 'string') return false;
+          return k.toLowerCase().trim() === pattern.toLowerCase().trim();
+        });
         if (found) return found;
       }
       for (const pattern of patterns) {
-        const found = keys.find(k => k.toLowerCase().trim().includes(pattern.toLowerCase().trim()));
+        const found = keys.find(k => {
+          if (!k || typeof k !== 'string') return false;
+          return k.toLowerCase().trim().includes(pattern.toLowerCase().trim());
+        });
         if (found) return found;
       }
       return null;
@@ -291,10 +310,23 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       baseCost = netCost;
     }
 
+    // Get email and validate
+    let email = '';
+    if (emailKey) {
+      const rawEmail = row[emailKey];
+      if (rawEmail !== undefined && rawEmail !== null && rawEmail !== '') {
+        email = String(rawEmail).trim();
+        // Only keep if it's a valid email
+        if (!isValidEmail(email)) {
+          email = '';
+        }
+      }
+    }
+
     return {
       full_name: nameKey ? String(row[nameKey]).trim() : '',
       phone: phoneKey ? String(row[phoneKey]).trim() : '',
-      email: emailKey ? String(row[emailKey]).trim() : '',
+      email: email,
       plan_name: planKey ? String(row[planKey]).trim() : '',
       status: statusKey ? row[statusKey] : 'active',
       gender: genderKey ? String(row[genderKey]).trim() : 'male',
@@ -354,12 +386,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     // Check if there's a plan name
     const hasPlan = row.plan_name && row.plan_name.trim() !== '';
     
-    // Check if there's a start date
-    const hasStartDate = row.joined_date && row.joined_date.trim() !== '';
-    
-    // Check if there's an end date
-    const hasEndDate = row.membership_end && row.membership_end.trim() !== '';
-    
     // Check if dates are valid (parsed correctly)
     const parsedStart = parseDate(row.joined_date);
     const parsedEnd = parseDate(row.membership_end);
@@ -367,8 +393,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     const hasValidStart = parsedStart !== null;
     const hasValidEnd = parsedEnd !== null;
     
-    // A row is valid if it has a plan AND (start date AND end date)
-    // OR if it has a plan and at least one valid date (we'll derive the other)
+    // A row is valid if it has a plan AND (start date OR end date)
     const isValid = hasPlan && (hasValidStart || hasValidEnd);
     
     return isValid;
@@ -636,11 +661,14 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
       const existingPlanMap = {};
       existingPlans.forEach(p => {
-        existingPlanMap[p.name?.toLowerCase().trim()] = p.id;
+        if (p && p.name) {
+          existingPlanMap[p.name.toLowerCase().trim()] = p.id;
+        }
       });
 
       const uniquePlans = [...new Set(previewData.map(m => m.plan_name).filter(Boolean))];
       const plansToCreate = uniquePlans.filter(name => {
+        if (!name) return false;
         const cleanName = name.toLowerCase().trim();
         return !existingPlanMap[cleanName];
       });
@@ -673,7 +701,9 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             const newPlanResponse = await api.post('/gym/plans', planData);
             const newPlan = newPlanResponse.data;
             
-            existingPlanMap[planName.toLowerCase().trim()] = newPlan.id;
+            if (newPlan && newPlan.name) {
+              existingPlanMap[newPlan.name.toLowerCase().trim()] = newPlan.id;
+            }
             createdPlans.push(planName);
             
           } catch (error) {
@@ -706,7 +736,9 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
       const planIdMap = {};
       allPlans.forEach(p => {
-        planIdMap[p.name?.toLowerCase().trim()] = p.id;
+        if (p && p.name) {
+          planIdMap[p.name.toLowerCase().trim()] = p.id;
+        }
       });
 
       const defaultPlan = allPlans.find(p => p.is_active) || allPlans[0];
@@ -742,6 +774,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             phone: member.phone,
             gender: member.gender || 'male',
             is_active: shouldBeActive,
+            joined_date: member.joined_date || new Date().toISOString().split('T')[0],
           };
 
           if (member.base_cost !== null) {
@@ -750,8 +783,9 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             memberData.membership_fee = member.net_cost;
           }
 
-          if (member.email && member.email.includes('@')) {
-            memberData.email = member.email;
+          // ✅ FIX: Only add email if it's valid and not empty
+          if (member.email && member.email.trim() !== '' && isValidEmail(member.email)) {
+            memberData.email = member.email.trim();
           }
 
           if (member.address) memberData.address = member.address;
@@ -939,8 +973,11 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   // ============================================================
-  // RENDER FUNCTIONS
+  // RENDER FUNCTIONS (same as before - keep your existing render functions)
   // ============================================================
+  // ... (keep all your existing render functions: renderStep1, renderStep2, renderStep3)
+  
+  // I'll include them here but they remain the same as in your original code
   const renderStep1 = () => (
     <div className="text-center py-8">
       <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">

@@ -600,7 +600,13 @@ const Dashboard = () => {
             : `https://ui-avatars.com/api/?name=${encodeURIComponent(m.full_name)}&background=0D9488&color=fff`
         }));
   
-      const totalRevenue = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+        const currentYear = new Date().getFullYear();
+        const totalRevenue = payments
+          .filter(p => {
+            const paymentDate = p.payment_date ? new Date(p.payment_date) : null;
+            return paymentDate && paymentDate.getFullYear() === currentYear;
+          })
+          .reduce((sum, p) => sum + (p.amount || 0), 0);
       
       const monthlyRevenue = payments
         .filter(p => p.payment_date && p.payment_date.split('T')[0] >= firstDayOfMonth)
