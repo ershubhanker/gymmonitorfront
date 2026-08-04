@@ -1,4 +1,5 @@
-// src/components/MemberProfileModal.jsx - WITH COMMENT CATEGORIZATION
+// src/components/MemberProfileModal.jsx - WITH PROPER COST HANDLING AND NO DECIMALS
+
 import React, { useState, useEffect } from 'react';
 import {
   X, Phone, Mail, Calendar, MapPin, DollarSign, Tag, 
@@ -7,10 +8,68 @@ import {
   Award, Calendar as CalendarIcon, FileText, Users,
   Edit, RefreshCw, Loader2, Trash2, Save, XCircle,
   Dumbbell, Pencil, Maximize2, Hash, Snowflake,
-  Heart, AlertTriangle, Filter, Plus, ChevronDown
+  Heart, AlertTriangle, Filter, Plus, ChevronDown,
+  Percent
 } from 'lucide-react';
 import api, { API_BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
+
+// ============================================================
+// HELPER: Properly format currency (handles paisa to rupee conversion)
+// Shows whole numbers without decimal places
+// ============================================================
+const formatCurrency = (amount) => {
+  if (amount === null || amount === undefined || isNaN(amount)) {
+    return '₹0';
+  }
+  // If amount is in paisa (stored as integer with 2 decimal places implied)
+  // We determine by checking if the number is > 10000 and doesn't have decimals
+  if (typeof amount === 'number' && amount > 10000 && Number.isInteger(amount)) {
+    // Convert paisa to rupee
+    const rupeeAmount = amount / 100;
+    // Format without decimals
+    return `₹${Math.round(rupeeAmount).toLocaleString('en-IN')}`;
+  }
+  // If it's already in rupee
+  if (typeof amount === 'number') {
+    // Format without decimals
+    return `₹${Math.round(amount).toLocaleString('en-IN')}`;
+  }
+  // If it's a string that might be paisa
+  if (typeof amount === 'string') {
+    const numAmount = parseFloat(amount);
+    if (!isNaN(numAmount)) {
+      if (numAmount > 10000 && Number.isInteger(numAmount)) {
+        return `₹${Math.round(numAmount / 100).toLocaleString('en-IN')}`;
+      }
+      return `₹${Math.round(numAmount).toLocaleString('en-IN')}`;
+    }
+  }
+  return `₹${Math.round(Number(amount)).toLocaleString('en-IN')}`;
+};
+
+// Helper to get raw rupee value from paisa or rupee (for calculations)
+const getRupeeValue = (amount) => {
+  if (amount === null || amount === undefined || isNaN(amount)) {
+    return 0;
+  }
+  if (typeof amount === 'number' && amount > 10000 && Number.isInteger(amount)) {
+    return amount / 100;
+  }
+  if (typeof amount === 'number') {
+    return amount;
+  }
+  if (typeof amount === 'string') {
+    const numAmount = parseFloat(amount);
+    if (!isNaN(numAmount)) {
+      if (numAmount > 10000 && Number.isInteger(numAmount)) {
+        return numAmount / 100;
+      }
+      return numAmount;
+    }
+  }
+  return 0;
+};
 
 // ============================================================
 // COMMENT CATEGORY CONFIGURATION
@@ -277,9 +336,13 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       });
       
       if (memberData.current_membership) {
+        // Convert paisa to rupee for display
+        const amountPaid = getRupeeValue(memberData.current_membership.amount_paid || 0);
+        const discountApplied = getRupeeValue(memberData.current_membership.discount_applied || 0);
+        
         setPaymentEditData({
-          amount_paid: memberData.current_membership.amount_paid?.toString() || '0',
-          discount_applied: memberData.current_membership.discount_applied?.toString() || '0',
+          amount_paid: amountPaid.toString(),
+          discount_applied: discountApplied.toString(),
           payment_method: 'cash',
           notes: memberData.current_membership.notes || '',
         });
@@ -394,7 +457,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     }
   };
 
-  // ===== FETCH FREEZE HISTORY =====
   const fetchFreezeHistory = async () => {
     try {
       setLoadingFreezes(true);
@@ -482,14 +544,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       toast.success(`✅ Membership frozen for ${freezeDays} days!`);
       toast.success(`📅 Membership extended to ${new Date(response.data.new_end_date).toLocaleDateString()}`);
       
-      // Reset freeze form
       setFreezeStartDate('');
       setFreezeEndDate('');
       setFreezeNotes('');
       setFreezeType('regular');
       setShowFreezeModal(false);
       
-      // Refresh data
       await fetchMemberDetails();
       await fetchMembershipHistory();
       await fetchFreezeHistory();
@@ -626,9 +686,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ===== PAYMENT EDIT FUNCTIONS =====
   const handleEditPaymentClick = () => {
     if (member?.current_membership) {
+      const amountPaid = getRupeeValue(member.current_membership.amount_paid || 0);
+      const discountApplied = getRupeeValue(member.current_membership.discount_applied || 0);
+      
       setPaymentEditData({
-        amount_paid: member.current_membership.amount_paid?.toString() || '0',
-        discount_applied: member.current_membership.discount_applied?.toString() || '0',
+        amount_paid: amountPaid.toString(),
+        discount_applied: discountApplied.toString(),
         payment_method: 'cash',
         notes: member.current_membership.notes || '',
       });
@@ -646,7 +709,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   };
 
   const validatePaymentEdit = () => {
-    const planPrice = member?.current_membership?.plan?.price || 0;
+    const planPrice = getRupeeValue(member?.current_membership?.plan?.price || 0);
     const discountApplied = parseFloat(paymentEditData.discount_applied) || 0;
     const amountPaid = parseFloat(paymentEditData.amount_paid) || 0;
     const finalPrice = Math.max(0, planPrice - discountApplied);
@@ -656,7 +719,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       return false;
     }
     if (amountPaid > finalPrice) {
-      setPaymentError(`Amount paid cannot exceed final price of ₹${finalPrice}`);
+      setPaymentError(`Amount paid cannot exceed final price of ${formatCurrency(finalPrice)}`);
       return false;
     }
     if (discountApplied < 0) {
@@ -664,7 +727,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       return false;
     }
     if (discountApplied > planPrice) {
-      setPaymentError(`Discount cannot exceed plan price of ₹${planPrice}`);
+      setPaymentError(`Discount cannot exceed plan price of ${formatCurrency(planPrice)}`);
       return false;
     }
     return true;
@@ -688,9 +751,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       const discountApplied = parseFloat(paymentEditData.discount_applied) || 0;
       const amountPaid = parseFloat(paymentEditData.amount_paid) || 0;
   
+      // Send amounts in paisa to backend
       const payload = {
-        amount_paid: amountPaid,
-        discount_applied: discountApplied,
+        amount_paid: Math.round(amountPaid * 100), // Convert to paisa
+        discount_applied: Math.round(discountApplied * 100), // Convert to paisa
         notes: paymentEditData.notes || '',
         payment_method: paymentEditData.payment_method || 'cash',
       };
@@ -810,8 +874,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
     setSubmitting(true);
     try {
-      // Store comment with category - you may need to update the backend to store category
-      // For now, we'll store it as a prefix in the comment text
       const categoryLabel = COMMENT_CATEGORIES[selectedCategory]?.label || 'General';
       const commentWithCategory = `[${categoryLabel}] ${newComment}`;
       
@@ -832,15 +894,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     }
   };
 
-  // Helper function to detect category from comment text
   const detectCategoryFromComment = (commentText) => {
     if (!commentText) return 'general';
     
-    // Check if comment starts with a category label in brackets
     const match = commentText.match(/^\[([^\]]+)\]/);
     if (match) {
       const label = match[1];
-      // Find category by label
       for (const [key, config] of Object.entries(COMMENT_CATEGORIES)) {
         if (config.label === label) {
           return key;
@@ -850,7 +909,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     return 'general';
   };
 
-  // Helper function to remove category prefix from comment
   const cleanCommentText = (commentText) => {
     if (!commentText) return '';
     const match = commentText.match(/^\[[^\]]+\]\s*/);
@@ -879,7 +937,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     }
   };
 
-  // Get filtered comments
   const getFilteredComments = () => {
     if (!commentFilter) return comments;
     return comments.filter(comment => {
@@ -888,7 +945,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     });
   };
 
-  // Get comment count by category
   const getCommentCounts = () => {
     const counts = { total: comments.length };
     Object.keys(COMMENT_CATEGORIES).forEach(key => {
@@ -969,15 +1025,23 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     );
   };
 
+  // ===== Get payment summary with proper currency conversion =====
   const getPaymentSummary = () => {
     const membership = member?.current_membership;
     if (!membership) return null;
     
-    const planPrice = membership.plan?.price || 0;
-    const discountApplied = membership.discount_applied || 0;
-    const amountPaid = membership.amount_paid || 0;
+    // Convert all amounts from paisa to rupee
+    const planPrice = getRupeeValue(membership.plan?.price || 0);
+    const discountApplied = getRupeeValue(membership.discount_applied || 0);
+    const amountPaid = getRupeeValue(membership.amount_paid || 0);
     const finalPrice = Math.max(0, planPrice - discountApplied);
     const balanceDue = Math.max(0, finalPrice - amountPaid);
+    
+    // Calculate discount percentage if there's a discount
+    let discountPercentage = 0;
+    if (planPrice > 0 && discountApplied > 0) {
+      discountPercentage = Math.round((discountApplied / planPrice) * 100);
+    }
     
     return {
       planPrice,
@@ -985,6 +1049,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       amountPaid,
       finalPrice,
       balanceDue,
+      discountPercentage,
+      hasDiscount: discountApplied > 0,
     };
   };
 
@@ -1004,9 +1070,18 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const currentMembership = member.current_membership;
   const paymentSummary = getPaymentSummary();
   
-  const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const balanceDue = balanceDetails?.balance_due || currentMembership?.balance_due || 0;
-  const totalPlanAmount = balanceDetails?.total_amount || currentMembership?.plan?.price || 0;
+  // Calculate total paid with proper conversion
+  const totalPaid = payments.reduce((sum, p) => sum + getRupeeValue(p.amount || 0), 0);
+  
+  // Get balance due from balanceDetails or currentMembership
+  let balanceDue = 0;
+  if (balanceDetails?.balance_due !== undefined) {
+    balanceDue = getRupeeValue(balanceDetails.balance_due);
+  } else if (currentMembership?.balance_due !== undefined) {
+    balanceDue = getRupeeValue(currentMembership.balance_due);
+  }
+  
+  const totalPlanAmount = getRupeeValue(balanceDetails?.total_amount || currentMembership?.plan?.price || 0);
 
   const idProofOptions = [
     { value: 'aadhar', label: 'Aadhar Card' },
@@ -1026,9 +1101,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const profileImageUrl = getImageUrl(member.profile_image, member.full_name);
   const thumbnailImageUrl = getThumbnailUrl(member.profile_image, member.full_name);
 
-  // Check if there's an active freeze
   const activeFreeze = freezeHistory.find(f => f.status === 'active');
   const hasActiveFreeze = !!activeFreeze;
+
+  // Calculate discount percentage for display
+  const discountPercentage = paymentSummary?.discountPercentage || 0;
+  const hasDiscount = paymentSummary?.hasDiscount || false;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
@@ -1134,17 +1212,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-100">
               <p className="text-sm text-green-600 font-medium">Total Paid</p>
-              <p className="text-2xl font-bold text-green-700">₹{totalPaid.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-green-700">{formatCurrency(totalPaid)}</p>
               <p className="text-xs text-green-500 mt-1">Amount actually paid by member</p>
             </div>
             <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-4 border border-orange-100">
               <p className="text-sm text-orange-600 font-medium">Plan Amount</p>
-              <p className="text-2xl font-bold text-orange-700">₹{totalPlanAmount.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-orange-700">{formatCurrency(totalPlanAmount)}</p>
               <p className="text-xs text-orange-500 mt-1">Total amount member needs to pay</p>
             </div>
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
               <p className="text-sm text-blue-600 font-medium">Balance Due</p>
-              <p className="text-2xl font-bold text-blue-700">₹{balanceDue.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-blue-700">{formatCurrency(balanceDue)}</p>
               <p className="text-xs text-blue-500 mt-1">Remaining amount to be paid</p>
             </div>
             <div className={`rounded-xl p-4 border ${hasActiveFreeze ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
@@ -1171,9 +1249,31 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           </div>
 
+          {/* Discount Banner - Shows if there's a discount */}
+          {hasDiscount && paymentSummary && (
+            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                    <Percent className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-purple-900">Discount Applied</p>
+                    <p className="text-xs text-purple-600">
+                      {formatCurrency(paymentSummary.discountApplied)} discount ({paymentSummary.discountPercentage}% off)
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-500 line-through">{formatCurrency(paymentSummary.planPrice)}</p>
+                  <p className="text-lg font-bold text-purple-700">{formatCurrency(paymentSummary.finalPrice)}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Action Buttons Row */}
           <div className="flex flex-wrap justify-end gap-2">
-            {/* Freeze Button */}
             {currentMembership && !hasActiveFreeze && (
               <button
                 onClick={() => setShowFreezeModal(true)}
@@ -1237,13 +1337,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             )}
           </div>
 
-          {/* ============================================================
-              FREEZE MODAL (Inline within the profile)
-              ============================================================ */}
+          {/* Freeze Modal */}
           {showFreezeModal && (
             <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
               <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                {/* Freeze Modal Header */}
                 <div className="flex items-center justify-between p-5 border-b bg-gradient-to-r from-blue-50 to-purple-50 rounded-t-2xl">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
@@ -1270,9 +1367,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   </button>
                 </div>
 
-                {/* Freeze Modal Body */}
                 <form onSubmit={handleFreezeSubmit} className="p-5 space-y-5">
-                  {/* Member Info */}
                   <div className="bg-gray-50 rounded-xl p-4 flex items-center gap-4">
                     <img 
                       src={thumbnailImageUrl}
@@ -1293,7 +1388,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     </div>
                   </div>
 
-                  {/* Freeze Type */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Freeze Type
@@ -1326,7 +1420,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     </div>
                   </div>
 
-                  {/* Dates */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1356,7 +1449,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     </div>
                   </div>
 
-                  {/* Info Banner */}
                   {freezeStartDate && freezeEndDate && new Date(freezeEndDate) > new Date(freezeStartDate) && (
                     <div className="bg-blue-50 rounded-xl p-3 border border-blue-200">
                       <div className="flex items-center gap-2 text-blue-700">
@@ -1371,7 +1463,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     </div>
                   )}
 
-                  {/* Notes */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Notes (Optional)
@@ -1385,7 +1476,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     />
                   </div>
 
-                  {/* Footer */}
                   <div className="flex items-center justify-end gap-3 pt-4 border-t">
                     <button
                       type="button"
@@ -1449,7 +1539,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     </div>
                     <div>
                       <span className="text-gray-500">Plan Price:</span>
-                      <span className="font-medium ml-2">₹{currentMembership.plan?.price || 0}</span>
+                      <span className="font-medium ml-2">{formatCurrency(currentMembership.plan?.price || 0)}</span>
                     </div>
                   </div>
                 </div>
@@ -1469,6 +1559,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white"
                       placeholder="0"
                     />
+                    <p className="text-xs text-gray-400 mt-1">Enter discount amount in rupees</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1486,6 +1577,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       }`}
                       placeholder="0"
                     />
+                    <p className="text-xs text-gray-400 mt-1">Enter amount paid in rupees</p>
                     {paymentError && (
                       <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
@@ -1529,11 +1621,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 </div>
                 
                 {(() => {
-                  const planPrice = currentMembership.plan?.price || 0;
+                  const planPrice = getRupeeValue(currentMembership.plan?.price || 0);
                   const discount = parseFloat(paymentEditData.discount_applied) || 0;
                   const paid = parseFloat(paymentEditData.amount_paid) || 0;
                   const finalPrice = Math.max(0, planPrice - discount);
                   const balance = Math.max(0, finalPrice - paid);
+                  const discountPercent = planPrice > 0 && discount > 0 ? Math.round((discount / planPrice) * 100) : 0;
                   
                   return (
                     <div className="bg-white rounded-lg p-3 border border-gray-200">
@@ -1541,24 +1634,26 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       <div className="space-y-1 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-500">Plan Price:</span>
-                          <span className="font-medium">₹{planPrice}</span>
+                          <span className="font-medium">{formatCurrency(planPrice)}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Discount:</span>
-                          <span className="font-medium text-red-600">- ₹{discount}</span>
-                        </div>
+                        {discount > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Discount ({discountPercent}%):</span>
+                            <span className="font-medium text-red-600">- {formatCurrency(discount)}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between pt-1 border-t border-gray-200">
                           <span className="text-gray-600 font-medium">Final Price:</span>
-                          <span className="font-medium text-green-600">₹{finalPrice}</span>
+                          <span className="font-medium text-green-600">{formatCurrency(finalPrice)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500">Amount Paid:</span>
-                          <span className="font-medium text-blue-600">₹{paid}</span>
+                          <span className="font-medium text-blue-600">{formatCurrency(paid)}</span>
                         </div>
                         <div className="flex justify-between pt-1 border-t border-gray-200">
                           <span className="text-gray-700 font-semibold">Balance Due:</span>
                           <span className={`font-bold ${balance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                            ₹{balance}
+                            {formatCurrency(balance)}
                           </span>
                         </div>
                       </div>
@@ -1623,7 +1718,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       <option value="">Select a plan</option>
                       {plans.map((plan) => (
                         <option key={plan.id} value={plan.id.toString()}>
-                          {plan.name} - ₹{plan.price} ({plan.duration_days} days)
+                          {plan.name} - {formatCurrency(plan.price)} ({plan.duration_days} days)
                         </option>
                       ))}
                     </select>
@@ -1685,7 +1780,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                           </div>
                           <div>
                             <span className="text-gray-500">Price:</span>
-                            <span className="font-medium ml-2 text-green-600">₹{selectedPlan.price}</span>
+                            <span className="font-medium ml-2 text-green-600">{formatCurrency(selectedPlan.price)}</span>
                           </div>
                           <div>
                             <span className="text-gray-500">Duration:</span>
@@ -1971,21 +2066,21 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     {getPaymentStatusBadge(currentMembership.payment_status)}
                   </div>
                   
-                  {currentMembership.discount_applied > 0 && (
+                  {paymentSummary && paymentSummary.discountApplied > 0 && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">Discount Applied:</span>
-                      <span className="font-medium text-red-600">- ₹{currentMembership.discount_applied.toLocaleString()}</span>
+                      <span className="font-medium text-red-600">- {formatCurrency(paymentSummary.discountApplied)} ({paymentSummary.discountPercentage}%)</span>
                     </div>
                   )}
                   
                   <div className="flex justify-between">
                     <span className="text-gray-500">Amount Paid:</span>
-                    <span className="font-medium text-green-600">₹{currentMembership.amount_paid?.toLocaleString() || 0}</span>
+                    <span className="font-medium text-green-600">{formatCurrency(currentMembership.amount_paid || 0)}</span>
                   </div>
-                  {currentMembership.balance_due > 0 && (
+                  {paymentSummary && paymentSummary.balanceDue > 0 && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">Balance Due:</span>
-                      <span className="font-medium text-orange-600">₹{currentMembership.balance_due.toLocaleString()}</span>
+                      <span className="font-medium text-orange-600">{formatCurrency(paymentSummary.balanceDue)}</span>
                     </div>
                   )}
                   {currentMembership.next_payment_date && (
@@ -2001,26 +2096,26 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       <div className="space-y-0.5 text-xs">
                         <div className="flex justify-between">
                           <span className="text-gray-400">Plan Price:</span>
-                          <span className="text-gray-600">₹{paymentSummary.planPrice}</span>
+                          <span className="text-gray-600">{formatCurrency(paymentSummary.planPrice)}</span>
                         </div>
                         {paymentSummary.discountApplied > 0 && (
                           <div className="flex justify-between">
-                            <span className="text-gray-400">Discount:</span>
-                            <span className="text-red-500">- ₹{paymentSummary.discountApplied}</span>
+                            <span className="text-gray-400">Discount ({paymentSummary.discountPercentage}%):</span>
+                            <span className="text-red-500">- {formatCurrency(paymentSummary.discountApplied)}</span>
                           </div>
                         )}
                         <div className="flex justify-between font-medium">
                           <span className="text-gray-500">Final Price:</span>
-                          <span className="text-gray-800">₹{paymentSummary.finalPrice}</span>
+                          <span className="text-gray-800">{formatCurrency(paymentSummary.finalPrice)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-400">Paid:</span>
-                          <span className="text-green-600">₹{paymentSummary.amountPaid}</span>
+                          <span className="text-green-600">{formatCurrency(paymentSummary.amountPaid)}</span>
                         </div>
                         <div className="flex justify-between font-semibold">
                           <span className="text-gray-600">Balance:</span>
                           <span className={paymentSummary.balanceDue > 0 ? 'text-orange-600' : 'text-green-600'}>
-                            ₹{paymentSummary.balanceDue}
+                            {formatCurrency(paymentSummary.balanceDue)}
                           </span>
                         </div>
                       </div>
@@ -2263,16 +2358,16 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 pt-3 border-t border-purple-200">
                         <div>
                           <span className="text-gray-500 text-xs">Total Amount:</span>
-                          <p className="font-semibold text-purple-700">₹{session.total_amount?.toLocaleString() || 0}</p>
+                          <p className="font-semibold text-purple-700">{formatCurrency(session.total_amount || 0)}</p>
                         </div>
                         <div>
                           <span className="text-gray-500 text-xs">Amount Paid:</span>
-                          <p className="font-semibold text-green-600">₹{session.amount_paid?.toLocaleString() || 0}</p>
+                          <p className="font-semibold text-green-600">{formatCurrency(session.amount_paid || 0)}</p>
                         </div>
                         <div>
                           <span className="text-gray-500 text-xs">Balance Due:</span>
-                          <p className={`font-semibold ${session.balance_due > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                            ₹{session.balance_due?.toLocaleString() || 0}
+                          <p className={`font-semibold ${(session.balance_due || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                            {formatCurrency(session.balance_due || 0)}
                           </p>
                         </div>
                         <div>
@@ -2328,7 +2423,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     {payments.map((payment) => (
                       <tr key={payment.id} className="hover:bg-gray-50">
                         <td className="px-4 py-2">{formatDate(payment.payment_date)}</td>
-                        <td className="px-4 py-2 font-medium text-green-600">₹{payment.amount.toLocaleString()}</td>
+                        <td className="px-4 py-2 font-medium text-green-600">{formatCurrency(payment.amount)}</td>
                         <td className="px-4 py-2 capitalize">{payment.payment_method}</td>
                         <td className="px-4 py-2">{getPaymentStatusBadge(payment.status)}</td>
                         <td className="px-4 py-2 text-xs text-gray-500">{payment.transaction_id || '—'}</td>
@@ -2338,7 +2433,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 </table>
                 <div className="mt-4 p-3 bg-gray-50 rounded-lg flex justify-between">
                   <span className="font-medium text-gray-600">Total Paid:</span>
-                  <span className="font-bold text-green-600">₹{totalPaid.toLocaleString()}</span>
+                  <span className="font-bold text-green-600">{formatCurrency(totalPaid)}</span>
                 </div>
               </div>
             ) : (
@@ -2377,11 +2472,11 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       </div>
                       <div>
                         <span className="text-gray-500">Paid:</span>
-                        <span className="ml-2 text-green-600">₹{membership.amount_paid?.toLocaleString() || 0}</span>
+                        <span className="ml-2 text-green-600">{formatCurrency(membership.amount_paid || 0)}</span>
                       </div>
                       <div>
                         <span className="text-gray-500">Balance:</span>
-                        <span className="ml-2 text-orange-600">₹{membership.balance_due?.toLocaleString() || 0}</span>
+                        <span className="ml-2 text-orange-600">{formatCurrency(membership.balance_due || 0)}</span>
                       </div>
                     </div>
                   </div>
@@ -2447,14 +2542,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               )}
             </div>
 
-            {/* Category Filter */}
             <CategoryFilter 
               selectedCategory={commentFilter}
               onSelect={setCommentFilter}
               countMap={commentCounts}
             />
 
-            {/* Add Comment with Category */}
             <div className="flex flex-col gap-3 mb-6">
               <div className="flex gap-3">
                 <textarea
@@ -2474,7 +2567,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 </button>
               </div>
               
-              {/* Category Selector */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-medium text-gray-500">Tag as:</span>
                 <div className="relative">
@@ -2534,7 +2626,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               </div>
             </div>
 
-            {/* Comments List with Category Badges */}
             <div className="space-y-4 max-h-[400px] overflow-y-auto">
               {loadingComments ? (
                 <div className="text-center py-8">

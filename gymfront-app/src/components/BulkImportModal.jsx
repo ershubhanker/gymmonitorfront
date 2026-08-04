@@ -1,4 +1,4 @@
-// src/components/BulkImportModal.jsx - FIXED VERSION
+// src/components/BulkImportModal.jsx - SMART COST DETECTION VERSION
 
 import React, { useState, useRef, useMemo } from 'react';
 import { X, Upload, FileSpreadsheet, Loader2, CheckCircle, XCircle, AlertCircle, FileText } from 'lucide-react';
@@ -19,6 +19,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   const [plansCreated, setPlansCreated] = useState([]);
   const [dateFormatDetected, setDateFormatDetected] = useState('');
   const [hasExcelDateSerial, setHasExcelDateSerial] = useState(false);
+  const [costFormatDetected, setCostFormatDetected] = useState('');
   
   const isCancelledRef = useRef(false);
   const abortControllerRef = useRef(null);
@@ -26,36 +27,123 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   if (!isOpen) return null;
 
   // ============================================================
+  // 🧠 SMART COST PARSER - Detects paisa vs rupee
+  // ============================================================
+  const parseCost = (value) => {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+
+    // If it's already a number
+    if (typeof value === 'number') {
+      // Check if it's in paisa (very large number, typically 5+ digits)
+      // If number is > 10000, it's likely in paisa
+      if (value > 10000) {
+        return value / 100; // Convert paisa to rupee
+      }
+      return value; // Already in rupee
+    }
+
+    // If it's a string
+    if (typeof value === 'string') {
+      let cleaned = value.trim();
+      
+      // Remove currency symbols and commas
+      cleaned = cleaned.replace(/[₹$,]/g, '').trim();
+      
+      // Check if it has a decimal point
+      const hasDecimal = cleaned.includes('.');
+      
+      // Try to parse as number
+      const numValue = parseFloat(cleaned);
+      if (isNaN(numValue) || numValue <= 0) {
+        return null;
+      }
+
+      // If no decimal and number is very large (> 10000), it's likely in paisa
+      if (!hasDecimal && numValue > 10000) {
+        return numValue / 100;
+      }
+
+      // If it has decimal, it's in rupee
+      if (hasDecimal) {
+        return numValue;
+      }
+
+      // For small numbers without decimal (like 5000), keep as is (rupee)
+      return numValue;
+    }
+
+    return null;
+  };
+
+  // ============================================================
+  // SMART COST DETECTION - Analyzes the data to detect format
+  // ============================================================
+  const detectCostFormat = (rows) => {
+    const costFields = ['Base Cost', 'Base_Cost', 'base_cost', 'Net Cost', 'Net_Cost', 'net_cost', 'Amount', 'amount', 'Cost', 'cost', 'Price', 'price'];
+    let formats = [];
+    let paisaCount = 0;
+    let rupeeCount = 0;
+    let sampleValues = [];
+
+    for (const row of rows) {
+      for (const field of costFields) {
+        const val = row[field];
+        if (val !== undefined && val !== null && val !== '') {
+          const numVal = typeof val === 'number' ? val : parseFloat(String(val).replace(/[₹$,]/g, ''));
+          if (!isNaN(numVal) && numVal > 0) {
+            sampleValues.push(numVal);
+            // If value > 10000, likely paisa
+            if (numVal > 10000) {
+              paisaCount++;
+            } else {
+              rupeeCount++;
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    // If more than 50% of values are > 10000, it's paisa format
+    const total = paisaCount + rupeeCount;
+    if (total > 0) {
+      if (paisaCount / total > 0.5) {
+        return 'paisa';
+      } else {
+        return 'rupee';
+      }
+    }
+
+    return 'rupee'; // Default to rupee
+  };
+
+  // ============================================================
   // 🧠 SUPER SMART DATE PARSER - Handles ALL formats!
   // ============================================================
   const parseDate = (dateStr) => {
     if (!dateStr) return null;
     
-    // If it's already a Date object
     if (dateStr instanceof Date) {
       return dateStr.toISOString().split('T')[0];
     }
     
-    // If it's a string
     if (typeof dateStr === 'string') {
       dateStr = dateStr.trim();
       if (!dateStr) return null;
 
-      // Already in YYYY-MM-DD format
       if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
         return dateStr;
       }
 
-      // Try native Date parser first
       const nativeDate = new Date(dateStr);
       if (!isNaN(nativeDate.getTime()) && nativeDate.getFullYear() > 1900 && nativeDate.getFullYear() < 2100) {
         return nativeDate.toISOString().split('T')[0];
       }
     }
     
-    // If it's an Excel date serial number (number)
     if (typeof dateStr === 'number' && dateStr > 0) {
-      // Excel date serial: days since 1899-12-30
       const excelDate = new Date((dateStr - 25569) * 86400 * 1000);
       if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1900 && excelDate.getFullYear() < 2100) {
         setHasExcelDateSerial(true);
@@ -63,7 +151,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       }
     }
 
-    // If it's a string with Excel date serial number
     if (typeof dateStr === 'string' && !isNaN(dateStr) && Number(dateStr) > 0) {
       const numVal = Number(dateStr);
       const excelDate = new Date((numVal - 25569) * 86400 * 1000);
@@ -73,11 +160,9 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       }
     }
 
-    // Try parsing with various formats
     if (typeof dateStr === 'string') {
       let cleaned = dateStr.replace(/\s+/g, ' ').trim();
       
-      // Handle single digit month/day (like "7-Jun-22")
       const patterns = [
         { regex: /^(\d{1,2})[-/](\w{3,9})[-/](\d{2,4})$/i, groups: ['day', 'monthName', 'year'] },
         { regex: /^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/, groups: ['day', 'month', 'year'] },
@@ -144,7 +229,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   // ============================================================
-  // SMART COLUMN MAPPING - UPDATED FOR VALID FROM/VALID TO/BASE COST
+  // SMART COLUMN MAPPING - WITH BASE COST AND NET COST
   // ============================================================
   const mapColumns = (row) => {
     const keys = Object.keys(row);
@@ -171,8 +256,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     const addressKey = findKey(['Address', 'address', 'addr', 'Addr']);
     const dobKey = findKey(['Date of Birth', 'DOB', 'dob', 'date_of_birth', 'Birth Date', 'birth_date']);
     
-    // 🔥 CRITICAL FIX: Map "Valid From" and "Valid To" columns
-    // These come from columns AH and AI in your Excel file
+    // Date fields
     const startDateKey = findKey([
       'Valid From', 'Valid_From', 'valid_from', 
       'Start Date', 'Start_Date', 'start_date', 
@@ -187,10 +271,17 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       'Membership End', 'membership_end', 'Valid Till', 'valid_till'
     ]);
     
-    // 🔥 CRITICAL FIX: Map "Base Cost" column (Column AJ)
+    // 🔥 CRITICAL: Map both Base Cost and Net Cost
     const baseCostKey = findKey([
       'Base Cost', 'Base_Cost', 'base_cost',
       'Base Price', 'base_price', 'Base_Price',
+      'Original Cost', 'original_cost',
+    ]);
+
+    const netCostKey = findKey([
+      'Net Cost', 'Net_Cost', 'net_cost',
+      'Net Price', 'net_price', 'Net_Price',
+      'Discounted Cost', 'discounted_cost',
       'Amount', 'amount', 'Cost', 'cost', 'Price', 'price'
     ]);
 
@@ -200,17 +291,31 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     const allergiesKey = findKey(['Allergies', 'allergies', 'Allergy']);
     const medicationsKey = findKey(['Medications', 'medications', 'Medication']);
 
-    // Parse base cost (paisa to currency)
+    // Parse costs with smart detection
     let baseCost = null;
+    let netCost = null;
+    let baseCostRaw = null;
+    let netCostRaw = null;
+
     if (baseCostKey) {
-      const rawCost = row[baseCostKey];
-      if (rawCost !== undefined && rawCost !== null && rawCost !== '') {
-        const numCost = typeof rawCost === 'string' ? parseFloat(rawCost.replace(/,/g, '')) : Number(rawCost);
-        if (!isNaN(numCost) && numCost > 0) {
-          // Divide by 100 to convert paisa to main currency
-          baseCost = numCost / 100;
-        }
+      const rawValue = row[baseCostKey];
+      if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
+        baseCostRaw = rawValue;
+        baseCost = parseCost(rawValue);
       }
+    }
+
+    if (netCostKey) {
+      const rawValue = row[netCostKey];
+      if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
+        netCostRaw = rawValue;
+        netCost = parseCost(rawValue);
+      }
+    }
+
+    // If only net cost exists, use it as base cost too
+    if (baseCost === null && netCost !== null) {
+      baseCost = netCost;
     }
 
     return {
@@ -224,8 +329,10 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       date_of_birth: dobKey ? row[dobKey] : '',
       joined_date: startDateKey ? row[startDateKey] : '',
       membership_end: endDateKey ? row[endDateKey] : '',
-      base_cost: baseCost, // Now in main currency (paisa/100)
-      base_cost_raw: baseCostKey ? row[baseCostKey] : null,
+      base_cost: baseCost,
+      net_cost: netCost,
+      base_cost_raw: baseCostRaw,
+      net_cost_raw: netCostRaw,
       emergency_contact_name: emergencyNameKey ? String(row[emergencyNameKey]).trim() : '',
       emergency_contact_phone: emergencyPhoneKey ? String(row[emergencyPhoneKey]).trim() : '',
       medical_conditions: medicalKey ? String(row[medicalKey]).trim() : '',
@@ -323,10 +430,9 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 if (value instanceof Date) {
                   cleaned[key] = value.toISOString().split('T')[0];
                 } else if (typeof value === 'number' && value > 0) {
-                  // Check if it's an Excel date (serial number)
                   const excelDate = new Date((value - 25569) * 86400 * 1000);
                   if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1900 && excelDate.getFullYear() < 2100) {
-                    cleaned[key] = value; // Keep as number for parsing
+                    cleaned[key] = value;
                   } else {
                     cleaned[key] = String(value);
                   }
@@ -417,6 +523,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     setFileType(selectedFile.name.split('.').pop().toLowerCase());
     isCancelledRef.current = false;
     setHasExcelDateSerial(false);
+    setCostFormatDetected('');
 
     toast.loading('Reading file...', { id: 'file-reading' });
 
@@ -444,26 +551,40 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         const dateFormat = detectDateFormat(data);
         setDateFormatDetected(dateFormat);
 
-        // Parse dates
+        // Detect cost format
+        const costFormat = detectCostFormat(data);
+        setCostFormatDetected(costFormat === 'paisa' ? 'Paisa (₹)' : 'Rupee (₹)');
+
+        // Parse dates and costs
         const parsedData = validData.map(m => ({
           ...m,
           joined_date: parseDate(m.joined_date),
           membership_end: parseDate(m.membership_end),
           date_of_birth: parseDate(m.date_of_birth),
+          // Costs are already parsed by mapColumns
         }));
 
         // Show preview with cost info
         const membersWithCost = parsedData.filter(m => m.base_cost !== null);
-        if (membersWithCost.length > 0) {
-          console.log(`💰 ${membersWithCost.length} members have cost data (converted from paisa)`);
-        }
+        const totalCost = membersWithCost.reduce((sum, m) => sum + (m.base_cost || 0), 0);
+        const membersWithNetCost = parsedData.filter(m => m.net_cost !== null);
+        const totalNetCost = membersWithNetCost.reduce((sum, m) => sum + (m.net_cost || 0), 0);
+
+        console.log(`💰 ${membersWithCost.length} members have cost data`);
+        console.log(`📊 Total Base Cost: ₹${totalCost.toLocaleString('en-IN')}`);
+        console.log(`📊 Total Net Cost: ₹${totalNetCost.toLocaleString('en-IN')}`);
+        console.log(`📊 Cost Format Detected: ${costFormat}`);
 
         setPreviewData(parsedData);
         setFile(selectedFile);
         setStep(2);
         setResults(null);
         
-        toast.success(`Loaded ${parsedData.length} members from ${selectedFile.name}`);
+        let message = `Loaded ${parsedData.length} members from ${selectedFile.name}`;
+        if (costFormat === 'paisa') {
+          message += ' (Cost converted from paisa to rupee)';
+        }
+        toast.success(message);
       })
       .catch((error) => {
         toast.dismiss('file-reading');
@@ -473,7 +594,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   // ============================================================
-  // HANDLE IMPORT - UPDATED TO USE BASE COST
+  // HANDLE IMPORT - WITH COST SUPPORT
   // ============================================================
   const handleImport = async () => {
     isCancelledRef.current = false;
@@ -607,9 +728,14 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             phone: member.phone,
             gender: member.gender || 'male',
             is_active: shouldBeActive,
-            // 🔥 NEW: Include base cost if available
-            membership_fee: member.base_cost || 0,
           };
+
+          // 🔥 Add cost if available
+          if (member.base_cost !== null) {
+            memberData.membership_fee = member.base_cost;
+          } else if (member.net_cost !== null) {
+            memberData.membership_fee = member.net_cost;
+          }
 
           if (member.email && member.email.includes('@')) {
             memberData.email = member.email;
@@ -666,7 +792,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             try {
               let startDate = member.joined_date || new Date().toISOString().split('T')[0];
               
-              // 🔥 Use membership_end if provided (from Valid To column)
               let endDate = member.membership_end;
               
               if (!endDate) {
@@ -680,13 +805,20 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               }
               
               if (endDate) {
+                // Determine amount paid - use net cost if available, otherwise base cost
+                let amountPaid = 0;
+                if (member.net_cost !== null) {
+                  amountPaid = member.net_cost;
+                } else if (member.base_cost !== null) {
+                  amountPaid = member.base_cost;
+                }
+                
                 const membershipPayload = {
                   member_id: newMember.id,
                   plan_id: planId,
                   start_date: startDate,
                   end_date: endDate,
-                  // 🔥 Use base_cost as amount paid if available
-                  amount_paid: member.base_cost || 0,
+                  amount_paid: amountPaid,
                   discount_applied: 0,
                 };
                 
@@ -788,6 +920,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     setUploading(false);
     setDateFormatDetected('');
     setHasExcelDateSerial(false);
+    setCostFormatDetected('');
     if (onImportComplete) onImportComplete();
     onClose();
   };
@@ -806,7 +939,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         <br />
         <strong className="text-gray-700">Required:</strong> Full Name, Phone
         <br />
-        <span className="text-gray-400">Optional: Email, Valid From, Valid To, Base Cost, Plan Name, Status, Gender, Address, DOB, etc.</span>
+        <span className="text-gray-400">Optional: Email, Valid From, Valid To, Base Cost, Net Cost, Plan Name, Status, Gender, Address, DOB, etc.</span>
       </p>
       
       <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-blue-500 hover:bg-blue-50/50 transition-all cursor-pointer">
@@ -829,19 +962,23 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           <span className="text-green-600">✓</span> Smart Features:
         </p>
         <ul className="text-xs text-gray-600 mt-2 space-y-1 list-disc list-inside">
-          <li>Auto-detects column names (Valid From, Valid To, Base Cost, etc.)</li>
+          <li>Auto-detects column names (Valid From, Valid To, Base Cost, Net Cost, etc.)</li>
+          <li><strong className="text-blue-600">Auto-detects cost format:</strong> Paisa (5,50,00,000 → ₹5,500) or Rupee</li>
           <li>Auto-detects date formats (DD/MM/YYYY, DD-MMM-YY, Month DD, YYYY, etc.)</li>
-          <li><strong>Converts Base Cost from paisa to currency (divides by 100)</strong></li>
+          <li>Supports both <strong>Base Cost</strong> (original price) and <strong>Net Cost</strong> (discounted price)</li>
           <li>Auto-creates membership plans if they don't exist</li>
           <li>Skips duplicate phone numbers automatically</li>
           <li>Supports .xlsx, .xls, .csv, .tsv files</li>
         </ul>
         <div className="mt-3 bg-blue-50 rounded p-2">
           <p className="text-xs text-blue-700">
-            📝 Example: <span className="font-mono">John Doe, 9876543210, john@email.com, 2026-06-15, 2026-11-30, 80000000, WS 6 MONTHS PLAN, active</span>
+            📝 Example: <span className="font-mono">John Doe, 9876543210, john@email.com, 2026-06-15, 2026-11-30, 55000000, 45000000, WS 6 MONTHS PLAN, active</span>
           </p>
           <p className="text-xs text-blue-600 mt-1">
-            💰 Base Cost 80000000 paisa = ₹8,00,000.00 (auto-converted)
+            💰 Base Cost 5,50,00,000 paisa = ₹5,50,000.00 | Net Cost 4,50,00,000 paisa = ₹4,50,000.00
+          </p>
+          <p className="text-xs text-blue-600 mt-1">
+            💰 Or directly in rupee: ₹5,500 (will be detected as rupee format)
           </p>
         </div>
       </div>
@@ -856,6 +993,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     const duplicates = Object.entries(phoneCounts).filter(([phone, count]) => count > 1);
     const membersWithCost = previewData.filter(m => m.base_cost !== null);
     const totalCost = membersWithCost.reduce((sum, m) => sum + (m.base_cost || 0), 0);
+    const membersWithNetCost = previewData.filter(m => m.net_cost !== null);
+    const totalNetCost = membersWithNetCost.reduce((sum, m) => sum + (m.net_cost || 0), 0);
 
     return (
       <div>
@@ -872,9 +1011,23 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                   📅 {dateFormatDetected}
                 </span>
               )}
+              {costFormatDetected && (
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  costFormatDetected === 'Paisa (₹)' 
+                    ? 'bg-purple-100 text-purple-700' 
+                    : 'bg-indigo-100 text-indigo-700'
+                }`}>
+                  💰 Cost: {costFormatDetected}
+                </span>
+              )}
               {membersWithCost.length > 0 && (
                 <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                  💰 ₹{totalCost.toLocaleString('en-IN')} total (from {membersWithCost.length} members)
+                  Base: ₹{totalCost.toLocaleString('en-IN')} ({membersWithCost.length} members)
+                </span>
+              )}
+              {membersWithNetCost.length > 0 && (
+                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                  Net: ₹{totalNetCost.toLocaleString('en-IN')} ({membersWithNetCost.length} members)
                 </span>
               )}
               {hasExcelDateSerial && (
@@ -924,7 +1077,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Start (Valid From)</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">End (Valid To)</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Base Cost</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Net Cost</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duplicate</th>
               </tr>
@@ -933,6 +1087,12 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               {previewData.slice(0, 50).map((member, index) => {
                 const isDuplicate = previewData.filter(m => m.phone === member.phone).length > 1;
                 const isFirstOccurrence = previewData.findIndex(m => m.phone === member.phone) === index;
+                
+                // Format cost display
+                const formatCost = (cost) => {
+                  if (cost === null || cost === undefined) return '—';
+                  return `₹${cost.toLocaleString('en-IN')}`;
+                };
                 
                 return (
                   <tr key={index} className={`${isDuplicate && !isFirstOccurrence ? 'bg-yellow-50' : ''}`}>
@@ -945,8 +1105,15 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                     <td className="px-4 py-3 text-sm text-gray-500">{member.membership_end || '—'}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {member.base_cost !== null ? (
+                        <span className="text-purple-600 font-medium">
+                          {formatCost(member.base_cost)}
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {member.net_cost !== null ? (
                         <span className="text-green-600 font-medium">
-                          ₹{member.base_cost.toLocaleString('en-IN')}
+                          {formatCost(member.net_cost)}
                         </span>
                       ) : '—'}
                     </td>
@@ -985,7 +1152,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             <div>• Duplicate phone numbers in the file will be skipped (only first imported)</div>
             <div>• Existing members in the database will be skipped</div>
             <div>• Inactive members will be created without membership</div>
-            <div>• <strong>Base Cost will be used as membership amount (already converted from paisa)</strong></div>
+            <div>• <strong>Net Cost (if available) will be used as membership amount</strong></div>
+            <div>• If Net Cost is not available, Base Cost will be used</div>
             <div>• Valid From and Valid To dates will be used for membership period</div>
           </p>
         </div>
