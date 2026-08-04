@@ -1,4 +1,5 @@
-// src/components/BulkImportModal.jsx - FIXED VERSION
+// src/components/BulkImportModal.jsx - COMPLETE FIXED VERSION
+// Features: Robust error handling, skips invalid members, handles all data types
 
 import React, { useState, useRef, useMemo } from 'react';
 import { X, Upload, FileSpreadsheet, Loader2, CheckCircle, XCircle, AlertCircle, FileText } from 'lucide-react';
@@ -22,11 +23,37 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   const [costFormatDetected, setCostFormatDetected] = useState('');
   const [skippedRows, setSkippedRows] = useState([]);
   const [skippedCount, setSkippedCount] = useState(0);
+  const [invalidRows, setInvalidRows] = useState([]);
+  const [invalidCount, setInvalidCount] = useState(0);
   
   const isCancelledRef = useRef(false);
   const abortControllerRef = useRef(null);
 
   if (!isOpen) return null;
+
+  // ============================================================
+  // 🛡️ SAFE STRING HELPERS - Handle all data types safely
+  // ============================================================
+  const safeString = (value) => {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'number') {
+      // Check if it's a date serial number (Excel dates are numbers > 25569)
+      if (value > 25569 && value < 50000) {
+        // This might be an Excel date serial, keep as number for date parsing
+        return String(value);
+      }
+      return String(value);
+    }
+    if (value instanceof Date) return value.toISOString().split('T')[0];
+    if (typeof value === 'boolean') return String(value);
+    return String(value);
+  };
+
+  const safeLowerCase = (value) => {
+    const str = safeString(value);
+    return str.toLowerCase();
+  };
 
   // ============================================================
   // 🧠 SMART COST PARSER - Detects paisa vs rupee
@@ -37,6 +64,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     }
 
     if (typeof value === 'number') {
+      // If value > 10000, it's likely in paisa
       if (value > 10000) {
         return value / 100;
       }
@@ -45,7 +73,11 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
     if (typeof value === 'string') {
       let cleaned = value.trim();
+      // Remove currency symbols and commas
       cleaned = cleaned.replace(/[₹$,]/g, '').trim();
+      
+      // Check if it's empty after cleaning
+      if (!cleaned) return null;
       
       const hasDecimal = cleaned.includes('.');
       const numValue = parseFloat(cleaned);
@@ -53,10 +85,12 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         return null;
       }
 
+      // If no decimal and value > 10000, it's likely paisa
       if (!hasDecimal && numValue > 10000) {
         return numValue / 100;
       }
 
+      // If has decimal, it's already in rupees
       if (hasDecimal) {
         return numValue;
       }
@@ -79,7 +113,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       for (const field of costFields) {
         const val = row[field];
         if (val !== undefined && val !== null && val !== '') {
-          const numVal = typeof val === 'number' ? val : parseFloat(String(val).replace(/[₹$,]/g, ''));
+          const numVal = typeof val === 'number' ? val : parseFloat(safeString(val).replace(/[₹$,]/g, ''));
           if (!isNaN(numVal) && numVal > 0) {
             if (numVal > 10000) {
               paisaCount++;
@@ -115,33 +149,45 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       dateStr = dateStr.trim();
       if (!dateStr) return null;
 
+      // Already in YYYY-MM-DD format
       if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
         return dateStr;
       }
 
+      // Try native Date parsing
       const nativeDate = new Date(dateStr);
       if (!isNaN(nativeDate.getTime()) && nativeDate.getFullYear() > 1900 && nativeDate.getFullYear() < 2100) {
         return nativeDate.toISOString().split('T')[0];
       }
     }
     
+    // Excel date serial number (number)
     if (typeof dateStr === 'number' && dateStr > 0) {
-      const excelDate = new Date((dateStr - 25569) * 86400 * 1000);
-      if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1900 && excelDate.getFullYear() < 2100) {
-        setHasExcelDateSerial(true);
-        return excelDate.toISOString().split('T')[0];
+      // Excel serial number starts from 1 for 1900-01-01
+      // Excel's 1900 system has a bug where it thinks 1900 is a leap year
+      // But for dates after 1900-03-01, it works correctly
+      if (dateStr > 25569 && dateStr < 50000) {
+        const excelDate = new Date((dateStr - 25569) * 86400 * 1000);
+        if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1900 && excelDate.getFullYear() < 2100) {
+          setHasExcelDateSerial(true);
+          return excelDate.toISOString().split('T')[0];
+        }
       }
     }
 
+    // String that looks like a number (Excel serial as string)
     if (typeof dateStr === 'string' && !isNaN(dateStr) && Number(dateStr) > 0) {
       const numVal = Number(dateStr);
-      const excelDate = new Date((numVal - 25569) * 86400 * 1000);
-      if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1900 && excelDate.getFullYear() < 2100) {
-        setHasExcelDateSerial(true);
-        return excelDate.toISOString().split('T')[0];
+      if (numVal > 25569 && numVal < 50000) {
+        const excelDate = new Date((numVal - 25569) * 86400 * 1000);
+        if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1900 && excelDate.getFullYear() < 2100) {
+          setHasExcelDateSerial(true);
+          return excelDate.toISOString().split('T')[0];
+        }
       }
     }
 
+    // Try various date string patterns
     if (typeof dateStr === 'string') {
       let cleaned = dateStr.replace(/\s+/g, ' ').trim();
       
@@ -162,7 +208,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       };
 
       const getMonthNumber = (monthStr) => {
-        const month = monthStr.toLowerCase().trim();
+        const month = safeLowerCase(monthStr);
         return monthMap[month] || parseInt(month) || 1;
       };
 
@@ -215,12 +261,24 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   // ============================================================
   const isValidEmail = (email) => {
     if (!email) return false;
-    if (typeof email !== 'string') return false;
-    const trimmed = email.trim();
-    if (!trimmed) return false;
+    const str = safeString(email);
+    if (!str) return false;
     // Basic email validation - checks for @ and dot
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(trimmed);
+    return emailRegex.test(str);
+  };
+
+  // ============================================================
+  // VALIDATE PHONE NUMBER
+  // ============================================================
+  const isValidPhone = (phone) => {
+    if (!phone) return false;
+    const str = safeString(phone);
+    if (!str) return false;
+    // Accept various phone formats: numbers, +, spaces, hyphens
+    // Minimum 7 digits, maximum 15 digits (international)
+    const cleaned = str.replace(/[\s\-()+]/g, '');
+    return cleaned.length >= 7 && cleaned.length <= 15 && /^\d+$/.test(cleaned);
   };
 
   // ============================================================
@@ -233,14 +291,14 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       for (const pattern of patterns) {
         const found = keys.find(k => {
           if (!k || typeof k !== 'string') return false;
-          return k.toLowerCase().trim() === pattern.toLowerCase().trim();
+          return safeLowerCase(k) === safeLowerCase(pattern);
         });
         if (found) return found;
       }
       for (const pattern of patterns) {
         const found = keys.find(k => {
           if (!k || typeof k !== 'string') return false;
-          return k.toLowerCase().trim().includes(pattern.toLowerCase().trim());
+          return safeLowerCase(k).includes(safeLowerCase(pattern));
         });
         if (found) return found;
       }
@@ -315,7 +373,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     if (emailKey) {
       const rawEmail = row[emailKey];
       if (rawEmail !== undefined && rawEmail !== null && rawEmail !== '') {
-        email = String(rawEmail).trim();
+        email = safeString(rawEmail);
         // Only keep if it's a valid email
         if (!isValidEmail(email)) {
           email = '';
@@ -323,26 +381,89 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       }
     }
 
+    // Get phone and validate
+    let phone = '';
+    if (phoneKey) {
+      const rawPhone = row[phoneKey];
+      if (rawPhone !== undefined && rawPhone !== null && rawPhone !== '') {
+        phone = safeString(rawPhone);
+        // Clean phone number for storage
+        phone = phone.replace(/[\s\-()]/g, '');
+      }
+    }
+
     return {
-      full_name: nameKey ? String(row[nameKey]).trim() : '',
-      phone: phoneKey ? String(row[phoneKey]).trim() : '',
+      full_name: nameKey ? safeString(row[nameKey]) : '',
+      phone: phone,
       email: email,
-      plan_name: planKey ? String(row[planKey]).trim() : '',
+      plan_name: planKey ? safeString(row[planKey]) : '',
       status: statusKey ? row[statusKey] : 'active',
-      gender: genderKey ? String(row[genderKey]).trim() : 'male',
-      address: addressKey ? String(row[addressKey]).trim() : '',
+      gender: genderKey ? safeString(row[genderKey]) : 'male',
+      address: addressKey ? safeString(row[addressKey]) : '',
       date_of_birth: dobKey ? row[dobKey] : '',
       joined_date: startDateKey ? row[startDateKey] : '',
       membership_end: endDateKey ? row[endDateKey] : '',
       base_cost: baseCost,
       net_cost: netCost,
-      emergency_contact_name: emergencyNameKey ? String(row[emergencyNameKey]).trim() : '',
-      emergency_contact_phone: emergencyPhoneKey ? String(row[emergencyPhoneKey]).trim() : '',
-      medical_conditions: medicalKey ? String(row[medicalKey]).trim() : '',
-      allergies: allergiesKey ? String(row[allergiesKey]).trim() : '',
-      medications: medicationsKey ? String(row[medicationsKey]).trim() : '',
+      emergency_contact_name: emergencyNameKey ? safeString(row[emergencyNameKey]) : '',
+      emergency_contact_phone: emergencyPhoneKey ? safeString(row[emergencyPhoneKey]) : '',
+      medical_conditions: medicalKey ? safeString(row[medicalKey]) : '',
+      allergies: allergiesKey ? safeString(row[allergiesKey]) : '',
+      medications: medicationsKey ? safeString(row[medicationsKey]) : '',
       _raw: row,
-      _mapped: true
+      _mapped: true,
+      _isValid: true,
+      _validationErrors: []
+    };
+  };
+
+  // ============================================================
+  // VALIDATE A SINGLE ROW
+  // ============================================================
+  const validateRow = (row) => {
+    const errors = [];
+    const warnings = [];
+
+    // Check required fields
+    if (!row.full_name || row.full_name.trim() === '') {
+      errors.push('Missing Full Name');
+    }
+
+    if (!row.phone || row.phone.trim() === '') {
+      errors.push('Missing Phone Number');
+    } else if (!isValidPhone(row.phone)) {
+      errors.push('Invalid Phone Number (must be 7-15 digits)');
+    }
+
+    if (!row.plan_name || row.plan_name.trim() === '') {
+      errors.push('Missing Plan Name');
+    }
+
+    // Check if email is valid (if provided)
+    if (row.email && row.email.trim() !== '' && !isValidEmail(row.email)) {
+      errors.push('Invalid Email Format');
+    }
+
+    // Check dates
+    const parsedStart = parseDate(row.joined_date);
+    const parsedEnd = parseDate(row.membership_end);
+
+    if (!parsedStart && !parsedEnd) {
+      errors.push('Missing Valid From OR Valid To date');
+    }
+
+    // Check cost (warn if invalid)
+    if (row.base_cost !== null && (isNaN(row.base_cost) || row.base_cost <= 0)) {
+      errors.push('Invalid Cost Value');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings,
+      parsedStart,
+      parsedEnd,
+      row
     };
   };
 
@@ -357,7 +478,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       for (const field of dateFields) {
         const val = row[field];
         if (val !== undefined && val !== null && val !== '') {
-          if (typeof val === 'number' && val > 0) {
+          if (typeof val === 'number' && val > 0 && val > 25569 && val < 50000) {
             formats.push('Excel Serial Number');
           } else if (typeof val === 'string') {
             if (val.match(/^\d{1,2}[-/]\w{3,9}[-/]\d{2,4}$/i)) {
@@ -380,23 +501,64 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   // ============================================================
-  // CHECK IF ROW IS VALID (has plan AND valid date range)
+  // EXTRACT DURATION FROM PLAN NAME
   // ============================================================
-  const isValidRow = (row) => {
-    // Check if there's a plan name
-    const hasPlan = row.plan_name && row.plan_name.trim() !== '';
+  const extractDuration = (planName) => {
+    if (!planName) return { durationDays: 30, planType: 'monthly' };
     
-    // Check if dates are valid (parsed correctly)
-    const parsedStart = parseDate(row.joined_date);
-    const parsedEnd = parseDate(row.membership_end);
+    const safeName = safeString(planName);
+    if (!safeName) return { durationDays: 30, planType: 'monthly' };
     
-    const hasValidStart = parsedStart !== null;
-    const hasValidEnd = parsedEnd !== null;
+    const lower = safeName.toLowerCase();
     
-    // A row is valid if it has a plan AND (start date OR end date)
-    const isValid = hasPlan && (hasValidStart || hasValidEnd);
+    if (lower.includes('day')) {
+      const match = safeName.match(/(\d+)\s*day/i);
+      if (match) {
+        return { durationDays: parseInt(match[1]), planType: 'monthly' };
+      }
+    }
     
-    return isValid;
+    if (lower.includes('month') || lower.includes('mon')) {
+      const match = safeName.match(/(\d+)\s*month/i);
+      if (match) {
+        const months = parseInt(match[1]);
+        const durationDays = months * 30;
+        let planType = 'monthly';
+        if (months >= 12) planType = 'yearly';
+        else if (months >= 6) planType = 'half_yearly';
+        else if (months >= 3) planType = 'quarterly';
+        return { durationDays, planType };
+      }
+    }
+    
+    if (lower.includes('year') || lower.includes('yr')) {
+      const match = safeName.match(/(\d+)\s*year/i);
+      if (match) {
+        const years = parseInt(match[1]);
+        return { durationDays: years * 365, planType: 'yearly' };
+      }
+    }
+    
+    // Common plan patterns
+    const offerMap = {
+      '1+1': { days: 55, type: 'monthly' },
+      '3+3': { days: 180, type: 'half_yearly' },
+      '6+6': { days: 365, type: 'yearly' },
+      '12+2': { days: 420, type: 'yearly' },
+      '12+1': { days: 390, type: 'yearly' },
+      '6+3': { days: 235, type: 'half_yearly' },
+      '6+4': { days: 300, type: 'yearly' },
+      '3+2': { days: 150, type: 'quarterly' },
+      '3+1': { days: 120, type: 'quarterly' },
+    };
+
+    for (const [key, value] of Object.entries(offerMap)) {
+      if (lower.includes(key)) {
+        return { durationDays: value.days, planType: value.type };
+      }
+    }
+    
+    return { durationDays: 30, planType: 'monthly' };
   };
 
   // ============================================================
@@ -418,12 +580,12 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               skipEmptyLines: true,
               trimHeaders: true,
               delimiter: delimiter,
-              transformHeader: (header) => header.trim(),
+              transformHeader: (header) => safeString(header),
               dynamicTyping: false,
             });
 
             const rows = result.data.filter(row => 
-              Object.values(row).some(val => val && String(val).trim())
+              Object.values(row).some(val => val && safeString(val))
             );
 
             resolve({ data: rows, type: 'csv' });
@@ -452,20 +614,16 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               for (const [key, value] of Object.entries(row)) {
                 if (value instanceof Date) {
                   cleaned[key] = value.toISOString().split('T')[0];
-                } else if (typeof value === 'number' && value > 0) {
-                  const excelDate = new Date((value - 25569) * 86400 * 1000);
-                  if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1900 && excelDate.getFullYear() < 2100) {
-                    cleaned[key] = value;
-                  } else {
-                    cleaned[key] = String(value);
-                  }
+                } else if (typeof value === 'number' && value > 0 && value > 25569 && value < 50000) {
+                  // This might be an Excel date serial
+                  cleaned[key] = value;
                 } else {
                   cleaned[key] = value !== undefined && value !== null ? String(value) : '';
                 }
               }
               return cleaned;
             }).filter(row => 
-              Object.values(row).some(val => val && String(val).trim())
+              Object.values(row).some(val => val && safeString(val))
             );
 
             resolve({ data: rows, type: 'excel' });
@@ -476,63 +634,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         reader.readAsArrayBuffer(file);
       }
     });
-  };
-
-  // ============================================================
-  // EXTRACT DURATION FROM PLAN NAME
-  // ============================================================
-  const extractDuration = (planName) => {
-    if (!planName) return { durationDays: 30, planType: 'monthly' };
-    
-    const lower = planName.toLowerCase();
-    
-    if (lower.includes('day')) {
-      const match = planName.match(/(\d+)\s*day/i);
-      if (match) {
-        return { durationDays: parseInt(match[1]), planType: 'monthly' };
-      }
-    }
-    
-    if (lower.includes('month') || lower.includes('mon')) {
-      const match = planName.match(/(\d+)\s*month/i);
-      if (match) {
-        const months = parseInt(match[1]);
-        const durationDays = months * 30;
-        let planType = 'monthly';
-        if (months >= 12) planType = 'yearly';
-        else if (months >= 6) planType = 'half_yearly';
-        else if (months >= 3) planType = 'quarterly';
-        return { durationDays, planType };
-      }
-    }
-    
-    if (lower.includes('year') || lower.includes('yr')) {
-      const match = planName.match(/(\d+)\s*year/i);
-      if (match) {
-        const years = parseInt(match[1]);
-        return { durationDays: years * 365, planType: 'yearly' };
-      }
-    }
-    
-    const offerMap = {
-      '1+1': { days: 55, type: 'monthly' },
-      '3+3': { days: 180, type: 'half_yearly' },
-      '6+6': { days: 365, type: 'yearly' },
-      '12+2': { days: 420, type: 'yearly' },
-      '12+1': { days: 390, type: 'yearly' },
-      '6+3': { days: 235, type: 'half_yearly' },
-      '6+4': { days: 300, type: 'yearly' },
-      '3+2': { days: 150, type: 'quarterly' },
-      '3+1': { days: 120, type: 'quarterly' },
-    };
-
-    for (const [key, value] of Object.entries(offerMap)) {
-      if (lower.includes(key)) {
-        return { durationDays: value.days, planType: value.type };
-      }
-    }
-    
-    return { durationDays: 30, planType: 'monthly' };
   };
 
   // ============================================================
@@ -549,6 +650,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     setCostFormatDetected('');
     setSkippedRows([]);
     setSkippedCount(0);
+    setInvalidRows([]);
+    setInvalidCount(0);
 
     toast.loading('Reading file...', { id: 'file-reading' });
 
@@ -573,13 +676,45 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         }
 
         // ============================================================
+        // 🔥 VALIDATE EACH ROW
+        // ============================================================
+        const validatedData = [];
+        const invalidData = [];
+        
+        for (const row of validData) {
+          const validation = validateRow(row);
+          if (validation.isValid) {
+            validatedData.push({
+              ...row,
+              _parsedStart: validation.parsedStart,
+              _parsedEnd: validation.parsedEnd,
+              _validationErrors: []
+            });
+          } else {
+            invalidData.push({
+              ...row,
+              _validationErrors: validation.errors,
+              _isValid: false
+            });
+          }
+        }
+
+        setInvalidRows(invalidData);
+        setInvalidCount(invalidData.length);
+
+        // ============================================================
         // 🔥 SMART FILTERING: Skip rows without plan OR valid dates
         // ============================================================
         const filteredData = [];
         const skippedData = [];
         
-        for (const row of validData) {
-          if (isValidRow(row)) {
+        for (const row of validatedData) {
+          // Check if row has plan AND (start date OR end date)
+          const hasPlan = row.plan_name && row.plan_name.trim() !== '';
+          const hasValidStart = row._parsedStart !== null;
+          const hasValidEnd = row._parsedEnd !== null;
+          
+          if (hasPlan && (hasValidStart || hasValidEnd)) {
             filteredData.push(row);
           } else {
             skippedData.push(row);
@@ -600,8 +735,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         // Parse dates and costs
         const parsedData = filteredData.map(m => ({
           ...m,
-          joined_date: parseDate(m.joined_date),
-          membership_end: parseDate(m.membership_end),
+          joined_date: m._parsedStart || parseDate(m.joined_date),
+          membership_end: m._parsedEnd || parseDate(m.membership_end),
           date_of_birth: parseDate(m.date_of_birth),
         }));
 
@@ -611,8 +746,10 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
         console.log(`📊 Import Stats:`);
         console.log(`  - Total rows: ${validData.length}`);
-        console.log(`  - Valid rows: ${filteredData.length}`);
-        console.log(`  - Skipped rows: ${skippedData.length}`);
+        console.log(`  - Invalid rows: ${invalidData.length}`);
+        console.log(`  - Valid rows: ${validatedData.length}`);
+        console.log(`  - Skipped rows (no plan/dates): ${skippedData.length}`);
+        console.log(`  - Final rows: ${filteredData.length}`);
         console.log(`  - Rows with cost: ${membersWithCost.length}`);
         console.log(`  - Total cost: ₹${totalCost}`);
 
@@ -621,9 +758,12 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         setStep(2);
         setResults(null);
         
-        let message = `Loaded ${parsedData.length} valid members from ${selectedFile.name}`;
+        let message = `✅ Loaded ${parsedData.length} valid members`;
+        if (invalidData.length > 0) {
+          message += `, ⚠️ ${invalidData.length} invalid rows skipped (check errors)`;
+        }
         if (skippedData.length > 0) {
-          message += ` (${skippedData.length} rows skipped due to missing plan or dates)`;
+          message += `, ⏭️ ${skippedData.length} rows skipped (missing plan/dates)`;
         }
         if (costFormat === 'paisa') {
           message += ' (Cost converted from paisa to rupee)';
@@ -662,14 +802,14 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       const existingPlanMap = {};
       existingPlans.forEach(p => {
         if (p && p.name) {
-          existingPlanMap[p.name.toLowerCase().trim()] = p.id;
+          existingPlanMap[safeLowerCase(p.name)] = p.id;
         }
       });
 
-      const uniquePlans = [...new Set(previewData.map(m => m.plan_name).filter(Boolean))];
+      const uniquePlans = [...new Set(previewData.map(m => safeString(m.plan_name)).filter(Boolean))];
       const plansToCreate = uniquePlans.filter(name => {
         if (!name) return false;
-        const cleanName = name.toLowerCase().trim();
+        const cleanName = safeLowerCase(name);
         return !existingPlanMap[cleanName];
       });
 
@@ -702,7 +842,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             const newPlan = newPlanResponse.data;
             
             if (newPlan && newPlan.name) {
-              existingPlanMap[newPlan.name.toLowerCase().trim()] = newPlan.id;
+              existingPlanMap[safeLowerCase(newPlan.name)] = newPlan.id;
             }
             createdPlans.push(planName);
             
@@ -737,13 +877,14 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       const planIdMap = {};
       allPlans.forEach(p => {
         if (p && p.name) {
-          planIdMap[p.name.toLowerCase().trim()] = p.id;
+          planIdMap[safeLowerCase(p.name)] = p.id;
         }
       });
 
       const defaultPlan = allPlans.find(p => p.is_active) || allPlans[0];
 
       const successfullyImportedPhones = new Set();
+      const failedPhoneNumbers = new Set();
       
       for (let i = 0; i < previewData.length; i++) {
         if (isCancelledRef.current) {
@@ -755,11 +896,32 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         const member = previewData[i];
         setImportProgress({ current: i + 1, total: previewData.length });
 
-        if (successfullyImportedPhones.has(member.phone)) {
+        // Validate member before import
+        const validation = validateRow(member);
+        if (!validation.isValid) {
+          results.skipped++;
+          results.errors.push({
+            member: member.full_name || 'Unknown',
+            error: `Invalid data: ${validation.errors.join(', ')}`
+          });
+          continue;
+        }
+
+        const phone = safeString(member.phone);
+        if (successfullyImportedPhones.has(phone)) {
           results.skipped++;
           results.errors.push({
             member: member.full_name,
-            error: `Duplicate phone number: ${member.phone} (already imported earlier in this file)`
+            error: `Duplicate phone number: ${phone} (already imported earlier in this file)`
+          });
+          continue;
+        }
+
+        if (failedPhoneNumbers.has(phone)) {
+          results.skipped++;
+          results.errors.push({
+            member: member.full_name,
+            error: `Phone number ${phone} failed previously in this import`
           });
           continue;
         }
@@ -767,58 +929,66 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         let importSuccess = false;
 
         try {
-          const shouldBeActive = member.status !== false;
+          const shouldBeActive = member.status !== false && member.status !== 'inactive';
           
           const memberData = {
-            full_name: member.full_name,
-            phone: member.phone,
-            gender: member.gender || 'male',
+            full_name: safeString(member.full_name),
+            phone: phone,
+            gender: safeString(member.gender) || 'male',
             is_active: shouldBeActive,
             joined_date: member.joined_date || new Date().toISOString().split('T')[0],
           };
 
-          if (member.base_cost !== null) {
-            memberData.membership_fee = member.base_cost;
-          } else if (member.net_cost !== null) {
-            memberData.membership_fee = member.net_cost;
-          }
-
-          // ✅ FIX: Only add email if it's valid and not empty
+          // ✅ Only add email if valid
           if (member.email && member.email.trim() !== '' && isValidEmail(member.email)) {
-            memberData.email = member.email.trim();
+            memberData.email = safeString(member.email);
           }
 
-          if (member.address) memberData.address = member.address;
+          // ✅ Only add address if not empty
+          if (member.address && member.address.trim() !== '') {
+            memberData.address = safeString(member.address);
+          }
+
+          // ✅ Only add DOB if valid
           if (member.date_of_birth) {
             const dob = parseDate(member.date_of_birth);
             if (dob) memberData.date_of_birth = dob;
           }
-          if (member.emergency_contact_name) memberData.emergency_contact_name = member.emergency_contact_name;
-          if (member.emergency_contact_phone) memberData.emergency_contact_phone = member.emergency_contact_phone;
-          if (member.medical_conditions) memberData.medical_conditions = member.medical_conditions;
-          if (member.allergies) memberData.allergies = member.allergies;
-          if (member.medications) memberData.medications = member.medications;
-          
-          if (member.joined_date) {
-            memberData.joined_date = member.joined_date;
-          } else {
-            memberData.joined_date = new Date().toISOString().split('T')[0];
+
+          // ✅ Add optional fields if they exist
+          if (member.emergency_contact_name && member.emergency_contact_name.trim() !== '') {
+            memberData.emergency_contact_name = safeString(member.emergency_contact_name);
+          }
+          if (member.emergency_contact_phone && member.emergency_contact_phone.trim() !== '') {
+            memberData.emergency_contact_phone = safeString(member.emergency_contact_phone);
+          }
+          if (member.medical_conditions && member.medical_conditions.trim() !== '') {
+            memberData.medical_conditions = safeString(member.medical_conditions);
+          }
+          if (member.allergies && member.allergies.trim() !== '') {
+            memberData.allergies = safeString(member.allergies);
+          }
+          if (member.medications && member.medications.trim() !== '') {
+            memberData.medications = safeString(member.medications);
           }
 
+          // Create the member
           const memberResponse = await api.post('/gym/members', memberData);
           const newMember = memberResponse.data;
           
           importSuccess = true;
-          successfullyImportedPhones.add(member.phone);
+          successfullyImportedPhones.add(phone);
 
+          // Find plan ID
           let planId = null;
-          let planName = member.plan_name;
+          let planName = safeString(member.plan_name);
           
           if (planName) {
-            const cleanPlanName = planName.toLowerCase().trim();
+            const cleanPlanName = safeLowerCase(planName);
             planId = planIdMap[cleanPlanName];
             
             if (!planId) {
+              // Try partial match
               for (const [key, id] of Object.entries(planIdMap)) {
                 if (key.includes(cleanPlanName) || cleanPlanName.includes(key)) {
                   planId = id;
@@ -833,6 +1003,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             planName = defaultPlan.name;
           }
 
+          // Create membership if member is active and has a plan
           if (shouldBeActive && planId) {
             try {
               let startDate = member.joined_date || new Date().toISOString().split('T')[0];
@@ -851,9 +1022,9 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               
               if (endDate) {
                 let amountPaid = 0;
-                if (member.net_cost !== null) {
+                if (member.net_cost !== null && member.net_cost > 0) {
                   amountPaid = member.net_cost;
-                } else if (member.base_cost !== null) {
+                } else if (member.base_cost !== null && member.base_cost > 0) {
                   amountPaid = member.base_cost;
                 }
                 
@@ -875,6 +1046,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 member: member.full_name,
                 error: `Membership failed: ${membershipError.response?.data?.detail || membershipError.message}`
               });
+              // Don't increment failed count for membership errors, the member was created
             }
           }
 
@@ -885,18 +1057,21 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           
           const errorMsg = error.response?.data?.detail || error.message || 'Unknown error';
           
-          const isDuplicateError = errorMsg.toLowerCase().includes('already exists') || 
-                                   errorMsg.toLowerCase().includes('duplicate') || 
-                                   errorMsg.toLowerCase().includes('phone');
+          // Check if this is a duplicate error
+          const isDuplicateError = safeLowerCase(errorMsg).includes('already exists') || 
+                                   safeLowerCase(errorMsg).includes('duplicate') || 
+                                   safeLowerCase(errorMsg).includes('phone');
           
           if (isDuplicateError) {
             results.skipped++;
+            failedPhoneNumbers.add(phone);
             results.errors.push({
               member: member.full_name,
-              error: `Member already exists with phone: ${member.phone} (skipped)`
+              error: `Member already exists with phone: ${phone} (skipped)`
             });
           } else {
             results.failed++;
+            failedPhoneNumbers.add(phone);
             results.errors.push({
               member: member.full_name,
               error: errorMsg
@@ -904,7 +1079,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           }
         }
 
-        await new Promise(resolve => setTimeout(resolve, 150));
+        // Small delay between imports to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       if (isCancelledRef.current) {
@@ -918,8 +1094,9 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       setStep(3);
       
       let summaryMessage = `✅ Import complete! ${results.success} members imported.`;
+      if (invalidCount > 0) summaryMessage += ` ⚠️ ${invalidCount} invalid rows skipped.`;
       if (skippedCount > 0) summaryMessage += ` ⏭️ ${skippedCount} rows skipped (no plan/dates).`;
-      if (results.skipped > 0) summaryMessage += ` ⏭️ ${results.skipped} duplicate phones skipped.`;
+      if (results.skipped > 0) summaryMessage += ` ⏭️ ${results.skipped} duplicates skipped.`;
       if (createdPlans.length > 0) summaryMessage += ` 📋 ${createdPlans.length} plans created.`;
       if (results.failed > 0) summaryMessage += ` ❌ ${results.failed} failed.`;
       
@@ -968,16 +1145,15 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     setCostFormatDetected('');
     setSkippedRows([]);
     setSkippedCount(0);
+    setInvalidRows([]);
+    setInvalidCount(0);
     if (onImportComplete) onImportComplete();
     onClose();
   };
 
   // ============================================================
-  // RENDER FUNCTIONS (same as before - keep your existing render functions)
+  // RENDER STEP 1
   // ============================================================
-  // ... (keep all your existing render functions: renderStep1, renderStep2, renderStep3)
-  
-  // I'll include them here but they remain the same as in your original code
   const renderStep1 = () => (
     <div className="text-center py-8">
       <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1016,36 +1192,31 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         <ul className="text-xs text-gray-600 mt-2 space-y-1 list-disc list-inside">
           <li>Auto-detects column names (Valid From, Valid To, Base Cost, Net Cost, etc.)</li>
           <li><strong className="text-blue-600">Auto-filters:</strong> Skips rows without Plan Name OR Valid From/To dates</li>
-          <li><strong className="text-blue-600">Auto-detects cost format:</strong> Paisa or Rupee</li>
+          <li><strong className="text-red-600">Auto-validation:</strong> Skips rows with invalid data (phone, email, costs)</li>
+          <li>Auto-detects cost format (Paisa or Rupee)</li>
           <li>Auto-detects date formats (DD/MM/YYYY, DD-MMM-YY, Month DD, YYYY, etc.)</li>
           <li>Supports both <strong>Base Cost</strong> (original price) and <strong>Net Cost</strong> (discounted price)</li>
           <li>Auto-creates membership plans if they don't exist</li>
           <li>Skips duplicate phone numbers automatically</li>
-          <li>Supports .xlsx, .xls, .csv, .tsv files</li>
         </ul>
-        <div className="mt-3 bg-blue-50 rounded p-2">
-          <p className="text-xs text-blue-700">
-            📝 Example: <span className="font-mono">John Doe, 9876543210, john@email.com, 2026-06-15, 2026-11-30, 55000000, 45000000, WS 6 MONTHS PLAN, active</span>
-          </p>
-          <p className="text-xs text-blue-600 mt-1">
-            💰 Base Cost 5,50,00,000 paisa = ₹5,50,000.00 | Net Cost 4,50,00,000 paisa = ₹4,50,000.00
-          </p>
-          <p className="text-xs text-green-600 mt-1">
-            ✅ Members without Plan Name or Valid From/To dates will be automatically skipped
-          </p>
-        </div>
       </div>
     </div>
   );
 
+  // ============================================================
+  // RENDER STEP 2
+  // ============================================================
   const renderStep2 = () => {
     const phoneCounts = {};
     previewData.forEach(m => {
-      phoneCounts[m.phone] = (phoneCounts[m.phone] || 0) + 1;
+      const phone = safeString(m.phone);
+      phoneCounts[phone] = (phoneCounts[phone] || 0) + 1;
     });
     const duplicates = Object.entries(phoneCounts).filter(([phone, count]) => count > 1);
     const membersWithCost = previewData.filter(m => m.base_cost !== null);
     const totalCost = membersWithCost.reduce((sum, m) => sum + (m.base_cost || 0), 0);
+
+    const totalValidRows = previewData.length + skippedCount + invalidCount;
 
     return (
       <div>
@@ -1054,6 +1225,11 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             <h3 className="text-lg font-bold text-gray-900">📋 Preview Import Data</h3>
             <div className="flex items-center gap-3 mt-1 flex-wrap">
               <span className="text-sm text-gray-500">{previewData.length} valid members found</span>
+              {invalidCount > 0 && (
+                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                  ⚠️ {invalidCount} invalid rows skipped
+                </span>
+              )}
               {skippedCount > 0 && (
                 <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
                   ⏭️ {skippedCount} rows skipped (no plan/dates)
@@ -1081,11 +1257,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                   Total Cost: ₹{totalCost.toLocaleString('en-IN')} ({membersWithCost.length} members)
                 </span>
               )}
-              {hasExcelDateSerial && (
-                <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
-                  ⚡ Excel Date Serial Numbers Detected
-                </span>
-              )}
             </div>
           </div>
           <button
@@ -1096,6 +1267,23 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             Upload different file
           </button>
         </div>
+
+        {invalidCount > 0 && (
+          <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+            <p className="text-sm text-red-700 flex items-start gap-2">
+              <XCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>
+                <strong>⚠️ {invalidCount} invalid rows were skipped</strong> due to:
+                <ul className="list-disc list-inside mt-1 text-xs text-red-600">
+                  <li>Missing or invalid phone numbers (must be 7-15 digits)</li>
+                  <li>Invalid email format (if provided)</li>
+                  <li>Invalid cost values</li>
+                  <li>Missing required fields (Name, Phone, Plan)</li>
+                </ul>
+              </span>
+            </p>
+          </div>
+        )}
 
         {skippedCount > 0 && (
           <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
@@ -1143,15 +1331,13 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">End (Valid To)</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Valid</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {previewData.slice(0, 50).map((member, index) => {
-                const isDuplicate = previewData.filter(m => m.phone === member.phone).length > 1;
-                const isFirstOccurrence = previewData.findIndex(m => m.phone === member.phone) === index;
-                const isValid = member.plan_name && member.plan_name.trim() !== '' && 
-                               (member.joined_date || member.membership_end);
+                const phone = safeString(member.phone);
+                const isDuplicate = previewData.filter(m => safeString(m.phone) === phone).length > 1;
+                const isFirstOccurrence = previewData.findIndex(m => safeString(m.phone) === phone) === index;
                 
                 return (
                   <tr key={index} className={`${isDuplicate && !isFirstOccurrence ? 'bg-yellow-50' : ''}`}>
@@ -1176,16 +1362,9 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                       ) : '—'}
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <span className={`px-2 py-1 rounded-full text-xs ${member.status !== false ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                        {member.status !== false ? 'Active' : 'Inactive'}
+                      <span className={`px-2 py-1 rounded-full text-xs ${member.status !== false && member.status !== 'inactive' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                        {member.status !== false && member.status !== 'inactive' ? 'Active' : 'Inactive'}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      {isValid ? (
-                        <span className="text-xs text-green-600">✅ Valid</span>
-                      ) : (
-                        <span className="text-xs text-red-400">⚠️ Skipped</span>
-                      )}
                     </td>
                   </tr>
                 );
@@ -1203,11 +1382,11 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           <p className="text-sm text-blue-700 space-y-1">
             <div><strong>ℹ️ What will happen:</strong></div>
             <div>• Only rows with <strong>Plan Name</strong> AND <strong>Valid From/To</strong> dates will be imported</div>
+            <div>• Invalid rows (bad phone, email, etc.) will be automatically skipped</div>
             <div>• Plans will be auto-created if they don't exist</div>
             <div>• Duplicate phone numbers in the file will be skipped (only first imported)</div>
             <div>• Existing members in the database will be skipped</div>
             <div>• <strong>Net Cost (if available) will be used as membership amount</strong></div>
-            <div>• Valid From and Valid To dates will be used for membership period</div>
           </p>
         </div>
 
@@ -1264,10 +1443,13 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     );
   };
 
+  // ============================================================
+  // RENDER STEP 3
+  // ============================================================
   const renderStep3 = () => (
     <div>
       <div className="text-center mb-6">
-        {results.failed === 0 && results.skipped === 0 ? (
+        {results.failed === 0 && results.skipped === 0 && skippedCount === 0 && invalidCount === 0 ? (
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="h-8 w-8 text-green-600" />
           </div>
@@ -1281,37 +1463,36 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           </div>
         )}
         <h3 className="text-lg font-bold text-gray-900">Import Complete</h3>
-        <div className="flex justify-center gap-8 mt-2">
+        <div className="flex justify-center gap-8 mt-2 flex-wrap">
           <div>
             <p className="text-sm text-gray-500">Successful</p>
             <p className="text-2xl font-bold text-green-600">{results.success}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-500">Skipped (Duplicates)</p>
-            <p className="text-2xl font-bold text-yellow-600">{results.skipped || 0}</p>
-          </div>
-          {skippedCount > 0 && (
-            <div>
-              <p className="text-sm text-gray-500">Skipped (Invalid)</p>
-              <p className="text-2xl font-bold text-orange-600">{skippedCount}</p>
-            </div>
-          )}
-          <div>
             <p className="text-sm text-gray-500">Failed</p>
             <p className="text-2xl font-bold text-red-600">{results.failed}</p>
           </div>
+          <div>
+            <p className="text-sm text-gray-500">Duplicates Skipped</p>
+            <p className="text-2xl font-bold text-yellow-600">{results.skipped || 0}</p>
+          </div>
+          {invalidCount > 0 && (
+            <div>
+              <p className="text-sm text-gray-500">Invalid Rows</p>
+              <p className="text-2xl font-bold text-red-400">{invalidCount}</p>
+            </div>
+          )}
+          {skippedCount > 0 && (
+            <div>
+              <p className="text-sm text-gray-500">No Plan/Dates</p>
+              <p className="text-2xl font-bold text-orange-600">{skippedCount}</p>
+            </div>
+          )}
         </div>
         {plansCreated.length > 0 && (
           <div className="mt-2">
             <p className="text-sm text-blue-600">
               ✅ {plansCreated.length} new plan{plansCreated.length > 1 ? 's' : ''} created
-            </p>
-          </div>
-        )}
-        {skippedCount > 0 && (
-          <div className="mt-2">
-            <p className="text-sm text-orange-600">
-              ⏭️ {skippedCount} rows skipped (missing plan or dates)
             </p>
           </div>
         )}
@@ -1327,12 +1508,19 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {results.errors.map((error, index) => (
+              {results.errors.slice(0, 50).map((error, index) => (
                 <tr key={index}>
                   <td className="px-4 py-2 text-sm text-gray-900">{error.member}</td>
                   <td className="px-4 py-2 text-sm text-red-600">{error.error}</td>
                 </tr>
               ))}
+              {results.errors.length > 50 && (
+                <tr>
+                  <td colSpan="2" className="px-4 py-2 text-sm text-gray-500 text-center">
+                    ... and {results.errors.length - 50} more errors
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
