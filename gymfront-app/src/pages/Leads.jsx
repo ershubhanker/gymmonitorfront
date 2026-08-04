@@ -1,4 +1,5 @@
-// src/pages/Leads.jsx - Updated with proper permission handling
+// src/pages/Leads.jsx - Updated with auto-fill member data on conversion
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Search, Phone, Mail, User, Calendar,
@@ -256,33 +257,85 @@ const ShareLeadFormModal = ({ isOpen, onClose, shareableLink, gymSlug }) => {
 const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
   const [showMemberModal, setShowMemberModal] = useState(true);
 
+  // ============================================================
+  // 🔥 SMART PREFILL - Auto-fill all lead data into member form
+  // ============================================================
   const prefillData = {
-    full_name: lead.full_name || '',
-    email: lead.email || '',
-    phone: lead.phone || '',
-    gender: lead.gender || 'male',
+    // Personal Information
+    full_name: lead?.full_name || '',
+    email: lead?.email || '',
+    phone: lead?.phone || '',
+    gender: (lead?.gender || '').toLowerCase() || 'male',
     date_of_birth: '',
     address: '',
+    
+    // Emergency Contact
     emergency_contact_name: '',
     emergency_contact_phone: '',
+    
+    // Medical Information
     medical_conditions: '',
     allergies: '',
     medications: '',
+    
+    // ID Proof
     id_proof_type: 'aadhar',
     id_proof_number: '',
-    notes: lead.notes || '',
-    interest: lead.interest || '',
-    preferred_plan: lead.preferred_plan || '',
-    budget: lead.budget || '',
-    source: lead.source || '',
+    
+    // Additional Info (stored in notes or custom fields)
+    notes: lead?.notes || '',
+    interest: lead?.interest || '',
+    preferred_plan: lead?.preferred_plan || '',
+    budget: lead?.budget || '',
+    source: lead?.source || '',
+    lead_quality: lead?.lead_quality || 'warm',
+    age: lead?.age || '',
+  };
+
+  console.log('📝 Converting lead to member with prefill data:', prefillData);
+
+  const createMemberFromLead = () => {
+    return {
+      id: null,
+      full_name: prefillData.full_name,
+      email: prefillData.email,
+      phone: prefillData.phone,
+      gender: prefillData.gender,
+      date_of_birth: prefillData.date_of_birth || '',
+      address: prefillData.address || '',
+      emergency_contact_name: prefillData.emergency_contact_name || '',
+      emergency_contact_phone: prefillData.emergency_contact_phone || '',
+      medical_conditions: prefillData.medical_conditions || '',
+      allergies: prefillData.allergies || '',
+      medications: prefillData.medications || '',
+      id_proof_type: prefillData.id_proof_type || 'aadhar',
+      id_proof_number: prefillData.id_proof_number || '',
+      // Pass additional data in raw field
+      raw: {
+        ...prefillData,
+        notes: prefillData.notes || '',
+        interest: prefillData.interest || '',
+        preferred_plan: prefillData.preferred_plan || '',
+        budget: prefillData.budget || '',
+        source: prefillData.source || '',
+        lead_quality: prefillData.lead_quality || 'warm',
+        age: prefillData.age || '',
+      }
+    };
   };
 
   const handleMemberSave = async (memberFormData) => {
     try {
+      // Update lead status to converted
       await api.put(`/gym/leads/${lead.id}`, { status: 'converted' });
-      toast.success(`Lead "${lead.full_name}" converted to member successfully!`);
+      
+      toast.success(`✅ Lead "${lead.full_name}" converted to member successfully!`);
+      
+      // Close the modal and refresh the leads list
       onConverted();
       onClose();
+      
+      // Return the member data so the member creation can proceed
       return memberFormData;
     } catch (err) {
       console.error('Conversion error:', err);
@@ -291,6 +344,7 @@ const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
     }
   };
 
+
   return (
     <>
       {showMemberModal && (
@@ -298,9 +352,9 @@ const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
           isOpen={showMemberModal}
           onClose={onClose}
           onSave={handleMemberSave}
-          member={null}
+          member={createMemberFromLead()}  // ✅ Pass as member object with pre-filled data
           userRole="gym_owner"
-          prefillData={prefillData}
+          isFromLead={true}  // ✅ Flag to indicate this is from lead conversion
         />
       )}
     </>
@@ -352,7 +406,6 @@ const LeadModal = ({ lead, onClose, onSave }) => {
       }
     } catch (error) {
       console.error('Error fetching staff list:', error);
-      // Only show error if not 403 (permission denied)
       if (error.response?.status !== 403) {
         setStaffError(error.response?.data?.detail || 'Failed to load staff list');
       } else {

@@ -1831,7 +1831,14 @@ const MembershipSelector = ({
 };
 
 // ─── Main MemberModal ─────────────────────────────────────────────────────────
-const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_owner' }) => {
+const MemberModal = ({ isOpen, onClose,
+   onSave,
+   member = null,
+   userRole = 'gym_owner',
+  isFromLead = false,  
+  prefillData = null 
+
+ }) => {
   const today = new Date().toISOString().split('T')[0];
   const isEdit = !!member;
 
@@ -1947,74 +1954,145 @@ const MemberModal = ({ isOpen, onClose, onSave, member = null, userRole = 'gym_o
   }, []);
 
   // Reset form when modal opens/closes
-  useEffect(() => {
-    if (!isOpen) return;
-    setActiveTab('personal');
-    setSaving(false);
-    setShowPlanCreator(false);
-    setUserManuallyChangedAmount(false);
-    setAmountError(null);
-    setSelectedAddons([]);
-    setAddonTotal(0);
+// Reset form when modal opens/closes
+useEffect(() => {
+  if (!isOpen) return;
+  setActiveTab('personal');
+  setSaving(false);
+  setShowPlanCreator(false);
+  setUserManuallyChangedAmount(false);
+  setAmountError(null);
+  setSelectedAddons([]);
+  setAddonTotal(0);
 
-    if (member) {
-      setFormData({
-        full_name: member.full_name || '',
-        email: member.email || '',
-        phone: member.phone || '',
-        date_of_birth: member.date_of_birth || '',
-        gender: member.gender || 'male',
-        address: member.address || '',
-        emergency_contact_name: member.emergency_contact_name || '',
-        emergency_contact_phone: member.emergency_contact_phone || '',
-        medical_conditions: member.medical_conditions || '',
-        allergies: member.allergies || '',
-        medications: member.medications || '',
-        id_proof_type: member.id_proof_type || 'aadhar',
-        id_proof_number: member.id_proof_number || '',
-        plan_id: '', 
-        membership_start_date: today, 
-        payment_method: 'cash', 
-        amount_paid: '',
-        discount_applied: '',
-        renew_membership: false,
-        custom_due_date: '',
-        pt_trainer_id: '',
-        pt_start_date: '',
-        pt_end_date: '',
-        pt_session_time: '',
-        pt_session_days: '[]',
-        pt_total_amount: '',
-        pt_amount_paid: '',
-        pt_notes: '',
-      });
-    } else {
-      setFormData({
-        full_name: '', email: '', phone: '', date_of_birth: '', gender: 'male',
-        address: '', emergency_contact_name: '', emergency_contact_phone: '',
-        medical_conditions: '', allergies: '', medications: '',
-        id_proof_type: 'aadhar', id_proof_number: '',
-        plan_id: '', 
-        membership_start_date: today, 
-        payment_method: 'cash', 
-        amount_paid: '',
-        discount_applied: '',
-        renew_membership: false,
-        custom_due_date: '',
-        pt_trainer_id: '',
-        pt_start_date: '',
-        pt_end_date: '',
-        pt_session_time: '',
-        pt_session_days: '[]',
-        pt_total_amount: '',
-        pt_amount_paid: '',
-        pt_notes: '',
-      });
+  // ============================================================
+  // 🔥 FIX: Handle prefill data from lead conversion
+  // ============================================================
+  const isLeadConversion = isFromLead || (member && member.id === null);
+  
+  // Check if we have prefill data from member.raw or direct prefillData prop
+  const rawData = member?.raw || prefillData || {};
+  
+  console.log('📋 MemberModal - isFromLead:', isFromLead);
+  console.log('📋 MemberModal - rawData:', rawData);
+
+  if (member && member.id !== null) {
+    // Normal edit mode - existing member
+    setFormData({
+      full_name: member.full_name || '',
+      email: member.email || '',
+      phone: member.phone || '',
+      date_of_birth: member.date_of_birth || '',
+      gender: member.gender || 'male',
+      address: member.address || '',
+      emergency_contact_name: member.emergency_contact_name || '',
+      emergency_contact_phone: member.emergency_contact_phone || '',
+      medical_conditions: member.medical_conditions || '',
+      allergies: member.allergies || '',
+      medications: member.medications || '',
+      id_proof_type: member.id_proof_type || 'aadhar',
+      id_proof_number: member.id_proof_number || '',
+      plan_id: '', 
+      membership_start_date: today, 
+      payment_method: 'cash', 
+      amount_paid: '',
+      discount_applied: '',
+      renew_membership: false,
+      custom_due_date: '',
+      pt_trainer_id: '',
+      pt_start_date: '',
+      pt_end_date: '',
+      pt_session_time: '',
+      pt_session_days: '[]',
+      pt_total_amount: '',
+      pt_amount_paid: '',
+      pt_notes: '',
+    });
+  } else if (isLeadConversion || rawData.full_name) {
+    // ============================================================
+    // 🔥 LEAD CONVERSION MODE - Prefill with lead data
+    // ============================================================
+    console.log('🔥 Prefilling form with lead data:', rawData);
+    
+    // Determine gender - ensure it's in the correct format
+    let gender = rawData.gender || 'male';
+    if (typeof gender === 'string') {
+      gender = gender.toLowerCase();
+      if (!['male', 'female', 'other', 'prefer_not_to_say'].includes(gender)) {
+        gender = 'male';
+      }
     }
-    refreshMembershipPlans();
-    fetchTrainers();
-    fetchAddons();
-  }, [isOpen, member, refreshMembershipPlans, fetchTrainers, fetchAddons, today]);
+    
+    setFormData({
+      full_name: rawData.full_name || '',
+      email: rawData.email || '',
+      phone: rawData.phone || '',
+      date_of_birth: rawData.date_of_birth || '',
+      gender: gender,
+      address: rawData.address || '',
+      emergency_contact_name: rawData.emergency_contact_name || '',
+      emergency_contact_phone: rawData.emergency_contact_phone || '',
+      medical_conditions: rawData.medical_conditions || '',
+      allergies: rawData.allergies || '',
+      medications: rawData.medications || '',
+      id_proof_type: rawData.id_proof_type || 'aadhar',
+      id_proof_number: rawData.id_proof_number || '',
+      plan_id: '', 
+      membership_start_date: today, 
+      payment_method: 'cash', 
+      amount_paid: '',
+      discount_applied: '',
+      renew_membership: false,
+      custom_due_date: '',
+      pt_trainer_id: '',
+      pt_start_date: '',
+      pt_end_date: '',
+      pt_session_time: '',
+      pt_session_days: '[]',
+      pt_total_amount: '',
+      pt_amount_paid: '',
+      pt_notes: rawData.notes || '',  // ✅ Prefill notes from lead
+    });
+    
+    // If there are additional fields, store them
+    if (rawData.interest) {
+      console.log('📝 Lead interest:', rawData.interest);
+    }
+    if (rawData.preferred_plan) {
+      console.log('📝 Lead preferred plan:', rawData.preferred_plan);
+    }
+    if (rawData.budget) {
+      console.log('📝 Lead budget:', rawData.budget);
+    }
+  } else {
+    // New member mode (empty form)
+    setFormData({
+      full_name: '', email: '', phone: '', date_of_birth: '', gender: 'male',
+      address: '', emergency_contact_name: '', emergency_contact_phone: '',
+      medical_conditions: '', allergies: '', medications: '',
+      id_proof_type: 'aadhar', id_proof_number: '',
+      plan_id: '', 
+      membership_start_date: today, 
+      payment_method: 'cash', 
+      amount_paid: '',
+      discount_applied: '',
+      renew_membership: false,
+      custom_due_date: '',
+      pt_trainer_id: '',
+      pt_start_date: '',
+      pt_end_date: '',
+      pt_session_time: '',
+      pt_session_days: '[]',
+      pt_total_amount: '',
+      pt_amount_paid: '',
+      pt_notes: '',
+    });
+  }
+  
+  refreshMembershipPlans();
+  fetchTrainers();
+  fetchAddons();
+}, [isOpen, member, refreshMembershipPlans, fetchTrainers, fetchAddons, today, isFromLead, prefillData]);
 
   // Calculate addon total
   useEffect(() => {
