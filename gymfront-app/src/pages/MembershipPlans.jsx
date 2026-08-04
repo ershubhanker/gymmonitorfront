@@ -16,7 +16,10 @@ import {
   ChevronDown,
   ChevronUp,
   Filter,
-  Loader
+  Loader,
+  CheckSquare,
+  Square,
+  Trash
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -30,6 +33,11 @@ const MembershipPlans = () => {
   const [deletingId, setDeletingId] = useState(null);
   const [expandedPlanId, setExpandedPlanId] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'active', 'inactive'
+  
+  // Bulk selection state
+  const [selectedPlans, setSelectedPlans] = useState(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [selectAll, setSelectAll] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -52,6 +60,9 @@ const MembershipPlans = () => {
     try {
       const response = await api.get('/gym/plans?active_only=false');
       setPlans(response.data || []);
+      // Clear selections when data changes
+      setSelectedPlans(new Set());
+      setSelectAll(false);
     } catch (error) {
       console.error('Error fetching plans:', error);
       toast.error('Failed to load membership plans');
@@ -163,6 +174,61 @@ const MembershipPlans = () => {
     }
   };
 
+  // Bulk delete handler
+  const handleBulkDelete = async () => {
+    const planIds = Array.from(selectedPlans);
+    const planNames = planIds.map(id => {
+      const plan = plans.find(p => p.id === id);
+      return plan ? plan.name : 'Unknown';
+    });
+
+    if (planIds.length === 0) {
+      toast.error('Please select at least one plan to delete');
+      return;
+    }
+
+    if (!confirm(
+      `Are you sure you want to delete ${planIds.length} plan(s)?\n\n` +
+      `Selected plans: ${planNames.join(', ')}\n\n` +
+      `Plans with existing memberships will be deactivated instead of deleted. This action cannot be undone.`
+    )) {
+      return;
+    }
+
+    setIsBulkDeleting(true);
+    try {
+      const response = await api.delete('/gym/plans/bulk-delete', {
+        data: { plan_ids: planIds }
+      });
+      
+      const { deleted_count, deactivated_count, results } = response.data;
+      
+      if (deleted_count > 0 && deactivated_count > 0) {
+        toast.success(`Processed ${planIds.length} plans: ${deleted_count} deleted, ${deactivated_count} deactivated`);
+      } else if (deleted_count > 0) {
+        toast.success(`Successfully deleted ${deleted_count} plan(s)`);
+      } else if (deactivated_count > 0) {
+        toast.success(`Deactivated ${deactivated_count} plan(s) with existing memberships`);
+      } else {
+        toast.info('No plans were processed');
+      }
+      
+      // Show detailed results if needed
+      if (results && results.length > 0) {
+        console.log('Bulk delete results:', results);
+      }
+      
+      setSelectedPlans(new Set());
+      setSelectAll(false);
+      fetchPlans();
+    } catch (error) {
+      console.error('Error in bulk delete:', error);
+      toast.error(error.response?.data?.detail || 'Failed to delete plans');
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
   const handleToggleStatus = async (plan) => {
     try {
       await api.put(`/gym/plans/${plan.id}`, {
@@ -205,6 +271,29 @@ const MembershipPlans = () => {
     setExpandedPlanId(expandedPlanId === planId ? null : planId);
   };
 
+  // Toggle selection for a single plan
+  const togglePlanSelection = (planId) => {
+    const newSelected = new Set(selectedPlans);
+    if (newSelected.has(planId)) {
+      newSelected.delete(planId);
+    } else {
+      newSelected.add(planId);
+    }
+    setSelectedPlans(newSelected);
+    setSelectAll(newSelected.size === filteredPlans.length && filteredPlans.length > 0);
+  };
+
+  // Toggle select all
+  const toggleSelectAll = () => {
+    if (selectAll) {
+      setSelectedPlans(new Set());
+    } else {
+      const allIds = filteredPlans.map(p => p.id);
+      setSelectedPlans(new Set(allIds));
+    }
+    setSelectAll(!selectAll);
+  };
+
   // Filter plans
   const filteredPlans = plans.filter(plan => {
     // Search filter
@@ -225,6 +314,7 @@ const MembershipPlans = () => {
   const totalPlans = plans.length;
   const activePlans = plans.filter(p => p.is_active).length;
   const inactivePlans = plans.filter(p => !p.is_active).length;
+  const selectedCount = selectedPlans.size;
 
   if (loading) {
     return (
@@ -247,13 +337,29 @@ const MembershipPlans = () => {
             </h1>
             <p className="text-gray-500 mt-1">Manage your gym membership plans and pricing</p>
           </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2.5 rounded-xl hover:shadow-lg transition-all hover:scale-[1.02]"
-          >
-            <Plus className="h-5 w-5" />
-            Create New Plan
-          </button>
+          <div className="flex gap-2">
+            {selectedCount > 0 && (
+              <button
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+                className="flex items-center gap-2 bg-red-600 text-white px-4 py-2.5 rounded-xl hover:bg-red-700 transition-all disabled:opacity-50"
+              >
+                {isBulkDeleting ? (
+                  <Loader className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Trash className="h-5 w-5" />
+                )}
+                Delete Selected ({selectedCount})
+              </button>
+            )}
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2.5 rounded-xl hover:shadow-lg transition-all hover:scale-[1.02]"
+            >
+              <Plus className="h-5 w-5" />
+              Create New Plan
+            </button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -325,6 +431,24 @@ const MembershipPlans = () => {
         </div>
       </div>
 
+      {/* Selected count indicator */}
+      {selectedCount > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2 mb-4 flex items-center justify-between">
+          <span className="text-sm text-blue-700">
+            <strong>{selectedCount}</strong> plan{selectedCount > 1 ? 's' : ''} selected
+          </span>
+          <button
+            onClick={() => {
+              setSelectedPlans(new Set());
+              setSelectAll(false);
+            }}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
       {/* Plans List */}
       <div className="space-y-4">
         {filteredPlans.length === 0 ? (
@@ -344,153 +468,192 @@ const MembershipPlans = () => {
             )}
           </div>
         ) : (
-          filteredPlans.map((plan) => (
-            <div
-              key={plan.id}
-              className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all overflow-hidden"
-            >
-              <div className="p-5">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  <div className="flex items-start gap-4 flex-1 min-w-0">
-                    <div className={`p-3 rounded-xl flex-shrink-0 ${
-                      plan.is_active ? 'bg-green-100' : 'bg-gray-100'
-                    }`}>
-                      <Dumbbell className={`h-6 w-6 ${
-                        plan.is_active ? 'text-green-600' : 'text-gray-400'
-                      }`} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <h3 className="text-lg font-semibold text-gray-900 truncate">
-                          {plan.name}
-                        </h3>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          plan.is_active 
-                            ? 'bg-green-100 text-green-700' 
-                            : 'bg-gray-100 text-gray-500'
-                        }`}>
-                          {plan.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                        {plan.discounted_price && plan.discounted_price < plan.price && (
-                          <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
-                            Discounted
-                          </span>
-                        )}
-                      </div>
-                      {plan.description && (
-                        <p className="text-sm text-gray-500 mt-1 line-clamp-2">{plan.description}</p>
-                      )}
-                      <div className="flex flex-wrap items-center gap-4 mt-2 text-sm">
-                        <span className="flex items-center gap-1 text-gray-600">
-                          <IndianRupee className="h-4 w-4" />
-                          <span className="font-semibold">{plan.discounted_price || plan.price}</span>
-                          {plan.discounted_price && (
-                            <span className="text-gray-400 line-through ml-1">₹{plan.price}</span>
-                          )}
-                        </span>
-                        <span className="flex items-center gap-1 text-gray-500">
-                          <Calendar className="h-4 w-4" />
-                          {plan.duration_days} days
-                        </span>
-                        <span className="text-gray-500 capitalize">
-                          {plan.plan_type.replace('_', ' ')}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleToggleStatus(plan)}
-                      className={`p-2 rounded-lg transition-all ${
-                        plan.is_active 
-                          ? 'text-orange-600 hover:bg-orange-50' 
-                          : 'text-green-600 hover:bg-green-50'
-                      }`}
-                      title={plan.is_active ? 'Deactivate' : 'Activate'}
-                    >
-                      {plan.is_active ? (
-                        <PauseCircle className="h-5 w-5" />
-                      ) : (
-                        <PlayCircle className="h-5 w-5" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => handleEditClick(plan)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                      title="Edit"
-                    >
-                      <Edit className="h-5 w-5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(plan)}
-                      disabled={deletingId === plan.id}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
-                      title="Delete"
-                    >
-                      {deletingId === plan.id ? (
-                        <Loader className="h-5 w-5 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-5 w-5" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => toggleExpand(plan.id)}
-                      className="p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-all"
-                    >
-                      {expandedPlanId === plan.id ? (
-                        <ChevronUp className="h-5 w-5" />
-                      ) : (
-                        <ChevronDown className="h-5 w-5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Expanded Details */}
-                {expandedPlanId === plan.id && (
-                  <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-700 mb-2">Plan Details</h4>
-                      <div className="space-y-1 text-sm text-gray-600">
-                        <p><span className="font-medium">Plan Type:</span> {plan.plan_type.replace('_', ' ').toUpperCase()}</p>
-                        <p><span className="font-medium">Duration:</span> {plan.duration_days} days</p>
-                        <p><span className="font-medium">Price:</span> ₹{plan.price}</p>
-                        {plan.discounted_price && (
-                          <p><span className="font-medium">Discounted Price:</span> ₹{plan.discounted_price}</p>
-                        )}
-                        <p><span className="font-medium">Status:</span> {plan.is_active ? 'Active' : 'Inactive'}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-700 mb-2">Features</h4>
-                      {plan.features ? (
-                        <div className="flex flex-wrap gap-2">
-                          {plan.features.split(',').map((feature, idx) => (
-                            <span key={idx} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full">
-                              {feature.trim()}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-400">No features listed</p>
-                      )}
-                      {plan.description && (
-                        <div className="mt-2">
-                          <p className="text-sm font-medium text-gray-700">Description</p>
-                          <p className="text-sm text-gray-500">{plan.description}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+          <>
+            {/* Select All header */}
+            {filteredPlans.length > 0 && (
+              <div className="flex items-center gap-2 px-2 py-1 text-sm text-gray-500">
+                <button
+                  onClick={toggleSelectAll}
+                  className="flex items-center gap-2 hover:text-gray-700 transition-colors"
+                >
+                  {selectAll ? (
+                    <CheckSquare className="h-5 w-5 text-blue-600" />
+                  ) : (
+                    <Square className="h-5 w-5" />
+                  )}
+                  <span>{selectAll ? 'Deselect All' : 'Select All'}</span>
+                </button>
+                <span className="text-xs text-gray-400">
+                  ({filteredPlans.length} plan{filteredPlans.length > 1 ? 's' : ''} in view)
+                </span>
               </div>
-            </div>
-          ))
+            )}
+            
+            {filteredPlans.map((plan) => (
+              <div
+                key={plan.id}
+                className={`bg-white rounded-2xl shadow-sm border transition-all overflow-hidden ${
+                  selectedPlans.has(plan.id) 
+                    ? 'border-blue-400 ring-2 ring-blue-200' 
+                    : 'border-gray-100 hover:border-gray-200'
+                }`}
+              >
+                <div className="p-5">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div className="flex items-start gap-4 flex-1 min-w-0">
+                      {/* Checkbox */}
+                      <button
+                        onClick={() => togglePlanSelection(plan.id)}
+                        className="mt-1 flex-shrink-0 hover:text-blue-600 transition-colors"
+                      >
+                        {selectedPlans.has(plan.id) ? (
+                          <CheckSquare className="h-5 w-5 text-blue-600" />
+                        ) : (
+                          <Square className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                        )}
+                      </button>
+                      
+                      <div className={`p-3 rounded-xl flex-shrink-0 ${
+                        plan.is_active ? 'bg-green-100' : 'bg-gray-100'
+                      }`}>
+                        <Dumbbell className={`h-6 w-6 ${
+                          plan.is_active ? 'text-green-600' : 'text-gray-400'
+                        }`} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <h3 className="text-lg font-semibold text-gray-900 truncate">
+                            {plan.name}
+                          </h3>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            plan.is_active 
+                              ? 'bg-green-100 text-green-700' 
+                              : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {plan.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                          {plan.discounted_price && plan.discounted_price < plan.price && (
+                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
+                              Discounted
+                            </span>
+                          )}
+                        </div>
+                        {plan.description && (
+                          <p className="text-sm text-gray-500 mt-1 line-clamp-2">{plan.description}</p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-4 mt-2 text-sm">
+                          <span className="flex items-center gap-1 text-gray-600">
+                            <IndianRupee className="h-4 w-4" />
+                            <span className="font-semibold">{plan.discounted_price || plan.price}</span>
+                            {plan.discounted_price && (
+                              <span className="text-gray-400 line-through ml-1">₹{plan.price}</span>
+                            )}
+                          </span>
+                          <span className="flex items-center gap-1 text-gray-500">
+                            <Calendar className="h-4 w-4" />
+                            {plan.duration_days} days
+                          </span>
+                          <span className="text-gray-500 capitalize">
+                            {plan.plan_type.replace('_', ' ')}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleToggleStatus(plan)}
+                        className={`p-2 rounded-lg transition-all ${
+                          plan.is_active 
+                            ? 'text-orange-600 hover:bg-orange-50' 
+                            : 'text-green-600 hover:bg-green-50'
+                        }`}
+                        title={plan.is_active ? 'Deactivate' : 'Activate'}
+                      >
+                        {plan.is_active ? (
+                          <PauseCircle className="h-5 w-5" />
+                        ) : (
+                          <PlayCircle className="h-5 w-5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleEditClick(plan)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                        title="Edit"
+                      >
+                        <Edit className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(plan)}
+                        disabled={deletingId === plan.id}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
+                        title="Delete"
+                      >
+                        {deletingId === plan.id ? (
+                          <Loader className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-5 w-5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => toggleExpand(plan.id)}
+                        className="p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-all"
+                      >
+                        {expandedPlanId === plan.id ? (
+                          <ChevronUp className="h-5 w-5" />
+                        ) : (
+                          <ChevronDown className="h-5 w-5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Expanded Details */}
+                  {expandedPlanId === plan.id && (
+                    <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Plan Details</h4>
+                        <div className="space-y-1 text-sm text-gray-600">
+                          <p><span className="font-medium">Plan Type:</span> {plan.plan_type.replace('_', ' ').toUpperCase()}</p>
+                          <p><span className="font-medium">Duration:</span> {plan.duration_days} days</p>
+                          <p><span className="font-medium">Price:</span> ₹{plan.price}</p>
+                          {plan.discounted_price && (
+                            <p><span className="font-medium">Discounted Price:</span> ₹{plan.discounted_price}</p>
+                          )}
+                          <p><span className="font-medium">Status:</span> {plan.is_active ? 'Active' : 'Inactive'}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Features</h4>
+                        {plan.features ? (
+                          <div className="flex flex-wrap gap-2">
+                            {plan.features.split(',').map((feature, idx) => (
+                              <span key={idx} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full">
+                                {feature.trim()}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-400">No features listed</p>
+                        )}
+                        {plan.description && (
+                          <div className="mt-2">
+                            <p className="text-sm font-medium text-gray-700">Description</p>
+                            <p className="text-sm text-gray-500">{plan.description}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </>
         )}
       </div>
 
-      {/* Create/Edit Modal */}
+      {/* Create/Edit Modal - Keep your existing modal code */}
       {(showCreateModal || editingPlan) && (
+        // ... your existing modal JSX
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-100 p-6 rounded-t-2xl">

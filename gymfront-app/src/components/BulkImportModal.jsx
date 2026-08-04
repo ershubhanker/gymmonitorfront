@@ -1,75 +1,371 @@
-// src/components/BulkImportModal.jsx - FIXED DUPLICATE HANDLING
+// src/components/BulkImportModal.jsx - FIXED VERSION
 
-import React, { useState, useRef } from 'react';
-import { X, Upload, FileSpreadsheet, Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import React, { useState, useRef, useMemo } from 'react';
+import { X, Upload, FileSpreadsheet, Loader2, CheckCircle, XCircle, AlertCircle, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import api from '../services/api';
+import Papa from 'papaparse';
 
 const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   const [file, setFile] = useState(null);
+  const [fileName, setFileName] = useState('');
+  const [fileType, setFileType] = useState('');
   const [previewData, setPreviewData] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
   const [results, setResults] = useState(null);
   const [step, setStep] = useState(1);
   const [plansCreated, setPlansCreated] = useState([]);
+  const [dateFormatDetected, setDateFormatDetected] = useState('');
+  const [hasExcelDateSerial, setHasExcelDateSerial] = useState(false);
   
   const isCancelledRef = useRef(false);
   const abortControllerRef = useRef(null);
 
   if (!isOpen) return null;
 
+  // ============================================================
+  // 🧠 SUPER SMART DATE PARSER - Handles ALL formats!
+  // ============================================================
   const parseDate = (dateStr) => {
     if (!dateStr) return null;
     
-    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      return dateStr;
+    // If it's already a Date object
+    if (dateStr instanceof Date) {
+      return dateStr.toISOString().split('T')[0];
     }
     
-    const parts = dateStr.split(/[/-]/);
-    if (parts.length === 3) {
-      if (parts[0].length === 4) {
-        return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+    // If it's a string
+    if (typeof dateStr === 'string') {
+      dateStr = dateStr.trim();
+      if (!dateStr) return null;
+
+      // Already in YYYY-MM-DD format
+      if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return dateStr;
       }
-      const day = parts[0].padStart(2, '0');
-      const month = parts[1].padStart(2, '0');
-      let year = parts[2];
-      if (year.length === 2) {
-        year = `20${year}`;
+
+      // Try native Date parser first
+      const nativeDate = new Date(dateStr);
+      if (!isNaN(nativeDate.getTime()) && nativeDate.getFullYear() > 1900 && nativeDate.getFullYear() < 2100) {
+        return nativeDate.toISOString().split('T')[0];
       }
-      return `${year}-${month}-${day}`;
     }
     
-    if (!isNaN(dateStr)) {
-      const excelDate = new Date((parseFloat(dateStr) - 25569) * 86400 * 1000);
-      if (!isNaN(excelDate.getTime())) {
+    // If it's an Excel date serial number (number)
+    if (typeof dateStr === 'number' && dateStr > 0) {
+      // Excel date serial: days since 1899-12-30
+      const excelDate = new Date((dateStr - 25569) * 86400 * 1000);
+      if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1900 && excelDate.getFullYear() < 2100) {
+        setHasExcelDateSerial(true);
         return excelDate.toISOString().split('T')[0];
       }
     }
-    
-    const nativeDate = new Date(dateStr);
-    if (!isNaN(nativeDate.getTime())) {
-      return nativeDate.toISOString().split('T')[0];
+
+    // If it's a string with Excel date serial number
+    if (typeof dateStr === 'string' && !isNaN(dateStr) && Number(dateStr) > 0) {
+      const numVal = Number(dateStr);
+      const excelDate = new Date((numVal - 25569) * 86400 * 1000);
+      if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1900 && excelDate.getFullYear() < 2100) {
+        setHasExcelDateSerial(true);
+        return excelDate.toISOString().split('T')[0];
+      }
     }
-    
+
+    // Try parsing with various formats
+    if (typeof dateStr === 'string') {
+      let cleaned = dateStr.replace(/\s+/g, ' ').trim();
+      
+      // Handle single digit month/day (like "7-Jun-22")
+      const patterns = [
+        { regex: /^(\d{1,2})[-/](\w{3,9})[-/](\d{2,4})$/i, groups: ['day', 'monthName', 'year'] },
+        { regex: /^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/, groups: ['day', 'month', 'year'] },
+        { regex: /^(\d{2,4})[-/](\w{3,9})[-/](\d{2,4})$/i, groups: ['year', 'monthName', 'day'] },
+        { regex: /^(\w{3,9})\s+(\d{1,2}),?\s*(\d{2,4})$/i, groups: ['monthName', 'day', 'year'] },
+        { regex: /^(\d{1,2})\s+(\w{3,9})\s+(\d{2,4})$/i, groups: ['day', 'monthName', 'year'] },
+        { regex: /^(\d{2,4})\s+(\w{3,9})\s+(\d{1,2})$/i, groups: ['year', 'monthName', 'day'] },
+      ];
+
+      const monthMap = {
+        'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
+        'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
+        'aug': 8, 'august': 8, 'sep': 9, 'september': 9, 'oct': 10, 'october': 10,
+        'nov': 11, 'november': 11, 'dec': 12, 'december': 12
+      };
+
+      const getMonthNumber = (monthStr) => {
+        const month = monthStr.toLowerCase().trim();
+        return monthMap[month] || parseInt(month) || 1;
+      };
+
+      const normalizeYear = (year) => {
+        const numYear = parseInt(year);
+        if (numYear < 100) {
+          return 2000 + numYear;
+        }
+        return numYear;
+      };
+
+      for (const pattern of patterns) {
+        const match = cleaned.match(pattern.regex);
+        if (match) {
+          try {
+            let year, month, day;
+            const parts = match.slice(1);
+
+            for (const [i, groupName] of pattern.groups.entries()) {
+              const value = parts[i] || '';
+              if (groupName === 'year') {
+                year = normalizeYear(value);
+              } else if (groupName === 'day') {
+                day = parseInt(value);
+              } else if (groupName === 'month') {
+                month = parseInt(value);
+              } else if (groupName === 'monthName') {
+                month = getMonthNumber(value);
+              }
+            }
+
+            if (year && month && day && year > 1900 && year < 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+              const dateObj = new Date(year, month - 1, day);
+              if (!isNaN(dateObj.getTime())) {
+                return dateObj.toISOString().split('T')[0];
+              }
+            }
+          } catch (e) {
+            // Continue to next pattern
+          }
+        }
+      }
+    }
+
     return null;
   };
 
+  // ============================================================
+  // SMART COLUMN MAPPING - UPDATED FOR VALID FROM/VALID TO/BASE COST
+  // ============================================================
+  const mapColumns = (row) => {
+    const keys = Object.keys(row);
+    
+    const findKey = (patterns) => {
+      for (const pattern of patterns) {
+        const found = keys.find(k => k.toLowerCase().trim() === pattern.toLowerCase().trim());
+        if (found) return found;
+      }
+      for (const pattern of patterns) {
+        const found = keys.find(k => k.toLowerCase().trim().includes(pattern.toLowerCase().trim()));
+        if (found) return found;
+      }
+      return null;
+    };
+
+    // Primary fields
+    const nameKey = findKey(['Full Name', 'Full_Name', 'Name', 'full_name', 'Member Name', 'member_name']);
+    const phoneKey = findKey(['Phone', 'Mobile', 'Contact', 'phone', 'mobile', 'contact_no', 'Contact No', 'contact number']);
+    const emailKey = findKey(['Email', 'email', 'e-mail', 'E-mail']);
+    const planKey = findKey(['Plan Name', 'Plan_Name', 'Plan', 'plan_name', 'plan', 'Membership Type', 'membership_type', 'membership']);
+    const statusKey = findKey(['Status', 'status', 'Active', 'is_active']);
+    const genderKey = findKey(['Gender', 'gender', 'Sex', 'sex']);
+    const addressKey = findKey(['Address', 'address', 'addr', 'Addr']);
+    const dobKey = findKey(['Date of Birth', 'DOB', 'dob', 'date_of_birth', 'Birth Date', 'birth_date']);
+    
+    // 🔥 CRITICAL FIX: Map "Valid From" and "Valid To" columns
+    // These come from columns AH and AI in your Excel file
+    const startDateKey = findKey([
+      'Valid From', 'Valid_From', 'valid_from', 
+      'Start Date', 'Start_Date', 'start_date', 
+      'Start', 'Joined Date', 'joined_date', 
+      'Join Date', 'Membership Start', 'membership_start'
+    ]);
+    
+    const endDateKey = findKey([
+      'Valid To', 'Valid_To', 'valid_to',
+      'End Date', 'End_Date', 'end_date', 
+      'End', 'Expiry Date', 'expiry_date',
+      'Membership End', 'membership_end', 'Valid Till', 'valid_till'
+    ]);
+    
+    // 🔥 CRITICAL FIX: Map "Base Cost" column (Column AJ)
+    const baseCostKey = findKey([
+      'Base Cost', 'Base_Cost', 'base_cost',
+      'Base Price', 'base_price', 'Base_Price',
+      'Amount', 'amount', 'Cost', 'cost', 'Price', 'price'
+    ]);
+
+    const emergencyNameKey = findKey(['Emergency Contact', 'emergency_contact', 'Emergency Name', 'emergency_name']);
+    const emergencyPhoneKey = findKey(['Emergency Phone', 'emergency_phone', 'Emergency Contact No']);
+    const medicalKey = findKey(['Medical Conditions', 'medical_conditions', 'Medical', 'medical']);
+    const allergiesKey = findKey(['Allergies', 'allergies', 'Allergy']);
+    const medicationsKey = findKey(['Medications', 'medications', 'Medication']);
+
+    // Parse base cost (paisa to currency)
+    let baseCost = null;
+    if (baseCostKey) {
+      const rawCost = row[baseCostKey];
+      if (rawCost !== undefined && rawCost !== null && rawCost !== '') {
+        const numCost = typeof rawCost === 'string' ? parseFloat(rawCost.replace(/,/g, '')) : Number(rawCost);
+        if (!isNaN(numCost) && numCost > 0) {
+          // Divide by 100 to convert paisa to main currency
+          baseCost = numCost / 100;
+        }
+      }
+    }
+
+    return {
+      full_name: nameKey ? String(row[nameKey]).trim() : '',
+      phone: phoneKey ? String(row[phoneKey]).trim() : '',
+      email: emailKey ? String(row[emailKey]).trim() : '',
+      plan_name: planKey ? String(row[planKey]).trim() : '',
+      status: statusKey ? row[statusKey] : 'active',
+      gender: genderKey ? String(row[genderKey]).trim() : 'male',
+      address: addressKey ? String(row[addressKey]).trim() : '',
+      date_of_birth: dobKey ? row[dobKey] : '',
+      joined_date: startDateKey ? row[startDateKey] : '',
+      membership_end: endDateKey ? row[endDateKey] : '',
+      base_cost: baseCost, // Now in main currency (paisa/100)
+      base_cost_raw: baseCostKey ? row[baseCostKey] : null,
+      emergency_contact_name: emergencyNameKey ? String(row[emergencyNameKey]).trim() : '',
+      emergency_contact_phone: emergencyPhoneKey ? String(row[emergencyPhoneKey]).trim() : '',
+      medical_conditions: medicalKey ? String(row[medicalKey]).trim() : '',
+      allergies: allergiesKey ? String(row[allergiesKey]).trim() : '',
+      medications: medicationsKey ? String(row[medicationsKey]).trim() : '',
+      _raw: row,
+      _mapped: true
+    };
+  };
+
+  // ============================================================
+  // DETECT DATE FORMAT FROM DATA
+  // ============================================================
+  const detectDateFormat = (rows) => {
+    const dateFields = ['Valid From', 'Valid To', 'Start Date', 'End Date', 'Joined Date', 'Date of Birth', 'DOB', 'joined_date', 'start_date', 'end_date'];
+    let formats = [];
+    
+    for (const row of rows) {
+      for (const field of dateFields) {
+        const val = row[field];
+        if (val !== undefined && val !== null && val !== '') {
+          if (typeof val === 'number' && val > 0) {
+            formats.push('Excel Serial Number (YYYY-MM-DD)');
+          } else if (typeof val === 'string') {
+            if (val.match(/^\d{1,2}[-/]\w{3,9}[-/]\d{2,4}$/i)) {
+              formats.push('DD-MMM-YYYY');
+            } else if (val.match(/^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/)) {
+              formats.push('DD/MM/YYYY');
+            } else if (val.match(/^\w{3,9}\s+\d{1,2},?\s+\d{2,4}$/i)) {
+              formats.push('Month DD, YYYY');
+            } else if (val.match(/^\d{2,4}[-/]\d{1,2}[-/]\d{1,2}$/)) {
+              formats.push('YYYY-MM-DD');
+            }
+          }
+          break;
+        }
+      }
+    }
+    
+    const uniqueFormats = [...new Set(formats)];
+    return uniqueFormats.length > 0 ? uniqueFormats.join(' / ') : 'Auto-detected';
+  };
+
+  // ============================================================
+  // PARSE FILE - Auto-detect type (CSV, XLS, XLSX)
+  // ============================================================
+  const parseFile = (file) => {
+    return new Promise((resolve, reject) => {
+      const fileType = file.name.split('.').pop().toLowerCase();
+      const reader = new FileReader();
+
+      if (fileType === 'csv' || fileType === 'tsv') {
+        reader.onload = (e) => {
+          try {
+            const csvData = e.target.result;
+            const delimiter = fileType === 'tsv' ? '\t' : ',';
+            
+            const result = Papa.parse(csvData, {
+              header: true,
+              skipEmptyLines: true,
+              trimHeaders: true,
+              delimiter: delimiter,
+              transformHeader: (header) => header.trim(),
+              dynamicTyping: false,
+            });
+
+            const rows = result.data.filter(row => 
+              Object.values(row).some(val => val && String(val).trim())
+            );
+
+            resolve({ data: rows, type: 'csv' });
+          } catch (error) {
+            reject(new Error(`Failed to parse CSV: ${error.message}`));
+          }
+        };
+        reader.readAsText(file);
+      } else {
+        reader.onload = (e) => {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { 
+              type: 'array',
+              cellDates: true,
+              dateNF: 'yyyy-mm-dd'
+            });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(firstSheet, {
+              raw: true,
+              defval: '',
+            });
+            
+            const rows = jsonData.map(row => {
+              const cleaned = {};
+              for (const [key, value] of Object.entries(row)) {
+                if (value instanceof Date) {
+                  cleaned[key] = value.toISOString().split('T')[0];
+                } else if (typeof value === 'number' && value > 0) {
+                  // Check if it's an Excel date (serial number)
+                  const excelDate = new Date((value - 25569) * 86400 * 1000);
+                  if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1900 && excelDate.getFullYear() < 2100) {
+                    cleaned[key] = value; // Keep as number for parsing
+                  } else {
+                    cleaned[key] = String(value);
+                  }
+                } else {
+                  cleaned[key] = value !== undefined && value !== null ? String(value) : '';
+                }
+              }
+              return cleaned;
+            }).filter(row => 
+              Object.values(row).some(val => val && String(val).trim())
+            );
+
+            resolve({ data: rows, type: 'excel' });
+          } catch (error) {
+            reject(new Error(`Failed to parse Excel file: ${error.message}`));
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    });
+  };
+
+  // ============================================================
+  // EXTRACT DURATION FROM PLAN NAME
+  // ============================================================
   const extractDuration = (planName) => {
     if (!planName) return { durationDays: 30, planType: 'monthly' };
     
     const lower = planName.toLowerCase();
     
     if (lower.includes('day')) {
-      const match = planName.match(/(\d+)\s*day/);
+      const match = planName.match(/(\d+)\s*day/i);
       if (match) {
         return { durationDays: parseInt(match[1]), planType: 'monthly' };
       }
     }
     
     if (lower.includes('month') || lower.includes('mon')) {
-      const match = planName.match(/(\d+)\s*month/);
+      const match = planName.match(/(\d+)\s*month/i);
       if (match) {
         const months = parseInt(match[1]);
         const durationDays = months * 30;
@@ -81,113 +377,104 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       }
     }
     
-    if (lower.includes('year')) {
-      const match = planName.match(/(\d+)\s*year/);
+    if (lower.includes('year') || lower.includes('yr')) {
+      const match = planName.match(/(\d+)\s*year/i);
       if (match) {
         const years = parseInt(match[1]);
         return { durationDays: years * 365, planType: 'yearly' };
       }
     }
     
-    // Special cases
-    if (lower.includes('1+1')) return { durationDays: 55, planType: 'monthly' };
-    if (lower.includes('3+3')) return { durationDays: 180, planType: 'half_yearly' };
-    if (lower.includes('6+6')) return { durationDays: 365, planType: 'yearly' };
-    if (lower.includes('12+2')) return { durationDays: 420, planType: 'yearly' };
-    if (lower.includes('12+1')) return { durationDays: 390, planType: 'yearly' };
-    if (lower.includes('6+3')) return { durationDays: 235, planType: 'half_yearly' };
-    if (lower.includes('6+4')) return { durationDays: 300, planType: 'yearly' };
-    if (lower.includes('3+2')) return { durationDays: 150, planType: 'quarterly' };
-    if (lower.includes('3+1')) return { durationDays: 120, planType: 'quarterly' };
-    if (lower.includes('summer offer monthly')) return { durationDays: 30, planType: 'monthly' };
-    if (lower.includes('pre monsoon')) return { durationDays: 60, planType: 'monthly' };
+    const offerMap = {
+      '1+1': { days: 55, type: 'monthly' },
+      '3+3': { days: 180, type: 'half_yearly' },
+      '6+6': { days: 365, type: 'yearly' },
+      '12+2': { days: 420, type: 'yearly' },
+      '12+1': { days: 390, type: 'yearly' },
+      '6+3': { days: 235, type: 'half_yearly' },
+      '6+4': { days: 300, type: 'yearly' },
+      '3+2': { days: 150, type: 'quarterly' },
+      '3+1': { days: 120, type: 'quarterly' },
+    };
+
+    for (const [key, value] of Object.entries(offerMap)) {
+      if (lower.includes(key)) {
+        return { durationDays: value.days, planType: value.type };
+      }
+    }
     
     return { durationDays: 30, planType: 'monthly' };
   };
 
+  // ============================================================
+  // HANDLE FILE UPLOAD
+  // ============================================================
   const handleFileUpload = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
 
+    setFileName(selectedFile.name);
+    setFileType(selectedFile.name.split('.').pop().toLowerCase());
     isCancelledRef.current = false;
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
+    setHasExcelDateSerial(false);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = new Uint8Array(event.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+    toast.loading('Reading file...', { id: 'file-reading' });
+
+    parseFile(selectedFile)
+      .then(({ data }) => {
+        toast.dismiss('file-reading');
         
-        const mappedData = jsonData.map(row => {
-          const joinedDate = parseDate(row['Start Date'] || row['Start_Date'] || row['start_date'] || '');
-          const membershipEnd = parseDate(row['End Date'] || row['End_Date'] || row['end_date'] || '');
-          
-          return {
-            full_name: row['Full Name'] || row['Full_Name'] || row['full_name'] || '',
-            email: row['Email'] || row['email'] || '',
-            phone: row['Phone'] ? String(row['Phone']).trim() : '',
-            joined_date: joinedDate,
-            membership_end: membershipEnd,
-            plan_name: row['Plan Name'] || row['Plan_Name'] || row['plan_name'] || row['Membership Type'] || '',
-            status: row['Status']?.toLowerCase() === 'active' ? true : 
-                    row['status']?.toLowerCase() === 'active' ? true : 
-                    row['Status']?.toLowerCase() === 'inactive' ? false : true,
-            gender: row['Gender'] || row['gender'] || 'male',
-            address: row['Address'] || row['address'] || '',
-            date_of_birth: row['Date of Birth'] || row['Date_Of_Birth'] || row['date_of_birth'] || '',
-            emergency_contact_name: row['Emergency Contact'] || row['emergency_contact'] || '',
-            emergency_contact_phone: row['Emergency Phone'] || row['emergency_phone'] || '',
-            medical_conditions: row['Medical Conditions'] || row['medical_conditions'] || '',
-            allergies: row['Allergies'] || row['allergies'] || '',
-            medications: row['Medications'] || row['medications'] || '',
-          };
-        }).filter(m => m.full_name && m.phone);
-
-        if (mappedData.length === 0) {
-          toast.error('No valid data found. Please ensure "Full Name" and "Phone" columns exist.');
+        if (data.length === 0) {
+          toast.error('No data found in the file.');
           return;
         }
 
-        setPreviewData(mappedData);
+        // Map columns smartly
+        const mappedData = data.map(row => mapColumns(row));
+        
+        // Filter out rows without name or phone
+        const validData = mappedData.filter(m => m.full_name && m.phone);
+        
+        if (validData.length === 0) {
+          toast.error('No valid rows found. Please ensure "Full Name" and "Phone" columns exist.');
+          return;
+        }
+
+        // Detect date format
+        const dateFormat = detectDateFormat(data);
+        setDateFormatDetected(dateFormat);
+
+        // Parse dates
+        const parsedData = validData.map(m => ({
+          ...m,
+          joined_date: parseDate(m.joined_date),
+          membership_end: parseDate(m.membership_end),
+          date_of_birth: parseDate(m.date_of_birth),
+        }));
+
+        // Show preview with cost info
+        const membersWithCost = parsedData.filter(m => m.base_cost !== null);
+        if (membersWithCost.length > 0) {
+          console.log(`💰 ${membersWithCost.length} members have cost data (converted from paisa)`);
+        }
+
+        setPreviewData(parsedData);
+        setFile(selectedFile);
         setStep(2);
         setResults(null);
-        toast.success(`Loaded ${mappedData.length} members from file`);
-      } catch (error) {
+        
+        toast.success(`Loaded ${parsedData.length} members from ${selectedFile.name}`);
+      })
+      .catch((error) => {
+        toast.dismiss('file-reading');
         console.error('Error parsing file:', error);
-        toast.error('Failed to parse Excel file. Please check the format.');
-      }
-    };
-    reader.readAsArrayBuffer(selectedFile);
-    setFile(selectedFile);
+        toast.error(error.message || 'Failed to parse file. Please check the format.');
+      });
   };
 
-  const handleCancelImport = () => {
-    isCancelledRef.current = true;
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setUploading(false);
-    toast.info('Import cancelled.');
-  };
-
-  const handleCancelAndClose = () => {
-    if (uploading) {
-      isCancelledRef.current = true;
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
-      setUploading(false);
-    }
-    handleClose();
-  };
-
+  // ============================================================
+  // HANDLE IMPORT - UPDATED TO USE BASE COST
+  // ============================================================
   const handleImport = async () => {
     isCancelledRef.current = false;
     setUploading(true);
@@ -199,7 +486,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     abortControllerRef.current = new AbortController();
 
     try {
-      // Step 1: Get existing plans
+      // Fetch existing plans
       let existingPlans = [];
       try {
         const plansResponse = await api.get('/gym/plans');
@@ -213,14 +500,14 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         existingPlanMap[p.name?.toLowerCase().trim()] = p.id;
       });
 
-      // Step 2: Find unique plan names from Excel that don't exist
+      // Find unique plan names from Excel that don't exist
       const uniquePlans = [...new Set(previewData.map(m => m.plan_name).filter(Boolean))];
       const plansToCreate = uniquePlans.filter(name => {
         const cleanName = name.toLowerCase().trim();
         return !existingPlanMap[cleanName];
       });
 
-      // Step 3: Create missing plans
+      // Create missing plans
       if (plansToCreate.length > 0 && !isCancelledRef.current) {
         toast.loading(`Creating ${plansToCreate.length} missing plans...`, { id: 'create-plans' });
         
@@ -229,7 +516,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             toast.dismiss('create-plans');
             toast.info('Import cancelled during plan creation.');
             setUploading(false);
-            setStep(2);
             return;
           }
           
@@ -253,8 +539,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             existingPlanMap[planName.toLowerCase().trim()] = newPlan.id;
             createdPlans.push(planName);
             
-            console.log(`✅ Created plan: ${planName} (${durationDays} days, ${planType})`);
-            
           } catch (error) {
             console.error(`❌ Failed to create plan ${planName}:`, error);
             results.errors.push({
@@ -272,11 +556,10 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
       if (isCancelledRef.current) {
         setUploading(false);
-        setStep(2);
         return;
       }
 
-      // Step 4: Get updated plan list
+      // Get updated plan list
       let allPlans = [];
       try {
         const plansResponse = await api.get('/gym/plans');
@@ -292,48 +575,40 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
       const defaultPlan = allPlans.find(p => p.is_active) || allPlans[0];
 
-      // ============================================================
-      // FIX: Track successfully imported phones only
-      // Phone numbers must be unique - we track what we've already
-      // successfully imported in this batch
-      // ============================================================
+      // Track successfully imported phones
       const successfullyImportedPhones = new Set();
       
       for (let i = 0; i < previewData.length; i++) {
         if (isCancelledRef.current) {
           toast.info('Import cancelled.');
           setUploading(false);
-          setStep(2);
           return;
         }
 
         const member = previewData[i];
         setImportProgress({ current: i + 1, total: previewData.length });
 
-        // ===== FIX: Check if this phone was already SUCCESSFULLY imported =====
-        // Since phone numbers must be unique, we skip any duplicates in the file
         if (successfullyImportedPhones.has(member.phone)) {
           results.skipped++;
           results.errors.push({
             member: member.full_name,
             error: `Duplicate phone number: ${member.phone} (already imported earlier in this file)`
           });
-          console.log(`⏭️ Skipped duplicate (already imported): ${member.full_name} - ${member.phone}`);
           continue;
         }
 
         let importSuccess = false;
 
         try {
-          // Determine if member should be active based on Excel status
           const shouldBeActive = member.status !== false;
           
-          // Prepare member data
           const memberData = {
             full_name: member.full_name,
             phone: member.phone,
             gender: member.gender || 'male',
             is_active: shouldBeActive,
+            // 🔥 NEW: Include base cost if available
+            membership_fee: member.base_cost || 0,
           };
 
           if (member.email && member.email.includes('@')) {
@@ -357,11 +632,9 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             memberData.joined_date = new Date().toISOString().split('T')[0];
           }
 
-          // Create member - backend will handle duplicate phone check
           const memberResponse = await api.post('/gym/members', memberData);
           const newMember = memberResponse.data;
           
-          // ===== FIX: Mark phone as successfully imported ONLY after member creation succeeds =====
           importSuccess = true;
           successfullyImportedPhones.add(member.phone);
 
@@ -388,14 +661,12 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             planName = defaultPlan.name;
           }
 
-          // Create membership ONLY if member should be active
+          // Create membership if member should be active
           if (shouldBeActive && planId) {
             try {
-              let startDate = member.joined_date;
-              if (!startDate) {
-                startDate = new Date().toISOString().split('T')[0];
-              }
+              let startDate = member.joined_date || new Date().toISOString().split('T')[0];
               
+              // 🔥 Use membership_end if provided (from Valid To column)
               let endDate = member.membership_end;
               
               if (!endDate) {
@@ -414,44 +685,30 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                   plan_id: planId,
                   start_date: startDate,
                   end_date: endDate,
-                  amount_paid: 0,
+                  // 🔥 Use base_cost as amount paid if available
+                  amount_paid: member.base_cost || 0,
                   discount_applied: 0,
                 };
                 
                 await api.post('/gym/memberships', membershipPayload);
-                console.log(`✅ Created membership for ${member.full_name} with plan ${planName}`);
-              } else {
-                results.errors.push({
-                  member: member.full_name,
-                  error: 'No end date available for membership'
-                });
               }
               
             } catch (membershipError) {
               console.error('Membership creation error:', membershipError);
               results.errors.push({
                 member: member.full_name,
-                error: `Membership assignment failed: ${membershipError.response?.data?.detail || membershipError.message}`
+                error: `Membership failed: ${membershipError.response?.data?.detail || membershipError.message}`
               });
             }
-          } else if (shouldBeActive && !planId) {
-            results.errors.push({
-              member: member.full_name,
-              error: 'No plan found for membership'
-            });
-          } else {
-            console.log(`ℹ️ Member ${member.full_name} imported as inactive (no membership created)`);
           }
 
           results.success++;
-          console.log(`✅ Imported: ${member.full_name} (${member.phone})`);
 
         } catch (error) {
           console.error('Error importing member:', error);
           
           const errorMsg = error.response?.data?.detail || error.message || 'Unknown error';
           
-          // Check if error is due to duplicate phone in database
           const isDuplicateError = errorMsg.toLowerCase().includes('already exists') || 
                                    errorMsg.toLowerCase().includes('duplicate') || 
                                    errorMsg.toLowerCase().includes('phone');
@@ -462,25 +719,21 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               member: member.full_name,
               error: `Member already exists with phone: ${member.phone} (skipped)`
             });
-            console.log(`⏭️ Skipped (already exists in DB): ${member.full_name} - ${member.phone}`);
-            // ===== FIX: Don't add to successfullyImportedPhones since this member wasn't imported =====
           } else {
             results.failed++;
             results.errors.push({
               member: member.full_name,
               error: errorMsg
             });
-            // ===== FIX: Don't add to successfullyImportedPhones since this member failed =====
           }
         }
 
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 150));
       }
 
       if (isCancelledRef.current) {
         toast.info('Import cancelled.');
         setUploading(false);
-        setStep(2);
         return;
       }
 
@@ -488,22 +741,16 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       setPlansCreated(createdPlans);
       setStep(3);
       
-      let summaryMessage = `Import complete! ${results.success} members imported successfully.`;
-      if (results.skipped > 0) {
-        summaryMessage += ` ${results.skipped} skipped (duplicates).`;
-      }
-      if (createdPlans.length > 0) {
-        summaryMessage += ` Created ${createdPlans.length} new plans.`;
-      }
-      if (results.failed > 0) {
-        summaryMessage += ` ${results.failed} failed.`;
-      }
-      toast.success(summaryMessage);
+      let summaryMessage = `✅ Import complete! ${results.success} members imported.`;
+      if (results.skipped > 0) summaryMessage += ` ⏭️ ${results.skipped} skipped (duplicates).`;
+      if (createdPlans.length > 0) summaryMessage += ` 📋 ${createdPlans.length} plans created.`;
+      if (results.failed > 0) summaryMessage += ` ❌ ${results.failed} failed.`;
+      
+      toast.success(summaryMessage, { duration: 6000 });
       
     } catch (error) {
       if (error.name === 'AbortError' || isCancelledRef.current) {
         toast.info('Import cancelled.');
-        setStep(2);
       } else {
         console.error('Import error:', error);
         toast.error('Failed to import members: ' + (error.response?.data?.detail || error.message));
@@ -514,6 +761,16 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     }
   };
 
+  const handleCancelImport = () => {
+    isCancelledRef.current = true;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setUploading(false);
+    toast.info('Import cancelled.');
+  };
+
   const handleClose = () => {
     isCancelledRef.current = false;
     if (abortControllerRef.current) {
@@ -521,43 +778,126 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       abortControllerRef.current = null;
     }
     setFile(null);
+    setFileName('');
+    setFileType('');
     setPreviewData([]);
     setResults(null);
     setPlansCreated([]);
     setStep(1);
     setImportProgress({ current: 0, total: 0 });
     setUploading(false);
+    setDateFormatDetected('');
+    setHasExcelDateSerial(false);
     if (onImportComplete) onImportComplete();
     onClose();
   };
 
-  const renderStep2 = () => (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-lg font-bold text-gray-900">Preview Import Data</h3>
-          <p className="text-sm text-gray-500">{previewData.length} members found</p>
-        </div>
-        <button
-          onClick={() => setStep(1)}
-          className="text-sm text-blue-600 hover:text-blue-700"
-          disabled={uploading}
-        >
-          Upload different file
-        </button>
+  // ============================================================
+  // RENDER FUNCTIONS
+  // ============================================================
+  const renderStep1 = () => (
+    <div className="text-center py-8">
+      <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <FileSpreadsheet className="h-10 w-10 text-blue-600" />
+      </div>
+      <h3 className="text-lg font-bold text-gray-900 mb-2">Upload Your File</h3>
+      <p className="text-sm text-gray-500 mb-6">
+        Upload Excel (.xlsx, .xls) or CSV (.csv) file with member data.
+        <br />
+        <strong className="text-gray-700">Required:</strong> Full Name, Phone
+        <br />
+        <span className="text-gray-400">Optional: Email, Valid From, Valid To, Base Cost, Plan Name, Status, Gender, Address, DOB, etc.</span>
+      </p>
+      
+      <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-blue-500 hover:bg-blue-50/50 transition-all cursor-pointer">
+        <input
+          type="file"
+          accept=".xlsx,.xls,.csv,.tsv"
+          onChange={handleFileUpload}
+          className="hidden"
+          id="file-upload"
+        />
+        <label htmlFor="file-upload" className="cursor-pointer block">
+          <Upload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+          <p className="text-gray-600 font-medium">Click to upload or drag and drop</p>
+          <p className="text-xs text-gray-400 mt-1">Supports .xlsx, .xls, .csv, .tsv files</p>
+        </label>
       </div>
 
-      {(() => {
-        // Show duplicate warnings for the file
-        const phoneCounts = {};
-        previewData.forEach(m => {
-          phoneCounts[m.phone] = (phoneCounts[m.phone] || 0) + 1;
-        });
-        const duplicates = Object.entries(phoneCounts).filter(([phone, count]) => count > 1);
-        if (duplicates.length > 0) {
-          return (
-            <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <p className="text-sm text-yellow-700">
+      <div className="mt-4 text-left bg-gray-50 rounded-lg p-4 border border-gray-200">
+        <p className="text-sm font-medium text-gray-700 flex items-center gap-2">
+          <span className="text-green-600">✓</span> Smart Features:
+        </p>
+        <ul className="text-xs text-gray-600 mt-2 space-y-1 list-disc list-inside">
+          <li>Auto-detects column names (Valid From, Valid To, Base Cost, etc.)</li>
+          <li>Auto-detects date formats (DD/MM/YYYY, DD-MMM-YY, Month DD, YYYY, etc.)</li>
+          <li><strong>Converts Base Cost from paisa to currency (divides by 100)</strong></li>
+          <li>Auto-creates membership plans if they don't exist</li>
+          <li>Skips duplicate phone numbers automatically</li>
+          <li>Supports .xlsx, .xls, .csv, .tsv files</li>
+        </ul>
+        <div className="mt-3 bg-blue-50 rounded p-2">
+          <p className="text-xs text-blue-700">
+            📝 Example: <span className="font-mono">John Doe, 9876543210, john@email.com, 2026-06-15, 2026-11-30, 80000000, WS 6 MONTHS PLAN, active</span>
+          </p>
+          <p className="text-xs text-blue-600 mt-1">
+            💰 Base Cost 80000000 paisa = ₹8,00,000.00 (auto-converted)
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderStep2 = () => {
+    const phoneCounts = {};
+    previewData.forEach(m => {
+      phoneCounts[m.phone] = (phoneCounts[m.phone] || 0) + 1;
+    });
+    const duplicates = Object.entries(phoneCounts).filter(([phone, count]) => count > 1);
+    const membersWithCost = previewData.filter(m => m.base_cost !== null);
+    const totalCost = membersWithCost.reduce((sum, m) => sum + (m.base_cost || 0), 0);
+
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">📋 Preview Import Data</h3>
+            <div className="flex items-center gap-3 mt-1 flex-wrap">
+              <span className="text-sm text-gray-500">{previewData.length} members found</span>
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                {fileName}
+              </span>
+              {dateFormatDetected && (
+                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                  📅 {dateFormatDetected}
+                </span>
+              )}
+              {membersWithCost.length > 0 && (
+                <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                  💰 ₹{totalCost.toLocaleString('en-IN')} total (from {membersWithCost.length} members)
+                </span>
+              )}
+              {hasExcelDateSerial && (
+                <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
+                  ⚡ Excel Date Serial Numbers Detected
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={() => setStep(1)}
+            className="text-sm text-blue-600 hover:text-blue-700"
+            disabled={uploading}
+          >
+            Upload different file
+          </button>
+        </div>
+
+        {duplicates.length > 0 && (
+          <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+            <p className="text-sm text-yellow-700 flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>
                 <strong>⚠️ Duplicate Phone Numbers Found:</strong> 
                 {duplicates.map(([phone, count]) => (
                   <span key={phone} className="ml-2 inline-block">
@@ -566,132 +906,142 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 ))}
                 <br />
                 <span className="text-xs text-yellow-600">
-                  Only the first occurrence will be imported. All other occurrences with the same phone will be skipped.
+                  Only the first occurrence will be imported. Other duplicates will be skipped.
                 </span>
-              </p>
-            </div>
-          );
-        }
-        return null;
-      })()}
+              </span>
+            </p>
+          </div>
+        )}
 
-      <div className="max-h-96 overflow-y-auto border rounded-lg">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50 sticky top-0">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Full Name</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duplicate</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {previewData.slice(0, 50).map((member, index) => {
-              const isDuplicate = previewData.filter(m => m.phone === member.phone).length > 1;
-              const isFirstOccurrence = previewData.findIndex(m => m.phone === member.phone) === index;
-              
-              return (
-                <tr key={index} className={`hover:bg-gray-50 ${isDuplicate && !isFirstOccurrence ? 'bg-yellow-50' : ''}`}>
-                  <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{member.full_name}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {member.phone}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{member.email || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{member.plan_name || '—'}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className={`px-2 py-1 rounded-full text-xs ${member.status !== false ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                      {member.status !== false ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    {isDuplicate && isFirstOccurrence && (
-                      <span className="text-xs text-green-600">Will be imported</span>
-                    )}
-                    {isDuplicate && !isFirstOccurrence && (
-                      <span className="text-xs text-yellow-600">⚠️ Will be skipped</span>
-                    )}
-                    {!isDuplicate && (
-                      <span className="text-xs text-gray-400">—</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {previewData.length > 50 && (
-          <div className="px-4 py-2 text-sm text-gray-500 bg-gray-50 text-center">
-            Showing first 50 of {previewData.length} members
+        <div className="max-h-96 overflow-y-auto border rounded-lg">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50 sticky top-0 z-10">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Full Name</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Start (Valid From)</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">End (Valid To)</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duplicate</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {previewData.slice(0, 50).map((member, index) => {
+                const isDuplicate = previewData.filter(m => m.phone === member.phone).length > 1;
+                const isFirstOccurrence = previewData.findIndex(m => m.phone === member.phone) === index;
+                
+                return (
+                  <tr key={index} className={`${isDuplicate && !isFirstOccurrence ? 'bg-yellow-50' : ''}`}>
+                    <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{member.full_name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{member.phone}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{member.email || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{member.plan_name || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{member.joined_date || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{member.membership_end || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {member.base_cost !== null ? (
+                        <span className="text-green-600 font-medium">
+                          ₹{member.base_cost.toLocaleString('en-IN')}
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className={`px-2 py-1 rounded-full text-xs ${member.status !== false ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                        {member.status !== false ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {isDuplicate && isFirstOccurrence && (
+                        <span className="text-xs text-green-600">✅ Will import</span>
+                      )}
+                      {isDuplicate && !isFirstOccurrence && (
+                        <span className="text-xs text-yellow-600">⏭️ Skipped</span>
+                      )}
+                      {!isDuplicate && (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {previewData.length > 50 && (
+            <div className="px-4 py-2 text-sm text-gray-500 bg-gray-50 text-center">
+              Showing first 50 of {previewData.length} members
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 bg-blue-50 rounded-lg p-3 border border-blue-200">
+          <p className="text-sm text-blue-700 space-y-1">
+            <div><strong>ℹ️ What will happen:</strong></div>
+            <div>• Plans will be auto-created if they don't exist</div>
+            <div>• Duplicate phone numbers in the file will be skipped (only first imported)</div>
+            <div>• Existing members in the database will be skipped</div>
+            <div>• Inactive members will be created without membership</div>
+            <div>• <strong>Base Cost will be used as membership amount (already converted from paisa)</strong></div>
+            <div>• Valid From and Valid To dates will be used for membership period</div>
+          </p>
+        </div>
+
+        <div className="mt-6 flex gap-3">
+          <button
+            onClick={handleClose}
+            disabled={uploading}
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={uploading ? handleCancelImport : handleImport}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition-colors ${
+              uploading 
+                ? 'bg-red-600 hover:bg-red-700' 
+                : 'bg-blue-600 hover:bg-blue-700'
+            } disabled:opacity-50`}
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Importing ({importProgress.current}/{importProgress.total})
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4" />
+                Import {previewData.length} Members
+              </>
+            )}
+          </button>
+        </div>
+        
+        {uploading && (
+          <div className="mt-3">
+            <div className="bg-gray-200 rounded-full h-2.5 overflow-hidden">
+              <div 
+                className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+              ></div>
+            </div>
+            <p className="text-xs text-gray-500 mt-1 text-center">
+              Importing {importProgress.current} of {importProgress.total} members
+            </p>
+            <button
+              onClick={handleCancelImport}
+              className="mt-2 w-full text-sm text-red-600 hover:text-red-700 font-medium"
+            >
+              Click here to stop import
+            </button>
           </div>
         )}
       </div>
-
-      <div className="mt-4 bg-blue-50 rounded-lg p-3">
-        <p className="text-sm text-blue-700">
-          <strong>ℹ️ Import Process:</strong> Plans will be auto-created if they don't exist.
-          <br />
-          <strong>ℹ️ Phone Number Rules:</strong> 
-          <br />• Phone numbers must be unique across all members
-          <br />• Duplicate phone numbers in the file will be skipped (only first occurrence imported)
-          <br />• If a phone number already exists in the database, the import will be skipped
-        </p>
-      </div>
-
-      <div className="mt-6 flex gap-3">
-        <button
-          onClick={handleCancelAndClose}
-          disabled={uploading}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={uploading ? handleCancelImport : handleImport}
-          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition-colors ${
-            uploading 
-              ? 'bg-red-600 hover:bg-red-700' 
-              : 'bg-blue-600 hover:bg-blue-700'
-          } disabled:opacity-50`}
-        >
-          {uploading ? (
-            <>
-              <X className="h-4 w-4" />
-              Stop Import ({importProgress.current}/{importProgress.total})
-            </>
-          ) : (
-            <>
-              <Upload className="h-4 w-4" />
-              Import {previewData.length} Members
-            </>
-          )}
-        </button>
-      </div>
-      
-      {uploading && (
-        <div className="mt-3">
-          <div className="bg-gray-200 rounded-full h-2.5 overflow-hidden">
-            <div 
-              className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
-              style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
-            ></div>
-          </div>
-          <p className="text-xs text-gray-500 mt-1 text-center">
-            Importing {importProgress.current} of {importProgress.total} members
-          </p>
-          <button
-            onClick={handleCancelImport}
-            className="mt-2 w-full text-sm text-red-600 hover:text-red-700 font-medium"
-          >
-            Click here to stop import
-          </button>
-        </div>
-      )}
-    </div>
-  );
+    );
+  };
 
   const renderStep3 = () => (
     <div>
@@ -727,7 +1077,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         {plansCreated.length > 0 && (
           <div className="mt-2">
             <p className="text-sm text-blue-600">
-              ✅ {plansCreated.length} new plans created
+              ✅ {plansCreated.length} new plan{plansCreated.length > 1 ? 's' : ''} created
             </p>
           </div>
         )}
@@ -767,8 +1117,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-20">
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5 text-blue-600" />
             Bulk Import Members
@@ -779,52 +1129,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         </div>
 
         <div className="p-6">
-          {step === 1 && (
-            <div className="text-center py-12">
-              <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FileSpreadsheet className="h-10 w-10 text-blue-600" />
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Upload Excel File</h3>
-              <p className="text-sm text-gray-500 mb-6">
-                Upload an Excel file (.xlsx) with member data.
-                <br />
-                Required columns: <strong>Full Name, Phone</strong>
-                <br />
-                Optional: Email, Start Date, End Date, Plan Name, Status, Gender, Address, etc.
-              </p>
-              
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-blue-500 transition-colors">
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="file-upload"
-                />
-                <label htmlFor="file-upload" className="cursor-pointer">
-                  <Upload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-600">Click to upload or drag and drop</p>
-                  <p className="text-xs text-gray-400 mt-1">.xlsx, .xls files supported</p>
-                </label>
-              </div>
-
-              <div className="mt-4 text-left bg-gray-50 rounded-lg p-4">
-                <p className="text-sm font-medium text-gray-700">Sample Format:</p>
-                <pre className="text-xs text-gray-600 mt-2 overflow-x-auto whitespace-pre-wrap">
-                  Full Name | Email | Phone | Start Date | End Date | Plan Name | Status
-                  John Doe  | john@email.com | 9876543210 | 15/06/2026 | 30/11/2026 | WS 6 MONTHS PLAN | active
-                </pre>
-                <p className="text-xs text-gray-400 mt-2">
-                  Note: Dates should be in DD/MM/YYYY format. Plans will be auto-created if they don't exist.
-                  <br />
-                  <strong>Phone Number Rules:</strong> 
-                  <br />• Phone numbers must be unique across all members
-                  <br />• Duplicate phone numbers in the file will be skipped
-                  <br />• Existing members in the database will also be skipped
-                </p>
-              </div>
-            </div>
-          )}
+          {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
         </div>

@@ -2179,59 +2179,59 @@ const Dashboard = () => {
 
         {/* Navigation - Scrollable area with custom scrollbar */}
         <div className="flex-1 overflow-y-auto py-3 px-2 custom-scrollbar">
-          {Object.entries(groupedNav).map(([section, items]) => {
-            // Skip empty sections
-            if (items.length === 0) return null;
-            
-            return (
-              <div key={section} className="mb-3">
-                {/* Section Label - Only show when sidebar is expanded */}
-                {!sidebarCollapsed && (
-                  <div className="px-3 py-2">
-                    <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
-                      {sectionLabels[section] || section}
-                    </span>
-                  </div>
-                )}
-                {items.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setActiveTab(item.id);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={`
-                      w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
-                      text-white/70 hover:text-white hover:bg-white/10 
-                      transition-all duration-200
-                      ${activeTab === item.id ? 'bg-white/15 text-white shadow-lg' : ''}
-                      ${sidebarCollapsed ? 'justify-center' : ''}
-                      group relative
-                    `}
-                    title={sidebarCollapsed ? item.name : ''}
-                  >
-                    <item.icon className={`h-5 w-5 flex-shrink-0 ${activeTab === item.id ? 'text-blue-400' : ''}`} />
-                    {!sidebarCollapsed && (
-                      <span className="text-sm font-medium truncate">{item.name}</span>
-                    )}
-                    {/* Tooltip for collapsed mode */}
-                    {sidebarCollapsed && (
-                      <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded 
-                                    opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity 
-                                    whitespace-nowrap z-50 shadow-lg">
-                        {item.name}
-                      </div>
-                    )}
-                    {/* Active indicator */}
-                    {activeTab === item.id && !sidebarCollapsed && (
-                      <div className="ml-auto w-1 h-6 bg-blue-400 rounded-full flex-shrink-0" />
-                    )}
-                  </button>
-                ))}
+  {Object.entries(groupedNav).map(([section, items]) => {
+    // Skip empty sections
+    if (items.length === 0) return null;
+    
+    return (
+      <div key={section} className="mb-3">
+        {/* Section Label - Only show when sidebar is expanded */}
+        {!sidebarCollapsed && (
+          <div className="px-3 py-2">
+            <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+              {sectionLabels[section] || section}
+            </span>
+          </div>
+        )}
+        {items.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => {
+              setActiveTab(item.id);
+              setMobileMenuOpen(false);
+            }}
+            className={`
+              w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+              text-white/70 hover:text-white hover:bg-white/10 
+              transition-all duration-200
+              ${activeTab === item.id ? 'bg-white/15 text-white shadow-lg' : ''}
+              ${sidebarCollapsed ? 'justify-center' : ''}
+              group relative
+            `}
+            title={sidebarCollapsed ? item.name : ''}
+          >
+            <item.icon className={`h-5 w-5 flex-shrink-0 ${activeTab === item.id ? 'text-blue-400' : ''}`} />
+            {!sidebarCollapsed && (
+              <span className="text-sm font-medium truncate">{item.name}</span>
+            )}
+            {/* Tooltip for collapsed mode */}
+            {sidebarCollapsed && (
+              <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded 
+                            opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity 
+                            whitespace-nowrap z-50 shadow-lg">
+                {item.name}
               </div>
-            );
-          })}
-        </div>
+            )}
+            {/* Active indicator */}
+            {activeTab === item.id && !sidebarCollapsed && (
+              <div className="ml-auto w-1 h-6 bg-blue-400 rounded-full flex-shrink-0" />
+            )}
+          </button>
+        ))}
+      </div>
+    );
+  })}
+</div>
 
         {/* Bottom Actions - Fixed at bottom */}
         <div className="p-3 border-t border-white/10 flex-shrink-0">
