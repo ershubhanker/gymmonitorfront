@@ -1,3 +1,4 @@
+// AdminDashboard.jsx - Complete Updated Version with Gym Components
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -11,78 +12,14 @@ import {
   Wallet, Receipt, FileText, Users as UsersIcon, Briefcase, Calendar as CalendarIcon,
   ChevronLeft, PanelLeftClose, PanelLeftOpen, ArrowLeft, ExternalLink,
   BookOpen, Hash, Phone as PhoneIcon, Mail as MailIcon, Dumbbell, Gift,
-  PieChart, Layers, LayoutGrid, List, Grid, Maximize2
+  PieChart, Layers, LayoutGrid, List, Grid, Maximize2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const convertToIST = (utcDateString) => {
-  if (!utcDateString) return null;
-  const utcDate = new Date(utcDateString);
-  if (isNaN(utcDate.getTime())) return null;
-  const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
-  return istDate;
-};
-
-const formatDateTime = (d) => {
-  if (!d) return '—';
-  const istDate = convertToIST(d);
-  if (!istDate) return '—';
-  return istDate.toLocaleString('en-IN', {
-    day: 'numeric', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
-};
-
-const formatDate = (d) => {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'short', year: 'numeric'
-  });
-};
-
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-IN', {
-    style: 'currency', currency: 'INR',
-    minimumFractionDigits: 0, maximumFractionDigits: 0
-  }).format(amount || 0);
-
-const statusBadge = (status) => {
-  const map = {
-    active: 'bg-emerald-900/60 text-emerald-300 border border-emerald-700',
-    inactive: 'bg-gray-700 text-gray-400 border border-gray-600',
-    suspended: 'bg-red-900/60 text-red-300 border border-red-700',
-    pending: 'bg-amber-900/60 text-amber-300 border border-amber-700',
-    paid: 'bg-emerald-900/60 text-emerald-300 border border-emerald-700',
-    expired: 'bg-red-900/60 text-red-300 border border-red-700',
-    cancelled: 'bg-gray-700 text-gray-400 border border-gray-600',
-    trial: 'bg-blue-900/60 text-blue-300 border border-blue-700',
-    basic: 'bg-slate-700 text-slate-300',
-    pro: 'bg-purple-900/60 text-purple-300',
-    enterprise: 'bg-indigo-900/60 text-indigo-300',
-    new: 'bg-blue-900/60 text-blue-300 border border-blue-700',
-    contacted: 'bg-yellow-900/60 text-yellow-300 border border-yellow-700',
-    interested: 'bg-green-900/60 text-green-300 border border-green-700',
-    not_interested: 'bg-gray-700 text-gray-400 border border-gray-600',
-    converted: 'bg-purple-900/60 text-purple-300 border border-purple-700',
-    lost: 'bg-red-900/60 text-red-300 border border-red-700',
-    completed: 'bg-blue-900/60 text-blue-300 border border-blue-700',
-  };
-  return map[status] || 'bg-gray-700 text-gray-400';
-};
-
-const roleBadge = (role) => {
-  const map = {
-    super_admin: 'bg-purple-900/60 text-purple-300 border border-purple-700',
-    gym_owner: 'bg-blue-900/60 text-blue-300 border border-blue-700',
-    gym_staff: 'bg-teal-900/60 text-teal-300 border border-teal-700',
-    member: 'bg-gray-700 text-gray-400',
-  };
-  return map[role] || 'bg-gray-700 text-gray-400';
-};
+import { formatCurrency, formatDate, formatDateTime, statusBadge, roleBadge } from '../services/adminHelpers';
+import GymList from '../components/admin/GymList';
+import GymDetails from '../components/admin/GymDetails';
 
 // ─── Field components ─────────────────────────────────────────────────────────
 
@@ -749,27 +686,6 @@ const EmptyRow = ({ text }) => (
   </div>
 );
 
-// ─── Detail Section Components ──────────────────────────────────────────────
-
-const DetailSection = ({ title, icon, children, className = '' }) => (
-  <div className={`bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden ${className}`}>
-    <div className="px-5 py-3 border-b border-gray-700 flex items-center gap-2 bg-gray-800/80">
-      {icon}
-      <h3 className="font-semibold text-white text-sm">{title}</h3>
-    </div>
-    <div className="p-4">
-      {children}
-    </div>
-  </div>
-);
-
-const DetailItem = ({ label, value, className = '' }) => (
-  <div className={`flex justify-between py-1.5 border-b border-gray-700/50 last:border-0 ${className}`}>
-    <span className="text-sm text-gray-400">{label}</span>
-    <span className="text-sm text-white font-medium">{value || '—'}</span>
-  </div>
-);
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const AdminDashboard = () => {
@@ -791,6 +707,10 @@ const AdminDashboard = () => {
   const [editModal, setEditModal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
+  // ===== WHATSAPP TOGGLE STATE =====
+  const [whatsappEnabled, setWhatsappEnabled] = useState(true);
+  const [togglingWhatsApp, setTogglingWhatsApp] = useState(false);
+
   // ===== GYM DETAILS VIEW STATE =====
   const [selectedGym, setSelectedGym] = useState(null);
   const [selectedGymId, setSelectedGymId] = useState(null);
@@ -811,11 +731,41 @@ const AdminDashboard = () => {
   const [leads, setLeads] = useState([]);
   const [expenses, setExpenses] = useState([]);
 
+  // ===== FETCH WHATSAPP STATUS =====
+  const fetchWhatsAppStatus = useCallback(async () => {
+    try {
+      const response = await api.get('/whatsapp/settings/whatsapp-status');
+      setWhatsappEnabled(response.data.whatsapp_enabled);
+    } catch (error) {
+      console.error('Error fetching WhatsApp status:', error);
+      setWhatsappEnabled(true);
+    }
+  }, []);
+
+  // ===== TOGGLE WHATSAPP =====
+  const toggleWhatsApp = async () => {
+    setTogglingWhatsApp(true);
+    try {
+      const newStatus = !whatsappEnabled;
+      await api.put('/whatsapp/settings/whatsapp-status', { enabled: newStatus });
+      setWhatsappEnabled(newStatus);
+      toast.success(`WhatsApp messaging ${newStatus ? 'enabled' : 'disabled'} successfully!`);
+    } catch (error) {
+      console.error('Error toggling WhatsApp status:', error);
+      toast.error(error.response?.data?.detail || 'Failed to update WhatsApp status');
+    } finally {
+      setTogglingWhatsApp(false);
+    }
+  };
+
   useEffect(() => {
     if (user && user.role !== 'super_admin') navigate('/dashboard');
   }, [user, navigate]);
 
-  useEffect(() => { fetchAllData(); }, []);
+  useEffect(() => { 
+    fetchAllData();
+    fetchWhatsAppStatus();
+  }, []);
 
   const fetchAllData = async (showToast = false) => {
     if (showToast) setRefreshing(true);
@@ -843,6 +793,9 @@ const AdminDashboard = () => {
       if (paymentsR.data) setPayments(paymentsR.data);
       if (leadsR.data) setLeads(leadsR.data);
       if (expensesR.data) setExpenses(expensesR.data);
+      
+      await fetchWhatsAppStatus();
+      
       if (showToast) toast.success('Data refreshed!');
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -864,7 +817,6 @@ const AdminDashboard = () => {
       const response = await api.get(`/admin/gyms/${gymId}`);
       setSelectedGym(response.data);
       
-      // Also fetch members separately
       const membersResponse = await api.get(`/admin/gyms/${gymId}/members?limit=1000`);
       setSelectedGym(prev => ({
         ...prev,
@@ -1127,6 +1079,28 @@ const AdminDashboard = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* WhatsApp Toggle Button */}
+              <button
+                onClick={toggleWhatsApp}
+                disabled={togglingWhatsApp}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  whatsappEnabled
+                    ? 'bg-green-900/40 hover:bg-green-900/60 text-green-400 border border-green-700/50'
+                    : 'bg-red-900/40 hover:bg-red-900/60 text-red-400 border border-red-700/50'
+                } ${togglingWhatsApp ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title={whatsappEnabled ? 'WhatsApp is enabled - Click to disable' : 'WhatsApp is disabled - Click to enable'}
+              >
+                {togglingWhatsApp ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <MessageSquare className="h-3.5 w-3.5" />
+                )}
+                <span className="hidden sm:block">
+                  WhatsApp {whatsappEnabled ? 'ON' : 'OFF'}
+                </span>
+                <span className={`h-2 w-2 rounded-full ${whatsappEnabled ? 'bg-green-400' : 'bg-red-400'} flex-shrink-0`} />
+              </button>
+              
               <button
                 onClick={() => fetchAllData(true)}
                 disabled={refreshing}
@@ -1168,29 +1142,6 @@ const AdminDashboard = () => {
                 <option value="gym_owner">Gym Owners</option>
                 <option value="gym_staff">Staff</option>
               </select>
-            )}
-          </div>
-        )}
-
-        {/* Gym Details Search Bar */}
-        {viewingGymDetails && (
-          <div className="bg-gray-900/60 border-b border-gray-800 px-4 lg:px-8 py-3 flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-              <input
-                value={gymMemberSearch}
-                onChange={e => setGymMemberSearch(e.target.value)}
-                placeholder={`Search members in ${selectedGym?.name || 'gym'}...`}
-                className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500"
-              />
-            </div>
-            {gymMemberSearch && (
-              <button
-                onClick={() => setGymMemberSearch('')}
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-xl text-sm transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
             )}
           </div>
         )}
@@ -1367,406 +1318,40 @@ const AdminDashboard = () => {
 
           {/* ==================== GYMS TABLE OR GYM DETAILS VIEW ==================== */}
           {selectedTab === 'gyms' && !viewingGymDetails && (
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
-                <p className="text-sm font-medium text-gray-300">{filteredGyms.length} gyms</p>
-                <p className="text-xs text-gray-500">Total Revenue: {formatCurrency(filteredGyms.reduce((acc, g) => acc + (g.monthly_revenue || 0), 0))}</p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full">
-                  <TableHeader cols={['ID', 'Gym', 'Owner', 'Contact', 'Members', 'Staff', 'Plan', 'Status', 'Revenue', 'Created', 'Actions']} />
-                  <tbody className="divide-y divide-gray-800">
-                    {filteredGyms.map(gym => (
-                      <tr key={gym.id} className="hover:bg-gray-800/40 transition-colors">
-                        <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{gym.id}</td>
-                        <td className="px-4 py-3">
-                          <button 
-                            onClick={() => fetchGymDetails(gym.id, gym.name)}
-                            className="flex items-center gap-2.5 hover:bg-gray-700/50 rounded-lg p-1 -m-1 transition-colors group w-full text-left"
-                          >
-                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                              {gym.name?.charAt(0)}
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-sm text-white font-medium group-hover:text-purple-400 transition-colors">
-                                {gym.name}
-                              </p>
-                              <p className="text-xs text-gray-500 truncate max-w-[150px]">{gym.address}</p>
-                            </div>
-                            <ExternalLink className="h-3.5 w-3.5 text-gray-500 group-hover:text-purple-400 transition-colors flex-shrink-0" />
-                          </button>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="text-sm text-white">{gym.owner_name}</p>
-                          <p className="text-xs text-gray-500">{gym.owner_email}</p>
-                          <p className="text-xs text-gray-600">{gym.owner_phone}</p>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="text-xs text-gray-400">{gym.email}</p>
-                          <p className="text-xs text-gray-500">{gym.phone}</p>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-300">
-                          <span className="text-white font-medium">{gym.active_members}</span>
-                          <span className="text-gray-600">/{gym.total_members}</span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-300">
-                          <span className="text-white font-medium">{gym.active_staff}</span>
-                          <span className="text-gray-600">/{gym.total_staff}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 text-xs rounded-full font-medium capitalize ${statusBadge(gym.subscription_plan)}`}>
-                            {gym.subscription_plan}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(gym.subscription_status)}`}>
-                            {gym.subscription_status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-emerald-400">{formatCurrency(gym.monthly_revenue || 0)}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{formatDate(gym.created_at)}</td>
-                        <td className="px-4 py-3">
-                          <ActionBtns
-                            onEdit={() => openEdit('gym', gym)}
-                            onDelete={() => openDelete('gym', gym.id, gym.name, `admin/gyms/${gym.id}`)}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {filteredGyms.length === 0 && <EmptyRow text="No gyms found" />}
-              </div>
-            </div>
+            <GymList
+              gyms={filteredGyms}
+              onGymClick={(id, name) => fetchGymDetails(id, name)}
+              onEdit={(gym) => openEdit('gym', gym)}
+              onDelete={(id, name) => openDelete('gym', id, name, `admin/gyms/${id}`)}
+              onBulkDelete={(ids) => {
+                if (window.confirm(`Are you sure you want to delete ${ids.length} selected gyms?`)) {
+                  Promise.all(ids.map(id => api.delete(`/admin/gyms/${id}`)))
+                    .then(() => {
+                      toast.success(`${ids.length} gyms deleted successfully!`);
+                      fetchAllData();
+                    })
+                    .catch(err => {
+                      console.error('Bulk delete error:', err);
+                      toast.error('Failed to delete some gyms');
+                    });
+                }
+              }}
+            />
           )}
 
           {/* ==================== GYM DETAILS VIEW ==================== */}
           {selectedTab === 'gyms' && viewingGymDetails && selectedGym && (
-            <div className="space-y-6">
-              <button
-                onClick={handleBackToGyms}
-                className="flex items-center gap-2 text-purple-400 hover:text-purple-300 transition-colors font-medium"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back to All Gyms
-              </button>
-
-              {loadingGymDetails ? (
-                <div className="text-center py-12">
-                  <Loader2 className="h-8 w-8 text-purple-500 animate-spin mx-auto" />
-                  <p className="text-gray-400 mt-3 text-sm">Loading gym details...</p>
-                </div>
-              ) : (
-                <>
-                  {/* Gym Header */}
-                  <div className="bg-gradient-to-r from-purple-900/40 to-indigo-900/40 border border-purple-800/50 rounded-2xl p-6">
-                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                      <div className="flex items-start gap-4">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
-                          {selectedGym.name?.charAt(0)}
-                        </div>
-                        <div>
-                          <h2 className="text-2xl font-bold text-white">{selectedGym.name}</h2>
-                          <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                            <span className={`px-2.5 py-0.5 text-xs rounded-full ${statusBadge(selectedGym.subscription_status)}`}>
-                              {selectedGym.subscription_status}
-                            </span>
-                            <span className={`px-2.5 py-0.5 text-xs rounded-full font-medium capitalize ${statusBadge(selectedGym.subscription_plan)}`}>
-                              {selectedGym.subscription_plan}
-                            </span>
-                            {selectedGym.is_active ? (
-                              <span className="px-2.5 py-0.5 text-xs rounded-full bg-emerald-900/60 text-emerald-300 border border-emerald-700">
-                                Active
-                              </span>
-                            ) : (
-                              <span className="px-2.5 py-0.5 text-xs rounded-full bg-red-900/60 text-red-300 border border-red-700">
-                                Inactive
-                              </span>
-                            )}
-                          </div>
-                          {selectedGym.description && (
-                            <p className="text-sm text-gray-300 mt-2 max-w-2xl">{selectedGym.description}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <button
-                          onClick={() => openEdit('gym', selectedGym)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition-colors"
-                        >
-                          <Edit className="h-3.5 w-3.5" /> Edit
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Contact Info */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4 pt-4 border-t border-purple-800/30">
-                      <div className="flex items-center gap-2">
-                        <MailIcon className="h-4 w-4 text-purple-400 flex-shrink-0" />
-                        <span className="text-sm text-gray-300">{selectedGym.email || 'No email'}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <PhoneIcon className="h-4 w-4 text-purple-400 flex-shrink-0" />
-                        <span className="text-sm text-gray-300">{selectedGym.phone || 'No phone'}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-purple-400 flex-shrink-0" />
-                        <span className="text-sm text-gray-300 truncate">{selectedGym.address || 'No address'}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-purple-400 flex-shrink-0" />
-                        <span className="text-sm text-gray-300">
-                          {selectedGym.opening_time && selectedGym.closing_time 
-                            ? `${selectedGym.opening_time} - ${selectedGym.closing_time}`
-                            : 'Hours not set'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Stats Cards */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                    <StatCard icon={User} label="Members" value={selectedGym.members?.length || 0}
-                      sub={`${selectedGym.members?.filter(m => m.is_active).length || 0} active`} color="green" />
-                    <StatCard icon={Shield} label="Staff" value={selectedGym.total_staff || 0}
-                      sub={`${selectedGym.active_staff || 0} active`} color="orange" />
-                    <StatCard icon={Award} label="Plans" value={selectedGym.plans?.length || 0}
-                      sub="membership plans" color="yellow" />
-                    <StatCard icon={CreditCard} label="Memberships" value={selectedGym.stats?.total_memberships || 0}
-                      sub="active memberships" color="pink" />
-                    <StatCard icon={DollarSign} label="Revenue" value={formatCurrency(selectedGym.monthly_revenue || 0)}
-                      sub="monthly revenue" color="green" />
-                    <StatCard icon={Wallet} label="Expenses" value={formatCurrency(selectedGym.stats?.total_expenses || 0)}
-                      sub="total expenses" color="red" />
-                  </div>
-
-                  {/* Gym Details Grid */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Owner Info */}
-                    <DetailSection title="Gym Owner" icon={<User className="h-4 w-4 text-blue-400" />}>
-                      {selectedGym.owner ? (
-                        <div className="space-y-1">
-                          <DetailItem label="Name" value={selectedGym.owner.name} />
-                          <DetailItem label="Email" value={selectedGym.owner.email} />
-                          <DetailItem label="Phone" value={selectedGym.owner.phone || '—'} />
-                          <DetailItem label="Username" value={selectedGym.owner.username || '—'} />
-                          <DetailItem label="Status" value={
-                            <span className={selectedGym.owner.is_verified ? 'text-emerald-400' : 'text-amber-400'}>
-                              {selectedGym.owner.is_verified ? '✅ Verified' : '⏳ Pending Verification'}
-                            </span>
-                          } />
-                          <DetailItem label="Joined" value={formatDate(selectedGym.owner.joined_at)} />
-                          {selectedGym.owner.last_login && (
-                            <DetailItem label="Last Login" value={formatDateTime(selectedGym.owner.last_login)} />
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-gray-500 text-sm text-center py-4">No owner information available</p>
-                      )}
-                    </DetailSection>
-
-                    {/* Stats */}
-                    <DetailSection title="Gym Statistics" icon={<BarChart3 className="h-4 w-4 text-teal-400" />}>
-                      {selectedGym.stats && (
-                        <div className="space-y-1">
-                          <DetailItem label="Total Members" value={selectedGym.stats.total_members || 0} />
-                          <DetailItem label="Active Members" value={selectedGym.stats.active_members || 0} />
-                          <DetailItem label="Total Staff" value={selectedGym.stats.total_staff || 0} />
-                          <DetailItem label="Active Staff" value={selectedGym.stats.active_staff || 0} />
-                          <DetailItem label="Total Plans" value={selectedGym.stats.total_plans || 0} />
-                          <DetailItem label="Monthly Revenue" value={formatCurrency(selectedGym.monthly_revenue || 0)} />
-                        </div>
-                      )}
-                    </DetailSection>
-                  </div>
-
-                  {/* Staff Section */}
-                  <DetailSection title="Staff Members" icon={<Shield className="h-4 w-4 text-orange-400" />}>
-                    {selectedGym.staff && selectedGym.staff.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-left text-gray-400 border-b border-gray-700">
-                              <th className="pb-2 pr-4 font-medium">Name</th>
-                              <th className="pb-2 pr-4 font-medium">Position</th>
-                              <th className="pb-2 pr-4 font-medium">Email</th>
-                              <th className="pb-2 pr-4 font-medium">Status</th>
-                              <th className="pb-2 font-medium">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-700/50">
-                            {selectedGym.staff.map(s => (
-                              <tr key={s.id} className="hover:bg-gray-800/30 transition-colors">
-                                <td className="py-2 pr-4 text-white">{s.name}</td>
-                                <td className="py-2 pr-4 text-gray-300">{s.position}</td>
-                                <td className="py-2 pr-4 text-gray-400">{s.email}</td>
-                                <td className="py-2 pr-4">
-                                  <span className={`px-2 py-0.5 text-xs rounded-full ${s.is_active ? 'bg-emerald-900/60 text-emerald-300' : 'bg-red-900/60 text-red-300'}`}>
-                                    {s.is_active ? 'Active' : 'Inactive'}
-                                  </span>
-                                </td>
-                                <td className="py-2">
-                                  <button
-                                    onClick={() => {
-                                      const staffToEdit = staff.find(st => st.id === s.id) || s;
-                                      openEdit('staff', staffToEdit);
-                                    }}
-                                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                                  >
-                                    Edit
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="text-gray-500 text-sm text-center py-4">No staff members found</p>
-                    )}
-                  </DetailSection>
-
-                  {/* Membership Plans Section */}
-                  <DetailSection title="Membership Plans" icon={<Award className="h-4 w-4 text-yellow-400" />}>
-                    {selectedGym.plans && selectedGym.plans.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-left text-gray-400 border-b border-gray-700">
-                              <th className="pb-2 pr-4 font-medium">Plan Name</th>
-                              <th className="pb-2 pr-4 font-medium">Type</th>
-                              <th className="pb-2 pr-4 font-medium">Duration</th>
-                              <th className="pb-2 pr-4 font-medium">Price</th>
-                              <th className="pb-2 pr-4 font-medium">Status</th>
-                              <th className="pb-2 font-medium">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-700/50">
-                            {selectedGym.plans.map(p => (
-                              <tr key={p.id} className="hover:bg-gray-800/30 transition-colors">
-                                <td className="py-2 pr-4 text-white font-medium">{p.name}</td>
-                                <td className="py-2 pr-4 text-gray-300 capitalize">{p.plan_type}</td>
-                                <td className="py-2 pr-4 text-gray-300">{p.duration_days} days</td>
-                                <td className="py-2 pr-4 text-emerald-400 font-medium">{formatCurrency(p.price)}</td>
-                                <td className="py-2 pr-4">
-                                  <span className={`px-2 py-0.5 text-xs rounded-full ${p.is_active ? 'bg-emerald-900/60 text-emerald-300' : 'bg-red-900/60 text-red-300'}`}>
-                                    {p.is_active ? 'Active' : 'Inactive'}
-                                  </span>
-                                </td>
-                                <td className="py-2">
-                                  <button
-                                    onClick={() => {
-                                      const planToEdit = plans.find(pl => pl.id === p.id) || p;
-                                      openEdit('plan', planToEdit);
-                                    }}
-                                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                                  >
-                                    Edit
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="text-gray-500 text-sm text-center py-4">No membership plans found</p>
-                    )}
-                  </DetailSection>
-
-                  {/* Members Section */}
-                  <DetailSection title="Members" icon={<Users className="h-4 w-4 text-green-400" />}>
-                    {filteredGymMembers.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-left text-gray-400 border-b border-gray-700">
-                              <th className="pb-2 pr-4 font-medium">Name</th>
-                              <th className="pb-2 pr-4 font-medium">Phone</th>
-                              <th className="pb-2 pr-4 font-medium">Email</th>
-                              <th className="pb-2 pr-4 font-medium">Plan</th>
-                              <th className="pb-2 pr-4 font-medium">Status</th>
-                              <th className="pb-2 pr-4 font-medium">Joined</th>
-                              <th className="pb-2 font-medium">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-700/50">
-                            {filteredGymMembers.slice(0, 50).map(m => (
-                              <tr key={m.id} className="hover:bg-gray-800/30 transition-colors">
-                                <td className="py-2 pr-4 text-white">{m.full_name}</td>
-                                <td className="py-2 pr-4 text-gray-300">{m.phone}</td>
-                                <td className="py-2 pr-4 text-gray-400">{m.email || '—'}</td>
-                                <td className="py-2 pr-4 text-gray-300">{m.current_plan || '—'}</td>
-                                <td className="py-2 pr-4">
-                                  <span className={`px-2 py-0.5 text-xs rounded-full ${m.is_active ? 'bg-emerald-900/60 text-emerald-300' : 'bg-red-900/60 text-red-300'}`}>
-                                    {m.is_active ? 'Active' : 'Inactive'}
-                                  </span>
-                                </td>
-                                <td className="py-2 pr-4 text-xs text-gray-500 whitespace-nowrap">{formatDate(m.joined_date)}</td>
-                                <td className="py-2">
-                                  <button
-                                    onClick={() => {
-                                      const memberToEdit = members.find(mem => mem.id === m.id) || m;
-                                      openEdit('member', memberToEdit);
-                                    }}
-                                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                                  >
-                                    Edit
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        {filteredGymMembers.length > 50 && (
-                          <p className="text-xs text-gray-500 mt-2">Showing first 50 of {filteredGymMembers.length} members</p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-gray-500 text-sm text-center py-4">
-                        {gymMemberSearch ? 'No members match your search' : 'No members found in this gym'}
-                      </p>
-                    )}
-                  </DetailSection>
-
-                  {/* Recent Payments Section */}
-                  <DetailSection title="Recent Payments" icon={<DollarSign className="h-4 w-4 text-emerald-400" />}>
-                    {selectedGym.recent_payments && selectedGym.recent_payments.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-left text-gray-400 border-b border-gray-700">
-                              <th className="pb-2 pr-4 font-medium">Member</th>
-                              <th className="pb-2 pr-4 font-medium">Amount</th>
-                              <th className="pb-2 pr-4 font-medium">Method</th>
-                              <th className="pb-2 pr-4 font-medium">Date</th>
-                              <th className="pb-2 font-medium">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-700/50">
-                            {selectedGym.recent_payments.map(p => (
-                              <tr key={p.id} className="hover:bg-gray-800/30 transition-colors">
-                                <td className="py-2 pr-4 text-white">{p.member_name}</td>
-                                <td className="py-2 pr-4 text-emerald-400 font-medium">{formatCurrency(p.amount)}</td>
-                                <td className="py-2 pr-4 text-gray-300 capitalize">{p.payment_method}</td>
-                                <td className="py-2 pr-4 text-xs text-gray-400">{formatDate(p.payment_date)}</td>
-                                <td className="py-2">
-                                  <span className={`px-2 py-0.5 text-xs rounded-full ${statusBadge(p.status)}`}>
-                                    {p.status}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="text-gray-500 text-sm text-center py-4">No recent payments found</p>
-                    )}
-                  </DetailSection>
-                </>
-              )}
-            </div>
+            <GymDetails
+              gymId={selectedGymId}
+              gym={selectedGym}
+              loading={loadingGymDetails}
+              onBack={handleBackToGyms}
+              onEdit={(gym) => openEdit('gym', gym)}
+              onDelete={(id, name) => openDelete('gym', id, name, `admin/gyms/${id}`)}
+              onMemberEdit={(member) => openEdit('member', member)}
+              onStaffEdit={(staff) => openEdit('staff', staff)}
+              onPlanEdit={(plan) => openEdit('plan', plan)}
+            />
           )}
 
           {/* ==================== USERS TABLE ==================== */}
