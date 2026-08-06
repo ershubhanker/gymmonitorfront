@@ -86,6 +86,7 @@ import SearchBar from '../components/SearchBar';
 import FollowUpCard from '../components/FollowUpCard';
 import WhatsAppLogs from './WhatsAppLogs';
 import TrainerSchedule from '../components/TrainerSchedule';
+import IrregularMembers from '../components/attendance/IrregularMembers';
 
 // Auto-refresh interval in milliseconds
 const AUTO_REFRESH_INTERVAL = 40000;
@@ -976,6 +977,9 @@ const Dashboard = () => {
     if (canSeeAttendance) {
       nav.push({ name: 'Live Attendance', icon: Activity, id: 'attendance', section: 'staff' });
       nav.push({ name: 'Attendance History', icon: CalendarIcon, id: 'history', section: 'staff' });
+      if (canSeeAttendance) {
+        nav.push({ name: 'Irregular Members', icon: AlertTriangle, id: 'irregular-members', section: 'staff' });
+      }
     }
     if (canSeeDevices) {
       nav.push({ name: 'Devices', icon: Wifi, id: 'devices', section: 'staff' });
@@ -2430,6 +2434,7 @@ const Dashboard = () => {
               onStaffSelect={(id) => setSelectedStaffId(id)}
             />
           )}
+          {activeTab === 'irregular-members' && canSeeAttendance && <IrregularMembers />}
           {activeTab === 'profile' && <Profile />}
           {activeTab === 'payments' && canSeePayments && <Payments />}
           {activeTab === 'leads' && canSeeLeads && (
