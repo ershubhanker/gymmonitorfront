@@ -1,4 +1,3 @@
-// AdminDashboard.jsx - Complete Updated Version with Gym Components
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -20,6 +19,7 @@ import toast from 'react-hot-toast';
 import { formatCurrency, formatDate, formatDateTime, statusBadge, roleBadge } from '../services/adminHelpers';
 import GymList from '../components/admin/GymList';
 import GymDetails from '../components/admin/GymDetails';
+import AttendanceList from '../components/admin/AttendanceList';
 
 // ─── Field components ─────────────────────────────────────────────────────────
 
@@ -929,6 +929,7 @@ const AdminDashboard = () => {
     { id: 'payments', name: 'Payments', icon: DollarSign, count: payments.length },
     { id: 'leads', name: 'Leads', icon: Target, count: leads.length },
     { id: 'expenses', name: 'Expenses', icon: Wallet, count: expenses.length },
+    { id: 'attendance', name: 'Attendance', icon: Clock, count: null },
     { id: 'whatsapp', name: 'WhatsApp Logs', icon: MessageSquare, count: null },
   ];
 
@@ -1758,6 +1759,18 @@ const AdminDashboard = () => {
                 {filteredExpenses.length === 0 && <EmptyRow text="No expenses found" />}
               </div>
             </div>
+          )}
+
+
+          {/* ==================== ATTENDANCE TABLE ==================== */}
+          {selectedTab === 'attendance' && (
+            <AttendanceList
+              gymId={viewingGymDetails ? selectedGymId : null}
+              onBulkDelete={(ids) => {
+                // Optional: Handle bulk delete callback
+                console.log(`Deleted ${ids.length} attendance records`);
+              }}
+            />
           )}
 
           {/* ==================== WHATSAPP LOGS ==================== */}
