@@ -1,6 +1,6 @@
-// src/components/MemberProfileModal.jsx - WITH PROPER COST HANDLING AND NO DECIMALS
+// src/components/MemberProfileModal.jsx - WITH PROPER COST HANDLING, NO DECIMALS, AND IMAGE UPLOAD/DELETE
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X, Phone, Mail, Calendar, MapPin, DollarSign, Tag, 
   MessageCircle, User, Clock, CheckCircle, AlertCircle,
@@ -9,7 +9,7 @@ import {
   Edit, RefreshCw, Loader2, Trash2, Save, XCircle,
   Dumbbell, Pencil, Maximize2, Hash, Snowflake,
   Heart, AlertTriangle, Filter, Plus, ChevronDown,
-  Percent
+  Percent, Camera
 } from 'lucide-react';
 import api, { API_BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
@@ -142,6 +142,329 @@ const getThumbnailUrl = (profileImage, fullName) => {
   const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
   const imagePath = profileImage.startsWith('/') ? profileImage : `/${profileImage}`;
   return `${baseUrl}${imagePath}`;
+};
+
+// ============================================================
+// PROFILE IMAGE EDITOR COMPONENT
+// ============================================================
+const ProfileImageEditor = ({ 
+  member, 
+  memberId, 
+  onImageUpdated,
+  thumbnailImageUrl,
+  profileImageUrl
+}) => {
+  const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+  const MAX_SIZE_MB = 5;
+
+  const compressImage = (file, maxWidth = 400, maxHeight = 400, quality = 0.8) => {
+    return new Promise((resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        reject(new Error('Not an image file'));
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+          
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          let outputFormat = 'image/jpeg';
+          let outputQuality = quality;
+          
+          if (file.type === 'image/png') {
+            outputFormat = 'image/png';
+            outputQuality = Math.min(quality, 0.9);
+          } else if (file.type === 'image/webp') {
+            outputFormat = 'image/webp';
+          }
+          
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('Canvas to Blob conversion failed'));
+                return;
+              }
+              
+              const compressedFile = new File(
+                [blob],
+                file.name.replace(/\.[^/.]+$/, '') + '.jpg',
+                {
+                  type: outputFormat,
+                  lastModified: Date.now(),
+                }
+              );
+              
+              resolve(compressedFile);
+            },
+            outputFormat,
+            outputQuality
+          );
+        };
+        
+        img.onerror = () => {
+          reject(new Error('Failed to load image'));
+        };
+      };
+      
+      reader.onerror = () => {
+        reject(new Error('Failed to read file'));
+      };
+    });
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      toast.error('Please upload a JPEG, PNG, or WebP image.');
+      return;
+    }
+    
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      toast.error(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Please choose an image under ${MAX_SIZE_MB}MB.`);
+      return;
+    }
+
+    setUploading(true);
+    toast.loading('Compressing image...', { id: 'compress' });
+    
+    try {
+      const compressedFile = await compressImage(file, 400, 400, 0.8);
+      
+      toast.dismiss('compress');
+      
+      // Show preview
+      const localUrl = URL.createObjectURL(compressedFile);
+      setPreview(localUrl);
+
+      // Upload to server
+      const formData = new FormData();
+      formData.append('file', compressedFile);
+      
+      toast.loading('Uploading...', { id: 'upload' });
+      
+      const response = await api.post(
+        `/gym/members/${memberId}/upload-photo`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      
+      toast.dismiss('upload');
+      toast.success('Photo updated successfully!');
+      
+      // Update the member object with new photo URL
+      if (onImageUpdated) {
+        onImageUpdated(response.data.photo_url);
+      }
+      
+      // Reset preview after upload
+      setPreview(null);
+      
+    } catch (err) {
+      toast.dismiss('compress');
+      toast.dismiss('upload');
+      console.error('Upload error:', err);
+      toast.error(err.response?.data?.detail || 'Photo upload failed. Please try again.');
+      setPreview(null);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleDeletePhoto = async () => {
+    setDeleting(true);
+    try {
+      await api.delete(`/gym/members/${memberId}/photo`);
+      toast.success('Photo removed successfully!');
+      
+      // Update the member object
+      if (onImageUpdated) {
+        onImageUpdated(null);
+      }
+      
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      console.error('Delete error:', err);
+      toast.error(err.response?.data?.detail || 'Failed to remove photo');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const currentImageUrl = preview || profileImageUrl || thumbnailImageUrl;
+
+  return (
+    <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl flex-shrink-0">
+      <div className="relative flex-shrink-0 group">
+        <div className="h-20 w-20 rounded-full overflow-hidden border-4 border-white shadow-lg">
+          <img 
+            src={currentImageUrl}
+            alt={member?.full_name || 'Member'}
+            className="h-full w-full object-cover"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member?.full_name || 'User')}&background=0D9488&color=fff&size=256`;
+            }}
+          />
+        </div>
+        
+        {/* Upload overlay - appears on hover */}
+        <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="text-white text-xs font-medium flex items-center gap-1 bg-blue-600 px-2.5 py-1.5 rounded-full hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {uploading ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Camera className="h-3 w-3" />
+            )}
+            {uploading ? 'Uploading...' : 'Change'}
+          </button>
+        </div>
+        
+        {/* Delete button - appears when image exists */}
+        {member?.profile_image && !uploading && (
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1.5 shadow-lg hover:bg-red-600 transition-colors"
+            title="Remove photo"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+        
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={handleFileChange}
+          disabled={uploading}
+        />
+      </div>
+      
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-gray-900 text-sm truncate">{member?.full_name || 'Member'}</p>
+        <p className="text-xs text-gray-500">
+          {member?.profile_image ? '📸 Photo uploaded' : 'No photo uploaded'}
+        </p>
+        <div className="flex flex-wrap gap-2 mt-1">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 disabled:opacity-50"
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Uploading...
+              </>
+            ) : (
+              <>
+                <Camera className="h-3 w-3" />
+                {member?.profile_image ? 'Change Photo' : 'Upload Photo'}
+              </>
+            )}
+          </button>
+          {member?.profile_image && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={deleting}
+              className="text-xs text-red-600 hover:text-red-800 font-medium flex items-center gap-1 disabled:opacity-50"
+            >
+              <Trash2 className="h-3 w-3" />
+              {deleting ? 'Removing...' : 'Remove Photo'}
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {uploading ? 'Uploading...' : 'JPEG, PNG, WebP up to 5MB'}
+        </p>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">Remove Photo?</h3>
+                <p className="text-sm text-gray-500">This action cannot be undone.</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-700 mb-6">
+              Are you sure you want to remove the profile photo for <strong>{member?.full_name}</strong>?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="flex-1 border border-gray-300 rounded-xl py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeletePhoto}
+                disabled={deleting}
+                className="flex-1 bg-red-600 text-white rounded-xl py-2 text-sm font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Removing...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    Remove Photo
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 // ============================================================
@@ -468,6 +791,19 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     } finally {
       setLoadingFreezes(false);
     }
+  };
+
+  // ===== IMAGE UPDATE HANDLER =====
+  const handleImageUpdated = (newPhotoUrl) => {
+    // Update the local member object
+    if (member) {
+      setMember(prev => ({
+        ...prev,
+        profile_image: newPhotoUrl
+      }));
+    }
+    // Refresh member details to get the updated data
+    fetchMemberDetails();
   };
 
   // ===== PT Status Badge =====
@@ -1083,63 +1419,35 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   
   const totalPlanAmount = getRupeeValue(balanceDetails?.total_amount || currentMembership?.plan?.price || 0);
 
-  const idProofOptions = [
-    { value: 'aadhar', label: 'Aadhar Card' },
-    { value: 'pan', label: 'PAN Card' },
-    { value: 'dl', label: 'Driving License' },
-    { value: 'passport', label: 'Passport' },
-    { value: 'voter', label: 'Voter ID' },
-  ];
-
-  const statusOptions = [
-    { value: 'active', label: 'Active' },
-    { value: 'inactive', label: 'Inactive' },
-    { value: 'expired', label: 'Expired' },
-    { value: 'pending', label: 'Pending' },
-  ];
-
   const profileImageUrl = getImageUrl(member.profile_image, member.full_name);
   const thumbnailImageUrl = getThumbnailUrl(member.profile_image, member.full_name);
 
   const activeFreeze = freezeHistory.find(f => f.status === 'active');
   const hasActiveFreeze = !!activeFreeze;
 
-  // Calculate discount percentage for display
-  const discountPercentage = paymentSummary?.discountPercentage || 0;
-  const hasDiscount = paymentSummary?.hasDiscount || false;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
+        {/* Header with Profile Image Editor */}
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
-          <div className="flex items-center gap-3">
-            <div 
-              className="relative cursor-pointer group flex-shrink-0"
-              onClick={() => setIsImageZoomed(true)}
-            >
-              <img 
-                src={thumbnailImageUrl}
-                alt={member.full_name}
-                className="h-12 w-12 rounded-full object-cover border-2 border-transparent group-hover:border-blue-400 transition-all duration-200"
-                onError={(e) => {
-                  e.target.onerror = null;
-                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
-                }}
-              />
-              <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/40 transition-all duration-200 flex items-center justify-center">
-                <Maximize2 className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold text-gray-900">{member.full_name}</h2>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-mono border border-gray-200">
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            {/* Profile Image Editor Component */}
+            <ProfileImageEditor 
+              member={member}
+              memberId={member.id}
+              onImageUpdated={handleImageUpdated}
+              thumbnailImageUrl={thumbnailImageUrl}
+              profileImageUrl={profileImageUrl}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl font-bold text-gray-900 truncate">{member.full_name}</h2>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-mono border border-gray-200 flex-shrink-0">
                   <Hash className="h-3 w-3" />
                   {member.id}
                 </span>
                 {hasActiveFreeze && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium border border-blue-200">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium border border-blue-200 flex-shrink-0">
                     <Snowflake className="h-3 w-3" />
                     Frozen
                   </span>
@@ -1155,7 +1463,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={() => {
                 fetchMemberDetails();
@@ -1250,7 +1558,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
           </div>
 
           {/* Discount Banner - Shows if there's a discount */}
-          {hasDiscount && paymentSummary && (
+          {paymentSummary?.hasDiscount && paymentSummary && (
             <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-3">
@@ -1733,9 +2041,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       onChange={handleMembershipEditChange}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                     >
-                      {statusOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
+                      {['active', 'inactive', 'expired', 'pending'].map((option) => (
+                        <option key={option} value={option}>
+                          {option.charAt(0).toUpperCase() + option.slice(1)}
                         </option>
                       ))}
                     </select>
@@ -2265,7 +2573,13 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       onChange={handleEditChange}
                       className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     >
-                      {idProofOptions.map(option => (
+                      {[
+                        { value: 'aadhar', label: 'Aadhar Card' },
+                        { value: 'pan', label: 'PAN Card' },
+                        { value: 'dl', label: 'Driving License' },
+                        { value: 'passport', label: 'Passport' },
+                        { value: 'voter', label: 'Voter ID' },
+                      ].map(option => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                       ))}
                     </select>
@@ -2287,7 +2601,13 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     <div className="flex justify-between">
                       <span className="text-gray-500">Type:</span>
                       <span className="font-medium text-gray-900">
-                        {idProofOptions.find(o => o.value === member.id_proof_type)?.label || member.id_proof_type}
+                        {[
+                          { value: 'aadhar', label: 'Aadhar Card' },
+                          { value: 'pan', label: 'PAN Card' },
+                          { value: 'dl', label: 'Driving License' },
+                          { value: 'passport', label: 'Passport' },
+                          { value: 'voter', label: 'Voter ID' },
+                        ].find(o => o.value === member.id_proof_type)?.label || member.id_proof_type}
                       </span>
                     </div>
                   )}
