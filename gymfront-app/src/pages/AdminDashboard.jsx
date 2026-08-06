@@ -11,7 +11,7 @@ import {
   Wallet, Receipt, FileText, Users as UsersIcon, Briefcase, Calendar as CalendarIcon,
   ChevronLeft, PanelLeftClose, PanelLeftOpen, ArrowLeft, ExternalLink,
   BookOpen, Hash, Phone as PhoneIcon, Mail as MailIcon, Dumbbell, Gift,
-  PieChart, Layers, LayoutGrid, List, Grid, Maximize2,
+  PieChart, Layers, LayoutGrid, List, Grid, Maximize2, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -20,6 +20,7 @@ import { formatCurrency, formatDate, formatDateTime, statusBadge, roleBadge } fr
 import GymList from '../components/admin/GymList';
 import GymDetails from '../components/admin/GymDetails';
 import AttendanceList from '../components/admin/AttendanceList';
+import IrregularMembers from '../components/attendance/IrregularMembers';
 
 // ─── Field components ─────────────────────────────────────────────────────────
 
@@ -918,6 +919,7 @@ const AdminDashboard = () => {
     e.title?.toLowerCase().includes(s) || e.vendor_name?.toLowerCase().includes(s) || e.gym_name?.toLowerCase().includes(s)
   );
 
+  // ===== UPDATED NAVIGATION WITH IRREGULAR MEMBERS =====
   const navigation = [
     { id: 'overview', name: 'Overview', icon: Home, count: null },
     { id: 'gyms', name: 'Gyms', icon: Building2, count: gyms.length },
@@ -930,6 +932,7 @@ const AdminDashboard = () => {
     { id: 'leads', name: 'Leads', icon: Target, count: leads.length },
     { id: 'expenses', name: 'Expenses', icon: Wallet, count: expenses.length },
     { id: 'attendance', name: 'Attendance', icon: Clock, count: null },
+    { id: 'irregular-members', name: 'Irregular Members', icon: AlertTriangle, count: null },
     { id: 'whatsapp', name: 'WhatsApp Logs', icon: MessageSquare, count: null },
   ];
 
@@ -1115,7 +1118,7 @@ const AdminDashboard = () => {
         </nav>
 
         {/* Search / Filter Bar */}
-        {selectedTab !== 'overview' && !viewingGymDetails && (
+        {selectedTab !== 'overview' && !viewingGymDetails && selectedTab !== 'irregular-members' && (
           <div className="bg-gray-900/60 border-b border-gray-800 px-4 lg:px-8 py-3 flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
@@ -1153,6 +1156,7 @@ const AdminDashboard = () => {
           {/* ==================== TAB CONTENT ==================== */}
           {/* OVERVIEW */}
           {selectedTab === 'overview' && (
+            // ... (same as before, keeping all dashboard stats)
             <div className="space-y-6">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
                 <StatCard icon={Building2} label="Total Gyms" value={stats.total_gyms || 0}
@@ -1761,16 +1765,19 @@ const AdminDashboard = () => {
             </div>
           )}
 
-
           {/* ==================== ATTENDANCE TABLE ==================== */}
           {selectedTab === 'attendance' && (
             <AttendanceList
               gymId={viewingGymDetails ? selectedGymId : null}
               onBulkDelete={(ids) => {
-                // Optional: Handle bulk delete callback
                 console.log(`Deleted ${ids.length} attendance records`);
               }}
             />
+          )}
+
+          {/* ==================== IRREGULAR MEMBERS ==================== */}
+          {selectedTab === 'irregular-members' && (
+            <IrregularMembers />
           )}
 
           {/* ==================== WHATSAPP LOGS ==================== */}

@@ -3,7 +3,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   AlertTriangle, User, Phone, Mail, Calendar, Clock, 
   RefreshCw, Loader2, ChevronRight, Eye, UserCheck,
-  TrendingUp, TrendingDown, Search, Filter, X
+  TrendingUp, TrendingDown, Search, Filter, X,
+  Trash2, Database, HardDrive, CheckCircle
 } from 'lucide-react';
 import { formatDate, formatDateTime } from '../../services/adminHelpers';
 import api from '../../services/api';
@@ -21,6 +22,9 @@ const IrregularMembers = () => {
   const [recentCheckins, setRecentCheckins] = useState([]);
   const [loadingCheckins, setLoadingCheckins] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [showCleanupModal, setShowCleanupModal] = useState(false);
+  const [cleanupStats, setCleanupStats] = useState(null);
 
   const fetchIrregularMembers = useCallback(async (showToast = false) => {
     if (showToast) setRefreshing(true);
@@ -52,7 +56,6 @@ const IrregularMembers = () => {
   useEffect(() => {
     let filtered = [...irregularMembers];
 
-    // Apply search filter
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
       filtered = filtered.filter(m => 
@@ -62,7 +65,6 @@ const IrregularMembers = () => {
       );
     }
 
-    // Apply status filter
     if (filterStatus !== 'all') {
       filtered = filtered.filter(m => m.status === filterStatus);
     }
@@ -87,6 +89,47 @@ const IrregularMembers = () => {
     setSelectedMember(member);
     setShowMemberDetails(true);
     await fetchMemberCheckins(member.member_id);
+  };
+
+  // ===== CLEANUP ATTENDANCE FUNCTION =====
+  const handleCleanup = async () => {
+    setCleanupLoading(true);
+    try {
+      const response = await api.post('/gym/attendance/cleanup?days_threshold=4');
+      setCleanupStats(response.data);
+      toast.success(
+        `✅ Cleaned up ${response.data.total_records_deleted} records!\n` +
+        `Processed ${response.data.members_processed} members`
+      );
+      // Refresh the irregular members list
+      await fetchIrregularMembers(true);
+    } catch (error) {
+      console.error('Cleanup error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to cleanup attendance records');
+    } finally {
+      setCleanupLoading(false);
+      setShowCleanupModal(false);
+    }
+  };
+
+  // ===== CLEANUP EXPIRED MEMBERS FUNCTION =====
+  const handleCleanupExpired = async () => {
+    setCleanupLoading(true);
+    try {
+      const response = await api.post('/gym/attendance/cleanup/expired');
+      toast.success(
+        `✅ Cleaned up ${response.data.total_records_deleted} records for expired members!\n` +
+        `Processed ${response.data.expired_members_processed} expired members`
+      );
+      // Refresh the irregular members list
+      await fetchIrregularMembers(true);
+    } catch (error) {
+      console.error('Cleanup expired error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to cleanup expired members');
+    } finally {
+      setCleanupLoading(false);
+      setShowCleanupModal(false);
+    }
   };
 
   const getStatusBadge = (status) => {
@@ -140,6 +183,17 @@ const IrregularMembers = () => {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* ===== CLEANUP BUTTON ===== */}
+          <button
+            onClick={() => setShowCleanupModal(true)}
+            disabled={cleanupLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+            title="Clean up old attendance records to save disk space"
+          >
+            <HardDrive className="h-4 w-4" />
+            Cleanup Attendance
+          </button>
+          
           <select
             value={daysThreshold}
             onChange={(e) => {
@@ -186,6 +240,25 @@ const IrregularMembers = () => {
           <p className="text-2xl font-bold text-gray-600">{stats.neverCheckedIn}</p>
           <p className="text-xs text-gray-400 mt-1">No check-in history</p>
         </div>
+      </div>
+
+      {/* Disk Space Info */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3">
+        <Database className="h-5 w-5 text-blue-600" />
+        <div className="flex-1">
+          <p className="text-sm text-blue-800 font-medium">Disk Space Management</p>
+          <p className="text-xs text-blue-600">
+            Old attendance records can take up significant disk space. 
+            The cleanup will delete member check-in records older than 4 days 
+            while keeping the last check-in for irregular tracking.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowCleanupModal(true)}
+          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors"
+        >
+          Cleanup Now
+        </button>
       </div>
 
       {/* Search and Filter */}
@@ -333,6 +406,116 @@ const IrregularMembers = () => {
         )}
       </div>
 
+      {/* ===== CLEANUP CONFIRMATION MODAL ===== */}
+      {showCleanupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-red-100 p-2 rounded-lg">
+                  <HardDrive className="h-5 w-5 text-red-600" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Cleanup Attendance Records</h2>
+              </div>
+              <button
+                onClick={() => setShowCleanupModal(false)}
+                className="p-2 rounded-lg hover:bg-gray-100"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-sm text-red-800 font-medium flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  What will be deleted:
+                </p>
+                <ul className="mt-2 space-y-1 text-sm text-red-700">
+                  <li className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-red-400 rounded-full"></span>
+                    Member check-in records older than 4 days
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-red-400 rounded-full"></span>
+                    Old records for expired members (keeps only the last one)
+                  </li>
+                </ul>
+              </div>
+
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                <p className="text-sm text-green-800 font-medium flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4" />
+                  What will be preserved:
+                </p>
+                <ul className="mt-2 space-y-1 text-sm text-green-700">
+                  <li className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+                    All staff attendance records (for salary)
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+                    The last check-in record for each member
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+                    All records for irregular member tracking
+                  </li>
+                </ul>
+              </div>
+
+              {cleanupStats && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <p className="text-sm text-blue-800 font-medium">Previous Cleanup Results:</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-gray-500">Records Deleted:</span>
+                      <span className="font-bold text-blue-700 ml-2">{cleanupStats.total_records_deleted}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Members Processed:</span>
+                      <span className="font-bold text-blue-700 ml-2">{cleanupStats.members_processed}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleCleanup}
+                  disabled={cleanupLoading}
+                  className="flex items-center justify-center gap-2 w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-semibold transition-colors disabled:opacity-50"
+                >
+                  {cleanupLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-5 w-5" />
+                  )}
+                  {cleanupLoading ? 'Cleaning up...' : 'Delete Old Member Records'}
+                </button>
+
+                <button
+                  onClick={handleCleanupExpired}
+                  disabled={cleanupLoading}
+                  className="flex items-center justify-center gap-2 w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-xl font-semibold transition-colors disabled:opacity-50"
+                >
+                  {cleanupLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <UserCheck className="h-5 w-5" />
+                  )}
+                  {cleanupLoading ? 'Cleaning up...' : 'Cleanup Expired Members Only'}
+                </button>
+              </div>
+
+              <p className="text-xs text-gray-400 text-center">
+                This action cannot be undone. Staff attendance records are never deleted.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Member Details Modal */}
       {showMemberDetails && selectedMember && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
@@ -426,8 +609,6 @@ const IrregularMembers = () => {
                 <button
                   onClick={() => {
                     setShowMemberDetails(false);
-                    // Navigate to member profile
-                    // You can add navigation logic here
                   }}
                   className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
                 >
@@ -436,8 +617,6 @@ const IrregularMembers = () => {
                 <button
                   onClick={() => {
                     setShowMemberDetails(false);
-                    // Navigate to member check-in
-                    // You can add navigation logic here
                   }}
                   className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
                 >
