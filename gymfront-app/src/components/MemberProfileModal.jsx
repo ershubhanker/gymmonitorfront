@@ -147,12 +147,16 @@ const getThumbnailUrl = (profileImage, fullName) => {
 // ============================================================
 // PROFILE IMAGE EDITOR COMPONENT
 // ============================================================
+// ============================================================
+// PROFILE IMAGE EDITOR COMPONENT (with zoom support)
+// ============================================================
 const ProfileImageEditor = ({ 
   member, 
   memberId, 
   onImageUpdated,
   thumbnailImageUrl,
-  profileImageUrl
+  profileImageUrl,
+  onImageZoom
 }) => {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
@@ -330,7 +334,11 @@ const ProfileImageEditor = ({
   return (
     <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl flex-shrink-0">
       <div className="relative flex-shrink-0 group">
-        <div className="h-20 w-20 rounded-full overflow-hidden border-4 border-white shadow-lg">
+        {/* Image with click to zoom - No overlay buttons */}
+        <div 
+          className="h-20 w-20 rounded-full overflow-hidden border-4 border-white shadow-lg cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+          onClick={() => onImageZoom && onImageZoom()}
+        >
           <img 
             src={currentImageUrl}
             alt={member?.full_name || 'Member'}
@@ -342,32 +350,10 @@ const ProfileImageEditor = ({
           />
         </div>
         
-        {/* Upload overlay - appears on hover */}
-        <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="text-white text-xs font-medium flex items-center gap-1 bg-blue-600 px-2.5 py-1.5 rounded-full hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {uploading ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Camera className="h-3 w-3" />
-            )}
-            {uploading ? 'Uploading...' : 'Change'}
-          </button>
+        {/* Zoom hint - appears on hover */}
+        <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/30 transition-all duration-200 flex items-center justify-center pointer-events-none">
+          <Maximize2 className="h-5 w-5 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
         </div>
-        
-        {/* Delete button - appears when image exists */}
-        {member?.profile_image && !uploading && (
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1.5 shadow-lg hover:bg-red-600 transition-colors"
-            title="Remove photo"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
         
         <input
           ref={fileInputRef}
@@ -412,9 +398,16 @@ const ProfileImageEditor = ({
               {deleting ? 'Removing...' : 'Remove Photo'}
             </button>
           )}
+          <button
+            onClick={() => onImageZoom && onImageZoom()}
+            className="text-xs text-gray-500 hover:text-gray-700 font-medium flex items-center gap-1"
+          >
+            <Maximize2 className="h-3 w-3" />
+            View Full Size
+          </button>
         </div>
         <p className="text-xs text-gray-400 mt-0.5">
-          {uploading ? 'Uploading...' : 'JPEG, PNG, WebP up to 5MB'}
+          {uploading ? 'Uploading...' : 'Click image to zoom • JPEG, PNG, WebP up to 5MB'}
         </p>
       </div>
 
@@ -466,6 +459,7 @@ const ProfileImageEditor = ({
     </div>
   );
 };
+
 
 // ============================================================
 // COMMENT CATEGORY BADGE COMPONENT
@@ -1430,61 +1424,62 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
         {/* Header with Profile Image Editor */}
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            {/* Profile Image Editor Component */}
-            <ProfileImageEditor 
-              member={member}
-              memberId={member.id}
-              onImageUpdated={handleImageUpdated}
-              thumbnailImageUrl={thumbnailImageUrl}
-              profileImageUrl={profileImageUrl}
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl font-bold text-gray-900 truncate">{member.full_name}</h2>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-mono border border-gray-200 flex-shrink-0">
-                  <Hash className="h-3 w-3" />
-                  {member.id}
-                </span>
-                {hasActiveFreeze && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium border border-blue-200 flex-shrink-0">
-                    <Snowflake className="h-3 w-3" />
-                    Frozen
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                {getStatusBadge(member.is_active ? 'active' : 'inactive')}
-                {currentMembership && (
-                  <span className="text-xs text-gray-500">
-                    Member since {formatDate(member.joined_date)}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={() => {
-                fetchMemberDetails();
-                fetchComments();
-                fetchPayments();
-                fetchMembershipHistory();
-                fetchAttendanceHistory();
-                fetchBalanceDetails();
-                fetchPtSessions();
-                fetchFreezeHistory();
-              }}
-              className="p-2 rounded-xl hover:bg-gray-100"
-              title="Refresh"
-            >
-              <RefreshCw className="h-5 w-5 text-gray-500" />
-            </button>
-            <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100">
-              <X className="h-5 w-5 text-gray-500" />
-            </button>
-          </div>
-        </div>
+  <div className="flex items-center gap-4 flex-1 min-w-0">
+    {/* Profile Image Editor Component with zoom callback */}
+    <ProfileImageEditor 
+      member={member}
+      memberId={member.id}
+      onImageUpdated={handleImageUpdated}
+      thumbnailImageUrl={thumbnailImageUrl}
+      profileImageUrl={profileImageUrl}
+      onImageZoom={() => setIsImageZoomed(true)}  // 👈 ADD THIS
+    />
+    <div className="min-w-0 flex-1">
+      <div className="flex items-center gap-2 flex-wrap">
+        <h2 className="text-xl font-bold text-gray-900 truncate">{member.full_name}</h2>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-mono border border-gray-200 flex-shrink-0">
+          <Hash className="h-3 w-3" />
+          {member.id}
+        </span>
+        {hasActiveFreeze && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium border border-blue-200 flex-shrink-0">
+            <Snowflake className="h-3 w-3" />
+            Frozen
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2 mt-1 flex-wrap">
+        {getStatusBadge(member.is_active ? 'active' : 'inactive')}
+        {currentMembership && (
+          <span className="text-xs text-gray-500">
+            Member since {formatDate(member.joined_date)}
+          </span>
+        )}
+      </div>
+    </div>
+  </div>
+  <div className="flex items-center gap-2 flex-shrink-0">
+    <button
+      onClick={() => {
+        fetchMemberDetails();
+        fetchComments();
+        fetchPayments();
+        fetchMembershipHistory();
+        fetchAttendanceHistory();
+        fetchBalanceDetails();
+        fetchPtSessions();
+        fetchFreezeHistory();
+      }}
+      className="p-2 rounded-xl hover:bg-gray-100"
+      title="Refresh"
+    >
+      <RefreshCw className="h-5 w-5 text-gray-500" />
+    </button>
+    <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100">
+      <X className="h-5 w-5 text-gray-500" />
+    </button>
+  </div>
+</div>
 
         {/* Image Zoom Modal */}
         {isImageZoomed && (
