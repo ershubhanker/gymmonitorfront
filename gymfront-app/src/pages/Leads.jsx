@@ -1,4 +1,4 @@
-// src/pages/Leads.jsx - Updated with auto-fill member data on conversion
+// src/pages/Leads.jsx - Updated with date range filter
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -7,7 +7,7 @@ import {
   UserCheck, Clock, AlertCircle, Star, Zap,
   MessageCircle, Instagram, Facebook, Globe, Users, Share2, Copy, LinkIcon, Download, CheckCircle as CheckCircleIcon,
   Flame, Sun, Snowflake, MessageSquare, History, ArrowLeft, Target, DollarSign, Building, Tag, UserPlus, TrendingUp, Award,
-  Shield
+  Shield, Filter, Calendar as CalendarIcon
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -257,32 +257,20 @@ const ShareLeadFormModal = ({ isOpen, onClose, shareableLink, gymSlug }) => {
 const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
   const [showMemberModal, setShowMemberModal] = useState(true);
 
-  // ============================================================
-  // 🔥 SMART PREFILL - Auto-fill all lead data into member form
-  // ============================================================
   const prefillData = {
-    // Personal Information
     full_name: lead?.full_name || '',
     email: lead?.email || '',
     phone: lead?.phone || '',
     gender: (lead?.gender || '').toLowerCase() || 'male',
     date_of_birth: '',
     address: '',
-    
-    // Emergency Contact
     emergency_contact_name: '',
     emergency_contact_phone: '',
-    
-    // Medical Information
     medical_conditions: '',
     allergies: '',
     medications: '',
-    
-    // ID Proof
     id_proof_type: 'aadhar',
     id_proof_number: '',
-    
-    // Additional Info (stored in notes or custom fields)
     notes: lead?.notes || '',
     interest: lead?.interest || '',
     preferred_plan: lead?.preferred_plan || '',
@@ -291,8 +279,6 @@ const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
     lead_quality: lead?.lead_quality || 'warm',
     age: lead?.age || '',
   };
-
-  console.log('📝 Converting lead to member with prefill data:', prefillData);
 
   const createMemberFromLead = () => {
     return {
@@ -310,7 +296,6 @@ const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
       medications: prefillData.medications || '',
       id_proof_type: prefillData.id_proof_type || 'aadhar',
       id_proof_number: prefillData.id_proof_number || '',
-      // Pass additional data in raw field
       raw: {
         ...prefillData,
         notes: prefillData.notes || '',
@@ -326,16 +311,10 @@ const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
 
   const handleMemberSave = async (memberFormData) => {
     try {
-      // Update lead status to converted
       await api.put(`/gym/leads/${lead.id}`, { status: 'converted' });
-      
       toast.success(`✅ Lead "${lead.full_name}" converted to member successfully!`);
-      
-      // Close the modal and refresh the leads list
       onConverted();
       onClose();
-      
-      // Return the member data so the member creation can proceed
       return memberFormData;
     } catch (err) {
       console.error('Conversion error:', err);
@@ -344,7 +323,6 @@ const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
     }
   };
 
-
   return (
     <>
       {showMemberModal && (
@@ -352,9 +330,9 @@ const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
           isOpen={showMemberModal}
           onClose={onClose}
           onSave={handleMemberSave}
-          member={createMemberFromLead()}  // ✅ Pass as member object with pre-filled data
+          member={createMemberFromLead()}
           userRole="gym_owner"
-          isFromLead={true}  // ✅ Flag to indicate this is from lead conversion
+          isFromLead={true}
         />
       )}
     </>
@@ -722,6 +700,12 @@ const Leads = () => {
   const [filterSource, setFilterSource] = useState('');
   const [filterQuality, setFilterQuality] = useState('');
   const [filterStaff, setFilterStaff] = useState('');
+  
+  // ===== DATE RANGE FILTERS =====
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [showDateFilter, setShowDateFilter] = useState(false);
+  
   const [showModal, setShowModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [editLead, setEditLead] = useState(null);
@@ -750,6 +734,10 @@ const Leads = () => {
       if (filterQuality) params.append('lead_quality', filterQuality);
       if (filterStaff) params.append('assigned_to', filterStaff);
       if (search) params.append('search', search);
+      
+      // ===== ADD DATE RANGE PARAMS =====
+      if (filterDateFrom) params.append('date_from', filterDateFrom);
+      if (filterDateTo) params.append('date_to', filterDateTo);
 
       const [leadsRes, statsRes] = await Promise.all([
         api.get(`/gym/leads?${params}`),
@@ -765,7 +753,7 @@ const Leads = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterStatus, filterSource, filterQuality, filterStaff, search, canViewLeads]);
+  }, [filterStatus, filterSource, filterQuality, filterStaff, search, filterDateFrom, filterDateTo, canViewLeads]);
 
   const fetchStaffList = async () => {
     if (!canViewLeads) return;
@@ -808,51 +796,49 @@ const Leads = () => {
     return () => clearTimeout(t);
   }, [fetchLeads, canViewLeads]);
 
+  // ===== Clear date range filter =====
+  const clearDateFilter = () => {
+    setFilterDateFrom('');
+    setFilterDateTo('');
+    setShowDateFilter(false);
+  };
 
   const [initialLeadId, setInitialLeadId] = useState(null);
-const [selectedLeadForView, setSelectedLeadForView] = useState(null);
-const [showSingleLead, setShowSingleLead] = useState(false);
-const [loadingSingleLead, setLoadingSingleLead] = useState(false);
+  const [selectedLeadForView, setSelectedLeadForView] = useState(null);
+  const [showSingleLead, setShowSingleLead] = useState(false);
+  const [loadingSingleLead, setLoadingSingleLead] = useState(false);
 
+  useEffect(() => {
+    if (initialLeadId) {
+      setInitialLeadId(initialLeadId);
+      setShowSingleLead(true);
+      fetchSingleLead(initialLeadId);
+    } else {
+      setShowSingleLead(false);
+      setInitialLeadId(null);
+      setSelectedLeadForView(null);
+    }
+  }, [initialLeadId]);
 
+  const fetchSingleLead = async (leadId) => {
+    setLoadingSingleLead(true);
+    try {
+      const response = await api.get(`/gym/leads/${leadId}/detail`);
+      setSelectedLeadForView(response.data);
+    } catch (error) {
+      console.error('Error fetching lead:', error);
+      toast.error('Failed to load lead details');
+      setShowSingleLead(false);
+    } finally {
+      setLoadingSingleLead(false);
+    }
+  };
 
-useEffect(() => {
-  if (initialLeadId) {
-    setInitialLeadId(initialLeadId);
-    setShowSingleLead(true);
-    fetchSingleLead(initialLeadId);
-  } else {
+  const handleBackToLeadList = () => {
     setShowSingleLead(false);
     setInitialLeadId(null);
     setSelectedLeadForView(null);
-  }
-}, [initialLeadId]);
-
-// Fetch single lead details
-const fetchSingleLead = async (leadId) => {
-  setLoadingSingleLead(true);
-  try {
-    const response = await api.get(`/gym/leads/${leadId}/detail`);
-    setSelectedLeadForView(response.data);
-  } catch (error) {
-    console.error('Error fetching lead:', error);
-    toast.error('Failed to load lead details');
-    setShowSingleLead(false);
-  } finally {
-    setLoadingSingleLead(false);
-  }
-};
-
-
-// Handle back to list
-const handleBackToLeadList = () => {
-  setShowSingleLead(false);
-  setInitialLeadId(null);
-  setSelectedLeadForView(null);
-  if (onLeadSelect) {
-    onLeadSelect(null);
-  }
-};
+  };
 
   const fetchShareableLink = async () => {
     try {
@@ -984,6 +970,9 @@ const handleBackToLeadList = () => {
     );
   }
 
+  // ===== Check if any date filter is active =====
+  const isDateFilterActive = filterDateFrom || filterDateTo;
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -992,7 +981,7 @@ const handleBackToLeadList = () => {
           <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
           <p className="text-sm text-gray-500 mt-0.5">Track and manage incoming gym inquiries</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => { setLoading(true); fetchLeads(); fetchStaffStats(); }}
             className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-600"
@@ -1118,7 +1107,7 @@ const handleBackToLeadList = () => {
       )}
 
       {/* Filters */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-wrap gap-3">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
@@ -1129,6 +1118,7 @@ const handleBackToLeadList = () => {
             className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
           />
         </div>
+        
         <select
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
@@ -1139,6 +1129,7 @@ const handleBackToLeadList = () => {
             <option key={v} value={v}>{c.label}</option>
           ))}
         </select>
+        
         <select
           value={filterSource}
           onChange={e => setFilterSource(e.target.value)}
@@ -1149,6 +1140,7 @@ const handleBackToLeadList = () => {
             <option key={v} value={v}>{c.label}</option>
           ))}
         </select>
+        
         <select
           value={filterStaff}
           onChange={e => setFilterStaff(e.target.value)}
@@ -1160,7 +1152,60 @@ const handleBackToLeadList = () => {
             <option key={staff.id} value={staff.user_id}>{staff.full_name}</option>
           ))}
         </select>
-        {(filterQuality || filterStatus || filterSource || filterStaff || search) && (
+
+        {/* ===== DATE FILTER BUTTON ===== */}
+        <button
+          onClick={() => setShowDateFilter(!showDateFilter)}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm border transition-all ${
+            isDateFilterActive
+              ? 'bg-blue-50 border-blue-300 text-blue-700'
+              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          <CalendarIcon className="h-4 w-4" />
+          <span>Date</span>
+          {isDateFilterActive && (
+            <span className="bg-blue-200 text-blue-700 rounded-full px-1.5 py-0.5 text-xs font-bold">
+              •
+            </span>
+          )}
+        </button>
+
+        {/* ===== DATE RANGE INPUTS ===== */}
+        {showDateFilter && (
+          <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-500 font-medium">From:</span>
+              <input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                max={filterDateTo || undefined}
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-500 font-medium">To:</span>
+              <input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                min={filterDateFrom || undefined}
+              />
+            </div>
+            {isDateFilterActive && (
+              <button
+                onClick={clearDateFilter}
+                className="text-red-500 hover:text-red-700 text-xs font-medium px-2 py-1"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
+        
+        {(filterQuality || filterStatus || filterSource || filterStaff || search || isDateFilterActive) && (
           <button
             onClick={() => {
               setFilterQuality('');
@@ -1168,6 +1213,7 @@ const handleBackToLeadList = () => {
               setFilterSource('');
               setFilterStaff('');
               setSearch('');
+              clearDateFilter();
             }}
             className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1"
           >
@@ -1175,6 +1221,25 @@ const handleBackToLeadList = () => {
           </button>
         )}
       </div>
+
+      {/* Date filter active indicator */}
+      {isDateFilterActive && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-blue-700">
+            <CalendarIcon className="h-4 w-4" />
+            <span>
+              Filtering leads from <strong>{filterDateFrom ? formatDate(filterDateFrom) : 'any date'}</strong>
+              {filterDateTo && ` to ${formatDate(filterDateTo)}`}
+            </span>
+          </div>
+          <button
+            onClick={clearDateFilter}
+            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+          >
+            Remove filter
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1187,9 +1252,9 @@ const handleBackToLeadList = () => {
             <Users className="h-14 w-14 text-gray-200 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-500">No leads found</h3>
             <p className="text-sm text-gray-400 mt-1">
-              {search || filterStatus || filterSource || filterQuality || filterStaff ? 'Try adjusting your filters.' : 'Add your first lead to get started.'}
+              {search || filterStatus || filterSource || filterQuality || filterStaff || isDateFilterActive ? 'Try adjusting your filters.' : 'Add your first lead to get started.'}
             </p>
-            {!search && !filterStatus && !filterSource && !filterQuality && !filterStaff && canAddLead && (
+            {!search && !filterStatus && !filterSource && !filterQuality && !filterStaff && !isDateFilterActive && canAddLead && (
               <button
                 onClick={() => { setEditLead(null); setShowModal(true); }}
                 className="mt-4 inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-blue-700"
@@ -1211,8 +1276,9 @@ const handleBackToLeadList = () => {
                   <th className="text-left px-4 py-3 font-semibold">Interest</th>
                   <th className="text-left px-4 py-3 font-semibold">Status</th>
                   <th className="text-left px-4 py-3 font-semibold">Follow-up</th>
+                  <th className="text-left px-4 py-3 font-semibold">Created</th>
                   <th className="px-4 py-3"></th>
-                 </tr>
+                </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {leads.map(lead => {
@@ -1240,7 +1306,7 @@ const handleBackToLeadList = () => {
                             )}
                           </div>
                         </div>
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-1.5 text-gray-700">
@@ -1254,19 +1320,19 @@ const handleBackToLeadList = () => {
                             </div>
                           )}
                         </div>
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         <LeadQualityBadge 
                           quality={lead.lead_quality || 'warm'} 
                           onChange={canEditLead ? (newQuality) => handleQualityChange(lead, newQuality) : null}
                         />
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5 text-gray-600">
                           <SrcIcon className="h-4 w-4 text-gray-400" />
                           <span>{SOURCE_CONFIG[lead.source]?.label || lead.source}</span>
                         </div>
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5 text-gray-600">
                           <User className="h-3.5 w-3.5 text-gray-400" />
@@ -1274,7 +1340,7 @@ const handleBackToLeadList = () => {
                             {lead.assigned_staff_name || getStaffName(lead.assigned_to) || 'Unassigned'}
                           </span>
                         </div>
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="space-y-0.5">
                           {lead.interest && <p className="text-gray-700">{lead.interest}</p>}
@@ -1285,12 +1351,12 @@ const handleBackToLeadList = () => {
                             <p className="text-xs text-green-600 font-medium">₹{lead.budget.toLocaleString()}</p>
                           )}
                         </div>
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold border ${STATUS_CONFIG[lead.status]?.color}`}>
                           {STATUS_CONFIG[lead.status]?.label || lead.status}
                         </span>
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         {followUp ? (
                           <span className={`text-xs font-medium ${followUp.color}`}>
@@ -1299,7 +1365,12 @@ const handleBackToLeadList = () => {
                         ) : (
                           <span className="text-xs text-gray-300">—</span>
                         )}
-                       </td>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs text-gray-400">
+                          {formatDate(lead.created_at)}
+                        </span>
+                      </td>
                       <td className="px-4 py-3">
                         <ActionsMenu
                           lead={lead}
@@ -1313,12 +1384,12 @@ const handleBackToLeadList = () => {
                           canDelete={canDeleteLead}
                           canConvert={canConvertLead}
                         />
-                       </td>
-                     </tr>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
-             </table>
+            </table>
           </div>
         )}
       </div>
