@@ -1,4 +1,5 @@
-// src/pages/Payments.tsx
+// src/pages/Payments.tsx - Complete with all functions
+
 import React, { useState, useEffect } from 'react';
 import { 
   CreditCard, 
@@ -6,8 +7,7 @@ import {
   Download, 
   Search,
   ChevronDown,
-  X,
-  TrendingUp,
+  X,TrendingUp,
   Wallet,
   Users,
   CheckCircle,
@@ -19,7 +19,8 @@ import {
   Trash2,
   CheckSquare,
   Square,
-  AlertTriangle
+  AlertTriangle,
+  Tag, Dumbbell
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -38,6 +39,7 @@ const Payments = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('all');
   const [expandedPayment, setExpandedPayment] = useState(null);
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState('all');
   
   // Delete-related state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -55,7 +57,9 @@ const Payments = () => {
     otherPayments: 0,
     growth: 0,
     totalGST: 0,
-    totalBalancePayments: 0
+    totalBalancePayments: 0,
+    totalAddonPayments: 0,
+    addonPaymentCount: 0
   });
 
   const currencySymbol = user?.currency_symbol || '₹';
@@ -77,7 +81,7 @@ const Payments = () => {
     if (payments.length > 0 || startDate) {
       filterPayments();
     }
-  }, [payments, startDate, endDate, searchTerm, selectedMethod]);
+  }, [payments, startDate, endDate, searchTerm, selectedMethod, paymentTypeFilter]);
 
   // Exit selection mode when payments change
   useEffect(() => {
@@ -94,18 +98,46 @@ const Payments = () => {
       
       let paymentsData = Array.isArray(response.data) ? response.data : [];
       
-      paymentsData = paymentsData.map(payment => ({
-        ...payment,
-        member_name: payment.member?.full_name || payment.member_name || 'Unknown Member',
-        member_phone: payment.member?.phone || '',
-        member_email: payment.member?.email || '',
-        member_plan: payment.member?.membership_plan_name || payment.member?.plan || 'N/A',
-        member_balance: payment.member?.balance_amount || payment.balance_amount || 0,
-        gst_amount: payment.gst_amount || payment.tax_amount || 0,
-        is_balance_payment: payment.is_balance_payment || false,
-        original_invoice_id: payment.original_invoice_id || null
-      }));
+      paymentsData = paymentsData.map(payment => {
+        let paymentType = 'membership';
+        let addonName = null;
+        
+        // ✅ Check for addon payment by transaction_id prefix
+        if (payment.transaction_id?.startsWith('ADDON-PAY-') || 
+            payment.transaction_id?.startsWith('ADDON-')) {
+          paymentType = 'addon';
+          // Try to extract addon name from notes
+          const notes = payment.notes || '';
+          const addonMatch = notes.match(/Addon payment for ([^:]+)/);
+          if (addonMatch) {
+            addonName = addonMatch[1].trim();
+          } else {
+            addonName = 'Addon';
+          }
+        } 
+        // ✅ Check for PT payment
+        else if (payment.transaction_id?.startsWith('PT-') || 
+                 payment.notes?.includes('PT Payment') ||
+                 payment.membership_id === null) {
+          paymentType = 'pt';
+        }
+        
+        return {
+          ...payment,
+          member_name: payment.member?.full_name || payment.member_name || 'Unknown Member',
+          member_phone: payment.member?.phone || '',
+          member_email: payment.member?.email || '',
+          member_plan: payment.member?.membership_plan_name || payment.member?.plan || 'N/A',
+          member_balance: payment.member?.balance_amount || payment.balance_amount || 0,
+          gst_amount: payment.gst_amount || payment.tax_amount || 0,
+          is_balance_payment: payment.is_balance_payment || false,
+          original_invoice_id: payment.original_invoice_id || null,
+          payment_type: paymentType,
+          addon_name: addonName
+        };
+      });
       
+      console.log('Processed payments with types:', paymentsData.map(p => ({ id: p.id, type: p.payment_type, addon: p.addon_name })));
       setPayments(paymentsData);
     } catch (error) {
       console.error('Error fetching payments:', error);
@@ -142,6 +174,19 @@ const Payments = () => {
         });
       }
 
+      if (paymentTypeFilter !== 'all' && filtered.length > 0) {
+        filtered = filtered.filter(payment => {
+          if (paymentTypeFilter === 'membership') {
+            return payment.payment_type === 'membership';
+          } else if (paymentTypeFilter === 'pt') {
+            return payment.payment_type === 'pt';
+          } else if (paymentTypeFilter === 'addon') {
+            return payment.payment_type === 'addon';
+          }
+          return true;
+        });
+      }
+
       const totalRevenue = filtered.reduce((sum, p) => sum + (p.amount || 0), 0);
       const totalCount = filtered.length;
       const averagePayment = totalCount > 0 ? totalRevenue / totalCount : 0;
@@ -167,6 +212,11 @@ const Payments = () => {
       const totalBalancePayments = filtered
         .filter(p => p.is_balance_payment === true)
         .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+      const addonPayments = filtered
+        .filter(p => p.payment_type === 'addon')
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
+      const addonPaymentCount = filtered.filter(p => p.payment_type === 'addon').length;
 
       let growth = 0;
       if (payments.length > 0 && startDate && endDate) {
@@ -200,7 +250,9 @@ const Payments = () => {
         otherPayments,
         growth,
         totalGST,
-        totalBalancePayments
+        totalBalancePayments,
+        totalAddonPayments: addonPayments,
+        addonPaymentCount
       });
 
       const sortedFiltered = [...filtered].sort((a, b) => {
@@ -225,7 +277,36 @@ const Payments = () => {
     return `${currencySymbol} ${formatted}`;
   };
 
-  // Single payment delete handler
+  // ===== TOGGLE SELECTION MODE =====
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    setSelectedPayments(new Set());
+    setExpandedPayment(null);
+  };
+
+  // ===== SELECT ALL VISIBLE =====
+  const selectAllVisible = () => {
+    const allIds = filteredPayments.map(p => p.id);
+    setSelectedPayments(new Set(allIds));
+  };
+
+  // ===== DESELECT ALL =====
+  const deselectAll = () => {
+    setSelectedPayments(new Set());
+  };
+
+  // ===== TOGGLE PAYMENT SELECTION =====
+  const togglePaymentSelection = (paymentId) => {
+    const newSelected = new Set(selectedPayments);
+    if (newSelected.has(paymentId)) {
+      newSelected.delete(paymentId);
+    } else {
+      newSelected.add(paymentId);
+    }
+    setSelectedPayments(newSelected);
+  };
+
+  // ===== SINGLE PAYMENT DELETE =====
   const handleSingleDelete = async (paymentId, paymentAmount, memberName) => {
     if (!window.confirm(`Are you sure you want to delete the payment of ${formatCurrency(paymentAmount)} for ${memberName}?\n\nThis action cannot be undone and will update the member's balance.`)) {
       return;
@@ -235,7 +316,7 @@ const Payments = () => {
     try {
       await api.delete(`/gym/payments/${paymentId}`);
       toast.success(`Payment of ${formatCurrency(paymentAmount)} deleted successfully`);
-      await fetchPayments(); // Refresh the list
+      await fetchPayments();
     } catch (error) {
       console.error('Error deleting payment:', error);
       toast.error(error.response?.data?.detail || 'Failed to delete payment');
@@ -244,7 +325,7 @@ const Payments = () => {
     }
   };
 
-  // Bulk delete handler
+  // ===== BULK DELETE =====
   const handleBulkDelete = async () => {
     const paymentIds = Array.from(selectedPayments);
     const selectedPaymentsData = filteredPayments.filter(p => selectedPayments.has(p.id));
@@ -261,7 +342,7 @@ const Payments = () => {
       toast.success(response.data.message);
       setSelectionMode(false);
       setSelectedPayments(new Set());
-      await fetchPayments(); // Refresh the list
+      await fetchPayments();
     } catch (error) {
       console.error('Error bulk deleting payments:', error);
       toast.error(error.response?.data?.detail || 'Failed to delete payments');
@@ -270,35 +351,18 @@ const Payments = () => {
     }
   };
 
-  // Toggle selection of a single payment
-  const togglePaymentSelection = (paymentId) => {
-    const newSelected = new Set(selectedPayments);
-    if (newSelected.has(paymentId)) {
-      newSelected.delete(paymentId);
-    } else {
-      newSelected.add(paymentId);
-    }
-    setSelectedPayments(newSelected);
+  // ===== GET PAYMENT METHOD ICON =====
+  const getPaymentMethodIcon = (method) => {
+    const icons = {
+      cash: '💰',
+      card: '💳',
+      upi: '📱',
+      bank: '🏦'
+    };
+    return icons[method?.toLowerCase()] || '💵';
   };
 
-  // Select all visible payments
-  const selectAllVisible = () => {
-    const allIds = filteredPayments.map(p => p.id);
-    setSelectedPayments(new Set(allIds));
-  };
-
-  // Deselect all
-  const deselectAll = () => {
-    setSelectedPayments(new Set());
-  };
-
-  // Toggle selection mode
-  const toggleSelectionMode = () => {
-    setSelectionMode(!selectionMode);
-    setSelectedPayments(new Set());
-    setExpandedPayment(null);
-  };
-
+  // ===== HANDLE EXPORT =====
   const handleExport = () => {
     if (filteredPayments.length === 0) {
       toast.error('No data to export for the selected date range');
@@ -352,6 +416,10 @@ const Payments = () => {
       csvRows.push([`"Total Balance Payments:","${formatCurrency(summary.totalBalancePayments)}"`]);
       csvRows.push([`"Balance Payment Count:","${filteredPayments.filter(p => p.is_balance_payment).length}"`]);
       csvRows.push(['']);
+      csvRows.push(['"Add-On Payment Summary:"']);
+      csvRows.push([`"Total Add-On Payments:","${formatCurrency(summary.totalAddonPayments)}"`]);
+      csvRows.push([`"Add-On Payment Count:","${summary.addonPaymentCount}"`]);
+      csvRows.push(['']);
       
       csvRows.push(['"Payment Method Breakdown"']);
       csvRows.push(['"Method","Amount","Count","Percentage"']);
@@ -385,6 +453,7 @@ const Payments = () => {
         '"Is Balance Payment"',
         '"Original Invoice ID"',
         '"Member Balance After"',
+        '"Payment Type"',
         '"Notes"'
       ]);
       
@@ -392,6 +461,8 @@ const Payments = () => {
         const paymentDate = payment.payment_date ? new Date(payment.payment_date) : null;
         const dateStr = paymentDate ? paymentDate.toLocaleDateString('en-IN') : 'N/A';
         const timeStr = paymentDate ? paymentDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+        
+        const paymentTypeLabel = payment.payment_type === 'addon' ? 'Add-On' : payment.payment_type === 'pt' ? 'PT' : 'Membership';
         
         csvRows.push([
           `"${dateStr}"`,
@@ -410,6 +481,7 @@ const Payments = () => {
           `"${payment.is_balance_payment ? 'Yes' : 'No'}"`,
           `"${payment.original_invoice_id || 'N/A'}"`,
           `"${payment.member_balance || 0}"`,
+          `"${paymentTypeLabel}"`,
           `"${(payment.notes || '').replace(/"/g, '""')}"`
         ]);
       });
@@ -420,6 +492,7 @@ const Payments = () => {
       csvRows.push([`"Total Amount:","${formatCurrency(totalAmount)}"`]);
       csvRows.push([`"Total GST (${gstRate}%):","${formatCurrency(gstCollected)}"`]);
       csvRows.push([`"Total Balance Payments:","${formatCurrency(summary.totalBalancePayments)}"`]);
+      csvRows.push([`"Total Add-On Payments:","${formatCurrency(summary.totalAddonPayments)}"`]);
       csvRows.push(['']);
       csvRows.push(['"Declaration:"']);
       csvRows.push([`"This report is generated by ${gymName} (GST: ${gymGST})"`]);
@@ -447,16 +520,7 @@ const Payments = () => {
     }
   };
 
-  const getPaymentMethodIcon = (method) => {
-    const icons = {
-      cash: '💰',
-      card: '💳',
-      upi: '📱',
-      bank: '🏦'
-    };
-    return icons[method?.toLowerCase()] || '💵';
-  };
-
+  // ===== GST RATE MODAL =====
   const GstRateModal = () => (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setShowGstModal(false)}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
@@ -504,6 +568,7 @@ const Payments = () => {
     </div>
   );
 
+  // ===== DATE PICKER MODAL =====
   const DatePickerModal = () => (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setShowDatePicker(false)}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
@@ -588,6 +653,7 @@ const Payments = () => {
     </div>
   );
 
+  // ===== DELETE CONFIRM MODAL =====
   const DeleteConfirmModal = () => {
     const selectedCount = selectedPayments.size;
     const selectedData = filteredPayments.filter(p => selectedPayments.has(p.id));
@@ -656,48 +722,60 @@ const Payments = () => {
     );
   };
 
+  // ===== RENDER SUMMARY CARDS =====
   const renderSummaryCards = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all">
-        <div className="flex items-center justify-between mb-3">
-          <Wallet className="h-8 w-8 opacity-80" />
-          <span className={`text-sm font-medium px-2 py-1 rounded-full ${
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+        <div className="flex items-center justify-between mb-2">
+          <Wallet className="h-6 w-6 opacity-80" />
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
             summary.growth >= 0 ? 'bg-green-400/30' : 'bg-red-400/30'
           }`}>
             {summary.growth >= 0 ? '↑' : '↓'} {Math.abs(summary.growth).toFixed(1)}%
           </span>
         </div>
-        <p className="text-sm opacity-80 mb-1">Total Revenue</p>
-        <p className="text-3xl font-bold">{formatCurrency(summary.totalRevenue)}</p>
-        <p className="text-xs opacity-70 mt-2">{summary.totalCount} transactions</p>
+        <p className="text-xs opacity-80 mb-0.5">Total Revenue</p>
+        <p className="text-xl font-bold">{formatCurrency(summary.totalRevenue)}</p>
+        <p className="text-xs opacity-70 mt-1">{summary.totalCount} transactions</p>
       </div>
 
-      <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all">
-        <div className="flex items-center justify-between mb-3">
-          <Building className="h-8 w-8 opacity-80" />
+      <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+        <div className="flex items-center justify-between mb-2">
+          <Building className="h-6 w-6 opacity-80" />
         </div>
-        <p className="text-sm opacity-80 mb-1">GST Collected</p>
-        <p className="text-3xl font-bold">{formatCurrency(summary.totalGST)}</p>
-        <p className="text-xs opacity-70 mt-2">CGST + SGST</p>
+        <p className="text-xs opacity-80 mb-0.5">GST Collected</p>
+        <p className="text-xl font-bold">{formatCurrency(summary.totalGST)}</p>
+        <p className="text-xs opacity-70 mt-1">CGST + SGST</p>
       </div>
 
-      <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all">
-        <div className="flex items-center justify-between mb-3">
-          <DollarSign className="h-8 w-8 opacity-80" />
+      <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+        <div className="flex items-center justify-between mb-2">
+          <DollarSign className="h-6 w-6 opacity-80" />
         </div>
-        <p className="text-sm opacity-80 mb-1">Balance Payments</p>
-        <p className="text-3xl font-bold">{formatCurrency(summary.totalBalancePayments)}</p>
-        <p className="text-xs opacity-70 mt-2">
+        <p className="text-xs opacity-80 mb-0.5">Balance Payments</p>
+        <p className="text-xl font-bold">{formatCurrency(summary.totalBalancePayments)}</p>
+        <p className="text-xs opacity-70 mt-1">
           {filteredPayments.filter(p => p.is_balance_payment).length} transactions
         </p>
       </div>
 
-      <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all">
-        <div className="flex items-center justify-between mb-3">
-          <CreditCard className="h-8 w-8 opacity-80" />
+      <div className="bg-gradient-to-r from-purple-500 to-pink-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+        <div className="flex items-center justify-between mb-2">
+          <Tag className="h-6 w-6 opacity-80" />
         </div>
-        <p className="text-sm opacity-80 mb-1">Payment Methods</p>
-        <div className="space-y-1 mt-2">
+        <p className="text-xs opacity-80 mb-0.5">Add-On Payments</p>
+        <p className="text-xl font-bold">{formatCurrency(summary.totalAddonPayments)}</p>
+        <p className="text-xs opacity-70 mt-1">
+          {summary.addonPaymentCount} transactions
+        </p>
+      </div>
+
+      <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+        <div className="flex items-center justify-between mb-2">
+          <CreditCard className="h-6 w-6 opacity-80" />
+        </div>
+        <p className="text-xs opacity-80 mb-0.5">Payment Methods</p>
+        <div className="space-y-0.5 mt-1">
           <div className="flex justify-between text-xs">
             <span>Cash</span>
             <span className="font-semibold">{formatCurrency(summary.cashPayments)}</span>
@@ -715,6 +793,7 @@ const Payments = () => {
     </div>
   );
 
+  // ===== RENDER PAYMENT CARD =====
   const renderPaymentCard = (payment) => {
     const isExpanded = expandedPayment === payment.id;
     const isSelected = selectedPayments.has(payment.id);
@@ -722,6 +801,19 @@ const Payments = () => {
                       payment.member?.full_name || 
                       payment.member?.name || 
                       'Unknown Member';
+    
+    const getPaymentTypeBadge = (type) => {
+      switch(type) {
+        case 'addon':
+          return { label: 'Add-On', color: 'bg-purple-100 text-purple-700', icon: Tag };
+        case 'pt':
+          return { label: 'PT', color: 'bg-blue-100 text-blue-700', icon: Dumbbell };
+        default:
+          return { label: 'Membership', color: 'bg-green-100 text-green-700', icon: CreditCard };
+      }
+    };
+    const typeInfo = getPaymentTypeBadge(payment.payment_type);
+    const TypeIcon = typeInfo.icon;
     
     return (
       <div 
@@ -753,7 +845,16 @@ const Payments = () => {
                 {memberName.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1">
-                <p className="font-semibold text-gray-900">{memberName}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-semibold text-gray-900">{memberName}</p>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${typeInfo.color}`}>
+                    <TypeIcon className="h-3 w-3" />
+                    {typeInfo.label}
+                  </span>
+                  {payment.addon_name && (
+                    <span className="text-xs text-purple-600">({payment.addon_name})</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className="text-xs text-gray-500 flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
@@ -816,6 +917,15 @@ const Payments = () => {
                   <p className="text-sm font-mono text-gray-700">{payment.transaction_id || 'N/A'}</p>
                 </div>
                 <div>
+                  <p className="text-xs text-gray-500 mb-1">Payment Type</p>
+                  <p className="text-sm flex items-center gap-1">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${typeInfo.color}`}>
+                      <TypeIcon className="h-3 w-3" />
+                      {typeInfo.label}
+                    </span>
+                  </p>
+                </div>
+                <div>
                   <p className="text-xs text-gray-500 mb-1">Payment Status</p>
                   <p className="text-sm flex items-center gap-1">
                     <CheckCircle className="h-4 w-4 text-green-500" />
@@ -836,13 +946,15 @@ const Payments = () => {
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">GST Amount</p>
-                  <p className="text-sm text-gray-700">{formatCurrency(payment.gst_amount || 0)}</p>
-                </div>
-                <div>
                   <p className="text-xs text-gray-500 mb-1">Member Balance</p>
                   <p className="text-sm text-gray-700">{formatCurrency(payment.member_balance || 0)}</p>
                 </div>
+                {payment.payment_type === 'addon' && payment.addon_name && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Add-On</p>
+                    <p className="text-sm text-gray-700">{payment.addon_name}</p>
+                  </div>
+                )}
                 {payment.is_balance_payment && payment.original_invoice_id && (
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Original Invoice ID</p>
@@ -864,6 +976,7 @@ const Payments = () => {
     );
   };
 
+  // ===== MAIN RENDER =====
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -1073,7 +1186,7 @@ const Payments = () => {
       {/* Summary Cards */}
       {renderSummaryCards()}
 
-      {/* Filters */}
+      {/* Filters - Updated with Payment Type Filter */}
       <div className="bg-white rounded-2xl shadow-lg p-6">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex-1 min-w-[200px]">
@@ -1094,7 +1207,7 @@ const Payments = () => {
               <button
                 key={method}
                 onClick={() => setSelectedMethod(method)}
-                className={`px-4 py-2 rounded-lg capitalize transition-colors ${
+                className={`px-3 py-1.5 rounded-lg capitalize text-sm transition-colors ${
                   selectedMethod === method
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1104,14 +1217,58 @@ const Payments = () => {
               </button>
             ))}
           </div>
+
+          <div className="flex gap-1 border-l border-gray-200 pl-4">
+            <button
+              onClick={() => setPaymentTypeFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                paymentTypeFilter === 'all'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              All Types
+            </button>
+            <button
+              onClick={() => setPaymentTypeFilter('membership')}
+              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                paymentTypeFilter === 'membership'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Membership
+            </button>
+            <button
+              onClick={() => setPaymentTypeFilter('pt')}
+              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                paymentTypeFilter === 'pt'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              PT
+            </button>
+            <button
+              onClick={() => setPaymentTypeFilter('addon')}
+              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                paymentTypeFilter === 'addon'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Add-Ons
+            </button>
+          </div>
           
-          {(searchTerm || selectedMethod !== 'all') && (
+          {(searchTerm || selectedMethod !== 'all' || paymentTypeFilter !== 'all') && (
             <button
               onClick={() => {
                 setSearchTerm('');
                 setSelectedMethod('all');
+                setPaymentTypeFilter('all');
               }}
-              className="flex items-center gap-1 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             >
               <X className="h-4 w-4" />
               Clear Filters
@@ -1126,9 +1283,14 @@ const Payments = () => {
           <h2 className="text-xl font-bold text-gray-800">
             Transactions ({filteredPayments.length})
           </h2>
-          <p className="text-sm text-gray-500">
-            Showing payments from {startDate ? new Date(startDate).toLocaleDateString('en-IN') : 'start'} to {endDate ? new Date(endDate).toLocaleDateString('en-IN') : 'end'}
-          </p>
+          <div className="flex items-center gap-4 text-sm text-gray-500">
+            <span>Showing from {startDate ? new Date(startDate).toLocaleDateString('en-IN') : 'start'} to {endDate ? new Date(endDate).toLocaleDateString('en-IN') : 'end'}</span>
+            {paymentTypeFilter !== 'all' && (
+              <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                Filter: {paymentTypeFilter === 'addon' ? 'Add-On' : paymentTypeFilter === 'pt' ? 'PT' : 'Membership'}
+              </span>
+            )}
+          </div>
         </div>
         
         {filteredPayments.length === 0 ? (

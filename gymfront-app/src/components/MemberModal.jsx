@@ -1146,7 +1146,9 @@ const AddonSelectionSection = ({
   addons,
   loadingAddons,
   addonTotal,
-  setShowAddonManager
+  setShowAddonManager,
+  addonsPaid,
+  setAddonsPaid
 }) => {
   const toggleAddon = (addon) => {
     setSelectedAddons(prev => {
@@ -1270,6 +1272,19 @@ const AddonSelectionSection = ({
               </span>
             ))}
           </div>
+          {/* ✅ Without this, add-ons used to always be assigned with
+              amount_paid: 0 no matter what — meaning even if the member
+              paid in full, no payment record was ever created for the
+              add-on portion, so it never appeared on the Payments page. */}
+          <label className="mt-3 flex items-center gap-2 text-sm text-blue-800 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={addonsPaid}
+              onChange={(e) => setAddonsPaid(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Collect full ₹{addonTotal} for add-ons now (uncheck to assign unpaid — pay later from Add-On Manager)
+          </label>
         </div>
       )}
     </div>
@@ -1878,6 +1893,7 @@ const MemberModal = ({ isOpen, onClose,
   const [addons, setAddons] = useState([]);
   const [loadingAddons, setLoadingAddons] = useState(false);
   const [addonTotal, setAddonTotal] = useState(0);
+  const [addonsPaid, setAddonsPaid] = useState(true); // ✅ default: collect add-on payment now
 
   const getPendingFileRef = useRef(null);
 
@@ -1964,6 +1980,7 @@ useEffect(() => {
   setAmountError(null);
   setSelectedAddons([]);
   setAddonTotal(0);
+  setAddonsPaid(true);
 
   // ============================================================
   // 🔥 FIX: Handle prefill data from lead conversion
@@ -2255,7 +2272,7 @@ useEffect(() => {
           addons: selectedAddons.map(a => ({
             addon_id: a.id,
             start_date: formData.membership_start_date,
-            amount_paid: 0,
+            amount_paid: addonsPaid ? a.price : 0,
           })),
         };
       } else if (isEdit) {
@@ -2277,7 +2294,7 @@ useEffect(() => {
           addons: selectedAddons.map(a => ({
             addon_id: a.id,
             start_date: formData.membership_start_date,
-            amount_paid: 0,
+            amount_paid: addonsPaid ? a.price : 0,
           })),
         };
       }
@@ -2310,11 +2327,19 @@ useEffect(() => {
               await api.post(`/gym/members/${savedMember.id}/addons`, {
                 addon_id: addon.id,
                 start_date: formData.membership_start_date,
-                amount_paid: 0,
+                // ✅ Was hardcoded to 0 regardless of the "Total: ₹X" shown
+                // to the user, so no Payment record was ever created for
+                // add-ons and they never showed up on the Payments page.
+                amount_paid: addonsPaid ? addon.price : 0,
+                payment_method: formData.payment_method || 'cash',
                 notes: 'Added during membership signup'
               });
             }
-            toast.success(`${selectedAddons.length} add-on(s) assigned to member!`);
+            toast.success(
+              addonsPaid
+                ? `${selectedAddons.length} add-on(s) assigned and paid!`
+                : `${selectedAddons.length} add-on(s) assigned to member!`
+            );
           } catch (addonError) {
             console.error('Error assigning addons:', addonError);
             toast.warning('Member created but some add-ons could not be assigned.');
@@ -2631,6 +2656,8 @@ useEffect(() => {
                     loadingAddons={loadingAddons}
                     addonTotal={addonTotal}
                     setShowAddonManager={setShowAddonManager}
+                    addonsPaid={addonsPaid}
+                    setAddonsPaid={setAddonsPaid}
                   />
                 )}
               </div>

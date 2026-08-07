@@ -1,4 +1,4 @@
-// src/components/MemberProfileModal.jsx - WITH PROPER COST HANDLING, NO DECIMALS, AND IMAGE UPLOAD/DELETE
+// src/components/MemberProfileModal.jsx - WITH PROPER COST HANDLING, NO DECIMALS, IMAGE UPLOAD/DELETE, AND ADD-ON SUPPORT
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -22,20 +22,13 @@ const formatCurrency = (amount) => {
   if (amount === null || amount === undefined || isNaN(amount)) {
     return '₹0';
   }
-  // If amount is in paisa (stored as integer with 2 decimal places implied)
-  // We determine by checking if the number is > 10000 and doesn't have decimals
   if (typeof amount === 'number' && amount > 10000 && Number.isInteger(amount)) {
-    // Convert paisa to rupee
     const rupeeAmount = amount / 100;
-    // Format without decimals
     return `₹${Math.round(rupeeAmount).toLocaleString('en-IN')}`;
   }
-  // If it's already in rupee
   if (typeof amount === 'number') {
-    // Format without decimals
     return `₹${Math.round(amount).toLocaleString('en-IN')}`;
   }
-  // If it's a string that might be paisa
   if (typeof amount === 'string') {
     const numAmount = parseFloat(amount);
     if (!isNaN(numAmount)) {
@@ -144,9 +137,6 @@ const getThumbnailUrl = (profileImage, fullName) => {
   return `${baseUrl}${imagePath}`;
 };
 
-// ============================================================
-// PROFILE IMAGE EDITOR COMPONENT
-// ============================================================
 // ============================================================
 // PROFILE IMAGE EDITOR COMPONENT (with zoom support)
 // ============================================================
@@ -270,11 +260,9 @@ const ProfileImageEditor = ({
       
       toast.dismiss('compress');
       
-      // Show preview
       const localUrl = URL.createObjectURL(compressedFile);
       setPreview(localUrl);
 
-      // Upload to server
       const formData = new FormData();
       formData.append('file', compressedFile);
       
@@ -289,12 +277,10 @@ const ProfileImageEditor = ({
       toast.dismiss('upload');
       toast.success('Photo updated successfully!');
       
-      // Update the member object with new photo URL
       if (onImageUpdated) {
         onImageUpdated(response.data.photo_url);
       }
       
-      // Reset preview after upload
       setPreview(null);
       
     } catch (err) {
@@ -315,7 +301,6 @@ const ProfileImageEditor = ({
       await api.delete(`/gym/members/${memberId}/photo`);
       toast.success('Photo removed successfully!');
       
-      // Update the member object
       if (onImageUpdated) {
         onImageUpdated(null);
       }
@@ -334,7 +319,6 @@ const ProfileImageEditor = ({
   return (
     <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl flex-shrink-0">
       <div className="relative flex-shrink-0 group">
-        {/* Image with click to zoom - No overlay buttons */}
         <div 
           className="h-20 w-20 rounded-full overflow-hidden border-4 border-white shadow-lg cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
           onClick={() => onImageZoom && onImageZoom()}
@@ -350,7 +334,6 @@ const ProfileImageEditor = ({
           />
         </div>
         
-        {/* Zoom hint - appears on hover */}
         <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/30 transition-all duration-200 flex items-center justify-center pointer-events-none">
           <Maximize2 className="h-5 w-5 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
         </div>
@@ -460,7 +443,6 @@ const ProfileImageEditor = ({
   );
 };
 
-
 // ============================================================
 // COMMENT CATEGORY BADGE COMPONENT
 // ============================================================
@@ -552,6 +534,16 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [balanceDetails, setBalanceDetails] = useState(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
   
+  // ===== ADD-ONS STATE =====
+  const [memberAddons, setMemberAddons] = useState([]);
+  const [loadingAddons, setLoadingAddons] = useState(false);
+  const [showAddonPaymentModal, setShowAddonPaymentModal] = useState(false);
+  const [selectedAddonForPayment, setSelectedAddonForPayment] = useState(null);
+  const [addonPaymentAmount, setAddonPaymentAmount] = useState('');
+  const [addonPaymentMethod, setAddonPaymentMethod] = useState('cash');
+  const [addonPaymentNotes, setAddonPaymentNotes] = useState('');
+  const [payingAddon, setPayingAddon] = useState(false);
+  
   // ===== IMAGE ZOOM STATE =====
   const [isImageZoomed, setIsImageZoomed] = useState(false);
   
@@ -628,6 +620,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     fetchPtSessions();
     fetchPlans();
     fetchFreezeHistory();
+    fetchMemberAddons(); // 👈 ADD THIS
   }, [memberId]);
 
   const fetchMemberDetails = async () => {
@@ -653,7 +646,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       });
       
       if (memberData.current_membership) {
-        // Convert paisa to rupee for display
         const amountPaid = getRupeeValue(memberData.current_membership.amount_paid || 0);
         const discountApplied = getRupeeValue(memberData.current_membership.discount_applied || 0);
         
@@ -787,16 +779,96 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     }
   };
 
+  // ===== ADD-ONS FUNCTIONS =====
+  const fetchMemberAddons = async () => {
+    try {
+      setLoadingAddons(true);
+      const response = await api.get(`/gym/members/${memberId}/addons`);
+      setMemberAddons(response.data || []);
+    } catch (error) {
+      console.error('Error fetching addons:', error);
+      setMemberAddons([]);
+    } finally {
+      setLoadingAddons(false);
+    }
+  };
+
+  const getAddonStatusBadge = (status) => {
+    const statusConfig = {
+      active: { color: 'bg-green-100 text-green-700', icon: CheckCircle },
+      expired: { color: 'bg-yellow-100 text-yellow-700', icon: AlertCircle },
+      cancelled: { color: 'bg-red-100 text-red-700', icon: XCircle },
+    };
+    const config = statusConfig[status] || statusConfig.active;
+    const Icon = config.icon;
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+        <Icon className="h-3 w-3" />
+        {status?.charAt(0).toUpperCase() + status?.slice(1) || 'Active'}
+      </span>
+    );
+  };
+
+  const handlePayAddon = (addon) => {
+    setSelectedAddonForPayment(addon);
+    setAddonPaymentAmount('');
+    setAddonPaymentMethod('cash');
+    setAddonPaymentNotes('');
+    setShowAddonPaymentModal(true);
+  };
+
+  const handleAddonPaymentSubmit = async (e) => {
+    e.preventDefault();
+    
+    const amount = parseFloat(addonPaymentAmount);
+    if (!amount || amount <= 0) {
+      toast.error('Please enter a valid payment amount');
+      return;
+    }
+    
+    if (amount > selectedAddonForPayment.balance_due) {
+      toast.error(`Amount cannot exceed balance due of ${formatCurrency(selectedAddonForPayment.balance_due)}`);
+      return;
+    }
+    
+    setPayingAddon(true);
+    try {
+      const response = await api.post(
+        `/gym/members/${memberId}/addons/${selectedAddonForPayment.id}/pay`,
+        {
+          amount: amount,
+          payment_method: addonPaymentMethod,
+          notes: addonPaymentNotes
+        }
+      );
+      
+      toast.success(response.data.message);
+      setShowAddonPaymentModal(false);
+      setSelectedAddonForPayment(null);
+      setAddonPaymentAmount('');
+      setAddonPaymentNotes('');
+      
+      await fetchMemberAddons();
+      await fetchPayments();
+      await fetchBalanceDetails();
+      if (onUpdate) onUpdate();
+      
+    } catch (error) {
+      console.error('Error making addon payment:', error);
+      toast.error(error.response?.data?.detail || 'Failed to make payment');
+    } finally {
+      setPayingAddon(false);
+    }
+  };
+
   // ===== IMAGE UPDATE HANDLER =====
   const handleImageUpdated = (newPhotoUrl) => {
-    // Update the local member object
     if (member) {
       setMember(prev => ({
         ...prev,
         profile_image: newPhotoUrl
       }));
     }
-    // Refresh member details to get the updated data
     fetchMemberDetails();
   };
 
@@ -1081,10 +1153,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       const discountApplied = parseFloat(paymentEditData.discount_applied) || 0;
       const amountPaid = parseFloat(paymentEditData.amount_paid) || 0;
   
-      // Send amounts in paisa to backend
       const payload = {
-        amount_paid: Math.round(amountPaid * 100), // Convert to paisa
-        discount_applied: Math.round(discountApplied * 100), // Convert to paisa
+        amount_paid: Math.round(amountPaid * 100),
+        discount_applied: Math.round(discountApplied * 100),
         notes: paymentEditData.notes || '',
         payment_method: paymentEditData.payment_method || 'cash',
       };
@@ -1360,14 +1431,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     const membership = member?.current_membership;
     if (!membership) return null;
     
-    // Convert all amounts from paisa to rupee
     const planPrice = getRupeeValue(membership.plan?.price || 0);
     const discountApplied = getRupeeValue(membership.discount_applied || 0);
     const amountPaid = getRupeeValue(membership.amount_paid || 0);
     const finalPrice = Math.max(0, planPrice - discountApplied);
     const balanceDue = Math.max(0, finalPrice - amountPaid);
     
-    // Calculate discount percentage if there's a discount
     let discountPercentage = 0;
     if (planPrice > 0 && discountApplied > 0) {
       discountPercentage = Math.round((discountApplied / planPrice) * 100);
@@ -1400,10 +1469,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const currentMembership = member.current_membership;
   const paymentSummary = getPaymentSummary();
   
-  // Calculate total paid with proper conversion
   const totalPaid = payments.reduce((sum, p) => sum + getRupeeValue(p.amount || 0), 0);
   
-  // Get balance due from balanceDetails or currentMembership
   let balanceDue = 0;
   if (balanceDetails?.balance_due !== undefined) {
     balanceDue = getRupeeValue(balanceDetails.balance_due);
@@ -1424,62 +1491,62 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
         {/* Header with Profile Image Editor */}
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
-  <div className="flex items-center gap-4 flex-1 min-w-0">
-    {/* Profile Image Editor Component with zoom callback */}
-    <ProfileImageEditor 
-      member={member}
-      memberId={member.id}
-      onImageUpdated={handleImageUpdated}
-      thumbnailImageUrl={thumbnailImageUrl}
-      profileImageUrl={profileImageUrl}
-      onImageZoom={() => setIsImageZoomed(true)}  // 👈 ADD THIS
-    />
-    <div className="min-w-0 flex-1">
-      <div className="flex items-center gap-2 flex-wrap">
-        <h2 className="text-xl font-bold text-gray-900 truncate">{member.full_name}</h2>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-mono border border-gray-200 flex-shrink-0">
-          <Hash className="h-3 w-3" />
-          {member.id}
-        </span>
-        {hasActiveFreeze && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium border border-blue-200 flex-shrink-0">
-            <Snowflake className="h-3 w-3" />
-            Frozen
-          </span>
-        )}
-      </div>
-      <div className="flex items-center gap-2 mt-1 flex-wrap">
-        {getStatusBadge(member.is_active ? 'active' : 'inactive')}
-        {currentMembership && (
-          <span className="text-xs text-gray-500">
-            Member since {formatDate(member.joined_date)}
-          </span>
-        )}
-      </div>
-    </div>
-  </div>
-  <div className="flex items-center gap-2 flex-shrink-0">
-    <button
-      onClick={() => {
-        fetchMemberDetails();
-        fetchComments();
-        fetchPayments();
-        fetchMembershipHistory();
-        fetchAttendanceHistory();
-        fetchBalanceDetails();
-        fetchPtSessions();
-        fetchFreezeHistory();
-      }}
-      className="p-2 rounded-xl hover:bg-gray-100"
-      title="Refresh"
-    >
-      <RefreshCw className="h-5 w-5 text-gray-500" />
-    </button>
-    <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100">
-      <X className="h-5 w-5 text-gray-500" />
-    </button>
-  </div>
-</div>
+          <div className="flex items-center gap-4 flex-1 min-w-0">
+            <ProfileImageEditor 
+              member={member}
+              memberId={member.id}
+              onImageUpdated={handleImageUpdated}
+              thumbnailImageUrl={thumbnailImageUrl}
+              profileImageUrl={profileImageUrl}
+              onImageZoom={() => setIsImageZoomed(true)}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl font-bold text-gray-900 truncate">{member.full_name}</h2>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-mono border border-gray-200 flex-shrink-0">
+                  <Hash className="h-3 w-3" />
+                  {member.id}
+                </span>
+                {hasActiveFreeze && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium border border-blue-200 flex-shrink-0">
+                    <Snowflake className="h-3 w-3" />
+                    Frozen
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {getStatusBadge(member.is_active ? 'active' : 'inactive')}
+                {currentMembership && (
+                  <span className="text-xs text-gray-500">
+                    Member since {formatDate(member.joined_date)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => {
+                fetchMemberDetails();
+                fetchComments();
+                fetchPayments();
+                fetchMembershipHistory();
+                fetchAttendanceHistory();
+                fetchBalanceDetails();
+                fetchPtSessions();
+                fetchFreezeHistory();
+                fetchMemberAddons();
+              }}
+              className="p-2 rounded-xl hover:bg-gray-100"
+              title="Refresh"
+            >
+              <RefreshCw className="h-5 w-5 text-gray-500" />
+            </button>
+            <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100">
+              <X className="h-5 w-5 text-gray-500" />
+            </button>
+          </div>
+        </div>
 
         {/* Image Zoom Modal */}
         {isImageZoomed && (
@@ -1552,7 +1619,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           </div>
 
-          {/* Discount Banner - Shows if there's a discount */}
+          {/* Discount Banner */}
           {paymentSummary?.hasDiscount && paymentSummary && (
             <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -2712,6 +2779,95 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             )}
           </div>
 
+          {/* ===== ADD-ONS SECTION ===== */}
+          <div className="border-t border-gray-100 pt-6">
+            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Tag className="h-5 w-5 text-purple-600" />
+              Add-Ons
+            </h3>
+            
+            {loadingAddons ? (
+              <div className="text-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
+              </div>
+            ) : memberAddons.length > 0 ? (
+              <div className="space-y-3">
+                {memberAddons.map((addon) => (
+                  <div key={addon.id} className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Tag className="h-5 w-5 text-purple-600" />
+                        <span className="font-semibold text-gray-900">{addon.addon_name}</span>
+                      </div>
+                      {getAddonStatusBadge(addon.status)}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                      <div>
+                        <span className="text-gray-500">Category:</span>
+                        <span className="ml-2 font-medium text-gray-900 capitalize">{addon.addon_category}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Price:</span>
+                        <span className="ml-2 font-medium text-purple-700">{formatCurrency(addon.price)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Start Date:</span>
+                        <span className="ml-2 font-medium text-gray-900">{formatDate(addon.start_date)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">End Date:</span>
+                        <span className="ml-2 font-medium text-gray-900">{addon.end_date ? formatDate(addon.end_date) : '—'}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-purple-200">
+                      <div>
+                        <span className="text-gray-500 text-xs">Amount Paid:</span>
+                        <p className="font-semibold text-green-600">{formatCurrency(addon.amount_paid || 0)}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 text-xs">Balance Due:</span>
+                        <p className={`font-semibold ${(addon.balance_due || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                          {formatCurrency(addon.balance_due || 0)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handlePayAddon(addon)}
+                          disabled={addon.balance_due <= 0}
+                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium ${
+                            addon.balance_due > 0
+                              ? 'bg-purple-600 text-white hover:bg-purple-700'
+                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          <CreditCard className="h-3.5 w-3.5" />
+                          Pay Now
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {addon.notes && (
+                      <div className="mt-3 pt-3 border-t border-purple-200">
+                        <span className="text-gray-500 text-sm">Notes:</span>
+                        <p className="text-sm text-gray-700 mt-1">{addon.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="text-gray-300 mb-2">
+                  <Tag className="h-12 w-12 mx-auto" />
+                </div>
+                <p className="text-sm text-gray-400">No add-ons assigned</p>
+                <p className="text-xs text-gray-300 mt-1">Add-ons will appear here once assigned</p>
+              </div>
+            )}
+          </div>
+
           {/* Payment History */}
           <div className="border-t border-gray-100 pt-6">
             <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -3017,6 +3173,131 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             Close
           </button>
         </div>
+
+        {/* Addon Payment Modal */}
+        {showAddonPaymentModal && selectedAddonForPayment && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+              <div className="flex items-center justify-between p-5 border-b bg-gradient-to-r from-purple-50 to-pink-50 rounded-t-2xl">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                    <Tag className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Pay for Add-On</h3>
+                    <p className="text-sm text-gray-500">{selectedAddonForPayment.addon_name}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowAddonPaymentModal(false);
+                    setSelectedAddonForPayment(null);
+                  }}
+                  className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  <X className="h-5 w-5 text-gray-500" />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddonPaymentSubmit} className="p-5 space-y-4">
+                <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Price:</span>
+                    <span className="font-medium text-gray-900">{formatCurrency(selectedAddonForPayment.price)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Amount Paid:</span>
+                    <span className="font-medium text-green-600">{formatCurrency(selectedAddonForPayment.amount_paid || 0)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-200">
+                    <span className="text-gray-700">Balance Due:</span>
+                    <span className="text-orange-600">{formatCurrency(selectedAddonForPayment.balance_due)}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Payment Amount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={selectedAddonForPayment.balance_due}
+                    value={addonPaymentAmount}
+                    onChange={(e) => setAddonPaymentAmount(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                    placeholder="Enter amount"
+                    required
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Max: {formatCurrency(selectedAddonForPayment.balance_due)}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Payment Method
+                  </label>
+                  <select
+                    value={addonPaymentMethod}
+                    onChange={(e) => setAddonPaymentMethod(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="upi">UPI</option>
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="online">Online</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Notes (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={addonPaymentNotes}
+                    onChange={(e) => setAddonPaymentNotes(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                    placeholder="Payment notes"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-4 border-t">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddonPaymentModal(false);
+                      setSelectedAddonForPayment(null);
+                    }}
+                    disabled={payingAddon}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={payingAddon || !addonPaymentAmount || parseFloat(addonPaymentAmount) <= 0}
+                    className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {payingAddon ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="h-4 w-4" />
+                        Make Payment
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
