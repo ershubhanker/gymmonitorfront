@@ -1,6 +1,6 @@
-// src/components/attendance/AttendanceHistory.jsx
-import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Filter, ChevronLeft, ChevronRight, User, Loader2, Users, Briefcase, AlertCircle, RefreshCw, Clock } from 'lucide-react';
+// src/components/attendance/AttendanceHistory.jsx - Updated with Search Input
+import React, { useState, useEffect, useCallback } from 'react';
+import { Calendar, Download, Filter, ChevronLeft, ChevronRight, User, Loader2, Users, Briefcase, AlertCircle, RefreshCw, Clock, Search, X } from 'lucide-react';
 import { useAttendance } from '../../context/AttendanceContext';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -92,14 +92,6 @@ const formatCurrency = (amount) => {
   })}`;
 };
 
-const formatCurrencyWithDecimals = (amount) => {
-  if (amount === undefined || amount === null || isNaN(amount)) return '₹0.00';
-  return `₹${Number(amount).toLocaleString('en-IN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}`;
-};
-
 // ===== Helper function to calculate working hours for staff =====
 const calculateStaffWorkingHours = (records, staffId, dateStr) => {
   if (!records || records.length === 0) return null;
@@ -185,7 +177,6 @@ const calculateStaffWorkingHours = (records, staffId, dateStr) => {
 
 // ===== Helper function to calculate staff salary with working hours =====
 const calculateStaffSalary = (staff, totalHours, expectedDailyHours = 9, expectedDaysPerMonth = 26) => {
-  // Get salary - handle different possible field names
   const monthlySalary = staff?.salary || staff?.salary_amount || staff?.monthly_salary || 0;
   const numericSalary = Number(monthlySalary);
   
@@ -242,11 +233,9 @@ const StaffWorkingHoursSummary = ({ staffId, staffName, records, staffSalary }) 
     weekAgo.setDate(weekAgo.getDate() - 7);
     const weekAgoStr = weekAgo.toISOString().split('T')[0];
     
-    // Today's hours
     const todayResult = calculateStaffWorkingHours(records, staffId, today);
     setTodayHours(todayResult);
     
-    // Weekly hours
     const weeklyRecords = records.filter(r => {
       if (!r.created_at) return false;
       const recordDate = formatDateOnly(r.created_at);
@@ -256,7 +245,6 @@ const StaffWorkingHoursSummary = ({ staffId, staffName, records, staffSalary }) 
     const weeklyTotal = calculateTotalHours(weeklyRecords, staffId);
     setWeekHours(weeklyTotal);
     
-    // Monthly hours
     const monthlyRecords = records.filter(r => {
       if (!r.created_at) return false;
       const recordDate = formatDateOnly(r.created_at);
@@ -266,7 +254,6 @@ const StaffWorkingHoursSummary = ({ staffId, staffName, records, staffSalary }) 
     const monthlyTotal = calculateTotalHours(monthlyRecords, staffId);
     setMonthHours(monthlyTotal);
     
-    // Salary calculation
     if (monthlyTotal && staffSalary > 0) {
       const salaryCalc = calculateStaffSalary(
         { salary: staffSalary },
@@ -412,8 +399,10 @@ const AttendanceHistory = () => {
   const [filters, setFilters] = useState({
     start_date: '',
     end_date: '',
-    member_id: '',
-    staff_id: '',
+    member_search: '',  // Changed from member_id
+    staff_search: '',   // Changed from staff_id
+    member_id: '',      // Keep for API compatibility
+    staff_id: '',       // Keep for API compatibility
   });
   const [showFilters, setShowFilters] = useState(false);
   const [members, setMembers] = useState([]);
@@ -422,6 +411,9 @@ const AttendanceHistory = () => {
   const [syncing, setSyncing] = useState(false);
   const [expandedStaff, setExpandedStaff] = useState(null);
   const [staffSalaries, setStaffSalaries] = useState({});
+  const [searchInput, setSearchInput] = useState(''); // For search input field
+  const [searchResults, setSearchResults] = useState([]);
+  const [showResults, setShowResults] = useState(false);
 
   const itemsPerPage = 20;
 
@@ -478,7 +470,7 @@ const AttendanceHistory = () => {
     }
   };
 
-  // Fetch members for filter dropdown
+  // Fetch members for search
   const fetchMembers = async () => {
     try {
       const response = await api.get('/gym/members?limit=1000');
@@ -488,14 +480,13 @@ const AttendanceHistory = () => {
     }
   };
 
-  // Fetch staff for filter dropdown
+  // Fetch staff for search
   const fetchStaff = async () => {
     try {
       const response = await api.get('/gym/staff');
       const staffData = response?.data || [];
       setStaffList(staffData);
       
-      // Store staff salaries - handle different possible field names
       const salaryMap = {};
       staffData.forEach(s => {
         const salary = s.salary || s.salary_amount || s.monthly_salary || 0;
@@ -506,6 +497,89 @@ const AttendanceHistory = () => {
       setStaffSalaries(salaryMap);
     } catch (error) {
       console.error('Error fetching staff:', error);
+    }
+  };
+
+  // ===== SEARCH FUNCTION =====
+  const handleSearch = (searchTerm) => {
+    setSearchInput(searchTerm);
+    
+    if (!searchTerm || searchTerm.length < 1) {
+      setSearchResults([]);
+      setShowResults(false);
+      // Clear the filter
+      if (activeTab === 'members') {
+        setFilters(prev => ({ ...prev, member_id: '', member_search: '' }));
+      } else {
+        setFilters(prev => ({ ...prev, staff_id: '', staff_search: '' }));
+      }
+      return;
+    }
+
+    const searchLower = searchTerm.toLowerCase();
+    let results = [];
+
+    if (activeTab === 'members') {
+      results = members.filter(m => {
+        const name = (m.full_name || '').toLowerCase();
+        const phone = (m.phone || '').toLowerCase();
+        const email = (m.email || '').toLowerCase();
+        const id = String(m.id);
+        return name.includes(searchLower) || 
+               phone.includes(searchLower) || 
+               email.includes(searchLower) || 
+               id.includes(searchTerm);
+      });
+    } else {
+      results = staffList.filter(s => {
+        const name = (s.user?.full_name || '').toLowerCase();
+        const phone = (s.user?.phone || '').toLowerCase();
+        const email = (s.user?.email || '').toLowerCase();
+        const id = String(s.id);
+        const position = (s.position || '').toLowerCase();
+        return name.includes(searchLower) || 
+               phone.includes(searchLower) || 
+               email.includes(searchLower) || 
+               id.includes(searchTerm) ||
+               position.includes(searchLower);
+      });
+    }
+
+    setSearchResults(results.slice(0, 20)); // Limit results
+    setShowResults(results.length > 0);
+  };
+
+  // ===== SELECT SEARCH RESULT =====
+  const selectSearchResult = (item) => {
+    if (activeTab === 'members') {
+      setFilters(prev => ({ 
+        ...prev, 
+        member_id: String(item.id),
+        member_search: item.full_name || item.name || item.id
+      }));
+      setSearchInput(item.full_name || item.name || item.id);
+    } else {
+      const staffName = item.user?.full_name || item.full_name || `Staff ${item.id}`;
+      setFilters(prev => ({ 
+        ...prev, 
+        staff_id: String(item.id),
+        staff_search: staffName
+      }));
+      setSearchInput(staffName);
+    }
+    setShowResults(false);
+    setCurrentPage(1);
+  };
+
+  // ===== CLEAR SEARCH =====
+  const clearSearch = () => {
+    setSearchInput('');
+    setSearchResults([]);
+    setShowResults(false);
+    if (activeTab === 'members') {
+      setFilters(prev => ({ ...prev, member_id: '', member_search: '' }));
+    } else {
+      setFilters(prev => ({ ...prev, staff_id: '', staff_search: '' }));
     }
   };
 
@@ -555,7 +629,7 @@ const AttendanceHistory = () => {
     } else {
       fetchStaffAttendance();
     }
-  }, [currentPage, filters, activeTab]);
+  }, [currentPage, filters.start_date, filters.end_date, filters.member_id, filters.staff_id, activeTab]);
 
   // Load members and staff lists
   useEffect(() => {
@@ -565,16 +639,16 @@ const AttendanceHistory = () => {
 
   // ===== Excel styling helpers =====
   const HEADER_FILLS = {
-    daily: 'FF1E3A8A',    // dark blue
-    weekly: 'FF6D28D9',   // purple
-    monthly: 'FF047857',  // green
-    members: 'FF1E40AF'   // blue
+    daily: 'FF1E3A8A',
+    weekly: 'FF6D28D9',
+    monthly: 'FF047857',
+    members: 'FF1E40AF'
   };
 
   const STATUS_FILLS = {
-    complete: 'FFD1FAE5',      // light green
-    in_progress: 'FFFEF3C7',   // light yellow
-    no_data: 'FFF3F4F6',       // light gray
+    complete: 'FFD1FAE5',
+    in_progress: 'FFFEF3C7',
+    no_data: 'FFF3F4F6',
     'Full Salary': 'FFD1FAE5',
     'Deduction Applied': 'FFFEE2E2',
     'No Salary Set': 'FFF3F4F6'
@@ -635,10 +709,10 @@ const AttendanceHistory = () => {
     subtitleCell.font = { italic: true, size: 10, color: { argb: 'FF6B7280' } };
     worksheet.getRow(2).height = 18;
 
-    worksheet.addRow([]); // spacer row
+    worksheet.addRow([]);
   };
 
-  // ===== ENHANCED EXPORT WITH WORKING HOURS AND SALARY (styled .xlsx) =====
+  // ===== ENHANCED EXPORT WITH WORKING HOURS AND SALARY =====
   const handleExport = async () => {
     try {
       toast.loading(`Exporting ${activeTab} attendance data with working hours...`, { id: 'export' });
@@ -663,7 +737,6 @@ const AttendanceHistory = () => {
         const response = await api.get('/attendance/staff/attendance', { params });
         recordsToExport = response.data?.records || [];
 
-        // Get staff data for salary calculation
         const staffResponse = await api.get('/gym/staff');
         staffData = staffResponse?.data || [];
       }
@@ -675,9 +748,7 @@ const AttendanceHistory = () => {
 
       const dateStr = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }).replace(/\//g, '-');
 
-      // ===== For Staff: Generate detailed working hours workbook =====
       if (activeTab === 'staff') {
-        // Group records by staff and date
         const staffDailyHours = {};
 
         recordsToExport.forEach(r => {
@@ -703,7 +774,6 @@ const AttendanceHistory = () => {
           staffDailyHours[key].records.push(r);
         });
 
-        // Calculate daily working hours
         Object.keys(staffDailyHours).forEach(key => {
           const day = staffDailyHours[key];
           const result = calculateStaffWorkingHours(day.records, day.staffId, day.date);
@@ -729,7 +799,6 @@ const AttendanceHistory = () => {
           }
         });
 
-        // Calculate monthly totals per staff
         const monthlyTotals = {};
         Object.values(staffDailyHours).forEach(day => {
           const key = `${day.staffId}_${day.month}`;
@@ -750,7 +819,6 @@ const AttendanceHistory = () => {
           monthlyTotals[key].daysWithData++;
         });
 
-        // Calculate weekly totals per staff
         const weeklyTotals = {};
         Object.values(staffDailyHours).forEach(day => {
           const key = `${day.staffId}_${day.week}_${day.month}`;
@@ -773,12 +841,10 @@ const AttendanceHistory = () => {
         const expectedDailyHours = 9;
         const expectedDaysPerMonth = 26;
 
-        // ===== Build the workbook =====
         const workbook = new ExcelJS.Workbook();
         workbook.creator = 'Gym Management System';
         workbook.created = new Date();
 
-        // --- Sheet 1: Daily Attendance ---
         const dailySheet = workbook.addWorksheet('Daily Attendance', {
           views: [{ state: 'frozen', ySplit: 4 }]
         });
@@ -811,7 +877,6 @@ const AttendanceHistory = () => {
           });
         autoFitColumns(dailySheet);
 
-        // --- Sheet 2: Weekly Summary ---
         const weeklySheet = workbook.addWorksheet('Weekly Summary', {
           views: [{ state: 'frozen', ySplit: 4 }]
         });
@@ -843,7 +908,6 @@ const AttendanceHistory = () => {
           });
         autoFitColumns(weeklySheet);
 
-        // --- Sheet 3: Monthly Summary & Salary ---
         const monthlySheet = workbook.addWorksheet('Monthly Summary & Salary', {
           views: [{ state: 'frozen', ySplit: 4 }]
         });
@@ -909,7 +973,6 @@ const AttendanceHistory = () => {
         return;
       }
 
-      // ===== For Members: styled single-sheet workbook =====
       const workbook = new ExcelJS.Workbook();
       workbook.creator = 'Gym Management System';
       workbook.created = new Date();
@@ -966,9 +1029,14 @@ const AttendanceHistory = () => {
     setFilters({
       start_date: '',
       end_date: '',
+      member_search: '',
+      staff_search: '',
       member_id: '',
       staff_id: '',
     });
+    setSearchInput('');
+    setSearchResults([]);
+    setShowResults(false);
     setCurrentPage(1);
   };
 
@@ -1025,7 +1093,8 @@ const AttendanceHistory = () => {
             setActiveTab('members');
             setCurrentPage(1);
             setError(null);
-            setFilters(f => ({ ...f, staff_id: '' }));
+            clearSearch();
+            setFilters(f => ({ ...f, staff_id: '', staff_search: '' }));
           }}
           className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-all ${
             activeTab === 'members'
@@ -1041,7 +1110,8 @@ const AttendanceHistory = () => {
             setActiveTab('staff');
             setCurrentPage(1);
             setError(null);
-            setFilters(f => ({ ...f, member_id: '' }));
+            clearSearch();
+            setFilters(f => ({ ...f, member_id: '', member_search: '' }));
           }}
           className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-all ${
             activeTab === 'staff'
@@ -1126,21 +1196,86 @@ const AttendanceHistory = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 {activeTab === 'members' ? 'Member' : 'Staff'}
               </label>
-              <select
-                value={activeTab === 'members' ? filters.member_id : filters.staff_id}
-                onChange={(e) => setFilters({ 
-                  ...filters, 
-                  [activeTab === 'members' ? 'member_id' : 'staff_id']: e.target.value 
-                })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">All {activeTab === 'members' ? 'Members' : 'Staff'}</option>
-                {(activeTab === 'members' ? members : staffList).map(item => (
-                  <option key={item.id} value={item.id}>
-                    {activeTab === 'members' ? item.full_name : (item.user?.full_name || 'Unknown')}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder={`Search by ID, name, or phone...`}
+                  value={searchInput}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                />
+                {searchInput && (
+                  <button
+                    onClick={clearSearch}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              
+              {/* Search Results Dropdown */}
+              {showResults && searchResults.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {searchResults.map((item) => {
+                    if (activeTab === 'members') {
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => selectSearchResult(item)}
+                          className="w-full text-left px-4 py-2 hover:bg-gray-50 border-b last:border-b-0 transition-colors flex items-center justify-between"
+                        >
+                          <div>
+                            <div className="font-medium text-gray-900">
+                              #{item.id} - {item.full_name}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {item.phone} {item.email && `• ${item.email}`}
+                            </div>
+                          </div>
+                          <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                            Member
+                          </span>
+                        </button>
+                      );
+                    } else {
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => selectSearchResult(item)}
+                          className="w-full text-left px-4 py-2 hover:bg-gray-50 border-b last:border-b-0 transition-colors flex items-center justify-between"
+                        >
+                          <div>
+                            <div className="font-medium text-gray-900">
+                              #{item.id} - {item.user?.full_name || 'Unknown Staff'}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {item.position || 'Staff'} {item.user?.phone && `• ${item.user.phone}`}
+                            </div>
+                          </div>
+                          <span className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded-full">
+                            Staff
+                          </span>
+                        </button>
+                      );
+                    }
+                  })}
+                </div>
+              )}
+              
+              {/* Selected filter display */}
+              {(filters.member_search || filters.staff_search) && (
+                <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                  <span className="font-medium">
+                    {activeTab === 'members' ? 'Member:' : 'Staff:'}
+                  </span>
+                  <span>{filters.member_search || filters.staff_search}</span>
+                  <button onClick={clearSearch} className="text-blue-500 hover:text-blue-700">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex justify-end mt-4">

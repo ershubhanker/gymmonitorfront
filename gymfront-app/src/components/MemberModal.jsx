@@ -1,10 +1,11 @@
-// MemberModal.jsx - Updated with Personal Training AND ADD-ONS
+// MemberModal.jsx - Updated with Personal Training, ADD-ONS, and Optimized Camera Capture
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, User, Phone, Heart, FileText, Camera, Plus, CheckCircle,
   Calendar, CreditCard, AlertCircle, ChevronRight, Loader2, RefreshCw,
   ChevronUp, ChevronDown, Upload, Trash2, Edit, CalendarDays, Dumbbell,
-  Tag
+  Tag, Video, Image
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
@@ -22,85 +23,95 @@ const PLAN_PRESETS = [
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const ITEM_H = 40;
 
-const compressImage = (file, maxWidth = 800, maxHeight = 800, quality = 0.8) => {
+// ─── Optimized Image Compression ──────────────────────────────────────────────
+// IMPORTANT: this uses createImageBitmap() instead of FileReader.readAsDataURL()
+// + new Image(). readAsDataURL() has to base64-encode the entire file into a
+// giant string and then have the browser re-decode that string synchronously
+// on the main thread before it can even start resizing — on a multi-MB phone
+// photo this can freeze the UI for several seconds, which is what was causing
+// the app to appear to "hang" and eventually drop the session. createImageBitmap
+// decodes the image directly from the Blob/File (no base64 round-trip) and on
+// most browsers the decode happens off the main thread, so it's dramatically
+// faster and doesn't block the UI.
+const resizeBitmapToFile = (bitmap, sourceFile, maxWidth, maxHeight, quality) => {
   return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('Not an image file'));
-      return;
+    let width = bitmap.width;
+    let height = bitmap.height;
+
+    if (width > height) {
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+    } else {
+      if (height > maxHeight) {
+        width = Math.round((width * maxHeight) / height);
+        height = maxHeight;
+      }
     }
 
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close?.();
+
+    const outputFormat = sourceFile.type === 'image/webp' ? 'image/webp' : 'image/jpeg';
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error('Canvas to Blob conversion failed'));
+          return;
+        }
+        const fileExtension = outputFormat === 'image/webp' ? 'webp' : 'jpg';
+        const compressedFile = new File(
+          [blob],
+          sourceFile.name.replace(/\.[^/.]+$/, '') + '.' + fileExtension,
+          { type: outputFormat, lastModified: Date.now() }
+        );
+        resolve(compressedFile);
+      },
+      outputFormat,
+      quality
+    );
+  });
+};
+
+// Legacy fallback for the rare browser without createImageBitmap support.
+const compressImageLegacy = (file, maxWidth, maxHeight, quality) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    
     reader.onload = (event) => {
       const img = new Image();
       img.src = event.target.result;
-      
       img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-        
-        if (width > height) {
-          if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
-          }
-        }
-        
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        let outputFormat = 'image/jpeg';
-        let outputQuality = quality;
-        
-        if (file.type === 'image/png') {
-          outputFormat = 'image/png';
-          outputQuality = Math.min(quality, 0.9);
-        } else if (file.type === 'image/webp') {
-          outputFormat = 'image/webp';
-        }
-        
-        canvas.toBlob(
-          (blob) => {
-            if (!blob) {
-              reject(new Error('Canvas to Blob conversion failed'));
-              return;
-            }
-            
-            const compressedFile = new File(
-              [blob],
-              file.name.replace(/\.[^/.]+$/, '') + '.jpg',
-              {
-                type: outputFormat,
-                lastModified: Date.now(),
-              }
-            );
-            
-            resolve(compressedFile);
-          },
-          outputFormat,
-          outputQuality
-        );
+        resizeBitmapToFile(img, file, maxWidth, maxHeight, quality).then(resolve, reject);
       };
-      
-      img.onerror = () => {
-        reject(new Error('Failed to load image'));
-      };
+      img.onerror = () => reject(new Error('Failed to load image'));
     };
-    
-    reader.onerror = () => {
-      reject(new Error('Failed to read file'));
-    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
   });
+};
+
+const compressImage = async (file, maxWidth = 600, maxHeight = 600, quality = 0.7) => {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Not an image file');
+  }
+
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(file);
+      return await resizeBitmapToFile(bitmap, file, maxWidth, maxHeight, quality);
+    } catch (err) {
+      // Fall through to the legacy path if decoding via createImageBitmap fails
+      // for this particular file (e.g. an unusual EXIF/orientation edge case).
+    }
+  }
+
+  return compressImageLegacy(file, maxWidth, maxHeight, quality);
 };
 
 const ScrollColumn = ({ items, selectedIndex, onChange, label }) => {
@@ -253,6 +264,231 @@ const DOBPicker = ({ value, onChange, maxDate }) => {
   );
 };
 
+// ─── Camera Capture Component ────────────────────────────────────────────────────
+const CameraCapture = ({ onCapture, onClose }) => {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [stream, setStream] = useState(null);
+  const [capturedImage, setCapturedImage] = useState(null); // object URL for preview
+  const [capturedBlob, setCapturedBlob] = useState(null);   // actual image data
+  const [facingMode, setFacingMode] = useState('environment');
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [capturing, setCapturing] = useState(false);
+
+  useEffect(() => {
+    startCamera();
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [facingMode]);
+
+  useEffect(() => {
+    // Revoke the captured-photo object URL when the camera closes/unmounts
+    // so we don't leak memory across repeated open/retake cycles.
+    return () => {
+      if (capturedImage) URL.revokeObjectURL(capturedImage);
+    };
+  }, [capturedImage]);
+
+  const startCamera = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode: facingMode, 
+          width: { ideal: 480 }, 
+          height: { ideal: 640 }
+        },
+        audio: false
+      });
+      setStream(mediaStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+        await videoRef.current.play();
+      }
+    } catch (err) {
+      console.error('Camera error:', err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError('Camera access denied. Please allow camera access in your browser settings.');
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setError('No camera found on this device.');
+      } else {
+        setError('Failed to access camera: ' + err.message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Max long-edge size for a captured photo. Scaling proportionally here
+  // (instead of independently clamping width/height) avoids the previous
+  // code's aspect-ratio distortion on wide video feeds.
+  const MAX_CAPTURE_DIM = 640;
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    setCapturing(true);
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    let width = video.videoWidth;
+    let height = video.videoHeight;
+    if (width > height) {
+      if (width > MAX_CAPTURE_DIM) {
+        height = Math.round((height * MAX_CAPTURE_DIM) / width);
+        width = MAX_CAPTURE_DIM;
+      }
+    } else if (height > MAX_CAPTURE_DIM) {
+      width = Math.round((width * MAX_CAPTURE_DIM) / height);
+      height = MAX_CAPTURE_DIM;
+    }
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, width, height);
+
+    // Go straight to a Blob — no base64 data URL in between. This is what
+    // let us drop the manual atob() decode loop in confirmPhoto(), which
+    // was the biggest single source of the main-thread freeze after
+    // tapping "Use Photo".
+    canvas.toBlob(
+      (blob) => {
+        setCapturing(false);
+        if (!blob) {
+          setError('Failed to capture photo. Please try again.');
+          return;
+        }
+        setCapturedImage(URL.createObjectURL(blob));
+        setCapturedBlob(blob);
+      },
+      'image/jpeg',
+      0.85
+    );
+  };
+
+  const retakePhoto = () => {
+    if (capturedImage) URL.revokeObjectURL(capturedImage);
+    setCapturedImage(null);
+    setCapturedBlob(null);
+  };
+
+  const confirmPhoto = () => {
+    if (capturedBlob) {
+      const file = new File([capturedBlob], 'camera-capture.jpg', { type: 'image/jpeg' });
+      onCapture(file);
+    }
+  };
+
+  const switchCamera = () => {
+    setFacingMode(prev => prev === 'user' ? 'environment' : 'user');
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center p-4">
+      <div className="bg-black rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 bg-gray-900">
+          <div className="flex items-center gap-2">
+            <Camera className="h-5 w-5 text-white" />
+            <span className="text-white font-medium">Take Photo</span>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white p-1 rounded-lg transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="relative bg-black aspect-video">
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader2 className="h-8 w-8 text-white animate-spin" />
+              <span className="text-white ml-2">Starting camera...</span>
+            </div>
+          )}
+          {error && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-4">
+              <AlertCircle className="h-12 w-12 text-red-400 mb-3" />
+              <p className="text-red-400 text-center text-sm">{error}</p>
+              <button
+                onClick={() => {
+                  setError(null);
+                  startCamera();
+                }}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {!capturedImage ? (
+            <>
+              <video
+                ref={videoRef}
+                className="w-full h-full object-cover"
+                autoPlay
+                playsInline
+                muted
+              />
+              <canvas ref={canvasRef} className="hidden" />
+            </>
+          ) : (
+            <img
+              src={capturedImage}
+              alt="Captured"
+              className="w-full h-full object-contain"
+            />
+          )}
+        </div>
+
+        <div className="p-4 bg-gray-900 flex items-center justify-center gap-4">
+          {!capturedImage ? (
+            <>
+              <button
+                onClick={switchCamera}
+                className="p-3 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+                title="Switch Camera"
+                disabled={loading}
+              >
+                <RefreshCw className="h-5 w-5" />
+              </button>
+              <button
+                onClick={capturePhoto}
+                disabled={loading || !!error || capturing}
+                className="w-16 h-16 rounded-full border-4 border-white bg-gray-800 hover:bg-gray-700 transition-colors disabled:opacity-50"
+              >
+                {capturing && <Loader2 className="h-6 w-6 text-white animate-spin mx-auto" />}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={retakePhoto}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors"
+              >
+                <X className="h-4 w-4 inline mr-1" />
+                Retake
+              </button>
+              <button
+                onClick={confirmPhoto}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <CheckCircle className="h-4 w-4 inline mr-1" />
+                Use Photo
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Profile Photo Uploader ────────────────────────────────────────────────────
 const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingFileRef }) => {
   const fileInputRef = useRef(null);
@@ -260,6 +496,7 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
   const [uploading, setUploading] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
   const [compressionProgress, setCompressionProgress] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
 
   useEffect(() => {
     if (getPendingFileRef) {
@@ -281,7 +518,7 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
   }, [currentPhotoUrl, memberId]);
 
   const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-  const MAX_SIZE_MB = 10;
+  const MAX_SIZE_MB = 5;
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -293,7 +530,7 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
     }
     
     if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      toast.error(`Original image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Please choose an image under ${MAX_SIZE_MB}MB.`);
+      toast.error(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Please choose an image under ${MAX_SIZE_MB}MB.`);
       return;
     }
 
@@ -301,7 +538,7 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
     toast.loading('Compressing image...', { id: 'compress' });
     
     try {
-      const compressedFile = await compressImage(file, 800, 800, 0.8);
+      const compressedFile = await compressImage(file, 600, 600, 0.7);
       
       toast.dismiss('compress');
       
@@ -309,43 +546,7 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
       setPreview(localUrl);
 
       if (memberId) {
-        setUploading(true);
-        toast.loading('Uploading compressed image...', { id: 'upload' });
-        
-        try {
-          const formData = new FormData();
-          formData.append('file', compressedFile);
-          
-          const res = await api.post(
-            `/gym/members/${memberId}/upload-photo`,
-            formData,
-            { headers: { 'Content-Type': 'multipart/form-data' } }
-          );
-          
-          const fullUrl = res.data.photo_url.startsWith('http') 
-            ? res.data.photo_url 
-            : `${API_BASE_URL}${res.data.photo_url}`;
-          setPreview(fullUrl);
-          setPendingFile(null);
-          
-          if (onPhotoUploaded) onPhotoUploaded(res.data.photo_url);
-          
-          toast.dismiss('upload');
-          toast.success('Photo uploaded successfully!');
-        } catch (err) {
-          toast.dismiss('upload');
-          toast.error(err.response?.data?.detail || 'Photo upload failed. Please try again.');
-          if (currentPhotoUrl) {
-            const revertUrl = currentPhotoUrl.startsWith('http') 
-              ? currentPhotoUrl 
-              : `${API_BASE_URL}${currentPhotoUrl}`;
-            setPreview(revertUrl);
-          } else {
-            setPreview(null);
-          }
-        } finally {
-          setUploading(false);
-        }
+        await uploadFile(compressedFile);
       } else {
         setPendingFile(compressedFile);
         toast.success('Image compressed and ready!');
@@ -361,6 +562,80 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
     e.target.value = '';
   };
 
+  const handleCameraCapture = async (file) => {
+    setShowCamera(false);
+
+    // NOTE: the file coming from CameraCapture is already downscaled
+    // (max 640px long edge) and JPEG-compressed by the capture canvas —
+    // see capturePhoto() above. Previously this ran the file through
+    // compressImage() a *second* time, which meant decoding the image,
+    // resizing it, and re-encoding it all over again for no benefit.
+    // That redundant pass was the main cause of the multi-second freeze
+    // (and resulting logout) after taking a photo, so we just use the
+    // capture as-is.
+    setUploading(true);
+    toast.loading('Saving photo...', { id: 'compress' });
+
+    try {
+      const localUrl = URL.createObjectURL(file);
+      setPreview(localUrl);
+
+      if (memberId) {
+        await uploadFile(file);
+      } else {
+        setPendingFile(file);
+        toast.success('Photo captured!');
+      }
+    } catch (err) {
+      console.error('Photo capture error:', err);
+      toast.error('Failed to save captured image. Please try again.');
+    } finally {
+      toast.dismiss('compress');
+      setUploading(false);
+    }
+  };
+
+  const uploadFile = async (file) => {
+    setUploading(true);
+    toast.loading('Uploading...', { id: 'upload' });
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const res = await api.post(
+        `/gym/members/${memberId}/upload-photo`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      
+      const fullUrl = res.data.photo_url.startsWith('http') 
+        ? res.data.photo_url 
+        : `${API_BASE_URL}${res.data.photo_url}`;
+      setPreview(fullUrl);
+      setPendingFile(null);
+      
+      if (onPhotoUploaded) onPhotoUploaded(res.data.photo_url);
+      
+      toast.dismiss('upload');
+      toast.success('Photo uploaded successfully!');
+    } catch (err) {
+      toast.dismiss('upload');
+      console.error('Upload error:', err);
+      toast.error(err.response?.data?.detail || 'Photo upload failed. Please try again.');
+      if (currentPhotoUrl) {
+        const revertUrl = currentPhotoUrl.startsWith('http') 
+          ? currentPhotoUrl 
+          : `${API_BASE_URL}${currentPhotoUrl}`;
+        setPreview(revertUrl);
+      } else {
+        setPreview(null);
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleRemove = () => {
     setPreview(null);
     setPendingFile(null);
@@ -369,83 +644,104 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
   };
 
   return (
-    <div className="flex items-center gap-5 p-4 bg-gray-50 rounded-xl">
-      <div className="relative flex-shrink-0">
-        {preview ? (
-          <img
-            src={preview}
-            alt="Member photo"
-            className="h-20 w-20 rounded-full object-cover border-2 border-blue-200 shadow"
-          />
-        ) : (
-          <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-2xl font-bold shadow">
-            <User className="h-8 w-8" />
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading || compressionProgress}
-          className="absolute -bottom-1 -right-1 bg-blue-600 p-1.5 rounded-full text-white hover:bg-blue-700 shadow transition-colors disabled:opacity-60"
-          title="Upload photo"
-        >
-          {uploading || compressionProgress ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+    <>
+      <div className="flex items-center gap-5 p-4 bg-gray-50 rounded-xl">
+        <div className="relative flex-shrink-0">
+          {preview ? (
+            <img
+              src={preview}
+              alt="Member photo"
+              className="h-20 w-20 rounded-full object-cover border-2 border-blue-200 shadow"
+            />
           ) : (
-            <Camera className="h-3.5 w-3.5" />
+            <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-2xl font-bold shadow">
+              <User className="h-8 w-8" />
+            </div>
           )}
-        </button>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-gray-800 text-sm">Member Photo</p>
-        {compressionProgress && (
-          <p className="text-xs text-blue-600 mt-0.5 font-medium animate-pulse">
-            🔄 Compressing image...
-          </p>
-        )}
-        {pendingFile && !memberId ? (
-          <p className="text-xs text-amber-600 mt-0.5 font-medium">
-            📎 {pendingFile.name} ({Math.round(pendingFile.size / 1024)}KB) — will upload after saving
-          </p>
-        ) : uploading ? (
-          <p className="text-xs text-blue-600 mt-0.5">Uploading compressed image…</p>
-        ) : preview ? (
-          <p className="text-xs text-green-600 mt-0.5 font-medium">✓ Photo set</p>
-        ) : (
-          <p className="text-xs text-gray-500 mt-0.5">Images are automatically compressed</p>
-        )}
-        <div className="flex items-center gap-2 mt-2">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading || compressionProgress}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
+            className="absolute -bottom-1 -right-1 bg-blue-600 p-1.5 rounded-full text-white hover:bg-blue-700 shadow transition-colors disabled:opacity-60"
+            title="Upload photo"
           >
-            <Upload className="h-3.5 w-3.5" />
-            {preview ? 'Change Photo' : 'Upload Photo'}
+            {uploading || compressionProgress ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Camera className="h-3.5 w-3.5" />
+            )}
           </button>
-          {preview && (
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-gray-800 text-sm">Member Photo</p>
+          {compressionProgress && (
+            <p className="text-xs text-blue-600 mt-0.5 font-medium animate-pulse">
+              🔄 Processing image...
+            </p>
+          )}
+          {pendingFile && !memberId ? (
+            <p className="text-xs text-amber-600 mt-0.5 font-medium">
+              📎 {pendingFile.name} ({Math.round(pendingFile.size / 1024)}KB) — will upload after saving
+            </p>
+          ) : uploading ? (
+            <p className="text-xs text-blue-600 mt-0.5">Uploading…</p>
+          ) : preview ? (
+            <p className="text-xs text-green-600 mt-0.5 font-medium">✓ Photo set</p>
+          ) : (
+            <p className="text-xs text-gray-500 mt-0.5">Take a photo or upload one</p>
+          )}
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
             <button
               type="button"
-              onClick={handleRemove}
-              disabled={uploading}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading || compressionProgress}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
             >
-              <Trash2 className="h-3.5 w-3.5" />
-              Remove
+              <Image className="h-3.5 w-3.5" />
+              {preview ? 'Change Photo' : 'Upload Photo'}
             </button>
-          )}
+            {!preview && !uploading && !compressionProgress && (
+              <button
+                type="button"
+                onClick={() => setShowCamera(true)}
+                disabled={uploading || compressionProgress}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60 transition-colors"
+              >
+                <Video className="h-3.5 w-3.5" />
+                Take Photo
+              </button>
+            )}
+            {preview && (
+              <button
+                type="button"
+                onClick={handleRemove}
+                disabled={uploading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Remove
+              </button>
+            )}
+          </div>
+          
         </div>
-        
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={handleFileChange}
+        />
       </div>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-    </div>
+
+      {/* Camera Modal */}
+      {showCamera && (
+        <CameraCapture
+          onCapture={handleCameraCapture}
+          onClose={() => setShowCamera(false)}
+        />
+      )}
+    </>
   );
 };
 
@@ -762,7 +1058,6 @@ const PersonalTrainingSection = ({
   const [endTime, setEndTime] = useState('');
   const [ptAmountError, setPtAmountError] = useState(null);
   
-  // Days of week for session scheduling
   const daysOfWeek = [
     { value: 'monday', label: 'Monday' },
     { value: 'tuesday', label: 'Tuesday' },
@@ -773,7 +1068,6 @@ const PersonalTrainingSection = ({
     { value: 'sunday', label: 'Sunday' }
   ];
 
-  // Parse session time if it exists
   useEffect(() => {
     if (formData.pt_session_time) {
       const parts = formData.pt_session_time.split(' - ');
@@ -784,7 +1078,6 @@ const PersonalTrainingSection = ({
     }
   }, [formData.pt_session_time]);
 
-  // Update session time when start or end time changes
   const updateSessionTime = (start, end) => {
     if (start && end) {
       setFormData(prev => ({ ...prev, pt_session_time: `${start} - ${end}` }));
@@ -803,7 +1096,6 @@ const PersonalTrainingSection = ({
     updateSessionTime(startTime, value);
   };
 
-  // Handle day selection toggle
   const toggleDay = (day) => {
     const currentDays = JSON.parse(formData.pt_session_days || '[]');
     const newDays = currentDays.includes(day) 
@@ -812,7 +1104,6 @@ const PersonalTrainingSection = ({
     setFormData(prev => ({ ...prev, pt_session_days: JSON.stringify(newDays) }));
   };
 
-  // ✅ Validate PT amount paid against total amount
   const validatePtAmountPaid = (value) => {
     const totalAmount = parseFloat(formData.pt_total_amount) || 0;
     const amountPaid = parseFloat(value) || 0;
@@ -826,7 +1117,6 @@ const PersonalTrainingSection = ({
     }
   };
 
-  // ✅ Handle PT amount paid change with validation
   const handlePtAmountPaidChange = (value) => {
     const totalAmount = parseFloat(formData.pt_total_amount) || 0;
     const amountPaid = parseFloat(value) || 0;
@@ -843,24 +1133,20 @@ const PersonalTrainingSection = ({
     }
   };
 
-  // ✅ Handle PT total amount change - reset amount paid if it exceeds new total
   const handlePtTotalAmountChange = (value) => {
     const totalAmount = parseFloat(value) || 0;
     const currentPaid = parseFloat(formData.pt_amount_paid) || 0;
     
     setFormData(prev => ({ ...prev, pt_total_amount: value }));
     
-    // If current paid exceeds new total, update paid to match total
     if (currentPaid > totalAmount && totalAmount > 0) {
       setFormData(prev => ({ ...prev, pt_amount_paid: String(totalAmount) }));
       setPtAmountError(null);
     } else if (totalAmount === 0) {
-      // If total is 0, clear any error
       setPtAmountError(null);
     }
   };
 
-  // ✅ Quick action buttons for PT amount
   const setPtFullPayment = () => {
     const totalAmount = parseFloat(formData.pt_total_amount) || 0;
     if (totalAmount > 0) {
@@ -919,7 +1205,6 @@ const PersonalTrainingSection = ({
 
       {showPTOption && (
         <div className="space-y-4 bg-blue-50 border border-blue-200 rounded-xl p-5">
-          {/* Trainer Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Select Trainer <span className="text-red-500">*</span>
@@ -943,7 +1228,6 @@ const PersonalTrainingSection = ({
             )}
           </div>
 
-          {/* Date Range */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -971,7 +1255,6 @@ const PersonalTrainingSection = ({
             </div>
           </div>
 
-          {/* Session Days */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Session Days <span className="text-red-500">*</span>
@@ -999,7 +1282,6 @@ const PersonalTrainingSection = ({
             <p className="text-xs text-gray-500 mt-1">Select the days of the week for training sessions</p>
           </div>
 
-          {/* Time Inputs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1027,7 +1309,6 @@ const PersonalTrainingSection = ({
             </div>
           </div>
 
-          {/* ✅ Total Amount and Amount Paid - With Validation */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1067,7 +1348,6 @@ const PersonalTrainingSection = ({
             </div>
           </div>
 
-          {/* ✅ Quick Action Buttons for PT Payment */}
           {formData.pt_total_amount && parseFloat(formData.pt_total_amount) > 0 && (
             <div className="flex gap-2">
               <button
@@ -1094,7 +1374,6 @@ const PersonalTrainingSection = ({
             </div>
           )}
 
-          {/* Show balance due */}
           {formData.pt_total_amount && formData.pt_total_amount > 0 && (
             <div className={`p-3 rounded-lg ${
               (parseFloat(formData.pt_total_amount) - parseFloat(formData.pt_amount_paid || 0)) > 0
@@ -1118,7 +1397,6 @@ const PersonalTrainingSection = ({
             </div>
           )}
 
-          {/* Notes */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Notes (Optional)
@@ -1272,10 +1550,6 @@ const AddonSelectionSection = ({
               </span>
             ))}
           </div>
-          {/* ✅ Without this, add-ons used to always be assigned with
-              amount_paid: 0 no matter what — meaning even if the member
-              paid in full, no payment record was ever created for the
-              add-on portion, so it never appeared on the Payments page. */}
           <label className="mt-3 flex items-center gap-2 text-sm text-blue-800 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -1291,7 +1565,7 @@ const AddonSelectionSection = ({
   );
 };
 
-// ─── Membership Selector (with Edit/Delete) ────────────────────────────────────
+// ─── Membership Selector ────────────────────────────────────────────────────
 const MembershipSelector = ({ 
   formData, 
   setFormData, 
@@ -1322,7 +1596,6 @@ const MembershipSelector = ({
 
   const priceInfo = calculatePriceWithDiscount();
 
-  // Check if amount is partial (less than final plan price)
   const isPartialPayment = () => {
     if (!selectedPlan || !formData.amount_paid) return false;
     const finalPrice = priceInfo?.finalPrice || selectedPlan.discounted_price || selectedPlan.price;
@@ -1603,7 +1876,6 @@ const MembershipSelector = ({
               </select>
             </div>
             
-            {/* DISCOUNT FIELD */}
             <div>
               <label className={labelCls}>
                 <span className="flex items-center gap-1.5">
@@ -1637,7 +1909,6 @@ const MembershipSelector = ({
               </p>
             </div>
             
-            {/* Show price breakdown when discount is applied */}
             {priceInfo && priceInfo.discount > 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-xs font-semibold text-blue-700 mb-2">Price Breakdown</p>
@@ -1731,7 +2002,6 @@ const MembershipSelector = ({
                 </button>
               </div>
 
-              {/* Show due date picker for partial payments */}
               {isPartialPayment() && (
                 <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <label className="text-xs font-semibold text-blue-700 flex items-center gap-2 mb-1.5">
@@ -1741,12 +2011,10 @@ const MembershipSelector = ({
                   <CustomDueDatePicker
                     value={formData.custom_due_date}
                     onChange={(date) => {
-                      console.log('📅 Due date selected in picker:', date);
                       setFormData(prev => ({ ...prev, custom_due_date: date }));
                       setUserManuallyChangedAmount(true);
                     }}
                     onClear={() => {
-                      console.log('🗑️ Due date cleared');
                       setFormData(prev => ({ ...prev, custom_due_date: '' }));
                     }}
                     minDate={new Date().toISOString().split('T')[0]}
@@ -1866,7 +2134,6 @@ const MemberModal = ({ isOpen, onClose,
     discount_applied: '',
     renew_membership: false,
     custom_due_date: '',
-    // Personal Training fields
     pt_trainer_id: '',
     pt_start_date: '',
     pt_end_date: '',
@@ -1893,7 +2160,7 @@ const MemberModal = ({ isOpen, onClose,
   const [addons, setAddons] = useState([]);
   const [loadingAddons, setLoadingAddons] = useState(false);
   const [addonTotal, setAddonTotal] = useState(0);
-  const [addonsPaid, setAddonsPaid] = useState(true); // ✅ default: collect add-on payment now
+  const [addonsPaid, setAddonsPaid] = useState(true);
 
   const getPendingFileRef = useRef(null);
 
@@ -1970,146 +2237,131 @@ const MemberModal = ({ isOpen, onClose,
   }, []);
 
   // Reset form when modal opens/closes
-// Reset form when modal opens/closes
-useEffect(() => {
-  if (!isOpen) return;
-  setActiveTab('personal');
-  setSaving(false);
-  setShowPlanCreator(false);
-  setUserManuallyChangedAmount(false);
-  setAmountError(null);
-  setSelectedAddons([]);
-  setAddonTotal(0);
-  setAddonsPaid(true);
+  useEffect(() => {
+    if (!isOpen) return;
+    setActiveTab('personal');
+    setSaving(false);
+    setShowPlanCreator(false);
+    setUserManuallyChangedAmount(false);
+    setAmountError(null);
+    setSelectedAddons([]);
+    setAddonTotal(0);
+    setAddonsPaid(true);
 
-  // ============================================================
-  // 🔥 FIX: Handle prefill data from lead conversion
-  // ============================================================
-  const isLeadConversion = isFromLead || (member && member.id === null);
-  
-  // Check if we have prefill data from member.raw or direct prefillData prop
-  const rawData = member?.raw || prefillData || {};
-  
-  console.log('📋 MemberModal - isFromLead:', isFromLead);
-  console.log('📋 MemberModal - rawData:', rawData);
-
-  if (member && member.id !== null) {
-    // Normal edit mode - existing member
-    setFormData({
-      full_name: member.full_name || '',
-      email: member.email || '',
-      phone: member.phone || '',
-      date_of_birth: member.date_of_birth || '',
-      gender: member.gender || 'male',
-      address: member.address || '',
-      emergency_contact_name: member.emergency_contact_name || '',
-      emergency_contact_phone: member.emergency_contact_phone || '',
-      medical_conditions: member.medical_conditions || '',
-      allergies: member.allergies || '',
-      medications: member.medications || '',
-      id_proof_type: member.id_proof_type || 'aadhar',
-      id_proof_number: member.id_proof_number || '',
-      plan_id: '', 
-      membership_start_date: today, 
-      payment_method: 'cash', 
-      amount_paid: '',
-      discount_applied: '',
-      renew_membership: false,
-      custom_due_date: '',
-      pt_trainer_id: '',
-      pt_start_date: '',
-      pt_end_date: '',
-      pt_session_time: '',
-      pt_session_days: '[]',
-      pt_total_amount: '',
-      pt_amount_paid: '',
-      pt_notes: '',
-    });
-  } else if (isLeadConversion || rawData.full_name) {
-    // ============================================================
-    // 🔥 LEAD CONVERSION MODE - Prefill with lead data
-    // ============================================================
-    console.log('🔥 Prefilling form with lead data:', rawData);
+    const isLeadConversion = isFromLead || (member && member.id === null);
+    const rawData = member?.raw || prefillData || {};
     
-    // Determine gender - ensure it's in the correct format
-    let gender = rawData.gender || 'male';
-    if (typeof gender === 'string') {
-      gender = gender.toLowerCase();
-      if (!['male', 'female', 'other', 'prefer_not_to_say'].includes(gender)) {
-        gender = 'male';
+    console.log('📋 MemberModal - isFromLead:', isFromLead);
+    console.log('📋 MemberModal - rawData:', rawData);
+
+    if (member && member.id !== null) {
+      setFormData({
+        full_name: member.full_name || '',
+        email: member.email || '',
+        phone: member.phone || '',
+        date_of_birth: member.date_of_birth || '',
+        gender: member.gender || 'male',
+        address: member.address || '',
+        emergency_contact_name: member.emergency_contact_name || '',
+        emergency_contact_phone: member.emergency_contact_phone || '',
+        medical_conditions: member.medical_conditions || '',
+        allergies: member.allergies || '',
+        medications: member.medications || '',
+        id_proof_type: member.id_proof_type || 'aadhar',
+        id_proof_number: member.id_proof_number || '',
+        plan_id: '', 
+        membership_start_date: today, 
+        payment_method: 'cash', 
+        amount_paid: '',
+        discount_applied: '',
+        renew_membership: false,
+        custom_due_date: '',
+        pt_trainer_id: '',
+        pt_start_date: '',
+        pt_end_date: '',
+        pt_session_time: '',
+        pt_session_days: '[]',
+        pt_total_amount: '',
+        pt_amount_paid: '',
+        pt_notes: '',
+      });
+    } else if (isLeadConversion || rawData.full_name) {
+      let gender = rawData.gender || 'male';
+      if (typeof gender === 'string') {
+        gender = gender.toLowerCase();
+        if (!['male', 'female', 'other', 'prefer_not_to_say'].includes(gender)) {
+          gender = 'male';
+        }
       }
+      
+      setFormData({
+        full_name: rawData.full_name || '',
+        email: rawData.email || '',
+        phone: rawData.phone || '',
+        date_of_birth: rawData.date_of_birth || '',
+        gender: gender,
+        address: rawData.address || '',
+        emergency_contact_name: rawData.emergency_contact_name || '',
+        emergency_contact_phone: rawData.emergency_contact_phone || '',
+        medical_conditions: rawData.medical_conditions || '',
+        allergies: rawData.allergies || '',
+        medications: rawData.medications || '',
+        id_proof_type: rawData.id_proof_type || 'aadhar',
+        id_proof_number: rawData.id_proof_number || '',
+        plan_id: '', 
+        membership_start_date: today, 
+        payment_method: 'cash', 
+        amount_paid: '',
+        discount_applied: '',
+        renew_membership: false,
+        custom_due_date: '',
+        pt_trainer_id: '',
+        pt_start_date: '',
+        pt_end_date: '',
+        pt_session_time: '',
+        pt_session_days: '[]',
+        pt_total_amount: '',
+        pt_amount_paid: '',
+        pt_notes: rawData.notes || '',
+      });
+      
+      if (rawData.interest) {
+        console.log('📝 Lead interest:', rawData.interest);
+      }
+      if (rawData.preferred_plan) {
+        console.log('📝 Lead preferred plan:', rawData.preferred_plan);
+      }
+      if (rawData.budget) {
+        console.log('📝 Lead budget:', rawData.budget);
+      }
+    } else {
+      setFormData({
+        full_name: '', email: '', phone: '', date_of_birth: '', gender: 'male',
+        address: '', emergency_contact_name: '', emergency_contact_phone: '',
+        medical_conditions: '', allergies: '', medications: '',
+        id_proof_type: 'aadhar', id_proof_number: '',
+        plan_id: '', 
+        membership_start_date: today, 
+        payment_method: 'cash', 
+        amount_paid: '',
+        discount_applied: '',
+        renew_membership: false,
+        custom_due_date: '',
+        pt_trainer_id: '',
+        pt_start_date: '',
+        pt_end_date: '',
+        pt_session_time: '',
+        pt_session_days: '[]',
+        pt_total_amount: '',
+        pt_amount_paid: '',
+        pt_notes: '',
+      });
     }
     
-    setFormData({
-      full_name: rawData.full_name || '',
-      email: rawData.email || '',
-      phone: rawData.phone || '',
-      date_of_birth: rawData.date_of_birth || '',
-      gender: gender,
-      address: rawData.address || '',
-      emergency_contact_name: rawData.emergency_contact_name || '',
-      emergency_contact_phone: rawData.emergency_contact_phone || '',
-      medical_conditions: rawData.medical_conditions || '',
-      allergies: rawData.allergies || '',
-      medications: rawData.medications || '',
-      id_proof_type: rawData.id_proof_type || 'aadhar',
-      id_proof_number: rawData.id_proof_number || '',
-      plan_id: '', 
-      membership_start_date: today, 
-      payment_method: 'cash', 
-      amount_paid: '',
-      discount_applied: '',
-      renew_membership: false,
-      custom_due_date: '',
-      pt_trainer_id: '',
-      pt_start_date: '',
-      pt_end_date: '',
-      pt_session_time: '',
-      pt_session_days: '[]',
-      pt_total_amount: '',
-      pt_amount_paid: '',
-      pt_notes: rawData.notes || '',  // ✅ Prefill notes from lead
-    });
-    
-    // If there are additional fields, store them
-    if (rawData.interest) {
-      console.log('📝 Lead interest:', rawData.interest);
-    }
-    if (rawData.preferred_plan) {
-      console.log('📝 Lead preferred plan:', rawData.preferred_plan);
-    }
-    if (rawData.budget) {
-      console.log('📝 Lead budget:', rawData.budget);
-    }
-  } else {
-    // New member mode (empty form)
-    setFormData({
-      full_name: '', email: '', phone: '', date_of_birth: '', gender: 'male',
-      address: '', emergency_contact_name: '', emergency_contact_phone: '',
-      medical_conditions: '', allergies: '', medications: '',
-      id_proof_type: 'aadhar', id_proof_number: '',
-      plan_id: '', 
-      membership_start_date: today, 
-      payment_method: 'cash', 
-      amount_paid: '',
-      discount_applied: '',
-      renew_membership: false,
-      custom_due_date: '',
-      pt_trainer_id: '',
-      pt_start_date: '',
-      pt_end_date: '',
-      pt_session_time: '',
-      pt_session_days: '[]',
-      pt_total_amount: '',
-      pt_amount_paid: '',
-      pt_notes: '',
-    });
-  }
-  
-  refreshMembershipPlans();
-  fetchTrainers();
-  fetchAddons();
-}, [isOpen, member, refreshMembershipPlans, fetchTrainers, fetchAddons, today, isFromLead, prefillData]);
+    refreshMembershipPlans();
+    fetchTrainers();
+    fetchAddons();
+  }, [isOpen, member, refreshMembershipPlans, fetchTrainers, fetchAddons, today, isFromLead, prefillData]);
 
   // Calculate addon total
   useEffect(() => {
@@ -2243,7 +2495,6 @@ useEffect(() => {
         ? formData.custom_due_date 
         : null;
       
-      // Prepare PT data with correct field names - ALWAYS include if PT is filled
       const ptData = formData.pt_trainer_id ? {
         trainer_id: formData.pt_trainer_id,
         start_date: formData.pt_start_date,
@@ -2268,7 +2519,6 @@ useEffect(() => {
           renew_membership: true,
           custom_due_date: dueDate,
           pt_data: ptData,
-          // Add add-ons data
           addons: selectedAddons.map(a => ({
             addon_id: a.id,
             start_date: formData.membership_start_date,
@@ -2276,10 +2526,9 @@ useEffect(() => {
           })),
         };
       } else if (isEdit) {
-        // ✅ For edit WITHOUT renewal, also include PT data
         payload = {
           ...memberFields,
-          pt_data: ptData,  // ✅ Include PT data for edit
+          pt_data: ptData,
         };
       } else {
         payload = {
@@ -2320,16 +2569,12 @@ useEffect(() => {
           }
         }
         
-        // If addons were selected, assign them to the member
         if (selectedAddons.length > 0 && savedMember.id) {
           try {
             for (const addon of selectedAddons) {
               await api.post(`/gym/members/${savedMember.id}/addons`, {
                 addon_id: addon.id,
                 start_date: formData.membership_start_date,
-                // ✅ Was hardcoded to 0 regardless of the "Total: ₹X" shown
-                // to the user, so no Payment record was ever created for
-                // add-ons and they never showed up on the Payments page.
                 amount_paid: addonsPaid ? addon.price : 0,
                 payment_method: formData.payment_method || 'cash',
                 notes: 'Added during membership signup'
@@ -2353,7 +2598,6 @@ useEffect(() => {
     }
   };
 
-  
   const set = (field) => (e) => setFormData(prev => ({ ...prev, [field]: e.target.value }));
 
   const tabs = [
@@ -2636,7 +2880,6 @@ useEffect(() => {
                   </p>
                 )}
 
-                {/* Personal Training Section */}
                 <PersonalTrainingSection 
                   formData={formData}
                   setFormData={setFormData}
@@ -2645,7 +2888,6 @@ useEffect(() => {
                   isEdit={isEdit}
                 />
 
-                {/* ===== ADD-ONS SELECTION SECTION ===== */}
                 {(!isEdit || formData.renew_membership) && (
                   <AddonSelectionSection 
                     formData={formData}

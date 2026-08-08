@@ -1,4 +1,4 @@
-// src/pages/Payments.tsx - Complete with all functions
+// src/pages/Payments.tsx - Table format like Balance screen
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -7,7 +7,8 @@ import {
   Download, 
   Search,
   ChevronDown,
-  X,TrendingUp,
+  X,
+  TrendingUp,
   Wallet,
   Users,
   CheckCircle,
@@ -20,7 +21,10 @@ import {
   CheckSquare,
   Square,
   AlertTriangle,
-  Tag, Dumbbell
+  Tag, 
+  Dumbbell,
+  ChevronLeft,
+  ChevronRight, Clock, XCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -38,8 +42,11 @@ const Payments = () => {
   const [datePickerType, setDatePickerType] = useState('start');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('all');
-  const [expandedPayment, setExpandedPayment] = useState(null);
   const [paymentTypeFilter, setPaymentTypeFilter] = useState('all');
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
   
   // Delete-related state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -93,7 +100,7 @@ const Payments = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get('/gym/payments?limit=1000');
+      const response = await api.get('/gym/payments?limit=10000');
       console.log('Payments response:', response.data);
       
       let paymentsData = Array.isArray(response.data) ? response.data : [];
@@ -102,11 +109,9 @@ const Payments = () => {
         let paymentType = 'membership';
         let addonName = null;
         
-        // ✅ Check for addon payment by transaction_id prefix
         if (payment.transaction_id?.startsWith('ADDON-PAY-') || 
             payment.transaction_id?.startsWith('ADDON-')) {
           paymentType = 'addon';
-          // Try to extract addon name from notes
           const notes = payment.notes || '';
           const addonMatch = notes.match(/Addon payment for ([^:]+)/);
           if (addonMatch) {
@@ -114,11 +119,9 @@ const Payments = () => {
           } else {
             addonName = 'Addon';
           }
-        } 
-        // ✅ Check for PT payment
-        else if (payment.transaction_id?.startsWith('PT-') || 
-                 payment.notes?.includes('PT Payment') ||
-                 payment.membership_id === null) {
+        } else if (payment.transaction_id?.startsWith('PT-') || 
+                   payment.notes?.includes('PT Payment') ||
+                   payment.membership_id === null) {
           paymentType = 'pt';
         }
         
@@ -137,7 +140,7 @@ const Payments = () => {
         };
       });
       
-      console.log('Processed payments with types:', paymentsData.map(p => ({ id: p.id, type: p.payment_type, addon: p.addon_name })));
+      console.log('Processed payments:', paymentsData.length);
       setPayments(paymentsData);
     } catch (error) {
       console.error('Error fetching payments:', error);
@@ -262,6 +265,7 @@ const Payments = () => {
       });
       
       setFilteredPayments(sortedFiltered);
+      setCurrentPage(1);
     } catch (err) {
       console.error('Error filtering payments:', err);
       setFilteredPayments([]);
@@ -277,11 +281,45 @@ const Payments = () => {
     return `${currencySymbol} ${formatted}`;
   };
 
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return '';
+      return date.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch (error) {
+      return '';
+    }
+  };
+
+  const formatDateTime = (dateString) => {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return '';
+      return date.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      return '';
+    }
+  };
+
   // ===== TOGGLE SELECTION MODE =====
   const toggleSelectionMode = () => {
     setSelectionMode(!selectionMode);
     setSelectedPayments(new Set());
-    setExpandedPayment(null);
   };
 
   // ===== SELECT ALL VISIBLE =====
@@ -351,6 +389,18 @@ const Payments = () => {
     }
   };
 
+  // ===== GET PAYMENT TYPE BADGE =====
+  const getPaymentTypeBadge = (type) => {
+    switch(type) {
+      case 'addon':
+        return { label: 'Add-On', color: 'bg-purple-100 text-purple-700' };
+      case 'pt':
+        return { label: 'PT', color: 'bg-blue-100 text-blue-700' };
+      default:
+        return { label: 'Membership', color: 'bg-green-100 text-green-700' };
+    }
+  };
+
   // ===== GET PAYMENT METHOD ICON =====
   const getPaymentMethodIcon = (method) => {
     const icons = {
@@ -360,6 +410,25 @@ const Payments = () => {
       bank: '🏦'
     };
     return icons[method?.toLowerCase()] || '💵';
+  };
+
+  // ===== GET STATUS BADGE =====
+  const getStatusBadge = (status) => {
+    const statusConfig = {
+      paid: { color: 'bg-green-100 text-green-700', icon: CheckCircle },
+      completed: { color: 'bg-green-100 text-green-700', icon: CheckCircle },
+      pending: { color: 'bg-yellow-100 text-yellow-700', icon: Clock },
+      overdue: { color: 'bg-red-100 text-red-700', icon: AlertCircle },
+      cancelled: { color: 'bg-gray-100 text-gray-500', icon: XCircle },
+    };
+    const config = statusConfig[status?.toLowerCase()] || statusConfig.paid;
+    const Icon = config.icon;
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+        <Icon className="h-3 w-3" />
+        {status?.charAt(0).toUpperCase() + status?.slice(1) || 'Paid'}
+      </span>
+    );
   };
 
   // ===== HANDLE EXPORT =====
@@ -793,188 +862,11 @@ const Payments = () => {
     </div>
   );
 
-  // ===== RENDER PAYMENT CARD =====
-  const renderPaymentCard = (payment) => {
-    const isExpanded = expandedPayment === payment.id;
-    const isSelected = selectedPayments.has(payment.id);
-    const memberName = payment.member_name || 
-                      payment.member?.full_name || 
-                      payment.member?.name || 
-                      'Unknown Member';
-    
-    const getPaymentTypeBadge = (type) => {
-      switch(type) {
-        case 'addon':
-          return { label: 'Add-On', color: 'bg-purple-100 text-purple-700', icon: Tag };
-        case 'pt':
-          return { label: 'PT', color: 'bg-blue-100 text-blue-700', icon: Dumbbell };
-        default:
-          return { label: 'Membership', color: 'bg-green-100 text-green-700', icon: CreditCard };
-      }
-    };
-    const typeInfo = getPaymentTypeBadge(payment.payment_type);
-    const TypeIcon = typeInfo.icon;
-    
-    return (
-      <div 
-        key={payment.id} 
-        className={`bg-white rounded-xl shadow-md hover:shadow-lg transition-all border overflow-hidden ${
-          isSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-100'
-        }`}
-      >
-        <div className="p-4">
-          <div className="flex items-center gap-4">
-            {selectionMode && (
-              <button
-                onClick={() => togglePaymentSelection(payment.id)}
-                className="flex-shrink-0"
-              >
-                {isSelected ? (
-                  <CheckSquare className="h-5 w-5 text-blue-600" />
-                ) : (
-                  <Square className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                )}
-              </button>
-            )}
-            
-            <div 
-              className="flex items-center gap-4 flex-1 cursor-pointer"
-              onClick={() => !selectionMode && setExpandedPayment(isExpanded ? null : payment.id)}
-            >
-              <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold text-lg">
-                {memberName.charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-semibold text-gray-900">{memberName}</p>
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${typeInfo.color}`}>
-                    <TypeIcon className="h-3 w-3" />
-                    {typeInfo.label}
-                  </span>
-                  {payment.addon_name && (
-                    <span className="text-xs text-purple-600">({payment.addon_name})</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <span className="text-xs text-gray-500 flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {payment.payment_date ? new Date(payment.payment_date).toLocaleDateString('en-IN', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric'
-                    }) : 'Date not available'}
-                  </span>
-                  <span className="text-xs text-gray-400">•</span>
-                  <span className="text-xs text-gray-500 flex items-center gap-1">
-                    {getPaymentMethodIcon(payment.payment_method)} {payment.payment_method?.toUpperCase() || 'N/A'}
-                  </span>
-                  {payment.is_balance_payment && (
-                    <>
-                      <span className="text-xs text-gray-400">•</span>
-                      <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
-                        Balance Payment
-                      </span>
-                    </>
-                  )}
-                  {payment.gst_amount > 0 && (
-                    <>
-                      <span className="text-xs text-gray-400">•</span>
-                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                        GST: {formatCurrency(payment.gst_amount)}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            <div className="text-right flex items-center gap-3">
-              <div>
-                <p className="text-xl font-bold text-green-600">{formatCurrency(payment.amount)}</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  {isExpanded ? 'Tap to collapse' : 'Tap to expand'}
-                </p>
-              </div>
-              
-              {!selectionMode && (
-                <button
-                  onClick={() => handleSingleDelete(payment.id, payment.amount, memberName)}
-                  disabled={deleting}
-                  className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                  title="Delete payment"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </div>
-          
-          {isExpanded && !selectionMode && (
-            <div className="border-t border-gray-100 mt-4 pt-4 bg-gray-50 rounded-lg p-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Transaction ID</p>
-                  <p className="text-sm font-mono text-gray-700">{payment.transaction_id || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Payment Type</p>
-                  <p className="text-sm flex items-center gap-1">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${typeInfo.color}`}>
-                      <TypeIcon className="h-3 w-3" />
-                      {typeInfo.label}
-                    </span>
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Payment Status</p>
-                  <p className="text-sm flex items-center gap-1">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    <span className="text-green-700 font-medium">{payment.status || 'Completed'}</span>
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Member Phone</p>
-                  <p className="text-sm text-gray-700">{payment.member_phone || payment.member?.phone || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Payment Time</p>
-                  <p className="text-sm text-gray-700">
-                    {payment.payment_date ? new Date(payment.payment_date).toLocaleTimeString('en-IN', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    }) : 'N/A'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Member Balance</p>
-                  <p className="text-sm text-gray-700">{formatCurrency(payment.member_balance || 0)}</p>
-                </div>
-                {payment.payment_type === 'addon' && payment.addon_name && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Add-On</p>
-                    <p className="text-sm text-gray-700">{payment.addon_name}</p>
-                  </div>
-                )}
-                {payment.is_balance_payment && payment.original_invoice_id && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Original Invoice ID</p>
-                    <p className="text-sm font-mono text-gray-700">{payment.original_invoice_id}</p>
-                  </div>
-                )}
-              </div>
-              
-              {payment.notes && (
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <p className="text-xs text-gray-500 mb-1">Notes</p>
-                  <p className="text-sm text-gray-600">{payment.notes}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredPayments.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, filteredPayments.length);
+  const currentPayments = filteredPayments.slice(startIndex, endIndex);
 
   // ===== MAIN RENDER =====
   if (loading) {
@@ -1186,7 +1078,7 @@ const Payments = () => {
       {/* Summary Cards */}
       {renderSummaryCards()}
 
-      {/* Filters - Updated with Payment Type Filter */}
+      {/* Filters */}
       <div className="bg-white rounded-2xl shadow-lg p-6">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex-1 min-w-[200px]">
@@ -1277,55 +1169,142 @@ const Payments = () => {
         </div>
       </div>
 
-      {/* Payments List */}
-      <div className="space-y-3">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-gray-800">
-            Transactions ({filteredPayments.length})
-          </h2>
-          <div className="flex items-center gap-4 text-sm text-gray-500">
-            <span>Showing from {startDate ? new Date(startDate).toLocaleDateString('en-IN') : 'start'} to {endDate ? new Date(endDate).toLocaleDateString('en-IN') : 'end'}</span>
-            {paymentTypeFilter !== 'all' && (
-              <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                Filter: {paymentTypeFilter === 'addon' ? 'Add-On' : paymentTypeFilter === 'pt' ? 'PT' : 'Membership'}
-              </span>
-            )}
-          </div>
+      {/* Payments Table */}
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                {selectionMode && (
+                  <th className="px-4 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      checked={selectedPayments.size === filteredPayments.length && filteredPayments.length > 0}
+                      onChange={selectAllVisible}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </th>
+                )}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {currentPayments.length === 0 ? (
+                <tr>
+                  <td colSpan={selectionMode ? 8 : 7} className="px-6 py-12 text-center text-gray-500">
+                    <CreditCard className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                    <p className="text-sm">No payments found</p>
+                    <p className="text-xs text-gray-400 mt-1">Try adjusting your filters</p>
+                  </td>
+                </tr>
+              ) : (
+                currentPayments.map((payment) => {
+                  const typeInfo = getPaymentTypeBadge(payment.payment_type);
+                  return (
+                    <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
+                      {selectionMode && (
+                        <td className="px-4 py-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedPayments.has(payment.id)}
+                            onChange={() => togglePaymentSelection(payment.id)}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </td>
+                      )}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div>
+                          <p className="text-sm text-gray-900">{formatDate(payment.payment_date)}</p>
+                          <p className="text-xs text-gray-400">{formatDateTime(payment.payment_date)}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div>
+                          <p className="font-medium text-gray-900">{payment.member_name}</p>
+                          <p className="text-xs text-gray-500">{payment.member_phone}</p>
+                          {payment.member_email && (
+                            <p className="text-xs text-gray-400">{payment.member_email}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <p className="text-sm font-semibold text-green-600">{formatCurrency(payment.amount)}</p>
+                        {payment.gst_amount > 0 && (
+                          <p className="text-xs text-purple-500">GST: {formatCurrency(payment.gst_amount)}</p>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-lg">{getPaymentMethodIcon(payment.payment_method)}</span>
+                          <span className="text-sm text-gray-700 capitalize">{payment.payment_method || 'N/A'}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${typeInfo.color}`}>
+                          {typeInfo.label}
+                        </span>
+                        {payment.addon_name && (
+                          <span className="text-xs text-gray-400 block mt-0.5">({payment.addon_name})</span>
+                        )}
+                        {payment.is_balance_payment && (
+                          <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full block mt-0.5">Balance</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getStatusBadge(payment.status)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <button
+                          onClick={() => handleSingleDelete(payment.id, payment.amount, payment.member_name)}
+                          disabled={deleting}
+                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                          title="Delete payment"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-        
-        {filteredPayments.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <CreditCard className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No payments found</h3>
-            <p className="text-gray-500">
-              {payments.length === 0 
-                ? 'No payment records found in the system.' 
-                : 'No payments recorded in the selected date range.'}
-            </p>
-            {payments.length === 0 ? (
-              <button
-                onClick={() => fetchPayments()}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+
+        {/* Pagination */}
+        {!loading && filteredPayments.length > 0 && (
+          <div className="px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm text-gray-700">
+              Showing <span className="font-medium">{startIndex + 1}</span> to{' '}
+              <span className="font-medium">{endIndex}</span> of{' '}
+              <span className="font-medium">{filteredPayments.length}</span> payments
+            </div>
+            <div className="flex items-center space-x-2">
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Refresh
+                <ChevronLeft className="h-4 w-4" />
               </button>
-            ) : (
-              <button
-                onClick={() => {
-                  const today = new Date();
-                  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-                  setStartDate(firstDayOfMonth.toISOString().split('T')[0]);
-                  setEndDate(today.toISOString().split('T')[0]);
-                }}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              <span className="text-sm text-gray-700">
+                Page <span className="font-medium">{currentPage}</span> of{' '}
+                <span className="font-medium">{totalPages}</span>
+              </span>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Reset to current month
+                <ChevronRight className="h-4 w-4" />
               </button>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filteredPayments.map(payment => renderPaymentCard(payment))}
+            </div>
           </div>
         )}
       </div>
