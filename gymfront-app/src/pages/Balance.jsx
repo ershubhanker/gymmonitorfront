@@ -122,12 +122,18 @@ const Balance = () => {
     }
   };
   
-
   const formatDateTime = (dateString) => {
     if (!dateString) return '';
     try {
-      const date = new Date(dateString);
+      // If it's already a Date object, use it directly
+      let date = dateString;
+      if (typeof dateString === 'string') {
+        date = new Date(dateString);
+      }
+      
       if (isNaN(date.getTime())) return '';
+      
+      // Format in IST
       return date.toLocaleString('en-IN', {
         timeZone: 'Asia/Kolkata',
         day: 'numeric',
@@ -142,7 +148,6 @@ const Balance = () => {
       return '';
     }
   };
-  
 
   const fetchBalanceData = async () => {
     setLoading(true);
@@ -189,180 +194,6 @@ const Balance = () => {
   useEffect(() => {
     fetchBalanceData();
   }, [searchTerm, showPaidOnly]);
-
-  // ===== EXPORT TO EXCEL =====
-  const handleExportToExcel = async () => {
-    setExporting(true);
-    try {
-      toast.loading('Preparing balance report...', { id: 'export' });
-      
-      // Fetch all members (without pagination) for the selected date range
-      const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
-      if (!showPaidOnly) params.append('has_balance', 'true');
-      params.append('limit', '10000'); // Get all records
-      
-      const response = await api.get(`/gym/members/balances?${params.toString()}`);
-      let allMembers = response.data || [];
-      
-      // Filter by date range if selected
-      if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        
-        allMembers = allMembers.filter(m => {
-          const joinDate = m.start_date ? new Date(m.start_date) : null;
-          if (!joinDate) return true;
-          return joinDate >= start && joinDate <= end;
-        });
-      }
-      
-      if (allMembers.length === 0) {
-        toast.dismiss('export');
-        toast.info('No data to export for the selected date range');
-        setExporting(false);
-        return;
-      }
-      
-      // Prepare data for Excel
-      const excelData = allMembers.map((member, index) => ({
-        'S.No': index + 1,
-        'Member ID': member.member_id || '',
-        'Member Name': member.member_name || '',
-        'Phone': member.member_phone || '',
-        'Email': member.member_email || '',
-        'Plan': member.plan_name || '',
-        'Start Date': member.start_date ? formatDate(member.start_date) : '',
-        'End Date': member.end_date ? formatDate(member.end_date) : '',
-        'Membership Balance (₹)': member.balance_due || 0,
-        'PT Balance (₹)': member.pt_balance || 0,
-        'Total Balance (₹)': (member.balance_due || 0) + (member.pt_balance || 0),
-        'Payment Status': member.payment_status || '',
-        'Next Payment Date': member.next_payment_date ? formatDate(member.next_payment_date) : '',
-        'Last Payment Date': member.last_payment_date ? formatDate(member.last_payment_date) : '',
-        'Has PT Balance': member.has_pt_balance ? 'Yes' : 'No',
-      }));
-      
-      // Add summary row
-      const totalMembershipBalance = allMembers.reduce((sum, m) => sum + (m.balance_due || 0), 0);
-      const totalPtBalance = allMembers.reduce((sum, m) => sum + (m.pt_balance || 0), 0);
-      const totalBalance = totalMembershipBalance + totalPtBalance;
-      
-      excelData.push({
-        'S.No': '',
-        'Member ID': '',
-        'Member Name': '',
-        'Phone': '',
-        'Email': '',
-        'Plan': '',
-        'Start Date': '',
-        'End Date': '',
-        'Membership Balance (₹)': '',
-        'PT Balance (₹)': '',
-        'Total Balance (₹)': '',
-        'Payment Status': '',
-        'Next Payment Date': '',
-        'Last Payment Date': '',
-        'Has PT Balance': ''
-      });
-      
-      excelData.push({
-        'S.No': 'TOTAL',
-        'Member ID': '',
-        'Member Name': '',
-        'Phone': '',
-        'Email': '',
-        'Plan': '',
-        'Start Date': '',
-        'End Date': '',
-        'Membership Balance (₹)': totalMembershipBalance,
-        'PT Balance (₹)': totalPtBalance,
-        'Total Balance (₹)': totalBalance,
-        'Payment Status': '',
-        'Next Payment Date': '',
-        'Last Payment Date': '',
-        'Has PT Balance': ''
-      });
-      
-      // Create workbook
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(excelData);
-      
-      // Set column widths
-      const colWidths = [
-        { wch: 8 },   // S.No
-        { wch: 12 },  // Member ID
-        { wch: 25 },  // Member Name
-        { wch: 15 },  // Phone
-        { wch: 25 },  // Email
-        { wch: 20 },  // Plan
-        { wch: 15 },  // Start Date
-        { wch: 15 },  // End Date
-        { wch: 20 },  // Membership Balance
-        { wch: 15 },  // PT Balance
-        { wch: 18 },  // Total Balance
-        { wch: 15 },  // Payment Status
-        { wch: 18 },  // Next Payment Date
-        { wch: 18 },  // Last Payment Date
-        { wch: 15 },  // Has PT Balance
-      ];
-      ws['!cols'] = colWidths;
-      
-      // Style the header row
-      const headerRow = XLSX.utils.sheet_to_json(ws, { header: 1 })[0];
-      if (headerRow) {
-        // You can add styling here if needed
-      }
-      
-      XLSX.utils.book_append_sheet(wb, ws, 'Balance Report');
-      
-      // Add a summary sheet
-      const summaryData = [
-        ['Balance Report Summary'],
-        [''],
-        ['Generated On', new Date().toLocaleString('en-IN')],
-        ['Date Range', startDate && endDate ? `${formatDate(startDate)} to ${formatDate(endDate)}` : 'All Time'],
-        [''],
-        ['Total Members', allMembers.length],
-        ['Total Membership Balance', totalMembershipBalance],
-        ['Total PT Balance', totalPtBalance],
-        ['Total Balance Due', totalBalance],
-        ['Members with Balance', allMembers.filter(m => (m.balance_due || 0) + (m.pt_balance || 0) > 0).length],
-        ['Members with PT Balance', allMembers.filter(m => (m.pt_balance || 0) > 0).length],
-        [''],
-        ['Currency', currencySymbol],
-        ['Exported By', user?.full_name || user?.username || 'System'],
-      ];
-      
-      const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-      wsSummary['!cols'] = [{ wch: 25 }, { wch: 30 }];
-      XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
-      
-      // Generate Excel file
-      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([wbout], { type: 'application/octet-stream' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      const dateStr = new Date().toISOString().split('T')[0];
-      link.download = `Balance_Report_${dateStr}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      toast.dismiss('export');
-      toast.success(`Exported ${allMembers.length} members to Excel!`);
-      
-    } catch (error) {
-      console.error('Export error:', error);
-      toast.dismiss('export');
-      toast.error('Failed to export balance report');
-    } finally {
-      setExporting(false);
-    }
-  };
 
   // ===== Fetch payment history for a member =====
   const fetchPaymentHistory = async (memberId) => {
@@ -429,16 +260,24 @@ const Balance = () => {
         historyData = [];
       }
       
-      const formattedHistory = historyData.map(item => ({
-        id: item.id || `payment_${Date.now()}_${Math.random()}`,
-        amount: item.amount || item.paid_amount || item.payment_amount || 0,
-        payment_method: item.payment_method || item.method || 'N/A',
-        payment_date: item.payment_date || item.created_at || item.transaction_date || new Date().toISOString(),
-        notes: item.notes || item.remarks || item.description || '',
-        status: item.status || 'completed'
-      }));
+      const formattedHistory = historyData.map(item => {
+        const rawDate = item.payment_date || item.created_at || item.transaction_date || new Date().toISOString();
+        
+        return {
+          id: item.id || `payment_${Date.now()}_${Math.random()}`,
+          amount: item.amount || item.paid_amount || item.payment_amount || 0,
+          payment_method: item.payment_method || item.method || 'N/A',
+          payment_date: rawDate,
+          notes: item.notes || item.remarks || item.description || '',
+          status: item.status || 'completed'
+        };
+      });
       
-      formattedHistory.sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date));
+      formattedHistory.sort((a, b) => {
+        const dateA = new Date(a.payment_date);
+        const dateB = new Date(b.payment_date);
+        return dateB - dateA;
+      });
       
       setPaymentHistory(formattedHistory);
       
@@ -506,200 +345,196 @@ const Balance = () => {
     parseFloat(paymentAmount) > 0 &&
     parseFloat(paymentAmount) >= getTotalBalance(selectedMember);
 
-    const handlePartialPayment = async (member) => {
-      setErrorDetails(null);
-      
-      const amount = parseFloat(paymentAmount);
-      if (isNaN(amount) || amount <= 0) {
-        toast.error('Please enter a valid amount greater than 0');
-        return;
+  const handlePartialPayment = async (member) => {
+    setErrorDetails(null);
+    
+    const amount = parseFloat(paymentAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount greater than 0');
+      return;
+    }
+    
+    const totalBalance = getTotalBalance(member);
+    if (amount > totalBalance) {
+      toast.error(`Payment amount cannot exceed total balance of ${formatCurrency(totalBalance)}`);
+      return;
+    }
+    
+    setProcessingPayment(true);
+    
+    try {
+      let paymentDateTime;
+      if (paymentDate) {
+        const dateParts = paymentDate.split('-').map(Number);
+        const now = new Date();
+        paymentDateTime = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], now.getHours(), now.getMinutes(), now.getSeconds());
+      } else {
+        paymentDateTime = new Date();
       }
       
-      const totalBalance = getTotalBalance(member);
-      if (amount > totalBalance) {
-        toast.error(`Payment amount cannot exceed total balance of ${formatCurrency(totalBalance)}`);
-        return;
-      }
+      console.log('Payment date time (local):', paymentDateTime.toString());
+      console.log('Payment date time (ISO):', paymentDateTime.toISOString());
       
-      setProcessingPayment(true);
+      const allocation = calculateAllocation(amount, member);
+      let membershipPaymentAmount = allocation.membership;
+      let ptPaymentAmount = allocation.pt;
       
-      try {
-        let paymentDateTime;
-        if (paymentDate) {
-          // Parse the date from input (YYYY-MM-DD) and set to current time in IST
-          const dateParts = paymentDate.split('-').map(Number);
-          const now = new Date();
-          // Create date with the selected date but current time in local timezone
-          paymentDateTime = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], now.getHours(), now.getMinutes(), now.getSeconds());
-        } else {
-          paymentDateTime = new Date(); // Local time
-        }
-        
-        // Log the local time for debugging
-        console.log('Payment date time (local):', paymentDateTime.toString());
-        console.log('Payment date time (ISO):', paymentDateTime.toISOString());
-        
-        const allocation = calculateAllocation(amount, member);
-        let membershipPaymentAmount = allocation.membership;
-        let ptPaymentAmount = allocation.pt;
-        
-        console.log('Payment allocation:', { membershipPaymentAmount, ptPaymentAmount });
-        console.log('Member balances:', { 
-          membershipBalance: member.balance_due, 
-          ptBalance: member.pt_balance 
-        });
-        
-        let membershipPaymentSuccess = false;
-        let ptPaymentSuccess = false;
-        let errorMessages = [];
-        
-        if (membershipPaymentAmount > 0 && member.membership_id) {
-          try {
-            const response = await api.post(`/gym/memberships/${member.membership_id}/partial-payment`, {
-              membership_id: member.membership_id,
-              amount: membershipPaymentAmount,
-              payment_method: paymentMethod,
-              notes: paymentNotes || 'Membership payment',
-              payment_date: paymentDateTime.toISOString() // Send as ISO string
-            });
-            console.log('Membership payment response:', response.data);
-            membershipPaymentSuccess = true;
-          } catch (membershipError) {
-            console.error('Membership payment failed:', membershipError);
-            errorMessages.push('Failed to record membership payment');
-          }
-        } else if (member.balance_due === 0 && member.membership_id) {
+      console.log('Payment allocation:', { membershipPaymentAmount, ptPaymentAmount });
+      console.log('Member balances:', { 
+        membershipBalance: member.balance_due, 
+        ptBalance: member.pt_balance 
+      });
+      
+      let membershipPaymentSuccess = false;
+      let ptPaymentSuccess = false;
+      let errorMessages = [];
+      
+      if (membershipPaymentAmount > 0 && member.membership_id) {
+        try {
+          const response = await api.post(`/gym/memberships/${member.membership_id}/partial-payment`, {
+            membership_id: member.membership_id,
+            amount: membershipPaymentAmount,
+            payment_method: paymentMethod,
+            notes: paymentNotes || 'Membership payment',
+            payment_date: paymentDateTime.toISOString()
+          });
+          console.log('Membership payment response:', response.data);
           membershipPaymentSuccess = true;
-          console.log('Membership balance is already 0, skipping membership payment');
+        } catch (membershipError) {
+          console.error('Membership payment failed:', membershipError);
+          errorMessages.push('Failed to record membership payment');
         }
-        
-        if (ptPaymentAmount > 0 && member.pt_session_id) {
-          try {
-            const response = await api.post(`/gym/personal-training/${member.pt_session_id}/payment`, {
-              amount: ptPaymentAmount,
-              payment_method: paymentMethod,
-              notes: paymentNotes || 'PT payment',
-              payment_date: paymentDateTime.toISOString() // Send as ISO string
-            });
-            console.log('PT payment response:', response.data);
-            ptPaymentSuccess = true;
-          } catch (ptError) {
-            console.error('PT payment failed:', ptError);
-            errorMessages.push('Failed to record PT payment');
-          }
-        } else if (member.pt_balance === 0 && member.pt_session_id) {
+      } else if (member.balance_due === 0 && member.membership_id) {
+        membershipPaymentSuccess = true;
+        console.log('Membership balance is already 0, skipping membership payment');
+      }
+      
+      if (ptPaymentAmount > 0 && member.pt_session_id) {
+        try {
+          const response = await api.post(`/gym/personal-training/${member.pt_session_id}/payment`, {
+            amount: ptPaymentAmount,
+            payment_method: paymentMethod,
+            notes: paymentNotes || 'PT payment',
+            payment_date: paymentDateTime.toISOString()
+          });
+          console.log('PT payment response:', response.data);
           ptPaymentSuccess = true;
-          console.log('PT balance is already 0, skipping PT payment');
+        } catch (ptError) {
+          console.error('PT payment failed:', ptError);
+          errorMessages.push('Failed to record PT payment');
         }
-        
-        if (!membershipPaymentSuccess && !ptPaymentSuccess) {
-          const errorMsg = errorMessages.join('; ') || 'No payment was processed';
-          toast.error(errorMsg);
-          setProcessingPayment(false);
-          return;
-        }
-        
-        const remainingBalance = totalBalance - amount;
-        const isFull = amount >= totalBalance;
-        
-        // Format the payment date for display in IST
-        const displayDateTime = paymentDateTime.toLocaleString('en-IN', {
-          timeZone: 'Asia/Kolkata',
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true
-        });
-        
-        let successMessage = (
-          <div>
-            <p className="font-bold">✓ Payment Recorded Successfully!</p>
-            <p className="text-sm mt-1">Amount: {formatCurrency(amount)}</p>
-            <p className="text-sm text-gray-600">Date: {displayDateTime}</p>
-          </div>
-        );
-        
-        if (membershipPaymentAmount > 0) {
-          successMessage = (
-            <>
-              {successMessage}
-              <p className="text-sm text-blue-600">Membership: {formatCurrency(membershipPaymentAmount)}</p>
-            </>
-          );
-        }
-        
-        if (ptPaymentAmount > 0) {
-          successMessage = (
-            <>
-              {successMessage}
-              <p className="text-sm text-purple-600">PT: {formatCurrency(ptPaymentAmount)}</p>
-            </>
-          );
-        }
-        
+      } else if (member.pt_balance === 0 && member.pt_session_id) {
+        ptPaymentSuccess = true;
+        console.log('PT balance is already 0, skipping PT payment');
+      }
+      
+      if (!membershipPaymentSuccess && !ptPaymentSuccess) {
+        const errorMsg = errorMessages.join('; ') || 'No payment was processed';
+        toast.error(errorMsg);
+        setProcessingPayment(false);
+        return;
+      }
+      
+      const remainingBalance = totalBalance - amount;
+      const isFull = amount >= totalBalance;
+      
+      const displayDateTime = paymentDateTime.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+      
+      let successMessage = (
+        <div>
+          <p className="font-bold">✓ Payment Recorded Successfully!</p>
+          <p className="text-sm mt-1">Amount: {formatCurrency(amount)}</p>
+          <p className="text-sm text-gray-600">Date: {displayDateTime}</p>
+        </div>
+      );
+      
+      if (membershipPaymentAmount > 0) {
         successMessage = (
           <>
             {successMessage}
-            {isFull && <p className="text-sm text-green-600">All balances cleared!</p>}
-            {!isFull && (
-              <p className="text-sm text-amber-600">Remaining balance: {formatCurrency(remainingBalance)}</p>
-            )}
+            <p className="text-sm text-blue-600">Membership: {formatCurrency(membershipPaymentAmount)}</p>
           </>
         );
-        
-        toast.success(successMessage, { duration: 5000 });
-        
-        closeModal();
-        await fetchBalanceData();
-        
-      } catch (error) {
-        console.error('Payment error details:', error);
-        
-        let errorMessage = 'Failed to record payment';
-        let statusCode = error.response?.status;
-        let serverDetail = error.response?.data?.detail;
-        
-        if (statusCode === 401) {
-          errorMessage = 'Your session has expired. Please login again.';
-          setTimeout(() => {
-            window.location.href = '/login';
-          }, 2000);
-        } else if (statusCode === 403) {
-          errorMessage = 'You do not have permission to record payments';
-        } else if (statusCode === 404) {
-          errorMessage = 'Membership or PT session not found. Please refresh the page and try again.';
-        } else if (statusCode === 422) {
-          errorMessage = 'Validation error: ' + (serverDetail || 'Please check the payment details');
-        } else if (statusCode === 500) {
-          errorMessage = 'Server error. Please try again later.';
-        }
-        
-        if (serverDetail && typeof serverDetail === 'string') {
-          errorMessage = serverDetail;
-        } else if (error.response?.data?.message) {
-          errorMessage = error.response.data.message;
-        }
-        
-        toast.error(errorMessage);
-        
-        setErrorDetails({
-          status: statusCode,
-          message: serverDetail,
-          requestData: {
-            membership_id: member.membership_id,
-            pt_session_id: member.pt_session_id,
-            amount: amount,
-            payment_method: paymentMethod,
-            payment_date: paymentDate
-          }
-        });
-        
-      } finally {
-        setProcessingPayment(false);
       }
-    };
+      
+      if (ptPaymentAmount > 0) {
+        successMessage = (
+          <>
+            {successMessage}
+            <p className="text-sm text-purple-600">PT: {formatCurrency(ptPaymentAmount)}</p>
+          </>
+        );
+      }
+      
+      successMessage = (
+        <>
+          {successMessage}
+          {isFull && <p className="text-sm text-green-600">All balances cleared!</p>}
+          {!isFull && (
+            <p className="text-sm text-amber-600">Remaining balance: {formatCurrency(remainingBalance)}</p>
+          )}
+        </>
+      );
+      
+      toast.success(successMessage, { duration: 5000 });
+      
+      closeModal();
+      await fetchBalanceData();
+      
+    } catch (error) {
+      console.error('Payment error details:', error);
+      
+      let errorMessage = 'Failed to record payment';
+      let statusCode = error.response?.status;
+      let serverDetail = error.response?.data?.detail;
+      
+      if (statusCode === 401) {
+        errorMessage = 'Your session has expired. Please login again.';
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 2000);
+      } else if (statusCode === 403) {
+        errorMessage = 'You do not have permission to record payments';
+      } else if (statusCode === 404) {
+        errorMessage = 'Membership or PT session not found. Please refresh the page and try again.';
+      } else if (statusCode === 422) {
+        errorMessage = 'Validation error: ' + (serverDetail || 'Please check the payment details');
+      } else if (statusCode === 500) {
+        errorMessage = 'Server error. Please try again later.';
+      }
+      
+      if (serverDetail && typeof serverDetail === 'string') {
+        errorMessage = serverDetail;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
+      toast.error(errorMessage);
+      
+      setErrorDetails({
+        status: statusCode,
+        message: serverDetail,
+        requestData: {
+          membership_id: member.membership_id,
+          pt_session_id: member.pt_session_id,
+          amount: amount,
+          payment_method: paymentMethod,
+          payment_date: paymentDate
+        }
+      });
+      
+    } finally {
+      setProcessingPayment(false);
+    }
+  };
 
   const closeModal = () => {
     setShowPaymentModal(false);
@@ -875,6 +710,166 @@ const Balance = () => {
     suggestions.push(nextMonth);
     
     return suggestions;
+  };
+
+  // ===== EXPORT TO EXCEL =====
+  const handleExportToExcel = async () => {
+    setExporting(true);
+    try {
+      toast.loading('Preparing balance report...', { id: 'export' });
+      
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('search', searchTerm);
+      if (!showPaidOnly) params.append('has_balance', 'true');
+      params.append('limit', '10000');
+      
+      const response = await api.get(`/gym/members/balances?${params.toString()}`);
+      let allMembers = response.data || [];
+      
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        
+        allMembers = allMembers.filter(m => {
+          const joinDate = m.start_date ? new Date(m.start_date) : null;
+          if (!joinDate) return true;
+          return joinDate >= start && joinDate <= end;
+        });
+      }
+      
+      if (allMembers.length === 0) {
+        toast.dismiss('export');
+        toast.info('No data to export for the selected date range');
+        setExporting(false);
+        return;
+      }
+      
+      const excelData = allMembers.map((member, index) => ({
+        'S.No': index + 1,
+        'Member ID': member.member_id || '',
+        'Member Name': member.member_name || '',
+        'Phone': member.member_phone || '',
+        'Email': member.member_email || '',
+        'Plan': member.plan_name || '',
+        'Start Date': member.start_date ? formatDate(member.start_date) : '',
+        'End Date': member.end_date ? formatDate(member.end_date) : '',
+        'Membership Balance (₹)': member.balance_due || 0,
+        'PT Balance (₹)': member.pt_balance || 0,
+        'Total Balance (₹)': (member.balance_due || 0) + (member.pt_balance || 0),
+        'Payment Status': member.payment_status || '',
+        'Next Payment Date': member.next_payment_date ? formatDate(member.next_payment_date) : '',
+        'Last Payment Date': member.last_payment_date ? formatDate(member.last_payment_date) : '',
+        'Has PT Balance': member.has_pt_balance ? 'Yes' : 'No',
+      }));
+      
+      const totalMembershipBalance = allMembers.reduce((sum, m) => sum + (m.balance_due || 0), 0);
+      const totalPtBalance = allMembers.reduce((sum, m) => sum + (m.pt_balance || 0), 0);
+      const totalBalance = totalMembershipBalance + totalPtBalance;
+      
+      excelData.push({
+        'S.No': '',
+        'Member ID': '',
+        'Member Name': '',
+        'Phone': '',
+        'Email': '',
+        'Plan': '',
+        'Start Date': '',
+        'End Date': '',
+        'Membership Balance (₹)': '',
+        'PT Balance (₹)': '',
+        'Total Balance (₹)': '',
+        'Payment Status': '',
+        'Next Payment Date': '',
+        'Last Payment Date': '',
+        'Has PT Balance': ''
+      });
+      
+      excelData.push({
+        'S.No': 'TOTAL',
+        'Member ID': '',
+        'Member Name': '',
+        'Phone': '',
+        'Email': '',
+        'Plan': '',
+        'Start Date': '',
+        'End Date': '',
+        'Membership Balance (₹)': totalMembershipBalance,
+        'PT Balance (₹)': totalPtBalance,
+        'Total Balance (₹)': totalBalance,
+        'Payment Status': '',
+        'Next Payment Date': '',
+        'Last Payment Date': '',
+        'Has PT Balance': ''
+      });
+      
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      
+      const colWidths = [
+        { wch: 8 },   // S.No
+        { wch: 12 },  // Member ID
+        { wch: 25 },  // Member Name
+        { wch: 15 },  // Phone
+        { wch: 25 },  // Email
+        { wch: 20 },  // Plan
+        { wch: 15 },  // Start Date
+        { wch: 15 },  // End Date
+        { wch: 20 },  // Membership Balance
+        { wch: 15 },  // PT Balance
+        { wch: 18 },  // Total Balance
+        { wch: 15 },  // Payment Status
+        { wch: 18 },  // Next Payment Date
+        { wch: 18 },  // Last Payment Date
+        { wch: 15 },  // Has PT Balance
+      ];
+      ws['!cols'] = colWidths;
+      
+      XLSX.utils.book_append_sheet(wb, ws, 'Balance Report');
+      
+      const summaryData = [
+        ['Balance Report Summary'],
+        [''],
+        ['Generated On', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })],
+        ['Date Range', startDate && endDate ? `${formatDate(startDate)} to ${formatDate(endDate)}` : 'All Time'],
+        [''],
+        ['Total Members', allMembers.length],
+        ['Total Membership Balance', totalMembershipBalance],
+        ['Total PT Balance', totalPtBalance],
+        ['Total Balance Due', totalBalance],
+        ['Members with Balance', allMembers.filter(m => (m.balance_due || 0) + (m.pt_balance || 0) > 0).length],
+        ['Members with PT Balance', allMembers.filter(m => (m.pt_balance || 0) > 0).length],
+        [''],
+        ['Currency', currencySymbol],
+        ['Exported By', user?.full_name || user?.username || 'System'],
+      ];
+      
+      const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+      wsSummary['!cols'] = [{ wch: 25 }, { wch: 30 }];
+      XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+      
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/octet-stream' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.download = `Balance_Report_${dateStr}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.dismiss('export');
+      toast.success(`Exported ${allMembers.length} members to Excel!`);
+      
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.dismiss('export');
+      toast.error('Failed to export balance report');
+    } finally {
+      setExporting(false);
+    }
   };
 
   // Pagination calculations
