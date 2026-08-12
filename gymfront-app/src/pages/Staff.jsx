@@ -1,4 +1,4 @@
-// src/pages/Staff.jsx - FULL UPDATED WITH FIXED IMAGE DISPLAY
+// src/pages/Staff.jsx - FULL UPDATED WITH EMAIL EDITING
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Search, UserPlus, Edit, Trash2, Phone, Mail,
@@ -542,17 +542,13 @@ const ShiftEditor = ({ shiftSlots, shiftStartTime, shiftEndTime, shiftDays, brea
 // ─── HELPER: Get full image URL ──────────────────────────────────────────────
 const getFullImageUrl = (imageUrl) => {
   if (!imageUrl) return null;
-  // If it's already a full URL (starts with http), return as is
   if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
     return imageUrl;
   }
-  // If it's a relative URL starting with /static, prepend the API base URL
   if (imageUrl.startsWith('/static/')) {
-    // Get the base URL from the API service
     const baseUrl = api.defaults.baseURL || '';
     return `${baseUrl}${imageUrl}`;
   }
-  // If it's a relative path without /static, prepend /static
   if (!imageUrl.startsWith('/')) {
     const baseUrl = api.defaults.baseURL || '';
     return `${baseUrl}/static/${imageUrl}`;
@@ -571,6 +567,7 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [errors, setErrors] = useState({});
   const fileInputRef = useRef(null);
   const today = new Date().toISOString().split('T')[0];
 
@@ -592,12 +589,35 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
         shift_slots: staff.shift_slots || '',
         shift_slots_parsed: parsedSlots,
         profile_image: staff.profile_image || null,
+        full_name: staff.user?.full_name || '',
+        email: staff.user?.email || '',
+        phone: staff.user?.phone || '',
       });
       setImageError(false);
+      setErrors({});
     }
   }, [staff]);
 
   if (!staff) return null;
+
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Email is invalid';
+    }
+    
+    if (formData.full_name && formData.full_name.length < 3) {
+      newErrors.full_name = 'Name must be at least 3 characters';
+    }
+    
+    if (formData.phone && !/^[+]?[\d\s\-]{7,15}$/.test(formData.phone.trim())) {
+      newErrors.phone = 'Enter a valid phone number (e.g. +91-9876543210)';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleShiftChange = (shiftData) => {
     setFormData(prev => ({
@@ -673,10 +693,17 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      toast.error('Please fix the errors in the form');
+      return;
+    }
+    
     setSaving(true);
     try {
       const isActive = formData.status === 'active' ? true : false;
       
+      // Update staff with all fields including user fields
       await api.put(`/gym/staff/${staff.id}`, {
         position: formData.position,
         salary: formData.salary ? parseFloat(formData.salary) : null,
@@ -689,6 +716,10 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
         shift_days: formData.shift_days || null,
         break_duration: formData.break_duration ? parseInt(formData.break_duration) : null,
         shift_slots: formData.shift_slots || null,
+        // User fields
+        full_name: formData.full_name,
+        email: formData.email,
+        phone: formData.phone,
       });
       
       toast.success('Staff updated successfully!');
@@ -696,7 +727,8 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
       onUpdate();
     } catch (error) {
       console.error('Error updating staff:', error);
-      toast.error(error.response?.data?.detail || 'Failed to update staff');
+      const errorMsg = error.response?.data?.detail || 'Failed to update staff';
+      toast.error(errorMsg);
     } finally {
       setSaving(false);
     }
@@ -765,17 +797,14 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
   const deviceUserId = staff.device_user_id;
   const salaryValue = staff.salary || staff.salary_amount || staff.monthly_salary || 0;
 
-  // ✅ FIX: Get the full image URL using the helper function
   const rawProfileImage = formData.profile_image || staff.profile_image || staff.user?.profile_image;
   const profileImageUrl = rawProfileImage ? getFullImageUrl(rawProfileImage) : null;
-  const avatarUrl = `https://ui-avatars.com/api/?name=${staff.user?.full_name || staff.id}&background=0D9488&color=fff&size=200`;
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white z-10 border-b px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {/* Profile Image with click to enlarge */}
             <div className="relative group">
               <div 
                 className={`h-14 w-14 rounded-full flex items-center justify-center cursor-pointer overflow-hidden ${
@@ -898,6 +927,86 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
           {isEditing ? (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Full Name - Editable */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      type="text"
+                      required
+                      value={formData.full_name}
+                      onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                      className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition ${
+                        errors.full_name ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                      }`}
+                      placeholder="John Doe"
+                      disabled={saving}
+                    />
+                  </div>
+                  {errors.full_name && (
+                    <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.full_name}
+                    </p>
+                  )}
+                </div>
+
+                {/* Email - Editable */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      type="email"
+                      required
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition ${
+                        errors.email ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                      }`}
+                      placeholder="staff@gym.com"
+                      disabled={saving}
+                    />
+                  </div>
+                  {errors.email && (
+                    <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.email}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-400 mt-1">Changing email will update staff's login credentials</p>
+                </div>
+
+                {/* Phone - Editable */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      type="tel"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      onKeyDown={(e) => {
+                        const nav = new Set(['Backspace','Delete','Tab','Escape','Enter','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End']);
+                        if (!e.ctrlKey && !e.metaKey && !nav.has(e.key) && !/^[0-9+\- ]$/.test(e.key)) e.preventDefault();
+                      }}
+                      maxLength={15}
+                      className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition ${
+                        errors.phone ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                      }`}
+                      placeholder="+91 98765 43210"
+                      disabled={saving}
+                    />
+                  </div>
+                  {errors.phone && (
+                    <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.phone}
+                    </p>
+                  )}
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Position *</label>
                   <select
@@ -905,6 +1014,7 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                     value={formData.position}
                     onChange={(e) => setFormData({ ...formData, position: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    disabled={saving}
                   >
                     <option value="">Select Position</option>
                     {ALL_POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
@@ -917,6 +1027,7 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    disabled={saving}
                   >
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
@@ -930,6 +1041,7 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                     value={formData.hireDate}
                     onChange={(e) => setFormData({ ...formData, hireDate: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    disabled={saving}
                   />
                 </div>
 
@@ -954,6 +1066,7 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                       onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
                       className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                       placeholder="Enter salary"
+                      disabled={saving}
                     />
                   </div>
                 </div>
@@ -966,6 +1079,7 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                     rows="2"
                     placeholder="e.g., HIIT, Yoga, Strength Training, Nutrition"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    disabled={saving}
                   />
                 </div>
 
@@ -1002,10 +1116,15 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                       shift_slots: staff.shift_slots || '',
                       shift_slots_parsed: parsedSlots,
                       profile_image: staff.profile_image || null,
+                      full_name: staff.user?.full_name || '',
+                      email: staff.user?.email || '',
+                      phone: staff.user?.phone || '',
                     });
                     setImageError(false);
+                    setErrors({});
                   }}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                  disabled={saving}
                 >
                   Cancel
                 </button>
@@ -1087,6 +1206,10 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                   <div>
+                    <p className="text-xs text-gray-400">Full Name</p>
+                    <p className="text-sm font-medium text-gray-900">{staff.user?.full_name || '—'}</p>
+                  </div>
+                  <div>
                     <p className="text-xs text-gray-400">Username</p>
                     <p className="text-sm font-medium text-gray-900">@{staff.user?.username || '—'}</p>
                   </div>
@@ -1160,7 +1283,6 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
         </div>
       </div>
 
-      {/* Image Viewer Modal */}
       {imageViewerOpen && profileImageUrl && (
         <ImageViewerModal
           imageUrl={profileImageUrl}
@@ -1169,7 +1291,6 @@ const StaffProfileModal = ({ staff, onClose, onUpdate, devices = [], onSyncToDev
         />
       )}
 
-      {/* Salary Calculator Modal */}
       {showSalaryCalculator && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto">
@@ -1199,11 +1320,15 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
     shift_days: '',
     break_duration: '',
     shift_slots: '',
+    full_name: '',
+    email: '',
+    phone: '',
   });
 
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
+  const [errors, setErrors] = useState({});
   const today = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
@@ -1220,7 +1345,11 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
         shift_days: staff.shift_days || '',
         break_duration: staff.break_duration?.toString() || '',
         shift_slots: staff.shift_slots || '',
+        full_name: staff.user?.full_name || '',
+        email: staff.user?.email || '',
+        phone: staff.user?.phone || '',
       });
+      setErrors({});
     }
   }, [staff]);
 
@@ -1237,10 +1366,49 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
     }));
   };
 
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!formData.full_name.trim()) {
+      newErrors.full_name = 'Full name is required';
+    } else if (formData.full_name.length < 3) {
+      newErrors.full_name = 'Name must be at least 3 characters';
+    }
+    
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Email is invalid';
+    }
+    
+    if (formData.phone && !/^[+]?[\d\s\-]{7,15}$/.test(formData.phone.trim())) {
+      newErrors.phone = 'Enter a valid phone number (e.g. +91-9876543210)';
+    }
+    
+    if (!formData.position) {
+      newErrors.position = 'Position is required';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      toast.error('Please fix the errors in the form');
+      return;
+    }
+    
     setSaving(true);
     try {
+      // Update the staff record. The backend's PUT /gym/staff/{id}
+      // endpoint updates both the staff row AND the linked user's
+      // full_name / email / phone in a single call, so there's no
+      // separate /users/{id} request needed here (that endpoint
+      // doesn't exist on the backend, which is why saves were
+      // failing with "method not found").
       await onSave(staff.id, formData);
       onClose();
     } catch (error) {
@@ -1287,16 +1455,92 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Full Name - Editable */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Staff Name
+              Full Name <span className="text-red-500">*</span>
             </label>
-            <input
-              type="text"
-              value={staff?.user?.full_name || ''}
-              disabled
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
-            />
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                required
+                value={formData.full_name}
+                onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition ${
+                  errors.full_name ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                }`}
+                placeholder="John Doe"
+                disabled={saving}
+              />
+            </div>
+            {errors.full_name && (
+              <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {errors.full_name}
+              </p>
+            )}
+          </div>
+
+          {/* Email - Editable */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Email Address <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition ${
+                  errors.email ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                }`}
+                placeholder="staff@gym.com"
+                disabled={saving}
+              />
+            </div>
+            {errors.email && (
+              <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {errors.email}
+              </p>
+            )}
+            <p className="text-xs text-gray-400 mt-1">
+              Changing email will update the staff's login credentials.
+            </p>
+          </div>
+
+          {/* Phone - Editable */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Phone Number
+            </label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                onKeyDown={(e) => {
+                  const nav = new Set(['Backspace','Delete','Tab','Escape','Enter','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End']);
+                  if (!e.ctrlKey && !e.metaKey && !nav.has(e.key) && !/^[0-9+\- ]$/.test(e.key)) e.preventDefault();
+                }}
+                maxLength={15}
+                className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition ${
+                  errors.phone ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                }`}
+                placeholder="+91 98765 43210"
+                disabled={saving}
+              />
+            </div>
+            {errors.phone && (
+              <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {errors.phone}
+              </p>
+            )}
           </div>
 
           <div>
@@ -1308,6 +1552,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
               value={formData.position}
               onChange={(e) => setFormData({ ...formData, position: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              disabled={saving}
             >
               <option value="">Select Position</option>
               {ALL_POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
@@ -1321,6 +1566,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
               value={formData.hireDate}
               onChange={(e) => setFormData({ ...formData, hireDate: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              disabled={saving}
             />
           </div>
 
@@ -1339,10 +1585,13 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₹</span>
               <input
                 type="number"
+                min="0"
+                step="100"
                 value={formData.salary}
                 onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
                 className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                 placeholder="0"
+                disabled={saving}
               />
             </div>
           </div>
@@ -1355,6 +1604,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
               rows="3"
               placeholder="e.g., HIIT, Yoga, Strength Training"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              disabled={saving}
             />
           </div>
 
@@ -1364,6 +1614,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              disabled={saving}
             >
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
@@ -1396,6 +1647,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
                   value={selectedDeviceId}
                   onChange={(e) => setSelectedDeviceId(e.target.value)}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                  disabled={saving || syncing}
                 >
                   <option value="">Select Device</option>
                   {devices.map(device => (
@@ -1407,7 +1659,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
                 <button
                   type="button"
                   onClick={handleSyncToDevice}
-                  disabled={syncing || !selectedDeviceId}
+                  disabled={syncing || !selectedDeviceId || saving}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
@@ -1427,6 +1679,7 @@ const StaffEditModal = ({ isOpen, onClose, onSave, staff = null, devices = [], o
               type="button"
               onClick={onClose}
               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              disabled={saving}
             >
               Cancel
             </button>
@@ -1795,6 +2048,11 @@ const Staff = () => {
         shift_days: formData.shift_days || null,
         break_duration: formData.break_duration ? parseInt(formData.break_duration) : null,
         shift_slots: formData.shift_slots || null,
+        // User fields — handled by the backend's PUT /gym/staff/{id}
+        // endpoint directly, no separate /users/{id} call needed.
+        full_name: formData.full_name,
+        email: formData.email,
+        phone: formData.phone,
       });
       toast.success('Staff updated successfully!');
       fetchStaff();
@@ -1936,7 +2194,6 @@ const Staff = () => {
     return 'bg-gray-100 text-gray-800';
   };
 
-  // Helper to get full image URL for staff list
   const getStaffImageUrl = (staff) => {
     const image = staff.profile_image || staff.user?.profile_image;
     if (!image) return null;

@@ -4,62 +4,157 @@ import { X, Shield, Check, ChevronDown, ChevronRight, Loader2 } from 'lucide-rea
 import toast from 'react-hot-toast';
 import api from '../services/api';
 
+// ─── DEFAULT PERMISSIONS (fallback if API fails) ──────────────────────────
+const DEFAULT_PERMISSION_GROUPS = {
+  'Member Management': [
+    { id: 'view_members', label: 'View Members', description: 'View list of all members' },
+    { id: 'add_member', label: 'Add Member', description: 'Create new member accounts' },
+    { id: 'edit_member', label: 'Edit Member', description: 'Update member information' },
+    { id: 'delete_member', label: 'Delete Member', description: 'Remove members from system' },
+    { id: 'view_member_profile', label: 'View Member Profile', description: 'View detailed member profiles' },
+    { id: 'export_members', label: 'Export Members', description: 'Export member data to CSV' },
+  ],
+  'Membership Management': [
+    { id: 'view_memberships', label: 'View Memberships', description: 'View membership plans and details' },
+    { id: 'create_membership', label: 'Create Membership', description: 'Assign membership to members' },
+    { id: 'renew_membership', label: 'Renew Membership', description: 'Renew existing memberships' },
+    { id: 'delete_membership', label: 'Delete Membership', description: 'Remove memberships' },
+  ],
+  'Payment Management': [
+    { id: 'view_payments', label: 'View Payments', description: 'View payment history' },
+    { id: 'create_payment', label: 'Create Payment', description: 'Record new payments' },
+    { id: 'delete_payment', label: 'Delete Payment', description: 'Remove payment records' },
+    { id: 'view_balances', label: 'View Balances', description: 'View member balance details' },
+  ],
+  'Staff Management': [
+    { id: 'view_staff', label: 'View Staff', description: 'View staff members list' },
+    { id: 'add_staff', label: 'Add Staff', description: 'Create new staff accounts' },
+    { id: 'edit_staff', label: 'Edit Staff', description: 'Update staff information' },
+    { id: 'delete_staff', label: 'Delete Staff', description: 'Remove staff members' },
+    { id: 'manage_staff_permissions', label: 'Manage Staff Permissions', description: 'Set permissions for staff' },
+  ],
+  'Attendance & Devices': [
+    { id: 'view_attendance', label: 'View Attendance', description: 'View attendance records' },
+    { id: 'mark_attendance', label: 'Mark Attendance', description: 'Mark member check-in/out' },
+    { id: 'view_devices', label: 'View Devices', description: 'View attendance devices' },
+    { id: 'manage_devices', label: 'Manage Devices', description: 'Add/Edit/Delete devices' },
+    { id: 'sync_to_device', label: 'Sync to Device', description: 'Sync members/staff to devices' },
+  ],
+  'Lead Management': [
+    { id: 'view_leads', label: 'View Leads', description: 'View all leads' },
+    { id: 'add_lead', label: 'Add Lead', description: 'Create new leads' },
+    { id: 'edit_lead', label: 'Edit Lead', description: 'Update lead information' },
+    { id: 'delete_lead', label: 'Delete Lead', description: 'Remove leads' },
+    { id: 'convert_lead', label: 'Convert Lead', description: 'Convert leads to members' },
+  ],
+  'Expense Management': [
+    { id: 'view_expenses', label: 'View Expenses', description: 'View expense records' },
+    { id: 'add_expense', label: 'Add Expense', description: 'Create new expenses' },
+    { id: 'edit_expense', label: 'Edit Expense', description: 'Update expense records' },
+    { id: 'delete_expense', label: 'Delete Expense', description: 'Remove expense records' },
+  ],
+  'Reports & Dashboard': [
+    { id: 'view_dashboard', label: 'View Dashboard', description: 'Access dashboard overview' },
+    { id: 'view_reports', label: 'View Reports', description: 'Access reports and analytics' },
+    { id: 'export_reports', label: 'Export Reports', description: 'Export report data' },
+  ],
+  'Settings': [
+    { id: 'view_settings', label: 'View Settings', description: 'View gym settings' },
+    { id: 'manage_settings', label: 'Manage Settings', description: 'Update gym settings' },
+  ],
+};
+
 const StaffPermissionsModal = ({ isOpen, onClose, staff, onUpdate }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedPermissions, setSelectedPermissions] = useState([]);
-  const [allPermissions, setAllPermissions] = useState([]);
+  const [permissionGroups, setPermissionGroups] = useState(DEFAULT_PERMISSION_GROUPS);
   const [expandedCategories, setExpandedCategories] = useState({});
-  const [permissionGroups, setPermissionGroups] = useState({});
+  const [allPermissionIds, setAllPermissionIds] = useState([]);
+  const [loadingError, setLoadingError] = useState(false);
+
+  // Initialize expanded categories
+  useEffect(() => {
+    const expanded = {};
+    Object.keys(DEFAULT_PERMISSION_GROUPS).forEach(key => {
+      expanded[key] = true;
+    });
+    setExpandedCategories(expanded);
+  }, []);
+
+  // Get all permission IDs from groups
+  useEffect(() => {
+    const ids = [];
+    Object.values(permissionGroups).forEach(group => {
+      group.forEach(perm => {
+        ids.push(perm.id);
+      });
+    });
+    setAllPermissionIds(ids);
+  }, [permissionGroups]);
 
   useEffect(() => {
     if (isOpen && staff) {
-      fetchPermissions();
       fetchAllPermissions();
+      fetchStaffPermissions();
     }
   }, [isOpen, staff]);
 
-  const fetchPermissions = async () => {
+  // ─── FETCH ALL AVAILABLE PERMISSIONS ────────────────────────────────────
+  const fetchAllPermissions = async () => {
+    try {
+      setLoadingError(false);
+      const response = await api.get('/gym/staff/permissions/all');
+      if (response.data && Object.keys(response.data).length > 0) {
+        setPermissionGroups(response.data);
+      } else {
+        // Use default if API returns empty
+        setPermissionGroups(DEFAULT_PERMISSION_GROUPS);
+      }
+    } catch (error) {
+      console.error('Error fetching all permissions:', error);
+      // Use default permissions as fallback
+      setPermissionGroups(DEFAULT_PERMISSION_GROUPS);
+      setLoadingError(true);
+      // Don't show toast error - just use defaults silently
+    }
+  };
+
+  // ─── FETCH STAFF'S CURRENT PERMISSIONS ──────────────────────────────────
+  const fetchStaffPermissions = async () => {
     if (!staff) return;
     setLoading(true);
+    
     try {
-      const response = await api.get(`/gym/staff/${staff.id}/permissions`);
-      setSelectedPermissions(response.data.permissions || []);
+      // Try to get permissions from the staff permissions table
+      const response = await api.get(`/gym/staff/${staff.id}/debug-permissions`);
+      
+      if (response.data && response.data.permissions) {
+        setSelectedPermissions(response.data.permissions);
+      } else {
+        // If no permissions found, start with empty array
+        setSelectedPermissions([]);
+      }
     } catch (error) {
       console.error('Error fetching staff permissions:', error);
-      toast.error('Failed to load staff permissions');
-      setSelectedPermissions([]);
+      // If the debug endpoint fails, try the main staff endpoint
+      try {
+        const staffResponse = await api.get(`/gym/staff/${staff.id}`);
+        if (staffResponse.data && staffResponse.data.permissions) {
+          setSelectedPermissions(staffResponse.data.permissions);
+        } else {
+          setSelectedPermissions([]);
+        }
+      } catch (staffError) {
+        console.error('Error fetching staff data:', staffError);
+        setSelectedPermissions([]);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchAllPermissions = async () => {
-    try {
-      const response = await api.get('/gym/staff/permissions/all');
-      setPermissionGroups(response.data || {});
-      
-      // Flatten all permissions for the list
-      const allPerms = [];
-      Object.values(response.data).forEach(group => {
-        group.forEach(perm => {
-          allPerms.push(perm.id);
-        });
-      });
-      setAllPermissions(allPerms);
-      
-      // Expand all categories by default
-      const expanded = {};
-      Object.keys(response.data).forEach(key => {
-        expanded[key] = true;
-      });
-      setExpandedCategories(expanded);
-    } catch (error) {
-      console.error('Error fetching all permissions:', error);
-      toast.error('Failed to load permission list');
-    }
-  };
-
+  // ─── TOGGLE CATEGORY ──────────────────────────────────────────────────────
   const toggleCategory = (categoryName) => {
     setExpandedCategories(prev => ({
       ...prev,
@@ -67,6 +162,7 @@ const StaffPermissionsModal = ({ isOpen, onClose, staff, onUpdate }) => {
     }));
   };
 
+  // ─── TOGGLE PERMISSION ──────────────────────────────────────────────────
   const togglePermission = (permissionId) => {
     setSelectedPermissions(prev => {
       if (prev.includes(permissionId)) {
@@ -77,39 +173,56 @@ const StaffPermissionsModal = ({ isOpen, onClose, staff, onUpdate }) => {
     });
   };
 
+  // ─── TOGGLE ALL IN CATEGORY ────────────────────────────────────────────
   const toggleAllInCategory = (categoryName, permissions) => {
     const permIds = permissions.map(p => p.id);
     const allSelected = permIds.every(id => selectedPermissions.includes(id));
     
     if (allSelected) {
-      // Deselect all in category
       setSelectedPermissions(prev => prev.filter(p => !permIds.includes(p)));
     } else {
-      // Select all in category
       const newPerms = new Set([...selectedPermissions, ...permIds]);
       setSelectedPermissions(Array.from(newPerms));
     }
   };
 
+  // ─── SAVE PERMISSIONS ──────────────────────────────────────────────────
   const handleSave = async () => {
     if (!staff) return;
     setSaving(true);
+    
     try {
+      // Use the correct endpoint from staff_routes.py
       await api.put(`/gym/staff/${staff.id}/permissions`, {
         permissions: selectedPermissions
       });
+      
       toast.success(`Permissions updated for ${staff.user?.full_name || staff.user?.username || 'Staff'}`);
       if (onUpdate) onUpdate();
       onClose();
     } catch (error) {
-      console.error('Error updating permissions:', error);
-      const errorMsg = error.response?.data?.detail || 'Failed to update permissions';
-      toast.error(errorMsg);
+      console.error('Error saving permissions:', error);
+      
+      // If PUT fails, try the debug endpoint as fallback
+      try {
+        await api.post(`/gym/staff/${staff.id}/permissions`, {
+          permissions: selectedPermissions
+        });
+        toast.success(`Permissions updated for ${staff.user?.full_name || staff.user?.username || 'Staff'}`);
+        if (onUpdate) onUpdate();
+        onClose();
+        return;
+      } catch (postError) {
+        // If both fail, show error
+        const errorMsg = error.response?.data?.detail || 'Failed to save permissions';
+        toast.error(errorMsg);
+      }
     } finally {
       setSaving(false);
     }
   };
 
+  // ─── GET CATEGORY ICON ──────────────────────────────────────────────────
   const getCategoryIcon = (categoryName) => {
     const icons = {
       'Member Management': '👥',
@@ -131,9 +244,9 @@ const StaffPermissionsModal = ({ isOpen, onClose, staff, onUpdate }) => {
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white rounded-t-2xl">
+        <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white rounded-t-2xl z-10">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+            <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
               <Shield className="h-5 w-5 text-purple-600" />
             </div>
             <div>
@@ -143,7 +256,11 @@ const StaffPermissionsModal = ({ isOpen, onClose, staff, onUpdate }) => {
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+          <button 
+            onClick={onClose} 
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            disabled={saving}
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -156,23 +273,34 @@ const StaffPermissionsModal = ({ isOpen, onClose, staff, onUpdate }) => {
             </div>
           ) : (
             <div className="space-y-4">
+              {/* Loading error banner */}
+              {loadingError && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-yellow-700 flex items-center gap-2">
+                    <span className="text-lg">ℹ️</span>
+                    Using default permissions. Changes will be saved to the server.
+                  </p>
+                </div>
+              )}
+
               {/* Select All / Deselect All */}
-              <div className="flex items-center justify-between pb-3 border-b">
+              <div className="flex items-center justify-between pb-3 border-b flex-wrap gap-2">
                 <span className="text-sm text-gray-500">
-                  {selectedPermissions.length} of {allPermissions.length} permissions selected
+                  {selectedPermissions.length} of {allPermissionIds.length} permissions selected
                 </span>
                 <div className="flex gap-2">
                   <button
+                    type="button"
                     onClick={() => {
-                      if (selectedPermissions.length === allPermissions.length) {
+                      if (selectedPermissions.length === allPermissionIds.length) {
                         setSelectedPermissions([]);
                       } else {
-                        setSelectedPermissions([...allPermissions]);
+                        setSelectedPermissions([...allPermissionIds]);
                       }
                     }}
                     className="text-sm text-purple-600 hover:text-purple-700 font-medium"
                   >
-                    {selectedPermissions.length === allPermissions.length ? 'Deselect All' : 'Select All'}
+                    {selectedPermissions.length === allPermissionIds.length ? 'Deselect All' : 'Select All'}
                   </button>
                 </div>
               </div>
@@ -180,35 +308,35 @@ const StaffPermissionsModal = ({ isOpen, onClose, staff, onUpdate }) => {
               {/* Permission Groups */}
               {Object.entries(permissionGroups).map(([category, permissions]) => (
                 <div key={category} className="border rounded-xl overflow-hidden">
-                  {/* Category Header */}
-                  <button
+                  {/* Category Header - Using div instead of button to avoid nesting */}
+                  <div 
+                    className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
                     onClick={() => toggleCategory(category)}
-                    className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
                   >
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl">{getCategoryIcon(category)}</span>
-                      <span className="font-semibold text-gray-900">{category}</span>
-                      <span className="text-xs text-gray-400 bg-gray-200 px-2 py-0.5 rounded-full">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-xl flex-shrink-0">{getCategoryIcon(category)}</span>
+                      <span className="font-semibold text-gray-900 truncate">{category}</span>
+                      <span className="text-xs text-gray-400 bg-gray-200 px-2 py-0.5 rounded-full flex-shrink-0">
                         {permissions.filter(p => selectedPermissions.includes(p.id)).length}/{permissions.length}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <button
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <span 
+                        className="text-xs text-purple-600 hover:text-purple-700 font-medium cursor-pointer select-none"
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleAllInCategory(category, permissions);
                         }}
-                        className="text-xs text-purple-600 hover:text-purple-700 font-medium"
                       >
                         {permissions.every(p => selectedPermissions.includes(p.id)) ? 'Deselect All' : 'Select All'}
-                      </button>
+                      </span>
                       {expandedCategories[category] ? (
                         <ChevronDown className="h-5 w-5 text-gray-400" />
                       ) : (
                         <ChevronRight className="h-5 w-5 text-gray-400" />
                       )}
                     </div>
-                  </button>
+                  </div>
 
                   {/* Permissions List */}
                   {expandedCategories[category] && (
@@ -222,11 +350,11 @@ const StaffPermissionsModal = ({ isOpen, onClose, staff, onUpdate }) => {
                             type="checkbox"
                             checked={selectedPermissions.includes(perm.id)}
                             onChange={() => togglePermission(perm.id)}
-                            className="mt-1 h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                            className="mt-1 h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500 flex-shrink-0"
                           />
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-medium text-gray-700">{perm.label}</p>
-                            <p className="text-xs text-gray-400">{perm.description}</p>
+                            <p className="text-xs text-gray-400 truncate">{perm.description}</p>
                           </div>
                         </label>
                       ))}
@@ -241,12 +369,15 @@ const StaffPermissionsModal = ({ isOpen, onClose, staff, onUpdate }) => {
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50 rounded-b-2xl">
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+            disabled={saving}
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving || loading}
             className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2 font-medium transition-colors"
