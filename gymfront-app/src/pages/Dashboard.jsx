@@ -39,6 +39,7 @@ import WhatsAppLogs from './WhatsAppLogs';
 import TrainerSchedule from '../components/TrainerSchedule';
 import IrregularMembers from '../components/attendance/IrregularMembers';
 import DietPlans from './DietPlans';
+import FollowUpPage from '../components/FollowUpPage'; 
 
 const AUTO_REFRESH_INTERVAL = 60000; // Increased to 60 seconds
 
