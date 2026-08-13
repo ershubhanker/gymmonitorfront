@@ -2,6 +2,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { CacheProvider } from './context/CacheContext'; // ✅ ADD THIS
 import PrivateRoute from './components/PrivateRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
@@ -18,7 +19,7 @@ import { AttendanceProvider } from './context/AttendanceContext';
 import LeadCaptureForm from './components/LeadCaptureForm';
 import WhatsAppLogs from './components/WhatsAppLogs';
 import InvoicePage from './pages/InvoicePage';
-import PrivacyPolicy from './pages/PrivacyPolicy'; // ADD THIS IMPORT
+import PrivacyPolicy from './pages/PrivacyPolicy';
 import TrainerSchedule from './components/TrainerSchedule';
 import HistoricalInvoices from './pages/HistoricalInvoices';
 
@@ -44,67 +45,68 @@ function App() {
     <ErrorBoundary>
       <Router>
         <AuthProvider>
-          <AttendanceProvider>
-            <div className="min-h-screen">
-              <Toaster
-                position="top-right"
-                toastOptions={{
-                  duration: 4000,
-                  style: {
-                    background: '#1e293b',
-                    color: '#f1f5f9',
-                    borderRadius: '12px',
-                    border: '1px solid #334155',
-                  },
-                  success: {
-                    duration: 3000,
-                    iconTheme: { primary: '#10b981', secondary: '#fff' },
-                  },
-                  error: {
+          <CacheProvider> {/* ✅ ADD CACHE PROVIDER HERE */}
+            <AttendanceProvider>
+              <div className="min-h-screen">
+                <Toaster
+                  position="top-right"
+                  toastOptions={{
                     duration: 4000,
-                    iconTheme: { primary: '#ef4444', secondary: '#fff' },
-                  },
-                }}
-              />
+                    style: {
+                      background: '#1e293b',
+                      color: '#f1f5f9',
+                      borderRadius: '12px',
+                      border: '1px solid #334155',
+                    },
+                    success: {
+                      duration: 3000,
+                      iconTheme: { primary: '#10b981', secondary: '#fff' },
+                    },
+                    error: {
+                      duration: 4000,
+                      iconTheme: { primary: '#ef4444', secondary: '#fff' },
+                    },
+                  }}
+                />
 
-              <Routes>
-                {/* Public Routes - No authentication needed */}
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/signup" element={<Signup />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/verify-email" element={<VerifyEmail />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/privacy-policy" element={<PrivacyPolicy />} /> {/* ADD THIS ROUTE */}
-                
-                {/* Public Lead Capture Form - No authentication required */}
-                <Route path="/lead-form/:gymSlug" element={<LeadCaptureForm />} />
-                
-                {/* Public invoice view (no auth required) */}
-                <Route path="/invoice/:memberId/:membershipId" element={<InvoicePage />} />
-                <Route path="/historical-invoices" element={<HistoricalInvoices />} />
-                {/* Protected Routes - Require authentication */}
-                <Route path="/gym-setup" element={<PrivateRoute><GymSetup /></PrivateRoute>} />
-                <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-                <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
-                <Route path="/admin" element={
-                  <AdminRoute>
-                    <AdminDashboard />
-                  </AdminRoute>
-                } />
-                
-                {/* WhatsApp Logs Route - Only for Super Admin */}
-                <Route path="/admin/whatsapp-logs" element={
-                  <AdminRoute>
-                    <WhatsAppLogs />
-                  </AdminRoute>
-                } />
-                
-                {/* Catch all - redirect to home */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </div>
-          </AttendanceProvider>
+                <Routes>
+                  {/* Public Routes */}
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/signup" element={<Signup />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/verify-email" element={<VerifyEmail />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                  
+                  {/* Public Lead Capture Form */}
+                  <Route path="/lead-form/:gymSlug" element={<LeadCaptureForm />} />
+                  
+                  {/* Public invoice view */}
+                  <Route path="/invoice/:memberId/:membershipId" element={<InvoicePage />} />
+                  <Route path="/historical-invoices" element={<HistoricalInvoices />} />
+                  
+                  {/* Protected Routes */}
+                  <Route path="/gym-setup" element={<PrivateRoute><GymSetup /></PrivateRoute>} />
+                  <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+                  <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+                  <Route path="/admin" element={
+                    <AdminRoute>
+                      <AdminDashboard />
+                    </AdminRoute>
+                  } />
+                  
+                  <Route path="/admin/whatsapp-logs" element={
+                    <AdminRoute>
+                      <WhatsAppLogs />
+                    </AdminRoute>
+                  } />
+                  
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </div>
+            </AttendanceProvider>
+          </CacheProvider> {/* ✅ END CACHE PROVIDER */}
         </AuthProvider>
       </Router>
     </ErrorBoundary>

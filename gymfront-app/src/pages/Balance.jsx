@@ -455,7 +455,7 @@ const Balance = () => {
           <p className="text-sm text-gray-600">Date: {displayDateTime}</p>
         </div>
       );
-      
+      console.log("date time for payment collection:", displayDateTime)
       if (membershipPaymentAmount > 0) {
         successMessage = (
           <>

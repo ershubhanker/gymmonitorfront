@@ -1,67 +1,19 @@
-// src/pages/Dashboard.jsx - Complete Updated Version
-// Features: Sidebar with scroll, grouped navigation, Historical Invoices, WhatsApp Logs
-// INCLUDES: All dashboard cards, stats, and data
-
+// src/pages/Dashboard.jsx - Full Updated with Caching
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  LogOut, 
-  User, 
-  Bell, 
-  Settings, 
-  Activity, 
-  Users,
-  DollarSign,
-  TrendingUp,
-  Dumbbell,
-  CreditCard,
-  Award,
-  BarChart3,
-  Clock as ClockIcon,
-  AlertCircle,
-  Menu,
-  X,
-  Home,
-  UserPlus,
-  Users as UsersIcon,
-  Calendar as CalendarIcon,
-  CreditCard as CreditCardIcon,
-  BarChart,
-  Target,
-  ChevronDown,
-  Loader,
-  TrendingDown,
-  UserCheck,
-  UserMinus,
-  Calendar,
-  IndianRupee,
-  Gift,
-  Star,
-  Flame,
-  Zap,
-  TrendingUp as TrendUp,
-  MessageCircle,
-  Mail,
-  CheckCircle,
-  Briefcase,
-  Wallet,
-  ChevronLeft,
-  ChevronRight,
-  Wifi,
-  Phone,
-  Mail as MailIcon,
-  Clock,
-  AlertTriangle,
-  Eye,
-  Shield,
-  RefreshCw,
-  MessageSquare,
-  Send,
-  Download,
-  Filter,
-  FileText
+  LogOut, User, Bell, Settings, Activity, Users, DollarSign, TrendingUp,
+  Dumbbell, CreditCard, Award, BarChart3, Clock as ClockIcon, AlertCircle,
+  Menu, X, Home, UserPlus, Users as UsersIcon, Calendar as CalendarIcon,
+  CreditCard as CreditCardIcon, BarChart, Target, ChevronDown, Loader,
+  TrendingDown, UserCheck, UserMinus, Calendar, IndianRupee, Gift, Star,
+  Flame, Zap, TrendingUp as TrendUp, MessageCircle, Mail, CheckCircle,
+  Briefcase, Wallet, ChevronLeft, ChevronRight, Wifi, Phone,
+  Mail as MailIcon, Clock, AlertTriangle, Eye, Shield, RefreshCw,
+  MessageSquare, Send, Download, Filter, FileText, Utensils
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useCache, CACHE_KEYS } from '../context/CacheContext';
 import api, { API_BASE_URL, fetchMemberStatsOptimized } from '../services/api';
 import toast from 'react-hot-toast';
 import { usePermissions } from '../hooks/usePermissions';
@@ -80,18 +32,15 @@ import AttendanceHistory from '../components/attendance/AttendanceHistory';
 import StaffHours from '../components/attendance/StaffHours';
 import MembershipPlans from './MembershipPlans';
 import HistoricalInvoices from './HistoricalInvoices';
-
-// Import Search Bar and Follow-Up Card
 import SearchBar from '../components/SearchBar';
 import FollowUpCard from '../components/FollowUpCard';
 import WhatsAppLogs from './WhatsAppLogs';
 import TrainerSchedule from '../components/TrainerSchedule';
 import IrregularMembers from '../components/attendance/IrregularMembers';
+import DietPlans from './DietPlans';
 
-// Auto-refresh interval in milliseconds
 const AUTO_REFRESH_INTERVAL = 40000;
 
-// Currency list
 const CURRENCIES = [
   { symbol: '₹', label: 'Indian Rupee (INR)', flag: '🇮🇳' },
   { symbol: '$', label: 'US Dollar (USD)', flag: '🇺🇸' },
@@ -172,6 +121,7 @@ const CurrencyPickerModal = ({ onSelect }) => {
 const Dashboard = () => {
   const { user, logout, updateCurrencySymbol } = useAuth();
   const { permissions, hasPermission, loading: permissionsLoading } = usePermissions();
+  const { getCache, setCache, clearCache } = useCache();
   const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -185,7 +135,6 @@ const Dashboard = () => {
   const [selectedStaffId, setSelectedStaffId] = useState(null);
   const [followupsCount, setFollowupsCount] = useState(0);
   
-  // WhatsApp Logs State
   const [whatsappLogs, setWhatsappLogs] = useState([]);
   const [whatsappStats, setWhatsappStats] = useState(null);
   const [logFilter, setLogFilter] = useState({
@@ -197,7 +146,6 @@ const Dashboard = () => {
   const userMenuRef = useRef(null);
   const userButtonRef = useRef(null);
 
-  // Check if user has specific permissions
   const canViewDashboard = hasPermission('view_dashboard');
   const canViewMembers = hasPermission('view_members');
   const canViewPayments = hasPermission('view_payments');
@@ -209,10 +157,8 @@ const Dashboard = () => {
   const canViewDevices = hasPermission('view_devices');
   const canViewLeads = hasPermission('view_leads');
   
-  // Admin check (gym owners and super admins have all permissions)
   const isAdmin = userRole === 'gym_owner' || userRole === 'super_admin';
 
-  // Determine what the user can see
   const canSeeDashboard = isAdmin || canViewDashboard;
   const canSeeMembers = isAdmin || canViewMembers;
   const canSeePayments = isAdmin || canViewPayments;
@@ -225,7 +171,6 @@ const Dashboard = () => {
   const canSeeLeads = isAdmin || canViewLeads;
 
   useEffect(() => {
-    // Get user role from localStorage
     const storedRole = localStorage.getItem('userRole');
     if (storedRole) {
       setUserRole(storedRole);
@@ -279,7 +224,7 @@ const Dashboard = () => {
   const [membersWithBalanceList, setMembersWithBalanceList] = useState([]);
   const [recentLeads, setRecentLeads] = useState([]);
 
-  // Close user menu when clicking outside
+  // ✅ Close user menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -302,7 +247,7 @@ const Dashboard = () => {
     };
   }, [showUserMenu]);
 
-  // Fetch follow-ups count for dashboard header
+  // ✅ Fetch follow-ups count
   const fetchFollowupsCount = useCallback(async () => {
     if (!canSeeLeads) return;
     
@@ -312,14 +257,13 @@ const Dashboard = () => {
         setFollowupsCount(response.data.count || 0);
       }
     } catch (error) {
-      // Silently fail - don't show toast for 403
       if (error.response?.status !== 403) {
         console.error('Error fetching followups count:', error);
       }
     }
   }, [canSeeLeads]);
 
-  // Fetch WhatsApp logs
+  // ✅ Fetch WhatsApp logs
   const fetchWhatsAppLogs = useCallback(async (date) => {
     try {
       const response = await api.get(`/whatsapp/logs?limit=100&start_date=${date}T00:00:00&end_date=${date}T23:59:59`);
@@ -333,7 +277,7 @@ const Dashboard = () => {
     }
   }, []);
 
-  // Fetch WhatsApp stats
+  // ✅ Fetch WhatsApp stats
   const fetchWhatsAppStats = useCallback(async () => {
     try {
       const response = await api.get('/whatsapp/logs/stats');
@@ -359,7 +303,6 @@ const Dashboard = () => {
     setSelectedStaffId(null);
   };
 
-  // Handle search result selection
   const handleSearchSelect = (result) => {
     switch (result.type) {
       case 'member':
@@ -379,7 +322,6 @@ const Dashboard = () => {
     }
   };
 
-  // Export WhatsApp logs as CSV
   const exportLogs = async () => {
     try {
       const response = await api.get(`/whatsapp/logs/export?start_date=${logFilter.startDate}T00:00:00&end_date=${logFilter.endDate}T23:59:59`, {
@@ -405,25 +347,31 @@ const Dashboard = () => {
     }
   }, [user, loading]);
 
-  // Silent fetch function - doesn't show errors on 403
+  // ✅ Silent fetch function
   const fetchSilently = async (url, options = {}) => {
     try {
       const response = await api.get(url, options);
       return { data: response.data, success: true };
     } catch (error) {
-      // Silently handle 403 errors - user just doesn't have permission
       if (error.response?.status === 403) {
         return { data: null, success: false, forbidden: true };
       }
-      // For other errors, return null but don't show toast
       return { data: null, success: false };
     }
   };
 
+  // ✅ MAIN FETCH FUNCTION WITH CACHING
   const fetchDashboardData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     
     try {
+      // ✅ Try to get cached dashboard stats
+      const cachedStats = getCache(CACHE_KEYS.DASHBOARD_STATS);
+      if (cachedStats && !silent) {
+        console.log('📊 Using cached dashboard stats');
+        setStats(prev => ({ ...prev, ...cachedStats }));
+      }
+      
       let statsData = { data: null };
       let membersData = { data: [] };
       let paymentsData = { data: [] };
@@ -433,11 +381,9 @@ const Dashboard = () => {
       let balanceMembersData = { data: [] };
       let leadsData = { data: [] };
   
-      // Fetch optimized stats first (this gives accurate totals without loading all members)
       if (canSeeDashboard) {
         try {
           const statsResult = await fetchMemberStatsOptimized();
-          console.log('📊 Stats API Response:', statsResult);
           
           if (statsResult) {
             statsData = { data: {
@@ -461,53 +407,48 @@ const Dashboard = () => {
               trainer_count: statsResult.trainer_count || 0,
               upcoming_classes: statsResult.upcoming_classes || []
             } };
+            
+            // ✅ Cache the stats
+            setCache(CACHE_KEYS.DASHBOARD_STATS, statsData.data, 3 * 60 * 1000);
           }
         } catch (err) {
           console.warn('Could not fetch optimized stats:', err);
         }
       }
   
-      // Only fetch detailed data if we have permissions
       const promises = [];
       const endpointMap = {};
   
-      // Members - only if user can view members (limit to 100 for dashboard)
       if (canSeeMembers) {
         promises.push(fetchSilently('/gym/members?limit=100&sort=-created_at'));
         endpointMap.members = promises.length - 1;
       }
   
-      // Payments - only if user can view payments
       if (canSeePayments) {
         promises.push(fetchSilently('/gym/payments?limit=100'));
         endpointMap.payments = promises.length - 1;
       }
   
-      // Memberships - only if user can view memberships
       if (canSeeMemberships) {
         promises.push(fetchSilently('/gym/memberships?limit=1000'));
         endpointMap.memberships = promises.length - 1;
       }
   
-      // Staff - only if user can view staff
       if (canSeeStaff) {
         promises.push(fetchSilently('/gym/staff'));
         endpointMap.staff = promises.length - 1;
       }
   
-      // Balance overview - only if user can view balances
       if (canSeeBalances) {
         promises.push(fetchSilently('/gym/balance/overview'));
         endpointMap.balance = promises.length - 1;
       }
   
-      // Members with balance - only if user can view balances
       if (canSeeBalances) {
         promises.push(fetchSilently('/gym/members/balances?has_balance=true&limit=10'));
         endpointMap.balanceMembers = promises.length - 1;
       }
   
-      // Leads - only if user can view leads
       if (canSeeLeads) {
         promises.push(fetchSilently('/gym/leads?limit=10'));
         endpointMap.leads = promises.length - 1;
@@ -515,7 +456,6 @@ const Dashboard = () => {
   
       const results = await Promise.all(promises);
   
-      // Extract data from results
       if (endpointMap.members !== undefined) membersData = results[endpointMap.members];
       if (endpointMap.payments !== undefined) paymentsData = results[endpointMap.payments];
       if (endpointMap.memberships !== undefined) membershipsData = results[endpointMap.memberships];
@@ -524,48 +464,29 @@ const Dashboard = () => {
       if (endpointMap.balanceMembers !== undefined) balanceMembersData = results[endpointMap.balanceMembers];
       if (endpointMap.leads !== undefined) leadsData = results[endpointMap.leads];
   
-      // ===== GET DATA FROM RESPONSES =====
       const statsApiData = statsData.data || {};
       
-      // Get accurate counts from optimized stats
       let totalMembers = statsApiData.total_members || 0;
       let activeMembers = statsApiData.active_members || 0;
       let newMembersThisMonth = statsApiData.new_members_this_month || 0;
       
       const members = membersData.data || [];
       
-      // ===== FALLBACK: Calculate from members list if API returned 0 =====
       if (newMembersThisMonth === 0 && members.length > 0) {
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
         
-        // Count members who joined in the current month
         const calculatedNewMembers = members.filter(m => {
           const joinedDate = new Date(m.joined_date || m.created_at);
-          // Check if joined in current month and year
           return joinedDate.getMonth() === currentMonth && 
                  joinedDate.getFullYear() === currentYear;
         }).length;
         
-        console.log('📊 Current month:', currentMonth + 1, 'Current year:', currentYear);
-        console.log('📊 Members joined this month:', members.filter(m => {
-          const joinedDate = new Date(m.joined_date || m.created_at);
-          return joinedDate.getMonth() === currentMonth && 
-                 joinedDate.getFullYear() === currentYear;
-        }).map(m => ({ name: m.full_name, joined: m.joined_date || m.created_at })));
-        console.log('📊 Calculated new members this month from members list:', calculatedNewMembers);
-        
-        // Use calculated value if it's greater than 0
         if (calculatedNewMembers > 0) {
           newMembersThisMonth = calculatedNewMembers;
-          console.log('✅ Using calculated new members count:', newMembersThisMonth);
         }
       }
-        
-      // ===== LOG FOR DEBUGGING =====
-      console.log('📊 Final newMembersThisMonth:', newMembersThisMonth);
-      console.log('📊 Members count:', members.length);
   
       const inactiveMembers = totalMembers - activeMembers;
       const payments = paymentsData.data || [];
@@ -578,7 +499,6 @@ const Dashboard = () => {
       const today = new Date().toISOString().split('T')[0];
       const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
       
-      // Calculate members by gender
       const membersByGender = members.reduce((acc, m) => {
         const gender = m.gender || 'other';
         acc[gender] = (acc[gender] || 0) + 1;
@@ -601,13 +521,13 @@ const Dashboard = () => {
             : `https://ui-avatars.com/api/?name=${encodeURIComponent(m.full_name)}&background=0D9488&color=fff`
         }));
   
-        const currentYear = new Date().getFullYear();
-        const totalRevenue = payments
-          .filter(p => {
-            const paymentDate = p.payment_date ? new Date(p.payment_date) : null;
-            return paymentDate && paymentDate.getFullYear() === currentYear;
-          })
-          .reduce((sum, p) => sum + (p.amount || 0), 0);
+      const currentYear = new Date().getFullYear();
+      const totalRevenue = payments
+        .filter(p => {
+          const paymentDate = p.payment_date ? new Date(p.payment_date) : null;
+          return paymentDate && paymentDate.getFullYear() === currentYear;
+        })
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
       
       const monthlyRevenue = payments
         .filter(p => p.payment_date && p.payment_date.split('T')[0] >= firstDayOfMonth)
@@ -695,7 +615,6 @@ const Dashboard = () => {
           };
         });
   
-      // Process members with balance
       const processedMembersWithBalance = membersWithBalance.map(m => ({
         id: m.member_id,
         memberId: m.member_id,
@@ -710,7 +629,6 @@ const Dashboard = () => {
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(m.member_name)}&background=EF4444&color=fff`
       })).slice(0, 5);
   
-      // Process recent leads
       const processedRecentLeads = leads.slice(0, 5).map(lead => ({
         id: lead.id,
         name: lead.full_name,
@@ -723,7 +641,6 @@ const Dashboard = () => {
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(lead.full_name)}&background=8B5CF6&color=fff`
       }));
   
-      // Build activities from available data
       const activities = [];
       
       if (canSeePayments) {
@@ -756,14 +673,12 @@ const Dashboard = () => {
       activities.sort((a, b) => new Date(b.time) - new Date(a.time));
       const sortedActivities = activities.slice(0, 5);
   
-      // Calculate membership distribution
       const membershipDistribution = memberships.reduce((acc, m) => {
         const planName = m.plan?.name || 'No Plan';
         acc[planName] = (acc[planName] || 0) + 1;
         return acc;
       }, {});
   
-      // Calculate Upcoming Birthdays
       const next7Days = new Date(today_date.getTime() + 7 * 24 * 60 * 60 * 1000);
       const upcomingBirthdays = {
         members: [],
@@ -832,8 +747,7 @@ const Dashboard = () => {
       upcomingBirthdays.members.sort((a, b) => a.daysUntil - b.daysUntil);
       upcomingBirthdays.staff.sort((a, b) => a.daysUntil - b.daysUntil);
   
-      // ===== SET STATS WITH ACCURATE COUNTS =====
-      setStats({
+      const newStats = {
         totalMembers,
         activeMembers,
         inactiveMembers,
@@ -866,8 +780,9 @@ const Dashboard = () => {
         membershipDistribution,
         expiringMembers,
         upcomingBirthdays
-      });
+      };
   
+      setStats(newStats);
       setMembersWithBalanceList(processedMembersWithBalance);
       setRecentLeads(processedRecentLeads);
       setRecentActivities(sortedActivities.length > 0 ? sortedActivities : [
@@ -884,8 +799,7 @@ const Dashboard = () => {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [canSeeDashboard, canSeeMembers, canSeePayments, canSeeMemberships, canSeeStaff, canSeeBalances, canSeeLeads]);
-
+  }, [canSeeDashboard, canSeeMembers, canSeePayments, canSeeMemberships, canSeeStaff, canSeeBalances, canSeeLeads, getCache, setCache]);
 
   useEffect(() => {
     if (!permissionsLoading) {
@@ -935,7 +849,6 @@ const Dashboard = () => {
     };
   }, [fetchDashboardData, fetchFollowupsCount]);
 
-  // Fetch WhatsApp logs when tab changes
   useEffect(() => {
     if (activeTab === 'whatsapp-logs') {
       fetchWhatsAppLogs(new Date().toISOString().split('T')[0]);
@@ -949,12 +862,10 @@ const Dashboard = () => {
   const getNavigation = () => {
     const nav = [];
     
-    // Main Section
     if (canSeeDashboard) {
       nav.push({ name: 'Dashboard', icon: Home, id: 'dashboard', section: 'main' });
     }
     
-    // Management Section
     if (canSeeMembers) {
       nav.push({ name: 'Members', icon: UsersIcon, id: 'members', section: 'management' });
     }
@@ -968,8 +879,8 @@ const Dashboard = () => {
     if (canSeeLeads) {
       nav.push({ name: 'Leads', icon: Target, id: 'leads', section: 'management' });
     }
+    nav.push({ name: 'Diet Plans', icon: Utensils, id: 'diet-plans', section: 'management' });
     
-    // Staff & Attendance Section
     if (canSeeStaff) {
       nav.push({ name: 'Staff', icon: UserPlus, id: 'staff', section: 'staff' });
     }
@@ -985,12 +896,10 @@ const Dashboard = () => {
       nav.push({ name: 'Devices', icon: Wifi, id: 'devices', section: 'staff' });
     }
     
-    // Finance Section
     if (canSeeExpenses) {
       nav.push({ name: 'Expenses', icon: TrendingDown, id: 'expenses', section: 'finance' });
     }
     
-    // Reports Section
     const canViewHistoricalInvoices = canSeeMembers || canSeePayments;
     if (canViewHistoricalInvoices) {
       nav.push({ 
@@ -1007,7 +916,6 @@ const Dashboard = () => {
 
   const navigation = getNavigation();
 
-  // Group navigation items
   const groupedNav = navigation.reduce((acc, item) => {
     const section = item.section || 'other';
     if (!acc[section]) acc[section] = [];
@@ -2189,59 +2097,55 @@ const Dashboard = () => {
 
         {/* Navigation - Scrollable area with custom scrollbar */}
         <div className="flex-1 overflow-y-auto py-3 px-2 custom-scrollbar">
-  {Object.entries(groupedNav).map(([section, items]) => {
-    // Skip empty sections
-    if (items.length === 0) return null;
-    
-    return (
-      <div key={section} className="mb-3">
-        {/* Section Label - Only show when sidebar is expanded */}
-        {!sidebarCollapsed && (
-          <div className="px-3 py-2">
-            <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
-              {sectionLabels[section] || section}
-            </span>
-          </div>
-        )}
-        {items.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => {
-              setActiveTab(item.id);
-              setMobileMenuOpen(false);
-            }}
-            className={`
-              w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
-              text-white/70 hover:text-white hover:bg-white/10 
-              transition-all duration-200
-              ${activeTab === item.id ? 'bg-white/15 text-white shadow-lg' : ''}
-              ${sidebarCollapsed ? 'justify-center' : ''}
-              group relative
-            `}
-            title={sidebarCollapsed ? item.name : ''}
-          >
-            <item.icon className={`h-5 w-5 flex-shrink-0 ${activeTab === item.id ? 'text-blue-400' : ''}`} />
-            {!sidebarCollapsed && (
-              <span className="text-sm font-medium truncate">{item.name}</span>
-            )}
-            {/* Tooltip for collapsed mode */}
-            {sidebarCollapsed && (
-              <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded 
-                            opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity 
-                            whitespace-nowrap z-50 shadow-lg">
-                {item.name}
+          {Object.entries(groupedNav).map(([section, items]) => {
+            if (items.length === 0) return null;
+            
+            return (
+              <div key={section} className="mb-3">
+                {!sidebarCollapsed && (
+                  <div className="px-3 py-2">
+                    <span className="text-xs font-semibold text-white/40 uppercase tracking-wider">
+                      {sectionLabels[section] || section}
+                    </span>
+                  </div>
+                )}
+                {items.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`
+                      w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                      text-white/70 hover:text-white hover:bg-white/10 
+                      transition-all duration-200
+                      ${activeTab === item.id ? 'bg-white/15 text-white shadow-lg' : ''}
+                      ${sidebarCollapsed ? 'justify-center' : ''}
+                      group relative
+                    `}
+                    title={sidebarCollapsed ? item.name : ''}
+                  >
+                    <item.icon className={`h-5 w-5 flex-shrink-0 ${activeTab === item.id ? 'text-blue-400' : ''}`} />
+                    {!sidebarCollapsed && (
+                      <span className="text-sm font-medium truncate">{item.name}</span>
+                    )}
+                    {sidebarCollapsed && (
+                      <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded 
+                                    opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity 
+                                    whitespace-nowrap z-50 shadow-lg">
+                        {item.name}
+                      </div>
+                    )}
+                    {activeTab === item.id && !sidebarCollapsed && (
+                      <div className="ml-auto w-1 h-6 bg-blue-400 rounded-full flex-shrink-0" />
+                    )}
+                  </button>
+                ))}
               </div>
-            )}
-            {/* Active indicator */}
-            {activeTab === item.id && !sidebarCollapsed && (
-              <div className="ml-auto w-1 h-6 bg-blue-400 rounded-full flex-shrink-0" />
-            )}
-          </button>
-        ))}
-      </div>
-    );
-  })}
-</div>
+            );
+          })}
+        </div>
 
         {/* Bottom Actions - Fixed at bottom */}
         <div className="p-3 border-t border-white/10 flex-shrink-0">
@@ -2434,6 +2338,7 @@ const Dashboard = () => {
               onStaffSelect={(id) => setSelectedStaffId(id)}
             />
           )}
+          {activeTab === 'diet-plans' && <DietPlans />}
           {activeTab === 'irregular-members' && canSeeAttendance && <IrregularMembers />}
           {activeTab === 'profile' && <Profile />}
           {activeTab === 'payments' && canSeePayments && <Payments />}

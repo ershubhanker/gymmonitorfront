@@ -1,30 +1,11 @@
-// src/pages/Members.jsx - Updated with Personal Training column and payment fields
+// src/pages/Members.jsx - Full Updated with Caching
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
-  Search, 
-  Filter, 
-  Edit, 
-  Trash2, 
-  UserPlus,
-  Download,
-  ChevronLeft,
-  ChevronRight,
-  X,
-  CheckCircle,
-  XCircle,
-  Clock,
-  FileText,
-  RefreshCw,
-  Wifi,
-  Loader2,
-  WifiOff,
-  FileSpreadsheet,
-  Link,
-  AlertTriangle,
-  Smartphone,
-  User,
-  ArrowLeft,
-  Dumbbell
+  Search, Filter, Edit, Trash2, UserPlus, Download,
+  ChevronLeft, ChevronRight, X, CheckCircle, XCircle,
+  Clock, FileText, RefreshCw, Wifi, Loader2, WifiOff,
+  FileSpreadsheet, Link, AlertTriangle, Smartphone, User,
+  ArrowLeft, Dumbbell
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
@@ -32,10 +13,9 @@ import toast from 'react-hot-toast';
 import api, { API_BASE_URL, fetchMembersOptimized, fetchMemberStatsOptimized } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useAttendance } from '../context/AttendanceContext';
+import { useCache, CACHE_KEYS } from '../context/CacheContext';
 import MemberProfileModal from '../components/MemberProfileModal';
 import BulkImportModal from '../components/BulkImportModal';
-
-// Import the invoice functions
 import { generateInvoicePDF, generateBulkInvoices } from '../services/api';
 
 // Debounce hook to prevent excessive API calls
@@ -70,14 +50,12 @@ const DeleteConfirmationModal = ({
   const hasDeviceSync = member.syncedToDevice || member.deviceUserId;
   const deviceInfo = member.deviceUserId || 'Unknown Device ID';
   
-  // Check if member has active freeze
   const hasFreeze = member.freezes?.some(f => f.status === 'active') || false;
   const freezeInfo = member.freezes?.filter(f => f.status === 'active') || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 transform transition-all">
-        {/* Header - Compact */}
         <div className={`flex items-center gap-3 px-5 pt-5 pb-3 border-b ${
           hasFreeze ? 'border-amber-300' : ''
         }`}>
@@ -100,9 +78,7 @@ const DeleteConfirmationModal = ({
           </div>
         </div>
 
-        {/* Body - Compact */}
         <div className="px-5 py-4 space-y-3">
-          {/* Member Info - Compact */}
           <div className="bg-gray-50 rounded-lg p-3">
             <div className="flex items-center gap-3">
               <img 
@@ -121,7 +97,6 @@ const DeleteConfirmationModal = ({
             </div>
           </div>
 
-          {/* ✅ Show freeze warning if exists */}
           {hasFreeze && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
               <div className="flex items-start gap-2">
@@ -154,7 +129,6 @@ const DeleteConfirmationModal = ({
           )}
         </div>
 
-        {/* Footer - Compact */}
         <div className={`flex items-center justify-end gap-2 px-5 py-4 border-t rounded-b-xl ${
           hasFreeze ? 'bg-amber-50 border-amber-200' : 'bg-gray-50'
         }`}>
@@ -196,6 +170,7 @@ const DeleteConfirmationModal = ({
 const Members = ({ initialMemberId, onMemberSelect }) => {
   const { user } = useAuth(); 
   const { devices, syncMemberToDevice, removeMemberFromDevice, refreshAllData, attendanceApi } = useAttendance();
+  const { getCache, setCache, clearCache } = useCache();
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [showFilters, setShowFilters] = useState(false);
@@ -221,19 +196,17 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   const [totalMembersCount, setTotalMembersCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   
-  // ===== PT Data =====
+  // PT Data
   const [ptData, setPtData] = useState({});
   const [loadingPt, setLoadingPt] = useState(false);
   
-  // ===== NEW: State for single member view in table =====
+  // Single member view
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const [singleMemberData, setSingleMemberData] = useState(null);
   const [showSingleMember, setShowSingleMember] = useState(false);
   const [loadingSingleMember, setLoadingSingleMember] = useState(false);
 
-  // ============================================================
-  // DELETE CONFIRMATION STATE
-  // ============================================================
+  // Delete confirmation state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -251,32 +224,56 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     currency_symbol: '₹',
   });
 
-  // ===== Fetch PT data for all members =====
+  // ============================================================
+  // CACHE INVALIDATION HELPER
+  // ============================================================
+  const invalidateMemberCache = useCallback(() => {
+    clearCache(CACHE_KEYS.MEMBERS_LIST);
+    clearCache(CACHE_KEYS.MEMBER_STATS);
+    clearCache(CACHE_KEYS.MEMBER_PT_DATA);
+    clearCache(CACHE_KEYS.MEMBER_BALANCES);
+    clearCache(CACHE_KEYS.DASHBOARD_STATS);
+  }, [clearCache]);
+
+  // ============================================================
+  // FETCH PT DATA WITH CACHING
+  // ============================================================
   const fetchPTData = useCallback(async () => {
     setLoadingPt(true);
     try {
+      const cached = getCache(CACHE_KEYS.MEMBER_PT_DATA);
+      if (cached) {
+        setPtData(cached);
+        setLoadingPt(false);
+        return cached;
+      }
+      
       const response = await api.get('/gym/members/pt-data');
       const ptMap = {};
       response.data.forEach(pt => {
         ptMap[pt.member_id] = pt;
       });
       setPtData(ptMap);
+      setCache(CACHE_KEYS.MEMBER_PT_DATA, ptMap, 3 * 60 * 1000);
+      return ptMap;
     } catch (error) {
       console.error('Error fetching PT data:', error);
       setPtData({});
+      return {};
     } finally {
       setLoadingPt(false);
     }
-  }, []);
+  }, [getCache, setCache]);
 
-  // ===== Fetch single member details =====
+  // ============================================================
+  // FETCH SINGLE MEMBER
+  // ============================================================
   const fetchSingleMember = useCallback(async (memberId) => {
     setLoadingSingleMember(true);
     try {
       const response = await api.get(`/gym/members/${memberId}`);
       const member = response.data;
       
-      // ✅ FIX: Proper avatar URL construction
       let avatarUrl;
       if (member.profile_image) {
         if (member.profile_image.startsWith('http')) {
@@ -303,7 +300,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         status: member.is_active ? 'active' : 'inactive',
         lastVisit: null,
         payments: member.memberships?.length || 0,
-        avatar: avatarUrl,  // ✅ Use the properly constructed URL
+        avatar: avatarUrl,
         profile_image: member.profile_image,
         raw: member,
         activeMembership: member.current_membership,
@@ -313,8 +310,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       };
       
       setSingleMemberData(transformed);
-      
-      // Also update the members list to only show this member
       setMembers([transformed]);
       setTotalMembersCount(1);
       setTotalPages(1);
@@ -330,10 +325,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     } finally {
       setLoadingSingleMember(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ===== Handle back to all members =====
+  // ============================================================
+  // HANDLE BACK TO ALL MEMBERS
+  // ============================================================
   const handleBackToAllMembers = () => {
     setShowSingleMember(false);
     setSelectedMemberId(null);
@@ -341,12 +337,15 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     if (onMemberSelect) {
       onMemberSelect(null);
     }
-    // Reset pagination and fetch all members
     setCurrentPage(1);
+    // Clear single member cache
+    clearCache(CACHE_KEYS.MEMBERS_LIST);
     fetchMembers();
   };
 
-  // ===== Handle initialMemberId prop - Show single member in table =====
+  // ============================================================
+  // INITIAL MEMBER ID EFFECT
+  // ============================================================
   useEffect(() => {
     if (initialMemberId) {
       setSelectedMemberId(initialMemberId);
@@ -359,221 +358,29 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     }
   }, [initialMemberId, fetchSingleMember]);
 
-  useEffect(() => {
-    const renewalMemberData = localStorage.getItem('selectedMemberForRenewal');
-    if (renewalMemberData) {
-      try {
-        const memberData = JSON.parse(renewalMemberData);
-        console.log('Member renewal data received:', memberData);
-        
-        localStorage.removeItem('selectedMemberForRenewal');
-        
-        const memberToRenew = members.find(m => m.id === Number(memberData.id));
-        
-        if (memberToRenew) {
-          setTimeout(() => {
-            openEditModal(memberToRenew);
-            toast.success(`Ready to renew membership for ${memberToRenew.fullName}`);
-          }, 500);
-        } else {
-          const checkInterval = setInterval(() => {
-            const member = members.find(m => m.id === Number(memberData.id));
-            if (member) {
-              clearInterval(checkInterval);
-              openEditModal(member);
-              toast.success(`Ready to renew membership for ${member.fullName}`);
-            }
-          }, 500);
-          
-          setTimeout(() => {
-            clearInterval(checkInterval);
-          }, 10000);
-        }
-      } catch (error) {
-        console.error('Error parsing renewal data:', error);
-        localStorage.removeItem('selectedMemberForRenewal');
-      }
-    }
-  }, [members]);
-
   // ============================================================
-  // DELETE FUNCTION WITH CONFIRMATION
-  // ============================================================
-  const handleDeleteClick = (member) => {
-    setMemberToDelete(member);
-    setShowDeleteModal(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!memberToDelete) return;
-    
-    setDeleting(true);
-    try {
-      console.log('Deleting member with ID:', memberToDelete.id);
-      
-      const response = await api.delete(`/gym/members/${memberToDelete.id}`);
-      
-      console.log('Delete response:', response.data);
-      
-      if (response.data.removed_from_devices > 0) {
-        toast.success(
-          `✅ Member deleted successfully!\n\n` +
-          `Removed from ${response.data.removed_from_devices} device(s).\n` +
-          `The device will sync within 3 seconds.`,
-          { duration: 5000 }
-        );
-      } else if (response.data.device_user_id) {
-        toast(
-          `⚠️ Member deleted but not removed from devices.\n\n` +
-          `The member had a device ID (${response.data.device_user_id}) but no active devices were found.`,
-          { duration: 5000 }
-        );
-      } else {
-        toast.success('Member deleted successfully! (No device sync needed)');
-      }
-      
-      // If viewing single member, go back to all members
-      if (showSingleMember) {
-        handleBackToAllMembers();
-      } else {
-        // Remove from local state
-        setMembers(prev => prev.filter(m => m.id !== memberToDelete.id));
-        setSelectedMembers(prev => prev.filter(id => id !== memberToDelete.id));
-        fetchStats();
-      }
-      
-      refreshAllData();
-      
-      setShowDeleteModal(false);
-      setMemberToDelete(null);
-      
-    } catch (error) {
-      console.error('Delete error:', error);
-      
-      if (error.response) {
-        console.error('Error response:', error.response.data);
-        console.error('Error status:', error.response.status);
-        
-        // ✅ CHECK FOR FREEZE ERROR
-        if (error.response.status === 400 && error.response.data?.detail?.message === "Cannot delete member with active freeze") {
-          const freezeInfo = error.response.data.detail.freezes || [];
-          const actionRequired = error.response.data.detail.action_required || "Please cancel the freeze before deleting this member";
-          
-          // Show a detailed alert
-          let freezeDetails = freezeInfo.map(f => 
-            `• ${f.freeze_type.charAt(0).toUpperCase() + f.freeze_type.slice(1)} Freeze: ${new Date(f.start_date).toLocaleDateString()} to ${new Date(f.end_date).toLocaleDateString()}`
-          ).join('\n');
-          
-          toast.error(
-            (t) => (
-              <div className="max-w-sm">
-                <div className="flex items-start gap-3">
-                  <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <AlertTriangle className="h-4 w-4 text-red-600" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-red-700">Cannot Delete Member</p>
-                    <p className="text-sm text-gray-700 mt-1">{memberToDelete.fullName} has an active freeze.</p>
-                    {freezeDetails && (
-                      <div className="mt-2 text-xs text-gray-600 bg-gray-50 rounded-lg p-2">
-                        <p className="font-medium">Active Freeze:</p>
-                        <pre className="whitespace-pre-wrap">{freezeDetails}</pre>
-                      </div>
-                    )}
-                    <p className="text-xs text-gray-500 mt-2">{actionRequired}</p>
-                    <button
-                      onClick={() => toast.dismiss(t.id)}
-                      className="mt-3 px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700"
-                    >
-                      Got it
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ),
-            { duration: 8000, id: 'freeze-error' }
-          );
-          
-          // Also show a secondary toast with a link to the profile
-          toast(
-            (t) => (
-              <div className="flex items-center gap-3">
-                <span>Go to member profile to cancel the freeze</span>
-                <button
-                  onClick={() => {
-                    toast.dismiss(t.id);
-                    // Open the member profile
-                    openProfileModal(memberToDelete);
-                  }}
-                  className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700"
-                >
-                  Open Profile
-                </button>
-              </div>
-            ),
-            { duration: 6000 }
-          );
-          
-          setShowDeleteModal(false);
-          setMemberToDelete(null);
-          return;
-        }
-        
-        if (error.response.status === 405) {
-          toast.error('API endpoint not found. Please check the server configuration.');
-        } else if (error.response.status === 403) {
-          toast.error('You do not have permission to delete members.');
-        } else if (error.response.status === 404) {
-          toast.error('Member not found. It may have been already deleted.');
-        } else {
-          toast.error(error.response?.data?.detail || 'Failed to delete member');
-        }
-      } else if (error.request) {
-        toast.error('Network error. Please check your connection.');
-      } else {
-        toast.error('Failed to delete member. Please try again.');
-      }
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  // ============================================================
-  // BULK DELETE WITH CONFIRMATION
-  // ============================================================
-  const handleBulkDelete = async () => {
-    if (selectedMembers.length === 0) return;
-    
-    const hasDeviceSync = selectedMembers.some(id => {
-      const member = members.find(m => m.id === id);
-      return member?.syncedToDevice || member?.deviceUserId;
-    });
-    
-    const message = hasDeviceSync
-      ? `⚠️ You are about to delete ${selectedMembers.length} members. Some of them are synced to attendance devices and will be automatically removed.\n\nAre you sure you want to continue?`
-      : `Are you sure you want to delete ${selectedMembers.length} members?`;
-    
-    if (!window.confirm(message)) return;
-    
-    try {
-      await Promise.all(selectedMembers.map(id => api.delete(`/gym/members/${id}`)));
-      setMembers(members.filter(m => !selectedMembers.includes(m.id)));
-      setSelectedMembers([]);
-      fetchStats();
-      toast.success(`${selectedMembers.length} members deleted successfully!`);
-    } catch (error) {
-      toast.error('Failed to delete some members');
-    }
-  };
-
-  // ============================================================
-  // OPTIMIZED: Fetch members using the new optimized endpoint
+  // OPTIMIZED: FETCH MEMBERS WITH CACHING
   // ============================================================
   const fetchMembersOptimizedFn = useCallback(async () => {
     if (showSingleMember) return;
     
     setLoading(true);
     try {
+      // Generate cache key based on search and filters
+      const cacheKey = `${CACHE_KEYS.MEMBERS_LIST}_${debouncedSearchTerm}_${filters.status}_${currentPage}`;
+      
+      // Check cache
+      const cached = getCache(cacheKey);
+      if (cached) {
+        console.log('📋 Using cached members data');
+        setMembers(cached.items || []);
+        setTotalMembersCount(cached.total || 0);
+        setTotalPages(cached.totalPages || 0);
+        setLoading(false);
+        await fetchPTData();
+        return;
+      }
+      
       const params = {
         search: debouncedSearchTerm,
         status: filters.status === 'all' ? 'all' : filters.status,
@@ -584,17 +391,12 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       console.log('Fetching members with optimized endpoint:', params);
       const data = await fetchMembersOptimized(params);
       
-      console.log('API Response - Total:', data.total, 'Items:', data.items.length);
-      
       const transformed = data.items.map(item => {
-        // ✅ FIX: Properly construct avatar URL
         let avatarUrl;
         if (item.profile_image) {
           if (item.profile_image.startsWith('http')) {
             avatarUrl = item.profile_image;
           } else {
-            // ✅ Ensure proper URL construction with API_BASE_URL
-            // Remove any duplicate slashes
             const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
             const imagePath = item.profile_image.startsWith('/') ? item.profile_image : `/${item.profile_image}`;
             avatarUrl = `${baseUrl}${imagePath}`;
@@ -616,7 +418,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           status: item.status || 'inactive',
           lastVisit: null,
           payments: 0,
-          avatar: avatarUrl,  // ✅ Use the properly constructed URL
+          avatar: avatarUrl,
           profile_image: item.profile_image,
           raw: {
             id: item.id,
@@ -639,6 +441,15 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         };
       });
   
+      const result = {
+        items: transformed,
+        total: data.total || 0,
+        totalPages: data.total_pages || 0
+      };
+      
+      // Cache the result
+      setCache(cacheKey, result, 3 * 60 * 1000);
+      
       setMembers(transformed);
       setTotalMembersCount(data.total || 0);
       setTotalPages(data.total_pages || 0);
@@ -651,40 +462,49 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, filters.status, currentPage, itemsPerPage, showSingleMember, fetchPTData]);
-
+  }, [debouncedSearchTerm, filters.status, currentPage, itemsPerPage, showSingleMember, fetchPTData, getCache, setCache]);
 
   // ============================================================
-  // OPTIMIZED: Fetch stats using the new optimized endpoint
+  // OPTIMIZED: FETCH STATS WITH CACHING
   // ============================================================
   const fetchStatsOptimizedFn = useCallback(async () => {
     try {
+      // Check cache
+      const cached = getCache(CACHE_KEYS.MEMBER_STATS);
+      if (cached) {
+        setStats(cached);
+        return;
+      }
+      
       const statsData = await fetchMemberStatsOptimized();
-      setStats({
+      const newStats = {
         total: statsData.total_members || 0,
         active: statsData.active_members || 0,
         newThisMonth: statsData.new_this_month || 0,
-      });
+      };
+      setStats(newStats);
+      setCache(CACHE_KEYS.MEMBER_STATS, newStats, 3 * 60 * 1000);
     } catch (error) {
       console.error('Error fetching stats (optimized):', error);
       try {
         const response = await api.get('/gym/dashboard/stats');
-        setStats({
+        const newStats = {
           total: response.data.total_members,
           active: response.data.active_members,
           newThisMonth: response.data.new_members_this_month,
-        });
+        };
+        setStats(newStats);
+        setCache(CACHE_KEYS.MEMBER_STATS, newStats, 3 * 60 * 1000);
       } catch (fallbackError) {
         console.error('Error fetching stats (fallback):', fallbackError);
       }
     }
-  }, []);
+  }, [getCache, setCache]);
 
   // ============================================================
-  // LEGACY: Fetch members (kept for backward compatibility)
+  // LEGACY: FETCH MEMBERS (Kept for backward compatibility)
   // ============================================================
   const fetchMembersLegacy = useCallback(async () => {
-    // Don't fetch if we're showing a single member
     if (showSingleMember) return;
     
     setLoading(true);
@@ -732,7 +552,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           if (member.profile_image.startsWith('http')) {
             avatarUrl = member.profile_image;
           } else {
-            // ✅ FIX: Proper URL construction
             const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
             const imagePath = member.profile_image.startsWith('/') ? member.profile_image : `/${member.profile_image}`;
             avatarUrl = `${baseUrl}${imagePath}`;
@@ -756,7 +575,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           status: member.is_active ? 'active' : 'inactive',
           lastVisit: member.last_visit || null,
           payments: paymentCount,
-          avatar: avatarUrl,  // ✅ Use the properly constructed URL
+          avatar: avatarUrl,
           profile_image: member.profile_image,
           raw: member,
           activeMembership: activeMembership,
@@ -781,10 +600,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly, itemsPerPage, showSingleMember, fetchPTData]);
 
   // ============================================================
-  // Main fetch function - uses optimized endpoint by default
+  // MAIN FETCH FUNCTION
   // ============================================================
   const fetchMembers = useCallback(async () => {
-    // Don't fetch list if we're viewing a single member
     if (showSingleMember && singleMemberData) {
       setMembers([singleMemberData]);
       setTotalMembersCount(1);
@@ -833,125 +651,165 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     }
   };
 
-  // Initial load
+  // ============================================================
+  // EFFECTS
+  // ============================================================
   useEffect(() => {
     fetchStats();
     fetchGymDetails();
     fetchPTData();
   }, []);
 
-  // Trigger fetch when search, filters, or page changes (only when not viewing single member)
   useEffect(() => {
     if (!showSingleMember) {
       fetchMembers();
     } else if (singleMemberData) {
-      // Ensure single member is displayed
       setMembers([singleMemberData]);
       setTotalMembersCount(1);
       setTotalPages(1);
     }
   }, [debouncedSearchTerm, filters.status, currentPage, showSingleMember, singleMemberData]);
 
-  // Filter handlers for stats cards
-  const handleFilterAll = () => {
-    if (showSingleMember) handleBackToAllMembers();
-    setFilters({ ...filters, status: 'all' });
-    setShowNewThisMonthOnly(false);
-    setSearchTerm('');
-    setCurrentPage(1);
+  // ============================================================
+  // DELETE FUNCTION WITH CONFIRMATION
+  // ============================================================
+  const handleDeleteClick = (member) => {
+    setMemberToDelete(member);
+    setShowDeleteModal(true);
   };
 
-  const handleFilterActive = () => {
-    if (showSingleMember) handleBackToAllMembers();
-    setFilters({ ...filters, status: 'active' });
-    setShowNewThisMonthOnly(false);
-    setSearchTerm('');
-    setCurrentPage(1);
-  };
-
-  const handleFilterInactive = () => {
-    if (showSingleMember) handleBackToAllMembers();
-    setFilters({ ...filters, status: 'inactive' });
-    setShowNewThisMonthOnly(false);
-    setSearchTerm('');
-    setCurrentPage(1);
-  };
-
-  const handleFilterNewThisMonth = () => {
-    if (showSingleMember) handleBackToAllMembers();
-    setFilters({ ...filters, status: 'all' });
-    setShowNewThisMonthOnly(true);
-    setSearchTerm('');
-    setCurrentPage(1);
-  };
-
-  const handleDownloadInvoice = async (member) => {
-    setDownloadingInvoice(member.id);
-    try {
-      await generateInvoicePDF(member.id);
-    } catch (error) {
-      console.error('Error generating invoice:', error);
-      if (error.response?.data?.detail) {
-        console.error('Server error detail:', error.response.data.detail);
-      }
-    } finally {
-      setDownloadingInvoice(null);
-    }
-  };
-
-  const openProfileModal = (member) => {
-    setSelectedMemberForProfile(member);
-    setShowProfileModal(true);
-  };
-
-  const handleBulkInvoice = async () => {
-    if (selectedMembers.length === 0) {
-      toast.error('Please select members to generate invoices');
-      return;
-    }
+  const handleConfirmDelete = async () => {
+    if (!memberToDelete) return;
     
-    setDownloadingBulk(true);
+    setDeleting(true);
     try {
-      toast.loading(`Generating ${selectedMembers.length} invoices...`, { id: 'bulk-invoice' });
-      await generateBulkInvoices(selectedMembers);
-      toast.dismiss('bulk-invoice');
-      toast.success(`${selectedMembers.length} invoices downloaded as ZIP!`);
-      setSelectedMembers([]);
-    } catch (error) {
-      toast.dismiss('bulk-invoice');
-      console.error('Error generating bulk invoices:', error);
-      toast.error(error.response?.data?.detail || 'Failed to generate bulk invoices');
-    } finally {
-      setDownloadingBulk(false);
-    }
-  };
-
-  // ============================================================
-  // SYNC MEMBER TO BRIDGE (Attendance Device via Bridge)
-  // ============================================================
-  const syncMemberToBridge = async (memberId) => {
-    try {
-      const response = await api.post(`/gym/members/${memberId}/sync-to-bridge`);
-      if (response.data.success) {
-        console.log('✅ Member synced to bridge:', response.data);
-        return true;
+      console.log('Deleting member with ID:', memberToDelete.id);
+      
+      const response = await api.delete(`/gym/members/${memberToDelete.id}`);
+      
+      console.log('Delete response:', response.data);
+      
+      if (response.data.removed_from_devices > 0) {
+        toast.success(
+          `✅ Member deleted successfully!\n\n` +
+          `Removed from ${response.data.removed_from_devices} device(s).\n` +
+          `The device will sync within 3 seconds.`,
+          { duration: 5000 }
+        );
+      } else if (response.data.device_user_id) {
+        toast(
+          `⚠️ Member deleted but not removed from devices.\n\n` +
+          `The member had a device ID (${response.data.device_user_id}) but no active devices were found.`,
+          { duration: 5000 }
+        );
       } else {
-        console.warn('⚠️ Bridge sync response:', response.data);
-        return false;
+        toast.success('Member deleted successfully! (No device sync needed)');
       }
+      
+      // Invalidate cache
+      invalidateMemberCache();
+      
+      if (showSingleMember) {
+        handleBackToAllMembers();
+      } else {
+        setMembers(prev => prev.filter(m => m.id !== memberToDelete.id));
+        setSelectedMembers(prev => prev.filter(id => id !== memberToDelete.id));
+        fetchStats();
+      }
+      
+      refreshAllData();
+      
+      setShowDeleteModal(false);
+      setMemberToDelete(null);
+      
     } catch (error) {
-      console.warn('⚠️ Failed to sync member to bridge:', error);
-      return false;
+      console.error('Delete error:', error);
+      
+      if (error.response) {
+        if (error.response.status === 400 && error.response.data?.detail?.message === "Cannot delete member with active freeze") {
+          const freezeInfo = error.response.data.detail.freezes || [];
+          let freezeDetails = freezeInfo.map(f => 
+            `• ${f.freeze_type.charAt(0).toUpperCase() + f.freeze_type.slice(1)} Freeze: ${new Date(f.start_date).toLocaleDateString()} to ${new Date(f.end_date).toLocaleDateString()}`
+          ).join('\n');
+          
+          toast.error(
+            (t) => (
+              <div className="max-w-sm">
+                <div className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <AlertTriangle className="h-4 w-4 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-red-700">Cannot Delete Member</p>
+                    <p className="text-sm text-gray-700 mt-1">{memberToDelete.fullName} has an active freeze.</p>
+                    {freezeDetails && (
+                      <div className="mt-2 text-xs text-gray-600 bg-gray-50 rounded-lg p-2">
+                        <p className="font-medium">Active Freeze:</p>
+                        <pre className="whitespace-pre-wrap">{freezeDetails}</pre>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => toast.dismiss(t.id)}
+                      className="mt-3 px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700"
+                    >
+                      Got it
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ),
+            { duration: 8000, id: 'freeze-error' }
+          );
+          
+          setShowDeleteModal(false);
+          setMemberToDelete(null);
+          return;
+        }
+        
+        toast.error(error.response?.data?.detail || 'Failed to delete member');
+      } else {
+        toast.error('Network error. Please check your connection.');
+      }
+    } finally {
+      setDeleting(false);
     }
   };
 
-  const handleAddMember = async (memberData) => {
-    // ✅ DEBUG: Log what's being received
-    console.log('📥 MemberModal sending data:', memberData);
-    console.log('📥 custom_due_date received:', memberData.custom_due_date);
-    console.log('📥 PT data received:', memberData.pt_data);
+  // ============================================================
+  // BULK DELETE
+  // ============================================================
+  const handleBulkDelete = async () => {
+    if (selectedMembers.length === 0) return;
     
-    // Destructure ALL fields including custom_due_date and pt_data
+    const hasDeviceSync = selectedMembers.some(id => {
+      const member = members.find(m => m.id === id);
+      return member?.syncedToDevice || member?.deviceUserId;
+    });
+    
+    const message = hasDeviceSync
+      ? `⚠️ You are about to delete ${selectedMembers.length} members. Some of them are synced to attendance devices and will be automatically removed.\n\nAre you sure you want to continue?`
+      : `Are you sure you want to delete ${selectedMembers.length} members?`;
+    
+    if (!window.confirm(message)) return;
+    
+    try {
+      await Promise.all(selectedMembers.map(id => api.delete(`/gym/members/${id}`)));
+      setMembers(members.filter(m => !selectedMembers.includes(m.id)));
+      setSelectedMembers([]);
+      fetchStats();
+      invalidateMemberCache();
+      toast.success(`${selectedMembers.length} members deleted successfully!`);
+    } catch (error) {
+      toast.error('Failed to delete some members');
+    }
+  };
+
+  // ============================================================
+  // HANDLE ADD MEMBER
+  // ============================================================
+  const handleAddMember = async (memberData) => {
+    console.log('📥 MemberModal sending data:', memberData);
+    
     const { 
       plan_id, 
       membership_start_date, 
@@ -959,16 +817,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       amount_paid, 
       discount_applied, 
       custom_due_date,
-      pt_data,  // ✅ Extract PT data
+      pt_data,
       ...memberFields 
     } = memberData;
-
-    console.log('📤 Extracted fields:');
-    console.log('  - plan_id:', plan_id);
-    console.log('  - membership_start_date:', membership_start_date);
-    console.log('  - amount_paid:', amount_paid);
-    console.log('  - custom_due_date (raw):', custom_due_date);
-    console.log('  - pt_data:', pt_data);
 
     let memberResponse;
     let createdMember = null;
@@ -989,19 +840,15 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
 
     const memberId = createdMember.id;
 
-    // Handle Membership creation
     if (plan_id && membership_start_date && memberId) {
       try {
         const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
         const discount = discount_applied ? parseFloat(discount_applied) : 0;
         
-        // ✅ Handle custom_due_date properly
         let dueDate = null;
         if (custom_due_date && custom_due_date !== 'null' && custom_due_date !== 'None' && custom_due_date.trim() !== '') {
           dueDate = custom_due_date.trim();
         }
-        
-        console.log('📤 Final dueDate to send:', dueDate);
         
         const membershipPayload = {
           member_id: memberId,
@@ -1014,17 +861,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         
         if (dueDate) {
           membershipPayload.custom_due_date = dueDate;
-          console.log('📤 ✅ Adding custom_due_date to payload:', dueDate);
         }
-        
-        console.log('📤 📦 Final membership payload:', membershipPayload);
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
         
-        console.log('📥 Membership created:', membershipResponse.data);
-        console.log('📥 next_payment_date from response:', membershipResponse.data.next_payment_date);
-        
-        // Create a payment record for the amount paid
         if (paidAmount > 0) {
           try {
             await api.post('/gym/memberships/' + membershipResponse.data.id + '/partial-payment', {
@@ -1042,7 +882,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           }
         }
         
-        // ✅ Handle Personal Training if data exists
         if (pt_data && pt_data.trainer_id) {
           try {
             const ptPayload = {
@@ -1075,6 +914,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
     }
 
+    // Invalidate cache
+    invalidateMemberCache();
+    
     await fetchMembers();
     fetchStats();
     setIsModalOpen(false);
@@ -1087,11 +929,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           const synced = await syncMemberToBridge(createdMember.id);
           if (synced) {
             toast.success(`${createdMember.full_name} synced to attendance device!`, { duration: 3000 });
-          } else {
-            toast(
-              `${createdMember.full_name} added but not synced to device. Use the "Sync" button to add later.`,
-              { duration: 4000 }
-            );
           }
         }, 1000);
       }
@@ -1108,12 +945,13 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           }
         }, 500);
       }
-    } else {
-      toast.success('Member added! Please review membership and payment details.');
     }
     return createdMember;
   };
 
+  // ============================================================
+  // HANDLE UPDATE MEMBER
+  // ============================================================
   const handleUpdateMember = async (memberData) => {
     const {
       plan_id, 
@@ -1123,16 +961,14 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       discount_applied,
       renew_membership,
       current_membership_id,
-      pt_data,  // ✅ Extract PT data
+      pt_data,
       ...memberFields
     } = memberData;
   
     console.log('📤 handleUpdateMember - Received data:', memberData);
-    console.log('📤 pt_data received:', pt_data);
   
     let hasError = false;
   
-    // 1. Update member details
     try {
       await api.put(`/gym/members/${selectedMember.id}`, memberFields);
       console.log('✅ Member details updated');
@@ -1142,7 +978,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       throw error;
     }
   
-    // 2. Handle membership renewal if requested
     if (renew_membership && plan_id && membership_start_date) {
       try {
         const membershipPayload = {
@@ -1165,14 +1000,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
     }
   
-    // ✅ 3. Handle Personal Training update (for both new and existing members)
     if (pt_data && pt_data.trainer_id) {
       try {
-        // First, check if member already has an active PT session
         const existingPtResponse = await api.get(`/gym/members/${selectedMember.id}/personal-training`);
         const existingPtSessions = existingPtResponse.data || [];
-        
-        // Find active PT session
         const activePt = existingPtSessions.find(s => s.status === 'active' || s.status === 'pending');
         
         const ptPayload = {
@@ -1190,12 +1021,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         console.log('📤 Creating/Updating PT session:', ptPayload);
         
         if (activePt) {
-          // Update existing PT session
           await api.put(`/gym/personal-training/${activePt.id}`, ptPayload);
           console.log('✅ PT session updated:', activePt.id);
           toast.success('Personal training session updated!');
         } else {
-          // Create new PT session
           await api.post('/gym/personal-training', ptPayload);
           console.log('✅ New PT session created');
           toast.success('Personal training session added!');
@@ -1207,6 +1036,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
     }
   
+    // Invalidate cache
+    invalidateMemberCache();
+    
     await fetchMembers();
     fetchStats();
     setIsModalOpen(false);
@@ -1222,66 +1054,31 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           }
         }, 1000);
       }
-    } else if (renew_membership) {
-      toast.success('Member details updated! Please review membership details.');
-    } else {
-      toast.success('Member updated successfully!');
     }
   };
 
-  const handleBulkSyncToDevice = async () => {
-    if (!selectedBulkDevice) {
-        toast.error('Please select a device');
-        return;
-    }
-
-    if (selectedMembers.length === 0) {
-        toast.error('Please select members to sync');
-        return;
-    }
-
-    setSyncingAll(true);
+  // ============================================================
+  // SYNC MEMBER TO BRIDGE
+  // ============================================================
+  const syncMemberToBridge = async (memberId) => {
     try {
-        const memberIds = selectedMembers;
-        const result = await attendanceApi.bulkSyncMembersToDevice(selectedBulkDevice.id, memberIds);
-        
-        if (result.success) {
-            toast.success(`Syncing ${memberIds.length} members to device ${selectedBulkDevice.device_name}`);
-            
-            setMembers(prevMembers => 
-                prevMembers.map(m => 
-                    memberIds.includes(m.id) 
-                        ? { ...m, syncedToDevice: true, deviceUserId: String(m.id) }
-                        : m
-                )
-            );
-            
-            setSelectedMembers([]);
-            setShowBulkDeviceSelect(false);
-            setSelectedBulkDevice(null);
-            refreshAllData();
-            
-            if (result.device_serial) {
-                try {
-                    await api.post(`/attendance/devices/trigger-sync?device_serial=${result.device_serial}`);
-                    console.log('✅ Triggered immediate device sync');
-                } catch (triggerError) {
-                    console.warn('Could not trigger immediate sync, will wait for normal poll:', triggerError);
-                }
-            }
-            
-            setTimeout(() => fetchMembers(), 2000);
-        } else {
-            toast.error(result.error || 'Bulk sync failed');
-        }
+      const response = await api.post(`/gym/members/${memberId}/sync-to-bridge`);
+      if (response.data.success) {
+        console.log('✅ Member synced to bridge:', response.data);
+        return true;
+      } else {
+        console.warn('⚠️ Bridge sync response:', response.data);
+        return false;
+      }
     } catch (error) {
-        console.error('Bulk sync error:', error);
-        toast.error(error.response?.data?.detail || 'Bulk sync failed');
-    } finally {
-        setSyncingAll(false);
+      console.warn('⚠️ Failed to sync member to bridge:', error);
+      return false;
     }
   };
 
+  // ============================================================
+  // EXPORT MEMBERS
+  // ============================================================
   const handleExport = async () => {
     try {
       const balancesResponse = await api.get('/gym/members/balances');
@@ -1348,6 +1145,48 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     }
   };
 
+  // ============================================================
+  // FILTER HANDLERS
+  // ============================================================
+  const handleFilterAll = () => {
+    if (showSingleMember) handleBackToAllMembers();
+    setFilters({ ...filters, status: 'all' });
+    setShowNewThisMonthOnly(false);
+    setSearchTerm('');
+    setCurrentPage(1);
+    clearCache(CACHE_KEYS.MEMBERS_LIST);
+  };
+
+  const handleFilterActive = () => {
+    if (showSingleMember) handleBackToAllMembers();
+    setFilters({ ...filters, status: 'active' });
+    setShowNewThisMonthOnly(false);
+    setSearchTerm('');
+    setCurrentPage(1);
+    clearCache(CACHE_KEYS.MEMBERS_LIST);
+  };
+
+  const handleFilterInactive = () => {
+    if (showSingleMember) handleBackToAllMembers();
+    setFilters({ ...filters, status: 'inactive' });
+    setShowNewThisMonthOnly(false);
+    setSearchTerm('');
+    setCurrentPage(1);
+    clearCache(CACHE_KEYS.MEMBERS_LIST);
+  };
+
+  const handleFilterNewThisMonth = () => {
+    if (showSingleMember) handleBackToAllMembers();
+    setFilters({ ...filters, status: 'all' });
+    setShowNewThisMonthOnly(true);
+    setSearchTerm('');
+    setCurrentPage(1);
+    clearCache(CACHE_KEYS.MEMBERS_LIST);
+  };
+
+  // ============================================================
+  // HELPER FUNCTIONS
+  // ============================================================
   const getStatusBadge = (status) => {
     const statusConfig = {
       active: { color: 'bg-green-100 text-green-800', icon: CheckCircle },
@@ -1420,21 +1259,98 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     setShowBulkDeviceSelect(true);
   };
 
-  const paginatedMembers = members;
-  const displayTotalPages = totalPages;
+  const handleBulkSyncToDevice = async () => {
+    if (!selectedBulkDevice) {
+      toast.error('Please select a device');
+      return;
+    }
 
-  const toggleSelectAll = () => {
-    if (selectedMembers.length === paginatedMembers.length && paginatedMembers.length > 0) {
-      setSelectedMembers([]);
-    } else {
-      setSelectedMembers(paginatedMembers.map(m => m.id));
+    if (selectedMembers.length === 0) {
+      toast.error('Please select members to sync');
+      return;
+    }
+
+    setSyncingAll(true);
+    try {
+      const memberIds = selectedMembers;
+      const result = await attendanceApi.bulkSyncMembersToDevice(selectedBulkDevice.id, memberIds);
+      
+      if (result.success) {
+        toast.success(`Syncing ${memberIds.length} members to device ${selectedBulkDevice.device_name}`);
+        
+        setMembers(prevMembers => 
+          prevMembers.map(m => 
+            memberIds.includes(m.id) 
+              ? { ...m, syncedToDevice: true, deviceUserId: String(m.id) }
+              : m
+          )
+        );
+        
+        setSelectedMembers([]);
+        setShowBulkDeviceSelect(false);
+        setSelectedBulkDevice(null);
+        refreshAllData();
+        
+        if (result.device_serial) {
+          try {
+            await api.post(`/attendance/devices/trigger-sync?device_serial=${result.device_serial}`);
+            console.log('✅ Triggered immediate device sync');
+          } catch (triggerError) {
+            console.warn('Could not trigger immediate sync, will wait for normal poll:', triggerError);
+          }
+        }
+        
+        setTimeout(() => fetchMembers(), 2000);
+      } else {
+        toast.error(result.error || 'Bulk sync failed');
+      }
+    } catch (error) {
+      console.error('Bulk sync error:', error);
+      toast.error(error.response?.data?.detail || 'Bulk sync failed');
+    } finally {
+      setSyncingAll(false);
     }
   };
 
-  const toggleSelectMember = (id) => {
-    setSelectedMembers(prev =>
-      prev.includes(id) ? prev.filter(mId => mId !== id) : [...prev, id]
-    );
+  const handleDownloadInvoice = async (member) => {
+    setDownloadingInvoice(member.id);
+    try {
+      await generateInvoicePDF(member.id);
+    } catch (error) {
+      console.error('Error generating invoice:', error);
+      if (error.response?.data?.detail) {
+        console.error('Server error detail:', error.response.data.detail);
+      }
+    } finally {
+      setDownloadingInvoice(null);
+    }
+  };
+
+  const handleBulkInvoice = async () => {
+    if (selectedMembers.length === 0) {
+      toast.error('Please select members to generate invoices');
+      return;
+    }
+    
+    setDownloadingBulk(true);
+    try {
+      toast.loading(`Generating ${selectedMembers.length} invoices...`, { id: 'bulk-invoice' });
+      await generateBulkInvoices(selectedMembers);
+      toast.dismiss('bulk-invoice');
+      toast.success(`${selectedMembers.length} invoices downloaded as ZIP!`);
+      setSelectedMembers([]);
+    } catch (error) {
+      toast.dismiss('bulk-invoice');
+      console.error('Error generating bulk invoices:', error);
+      toast.error(error.response?.data?.detail || 'Failed to generate bulk invoices');
+    } finally {
+      setDownloadingBulk(false);
+    }
+  };
+
+  const openProfileModal = (member) => {
+    setSelectedMemberForProfile(member);
+    setShowProfileModal(true);
   };
 
   const openEditModal = (member) => {
@@ -1452,8 +1368,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     setIsModalOpen(true);
   };
 
-  const activeDevices = devices.filter(d => d.is_active);
-  
   const copyDeviceIdToClipboard = (deviceUserId) => {
     if (deviceUserId) {
       navigator.clipboard.writeText(deviceUserId);
@@ -1461,6 +1375,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     }
   };
 
+  const activeDevices = devices.filter(d => d.is_active);
   const inactiveCount = stats.total - stats.active;
 
   const handlePrevPage = () => {
@@ -1470,13 +1385,30 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   const handleNextPage = () => {
-    if (currentPage < displayTotalPages) {
+    if (currentPage < totalPages) {
       setCurrentPage(currentPage + 1);
     }
   };
 
+  const paginatedMembers = members;
+  const displayTotalPages = totalPages;
+
+  const toggleSelectAll = () => {
+    if (selectedMembers.length === paginatedMembers.length && paginatedMembers.length > 0) {
+      setSelectedMembers([]);
+    } else {
+      setSelectedMembers(paginatedMembers.map(m => m.id));
+    }
+  };
+
+  const toggleSelectMember = (id) => {
+    setSelectedMembers(prev =>
+      prev.includes(id) ? prev.filter(mId => mId !== id) : [...prev, id]
+    );
+  };
+
   // ============================================================
-  // RENDER - Always show table with filtered members
+  // RENDER
   // ============================================================
   return (
     <div className="p-6">
@@ -1566,6 +1498,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   if (!showSingleMember) {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
+                    // Clear cache on search
+                    clearCache(CACHE_KEYS.MEMBERS_LIST);
                   }
                 }}
                 disabled={showSingleMember}
@@ -1588,6 +1522,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 if (showSingleMember) {
                   handleBackToAllMembers();
                 } else {
+                  clearCache(CACHE_KEYS.MEMBERS_LIST);
                   fetchMembers();
                 }
               }}
@@ -1603,6 +1538,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   setShowNewThisMonthOnly(false);
                   setSearchTerm('');
                   setCurrentPage(1);
+                  clearCache(CACHE_KEYS.MEMBERS_LIST);
                 }}
                 className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm flex items-center gap-1"
               >
@@ -1671,6 +1607,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   setFilters({ ...filters, status: e.target.value });
                   setShowNewThisMonthOnly(false);
                   setCurrentPage(1);
+                  clearCache(CACHE_KEYS.MEMBERS_LIST);
                 }}
                 className="w-full border border-gray-300 rounded-lg p-2"
               >
@@ -1686,6 +1623,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 onChange={(e) => {
                   setFilters({ ...filters, gender: e.target.value });
                   setCurrentPage(1);
+                  clearCache(CACHE_KEYS.MEMBERS_LIST);
                 }}
                 className="w-full border border-gray-300 rounded-lg p-2"
               >
@@ -1703,6 +1641,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                     onClick={() => {
                       setShowNewThisMonthOnly(false);
                       setCurrentPage(1);
+                      clearCache(CACHE_KEYS.MEMBERS_LIST);
                     }}
                     className="ml-2 text-blue-600 hover:text-blue-800"
                   >
@@ -1832,17 +1771,17 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                         <div className="text-sm text-gray-500">{member.phone}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{member.membership}</div>
-                      <div className="text-sm text-gray-500">
-                        {member.membershipEndDate ? (
-                          <span>
-                            Expires: {new Date(member.membershipEndDate).toLocaleDateString()}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">No active membership</span>
-                        )}
-                      </div>
-                    </td>
+                        <div className="text-sm font-medium text-gray-900">{member.membership}</div>
+                        <div className="text-sm text-gray-500">
+                          {member.membershipEndDate ? (
+                            <span>
+                              Expires: {new Date(member.membershipEndDate).toLocaleDateString()}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">No active membership</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {getStatusBadge(member.status)}
                       </td>
@@ -1996,7 +1935,15 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       {/* Modals */}
       <MemberModal
         isOpen={isModalOpen}
-        onClose={() => { setIsModalOpen(false); setSelectedMember(null); }}
+        onClose={() => { 
+          setIsModalOpen(false); 
+          setSelectedMember(null);
+          // Refresh data when modal closes
+          if (!showSingleMember) {
+            clearCache(CACHE_KEYS.MEMBERS_LIST);
+            fetchMembers();
+          }
+        }}
         onSave={selectedMember ? handleUpdateMember : handleAddMember}
         member={selectedMember}
         userRole={user?.role}
@@ -2010,7 +1957,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         }}
         member={selectedMemberForSync}
         onSyncComplete={handleSyncComplete}
-        refreshMemberList={fetchMembers}
+        refreshMemberList={() => {
+          clearCache(CACHE_KEYS.MEMBERS_LIST);
+          fetchMembers();
+        }}
       />
 
       {showProfileModal && selectedMemberForProfile && (
@@ -2019,9 +1969,14 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           onClose={() => {
             setShowProfileModal(false);
             setSelectedMemberForProfile(null);
+            clearCache(CACHE_KEYS.MEMBERS_LIST);
+            clearCache(CACHE_KEYS.MEMBER_STATS);
             fetchMembers();
+            fetchStats();
           }}
           onUpdate={() => {
+            clearCache(CACHE_KEYS.MEMBERS_LIST);
+            clearCache(CACHE_KEYS.MEMBER_STATS);
             fetchMembers();
             fetchStats();
           }}
@@ -2032,10 +1987,14 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         isOpen={showBulkImportModal}
         onClose={() => {
           setShowBulkImportModal(false);
+          clearCache(CACHE_KEYS.MEMBERS_LIST);
+          clearCache(CACHE_KEYS.MEMBER_STATS);
           fetchMembers();
           fetchStats();
         }}
         onImportComplete={() => {
+          clearCache(CACHE_KEYS.MEMBERS_LIST);
+          clearCache(CACHE_KEYS.MEMBER_STATS);
           fetchMembers();
           fetchStats();
         }}
