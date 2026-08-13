@@ -1,4 +1,5 @@
-// src/pages/Members.jsx - Full Updated with Proper Cache Invalidation
+// src/pages/Members.jsx - Full Updated with Fixed Renewal and membershipPlans
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Search, Filter, Edit, Trash2, UserPlus, Download,
@@ -172,6 +173,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   const { devices, syncMemberToDevice, removeMemberFromDevice, refreshAllData, attendanceApi } = useAttendance();
   const { getCache, setCache, clearCache, clearCachePattern, invalidateMembersCache, invalidateCache } = useCache();
   
+  // ✅ Add membershipPlans state
+  const [membershipPlans, setMembershipPlans] = useState([]);
+  const [loadingPlans, setLoadingPlans] = useState(false);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [showFilters, setShowFilters] = useState(false);
@@ -226,10 +231,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   });
 
   // ============================================================
-  // CACHE INVALIDATION HELPER - UPDATED
+  // CACHE INVALIDATION HELPER
   // ============================================================
   const invalidateMemberCache = useCallback(() => {
-    // Clear all member-related caches using the new pattern-based clearing
     invalidateMembersCache();
     clearCachePattern(CACHE_KEYS.DASHBOARD_STATS);
     clearCachePattern(CACHE_KEYS.DASHBOARD_BALANCE_OVERVIEW);
@@ -237,9 +241,24 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     clearCachePattern(CACHE_KEYS.MEMBER_BALANCES);
     clearCachePattern(CACHE_KEYS.MEMBER_PT_DATA);
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-    // Also clear the global cache version to force all caches to refresh
     invalidateCache();
   }, [invalidateMembersCache, clearCachePattern, invalidateCache]);
+
+  // ============================================================
+  // FETCH MEMBERSHIP PLANS
+  // ============================================================
+  const fetchMembershipPlans = useCallback(async () => {
+    setLoadingPlans(true);
+    try {
+      const response = await api.get('/gym/plans?active_only=true');
+      setMembershipPlans(response.data || []);
+    } catch (error) {
+      console.error('Error fetching membership plans:', error);
+      setMembershipPlans([]);
+    } finally {
+      setLoadingPlans(false);
+    }
+  }, []);
 
   // ============================================================
   // FETCH PT DATA WITH CACHING
@@ -344,7 +363,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       onMemberSelect(null);
     }
     setCurrentPage(1);
-    // Clear single member cache
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
     fetchMembers();
   };
@@ -372,10 +390,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     
     setLoading(true);
     try {
-      // ✅ Include all filter params in cache key for better granularity
       const cacheKey = `${CACHE_KEYS.MEMBERS_LIST}_${debouncedSearchTerm}_${filters.status}_${filters.gender}_${currentPage}`;
       
-      // Check cache
       const cached = getCache(cacheKey);
       if (cached) {
         console.log('📋 Using cached members data for key:', cacheKey);
@@ -453,7 +469,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         totalPages: data.total_pages || 0
       };
       
-      // Cache the result with a shorter expiry for member lists (2 minutes)
       setCache(cacheKey, result, 2 * 60 * 1000);
       
       setMembers(transformed);
@@ -475,7 +490,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   // ============================================================
   const fetchStatsOptimizedFn = useCallback(async () => {
     try {
-      // Check cache
       const cached = getCache(CACHE_KEYS.MEMBER_STATS);
       if (cached) {
         setStats(cached);
@@ -508,7 +522,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   }, [getCache, setCache]);
 
   // ============================================================
-  // LEGACY: FETCH MEMBERS (Kept for backward compatibility)
+  // LEGACY: FETCH MEMBERS
   // ============================================================
   const fetchMembersLegacy = useCallback(async () => {
     if (showSingleMember) return;
@@ -664,6 +678,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     fetchStats();
     fetchGymDetails();
     fetchPTData();
+    fetchMembershipPlans(); // ✅ Fetch membership plans on mount
   }, []);
 
   useEffect(() => {
@@ -712,7 +727,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         toast.success('Member deleted successfully! (No device sync needed)');
       }
       
-      // ✅ Invalidate cache with stronger invalidation
       invalidateMemberCache();
       clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
       
@@ -813,7 +827,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ============================================================
-  // HANDLE ADD MEMBER
+  // HANDLE ADD MEMBER - FIXED
   // ============================================================
   const handleAddMember = async (memberData) => {
     console.log('📥 MemberModal sending data:', memberData);
@@ -825,6 +839,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       amount_paid, 
       discount_applied, 
       custom_due_date,
+      payment_date,
       pt_data,
       ...memberFields 
     } = memberData;
@@ -853,6 +868,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
         const discount = discount_applied ? parseFloat(discount_applied) : 0;
         
+        console.log('💰 New member payment amount:', paidAmount);
+        console.log('💰 New member discount:', discount);
+        
         let dueDate = null;
         if (custom_due_date && custom_due_date !== 'null' && custom_due_date !== 'None' && custom_due_date.trim() !== '') {
           dueDate = custom_due_date.trim();
@@ -862,14 +880,17 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           member_id: memberId,
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
-          amount_paid: 0,
+          amount_paid: paidAmount,
           discount_applied: discount,
           payment_method: payment_method || 'cash',
+          payment_date: payment_date,
         };
         
         if (dueDate) {
           membershipPayload.custom_due_date = dueDate;
         }
+        
+        console.log('📤 Membership payload:', membershipPayload);
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
         
@@ -879,7 +900,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
               membership_id: membershipResponse.data.id,
               amount: paidAmount,
               payment_method: payment_method || 'cash',
-              payment_date: new Date().toISOString(),
+              payment_date: payment_date || new Date().toISOString(),
               notes: 'Initial payment'
             });
             console.log('✅ Payment record created for ₹', paidAmount);
@@ -922,7 +943,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
     }
 
-    // ✅ Invalidate cache after adding
     invalidateMemberCache();
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
     
@@ -959,7 +979,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ============================================================
-  // HANDLE UPDATE MEMBER
+  // HANDLE UPDATE MEMBER - FIXED WITH membershipPlans
   // ============================================================
   const handleUpdateMember = async (memberData) => {
     const {
@@ -970,14 +990,18 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       discount_applied,
       renew_membership,
       current_membership_id,
+      payment_date,
       pt_data,
       ...memberFields
     } = memberData;
-  
+
     console.log('📤 handleUpdateMember - Received data:', memberData);
-  
+    console.log('💰 amount_paid received:', amount_paid);
+    console.log('🔄 renew_membership:', renew_membership);
+    console.log('📅 payment_date received:', payment_date);
+
     let hasError = false;
-  
+
     try {
       await api.put(`/gym/members/${selectedMember.id}`, memberFields);
       console.log('✅ Member details updated');
@@ -986,21 +1010,52 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       toast.error(error.response?.data?.detail || 'Failed to update member details');
       throw error;
     }
-  
+
     if (renew_membership && plan_id && membership_start_date) {
       try {
+        // ✅ Parse payment amounts
+        const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
+        const discount = discount_applied ? parseFloat(discount_applied) : 0;
+        
+        console.log('💰 Final payment amount for renewal:', paidAmount);
+        console.log('💰 Discount for renewal:', discount);
+        
+        // ✅ Get the selected plan from membershipPlans state
+        const selectedPlan = membershipPlans.find(p => String(p.id) === String(plan_id));
+        if (selectedPlan) {
+          const planPrice = selectedPlan.discounted_price || selectedPlan.price;
+          console.log('📊 Plan price:', planPrice);
+          console.log('📊 Final amount after discount:', planPrice - discount);
+          console.log('📊 Amount paid:', paidAmount);
+          console.log('📊 Balance due:', Math.max(0, (planPrice - discount) - paidAmount));
+        }
+        
         const membershipPayload = {
           member_id: selectedMember.id,
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
-          amount_paid: 0,
-          discount_applied: parseFloat(discount_applied) || 0,
+          amount_paid: paidAmount,
+          discount_applied: discount,
+          payment_method: payment_method || 'cash',
           current_membership_id: current_membership_id || null,
           is_renewal: true,
+          payment_date: payment_date,
         };
+        
+        console.log('📤 Membership renewal payload:', membershipPayload);
         
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
         console.log('✅ Membership renewed:', membershipResponse.data);
+        
+        // ✅ Trigger payment added event to refresh Payments page
+        window.dispatchEvent(new CustomEvent('paymentAdded'));
+        window.dispatchEvent(new CustomEvent('paymentUpdated'));
+        
+        if (paidAmount > 0) {
+          toast.success(`✅ Membership renewed successfully with ₹${paidAmount} payment!`);
+        } else {
+          toast.warning('⚠️ Membership renewed but no payment was recorded.');
+        }
         
       } catch (err) {
         console.error('Membership renewal error:', err);
@@ -1008,7 +1063,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         toast.error(`Details saved but membership renewal failed. Please assign membership manually.`);
       }
     }
-  
+
     if (pt_data && pt_data.trainer_id) {
       try {
         const existingPtResponse = await api.get(`/gym/members/${selectedMember.id}/personal-training`);
@@ -1044,8 +1099,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         hasError = true;
       }
     }
-  
-    // ✅ Invalidate cache after updating
+
     invalidateMemberCache();
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
     
@@ -1508,7 +1562,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   if (!showSingleMember) {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
-                    // Clear cache on search
                     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
                   }
                 }}
@@ -1948,7 +2001,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         onClose={() => { 
           setIsModalOpen(false); 
           setSelectedMember(null);
-          // Refresh data when modal closes
           if (!showSingleMember) {
             clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
             fetchMembers();

@@ -1,8 +1,8 @@
-// src/App.jsx
+// src/App.jsx - Add FollowUpPage route
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { CacheProvider } from './context/CacheContext'; // ✅ ADD THIS
+import { CacheProvider } from './context/CacheContext';
 import PrivateRoute from './components/PrivateRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
@@ -22,6 +22,7 @@ import InvoicePage from './pages/InvoicePage';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TrainerSchedule from './components/TrainerSchedule';
 import HistoricalInvoices from './pages/HistoricalInvoices';
+import FollowUpPage from './components/FollowUpPage'; // ✅ Import FollowUpPage
 
 function AdminRoute({ children }) {
   const { user, initialLoading } = useAuth();
@@ -45,7 +46,7 @@ function App() {
     <ErrorBoundary>
       <Router>
         <AuthProvider>
-          <CacheProvider> {/* ✅ ADD CACHE PROVIDER HERE */}
+          <CacheProvider>
             <AttendanceProvider>
               <div className="min-h-screen">
                 <Toaster
@@ -90,6 +91,10 @@ function App() {
                   <Route path="/gym-setup" element={<PrivateRoute><GymSetup /></PrivateRoute>} />
                   <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
                   <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+                  
+                  {/* ✅ Follow-Up Page Route */}
+                  <Route path="/follow-ups" element={<PrivateRoute><FollowUpPage /></PrivateRoute>} />
+                  
                   <Route path="/admin" element={
                     <AdminRoute>
                       <AdminDashboard />
@@ -106,7 +111,7 @@ function App() {
                 </Routes>
               </div>
             </AttendanceProvider>
-          </CacheProvider> {/* ✅ END CACHE PROVIDER */}
+          </CacheProvider>
         </AuthProvider>
       </Router>
     </ErrorBoundary>

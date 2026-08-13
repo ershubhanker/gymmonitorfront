@@ -1,6 +1,6 @@
-// src/pages/Payments.tsx - Table format like Balance screen
+// src/pages/Payments.tsx - Complete updated with proper refresh and renewal payment display
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   CreditCard, 
   Calendar, 
@@ -24,7 +24,7 @@ import {
   Tag, 
   Dumbbell,
   ChevronLeft,
-  ChevronRight, Clock, XCircle
+  ChevronRight, Clock, XCircle, RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -66,7 +66,10 @@ const Payments = () => {
     totalGST: 0,
     totalBalancePayments: 0,
     totalAddonPayments: 0,
-    addonPaymentCount: 0
+    addonPaymentCount: 0,
+    // ✅ New fields for renewal tracking
+    renewalPayments: 0,
+    renewalCount: 0
   });
 
   const currencySymbol = user?.currency_symbol || '₹';
@@ -76,6 +79,7 @@ const Payments = () => {
   const [showGstModal, setShowGstModal] = useState(false);
   const [updatingGst, setUpdatingGst] = useState(false);
 
+  // ✅ Set initial date range to current month
   useEffect(() => {
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -84,6 +88,7 @@ const Payments = () => {
     fetchPayments();
   }, []);
 
+  // ✅ Refresh when date range or filters change
   useEffect(() => {
     if (payments.length > 0 || startDate) {
       filterPayments();
@@ -96,19 +101,49 @@ const Payments = () => {
     setSelectedPayments(new Set());
   }, [payments]);
 
-  const fetchPayments = async () => {
+  // ✅ Listen for payment added events
+  useEffect(() => {
+    const handlePaymentAdded = () => {
+      console.log('🔄 Payment added event received, refreshing...');
+      fetchPayments();
+    };
+
+    window.addEventListener('paymentAdded', handlePaymentAdded);
+    window.addEventListener('paymentUpdated', handlePaymentAdded);
+    
+    return () => {
+      window.removeEventListener('paymentAdded', handlePaymentAdded);
+      window.removeEventListener('paymentUpdated', handlePaymentAdded);
+    };
+  }, []);
+
+  const fetchPayments = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+      
+      // ✅ Fetch payments with limit to get all recent payments
       const response = await api.get('/gym/payments?limit=10000');
-      console.log('Payments response:', response.data);
+      console.log('📊 Payments response:', response.data);
       
       let paymentsData = Array.isArray(response.data) ? response.data : [];
       
+      // ✅ Process payments to detect types
       paymentsData = paymentsData.map(payment => {
         let paymentType = 'membership';
         let addonName = null;
+        let isRenewal = false;
         
+        // Check if it's a renewal payment
+        if (payment.notes && (
+          payment.notes.includes('Renewal') || 
+          payment.notes.includes('renewal') ||
+          payment.notes.includes('renew')
+        )) {
+          isRenewal = true;
+        }
+        
+        // Check for add-on payments
         if (payment.transaction_id?.startsWith('ADDON-PAY-') || 
             payment.transaction_id?.startsWith('ADDON-')) {
           paymentType = 'addon';
@@ -119,10 +154,19 @@ const Payments = () => {
           } else {
             addonName = 'Addon';
           }
-        } else if (payment.transaction_id?.startsWith('PT-') || 
+        } 
+        // Check for PT payments
+        else if (payment.transaction_id?.startsWith('PT-') || 
                    payment.notes?.includes('PT Payment') ||
                    payment.membership_id === null) {
           paymentType = 'pt';
+        }
+        // Check for membership payments (default)
+        else {
+          // Check if it has a membership_id and not marked as other types
+          if (payment.membership_id) {
+            paymentType = 'membership';
+          }
         }
         
         return {
@@ -136,26 +180,30 @@ const Payments = () => {
           is_balance_payment: payment.is_balance_payment || false,
           original_invoice_id: payment.original_invoice_id || null,
           payment_type: paymentType,
-          addon_name: addonName
+          addon_name: addonName,
+          is_renewal: isRenewal,
+          // Ensure amount is a number
+          amount: Number(payment.amount) || 0
         };
       });
       
-      console.log('Processed payments:', paymentsData.length);
+      console.log('✅ Processed payments:', paymentsData.length);
       setPayments(paymentsData);
     } catch (error) {
-      console.error('Error fetching payments:', error);
+      console.error('❌ Error fetching payments:', error);
       setError('Failed to load payments. Please try again.');
       toast.error('Failed to load payments');
       setPayments([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const filterPayments = () => {
+  const filterPayments = useCallback(() => {
     try {
       let filtered = [...payments];
 
+      // ✅ Filter by date range
       if (startDate && endDate && filtered.length > 0) {
         filtered = filtered.filter(payment => {
           const paymentDate = payment.payment_date?.split('T')[0];
@@ -163,6 +211,7 @@ const Payments = () => {
         });
       }
 
+      // ✅ Filter by search term
       if (searchTerm && filtered.length > 0) {
         filtered = filtered.filter(payment => {
           const memberName = payment.member_name || payment.member?.full_name || '';
@@ -170,6 +219,7 @@ const Payments = () => {
         });
       }
 
+      // ✅ Filter by payment method
       if (selectedMethod !== 'all' && filtered.length > 0) {
         filtered = filtered.filter(payment => {
           const method = payment.payment_method?.toLowerCase() || '';
@@ -177,6 +227,7 @@ const Payments = () => {
         });
       }
 
+      // ✅ Filter by payment type
       if (paymentTypeFilter !== 'all' && filtered.length > 0) {
         filtered = filtered.filter(payment => {
           if (paymentTypeFilter === 'membership') {
@@ -185,11 +236,14 @@ const Payments = () => {
             return payment.payment_type === 'pt';
           } else if (paymentTypeFilter === 'addon') {
             return payment.payment_type === 'addon';
+          } else if (paymentTypeFilter === 'renewal') {
+            return payment.is_renewal === true;
           }
           return true;
         });
       }
 
+      // ✅ Calculate summary
       const totalRevenue = filtered.reduce((sum, p) => sum + (p.amount || 0), 0);
       const totalCount = filtered.length;
       const averagePayment = totalCount > 0 ? totalRevenue / totalCount : 0;
@@ -221,6 +275,13 @@ const Payments = () => {
         .reduce((sum, p) => sum + (p.amount || 0), 0);
       const addonPaymentCount = filtered.filter(p => p.payment_type === 'addon').length;
 
+      // ✅ Calculate renewal payments
+      const renewalPayments = filtered
+        .filter(p => p.is_renewal === true)
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
+      const renewalCount = filtered.filter(p => p.is_renewal === true).length;
+
+      // ✅ Calculate growth
       let growth = 0;
       if (payments.length > 0 && startDate && endDate) {
         const daysDiff = Math.max(1, Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)));
@@ -255,9 +316,12 @@ const Payments = () => {
         totalGST,
         totalBalancePayments,
         totalAddonPayments: addonPayments,
-        addonPaymentCount
+        addonPaymentCount,
+        renewalPayments,
+        renewalCount
       });
 
+      // ✅ Sort by date (newest first)
       const sortedFiltered = [...filtered].sort((a, b) => {
         const dateA = new Date(a.payment_date);
         const dateB = new Date(b.payment_date);
@@ -270,7 +334,7 @@ const Payments = () => {
       console.error('Error filtering payments:', err);
       setFilteredPayments([]);
     }
-  };
+  }, [payments, startDate, endDate, searchTerm, selectedMethod, paymentTypeFilter]);
 
   const formatCurrency = (amount) => {
     if (!amount && amount !== 0) return `${currencySymbol} 0`;
@@ -390,10 +454,13 @@ const Payments = () => {
   };
 
   // ===== GET PAYMENT TYPE BADGE =====
-  const getPaymentTypeBadge = (type) => {
-    switch(type) {
+  const getPaymentTypeBadge = (payment) => {
+    if (payment.is_renewal) {
+      return { label: 'Renewal', color: 'bg-purple-100 text-purple-700' };
+    }
+    switch(payment.payment_type) {
       case 'addon':
-        return { label: 'Add-On', color: 'bg-purple-100 text-purple-700' };
+        return { label: 'Add-On', color: 'bg-indigo-100 text-indigo-700' };
       case 'pt':
         return { label: 'PT', color: 'bg-blue-100 text-blue-700' };
       default:
@@ -407,7 +474,8 @@ const Payments = () => {
       cash: '💰',
       card: '💳',
       upi: '📱',
-      bank: '🏦'
+      bank: '🏦',
+      online: '🌐'
     };
     return icons[method?.toLowerCase()] || '💵';
   };
@@ -489,6 +557,10 @@ const Payments = () => {
       csvRows.push([`"Total Add-On Payments:","${formatCurrency(summary.totalAddonPayments)}"`]);
       csvRows.push([`"Add-On Payment Count:","${summary.addonPaymentCount}"`]);
       csvRows.push(['']);
+      csvRows.push(['"Renewal Payment Summary:"']);
+      csvRows.push([`"Total Renewal Payments:","${formatCurrency(summary.renewalPayments)}"`]);
+      csvRows.push([`"Renewal Payment Count:","${summary.renewalCount}"`]);
+      csvRows.push(['']);
       
       csvRows.push(['"Payment Method Breakdown"']);
       csvRows.push(['"Method","Amount","Count","Percentage"']);
@@ -520,8 +592,7 @@ const Payments = () => {
         `"CGST (${gstRate/2}%)"`,
         `"SGST (${gstRate/2}%)"`,
         '"Is Balance Payment"',
-        '"Original Invoice ID"',
-        '"Member Balance After"',
+        '"Is Renewal"',
         '"Payment Type"',
         '"Notes"'
       ]);
@@ -531,7 +602,9 @@ const Payments = () => {
         const dateStr = paymentDate ? paymentDate.toLocaleDateString('en-IN') : 'N/A';
         const timeStr = paymentDate ? paymentDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'N/A';
         
-        const paymentTypeLabel = payment.payment_type === 'addon' ? 'Add-On' : payment.payment_type === 'pt' ? 'PT' : 'Membership';
+        const typeLabel = payment.is_renewal ? 'Renewal' : 
+          payment.payment_type === 'addon' ? 'Add-On' : 
+          payment.payment_type === 'pt' ? 'PT' : 'Membership';
         
         csvRows.push([
           `"${dateStr}"`,
@@ -548,9 +621,8 @@ const Payments = () => {
           `"${((payment.gst_amount || 0) / 2).toFixed(2)}"`,
           `"${((payment.gst_amount || 0) / 2).toFixed(2)}"`,
           `"${payment.is_balance_payment ? 'Yes' : 'No'}"`,
-          `"${payment.original_invoice_id || 'N/A'}"`,
-          `"${payment.member_balance || 0}"`,
-          `"${paymentTypeLabel}"`,
+          `"${payment.is_renewal ? 'Yes' : 'No'}"`,
+          `"${typeLabel}"`,
           `"${(payment.notes || '').replace(/"/g, '""')}"`
         ]);
       });
@@ -562,6 +634,7 @@ const Payments = () => {
       csvRows.push([`"Total GST (${gstRate}%):","${formatCurrency(gstCollected)}"`]);
       csvRows.push([`"Total Balance Payments:","${formatCurrency(summary.totalBalancePayments)}"`]);
       csvRows.push([`"Total Add-On Payments:","${formatCurrency(summary.totalAddonPayments)}"`]);
+      csvRows.push([`"Total Renewal Payments:","${formatCurrency(summary.renewalPayments)}"`]);
       csvRows.push(['']);
       csvRows.push(['"Declaration:"']);
       csvRows.push([`"This report is generated by ${gymName} (GST: ${gymGST})"`]);
@@ -839,25 +912,18 @@ const Payments = () => {
         </p>
       </div>
 
-      <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+      <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
         <div className="flex items-center justify-between mb-2">
-          <CreditCard className="h-6 w-6 opacity-80" />
+          <RefreshCw className="h-6 w-6 opacity-80" />
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/20">
+            {summary.renewalCount} renewals
+          </span>
         </div>
-        <p className="text-xs opacity-80 mb-0.5">Payment Methods</p>
-        <div className="space-y-0.5 mt-1">
-          <div className="flex justify-between text-xs">
-            <span>Cash</span>
-            <span className="font-semibold">{formatCurrency(summary.cashPayments)}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span>Card</span>
-            <span className="font-semibold">{formatCurrency(summary.cardPayments)}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span>UPI</span>
-            <span className="font-semibold">{formatCurrency(summary.upiPayments)}</span>
-          </div>
-        </div>
+        <p className="text-xs opacity-80 mb-0.5">Renewal Payments</p>
+        <p className="text-xl font-bold">{formatCurrency(summary.renewalPayments)}</p>
+        <p className="text-xs opacity-70 mt-1">
+          {summary.renewalCount} renewal transactions
+        </p>
       </div>
     </div>
   );
@@ -920,6 +986,14 @@ const Payments = () => {
             >
               <Building className="h-5 w-5" />
               GST {gstRate}%
+            </button>
+            <button
+              onClick={() => fetchPayments()}
+              className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-all"
+              title="Refresh"
+            >
+              <RefreshCw className="h-5 w-5" />
+              Refresh
             </button>
             <button
               onClick={toggleSelectionMode}
@@ -1151,6 +1225,16 @@ const Payments = () => {
             >
               Add-Ons
             </button>
+            <button
+              onClick={() => setPaymentTypeFilter('renewal')}
+              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                paymentTypeFilter === 'renewal'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Renewals
+            </button>
           </div>
           
           {(searchTerm || selectedMethod !== 'all' || paymentTypeFilter !== 'all') && (
@@ -1205,7 +1289,7 @@ const Payments = () => {
                 </tr>
               ) : (
                 currentPayments.map((payment) => {
-                  const typeInfo = getPaymentTypeBadge(payment.payment_type);
+                  const typeInfo = getPaymentTypeBadge(payment);
                   return (
                     <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
                       {selectionMode && (

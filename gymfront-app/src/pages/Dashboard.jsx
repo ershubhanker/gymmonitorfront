@@ -1,4 +1,5 @@
-// src/pages/Dashboard.jsx - Full Updated with Caching
+// src/pages/Dashboard.jsx - Updated with proper revenue calculation
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -39,7 +40,7 @@ import TrainerSchedule from '../components/TrainerSchedule';
 import IrregularMembers from '../components/attendance/IrregularMembers';
 import DietPlans from './DietPlans';
 
-const AUTO_REFRESH_INTERVAL = 40000;
+const AUTO_REFRESH_INTERVAL = 60000; // Increased to 60 seconds
 
 const CURRENCIES = [
   { symbol: '₹', label: 'Indian Rupee (INR)', flag: '🇮🇳' },
@@ -121,7 +122,7 @@ const CurrencyPickerModal = ({ onSelect }) => {
 const Dashboard = () => {
   const { user, logout, updateCurrencySymbol } = useAuth();
   const { permissions, hasPermission, loading: permissionsLoading } = usePermissions();
-  const { getCache, setCache, clearCache } = useCache();
+  const { getCache, setCache, clearCache, clearCachePattern, invalidateCache } = useCache();
   const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -408,7 +409,7 @@ const Dashboard = () => {
               upcoming_classes: statsResult.upcoming_classes || []
             } };
             
-            // ✅ Cache the stats
+            // ✅ Cache the stats with 3 minute expiry
             setCache(CACHE_KEYS.DASHBOARD_STATS, statsData.data, 3 * 60 * 1000);
           }
         } catch (err) {
@@ -522,6 +523,8 @@ const Dashboard = () => {
         }));
   
       const currentYear = new Date().getFullYear();
+      
+      // ✅ FIX: Calculate total revenue from ALL payments (including new ones)
       const totalRevenue = payments
         .filter(p => {
           const paymentDate = p.payment_date ? new Date(p.payment_date) : null;
@@ -529,30 +532,40 @@ const Dashboard = () => {
         })
         .reduce((sum, p) => sum + (p.amount || 0), 0);
       
+      // ✅ FIX: Calculate monthly revenue from payments in current month
       const monthlyRevenue = payments
-        .filter(p => p.payment_date && p.payment_date.split('T')[0] >= firstDayOfMonth)
+        .filter(p => {
+          if (!p.payment_date) return false;
+          const paymentDate = new Date(p.payment_date);
+          const today = new Date();
+          return paymentDate.getMonth() === today.getMonth() && 
+                 paymentDate.getFullYear() === today.getFullYear();
+        })
         .reduce((sum, p) => sum + (p.amount || 0), 0);
       
-      const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().split('T')[0];
-      const lastMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().split('T')[0];
+      // ✅ FIX: Calculate revenue growth
+      const todayDate = new Date();
+      const firstDayOfCurrentMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+      const firstDayOfLastMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
+      const lastDayOfLastMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 0);
       
       const lastMonthRevenue = payments
         .filter(p => {
-          const date = p.payment_date?.split('T')[0];
-          return date && date >= lastMonthStart && date <= lastMonthEnd;
+          if (!p.payment_date) return false;
+          const paymentDate = new Date(p.payment_date);
+          return paymentDate >= firstDayOfLastMonth && paymentDate <= lastDayOfLastMonth;
         })
         .reduce((sum, p) => sum + (p.amount || 0), 0);
       
       const revenueGrowth = lastMonthRevenue > 0 
-        ? ((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue * 100).toFixed(1)
+        ? ((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue * 100)
         : monthlyRevenue > 0 ? 100 : 0;
   
       const pendingPayments = memberships.filter(m => 
         m.payment_status === 'pending' || m.payment_status === 'PENDING'
       ).length;
   
-      const today_date = new Date();
-      const thirtyDaysLater = new Date(today_date.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const thirtyDaysLater = new Date(todayDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
       const expiringThisMonth = memberships.filter(m => 
         m.status === 'active' && 
@@ -564,7 +577,7 @@ const Dashboard = () => {
       const expiringSoon = memberships.filter(m => 
         m.status === 'active' && 
         m.end_date && 
-        m.end_date <= new Date(today_date.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] &&
+        m.end_date <= new Date(todayDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] &&
         m.end_date >= today
       ).length;
   
@@ -572,13 +585,13 @@ const Dashboard = () => {
         .filter(m => 
           m.status === 'active' && 
           m.end_date && 
-          m.end_date <= new Date(today_date.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] &&
+          m.end_date <= new Date(todayDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] &&
           m.end_date >= today
         )
         .map(m => {
           const member = members.find(mem => mem.id === m.member_id);
           const memberData = member || m.member;
-          const daysLeft = Math.ceil((new Date(m.end_date) - today_date) / (1000 * 60 * 60 * 24));
+          const daysLeft = Math.ceil((new Date(m.end_date) - todayDate) / (1000 * 60 * 60 * 24));
           
           return {
             id: m.id,
@@ -601,6 +614,7 @@ const Dashboard = () => {
   
       const todayCheckins = statsApiData.today_checkins || 0;
   
+      // ✅ FIX: Get recent payments with proper sorting
       const recentPayments = payments
         .sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date))
         .slice(0, 5)
@@ -649,7 +663,7 @@ const Dashboard = () => {
           activities.push({
             id: `payment-${p.id}`,
             member: member?.full_name || 'Unknown',
-            action: 'Made a payment',
+            action: `Made a payment of ${formatCurrency(p.amount)}`,
             time: new Date(p.payment_date).toLocaleString('en-IN', { hour: 'numeric', minute: 'numeric', hour12: true }),
             type: 'payment',
             avatar: member?.full_name?.charAt(0) || 'U'
@@ -679,7 +693,7 @@ const Dashboard = () => {
         return acc;
       }, {});
   
-      const next7Days = new Date(today_date.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const next7Days = new Date(todayDate.getTime() + 7 * 24 * 60 * 60 * 1000);
       const upcomingBirthdays = {
         members: [],
         staff: []
@@ -689,16 +703,16 @@ const Dashboard = () => {
         members.forEach(member => {
           if (member.date_of_birth) {
             const dob = new Date(member.date_of_birth);
-            const thisYearBirthday = new Date(today_date.getFullYear(), dob.getMonth(), dob.getDate());
-            const nextYearBirthday = new Date(today_date.getFullYear() + 1, dob.getMonth(), dob.getDate());
+            const thisYearBirthday = new Date(todayDate.getFullYear(), dob.getMonth(), dob.getDate());
+            const nextYearBirthday = new Date(todayDate.getFullYear() + 1, dob.getMonth(), dob.getDate());
             
             let birthdayDate = thisYearBirthday;
-            if (thisYearBirthday < today_date) {
+            if (thisYearBirthday < todayDate) {
               birthdayDate = nextYearBirthday;
             }
             
             if (birthdayDate <= next7Days) {
-              const daysUntil = Math.ceil((birthdayDate - today_date) / (1000 * 60 * 60 * 24));
+              const daysUntil = Math.ceil((birthdayDate - todayDate) / (1000 * 60 * 60 * 24));
               upcomingBirthdays.members.push({
                 id: member.id,
                 name: member.full_name,
@@ -719,16 +733,16 @@ const Dashboard = () => {
         staff.forEach(staffMember => {
           if (staffMember.date_of_birth) {
             const dob = new Date(staffMember.date_of_birth);
-            const thisYearBirthday = new Date(today_date.getFullYear(), dob.getMonth(), dob.getDate());
-            const nextYearBirthday = new Date(today_date.getFullYear() + 1, dob.getMonth(), dob.getDate());
+            const thisYearBirthday = new Date(todayDate.getFullYear(), dob.getMonth(), dob.getDate());
+            const nextYearBirthday = new Date(todayDate.getFullYear() + 1, dob.getMonth(), dob.getDate());
             
             let birthdayDate = thisYearBirthday;
-            if (thisYearBirthday < today_date) {
+            if (thisYearBirthday < todayDate) {
               birthdayDate = nextYearBirthday;
             }
             
             if (birthdayDate <= next7Days) {
-              const daysUntil = Math.ceil((birthdayDate - today_date) / (1000 * 60 * 60 * 24));
+              const daysUntil = Math.ceil((birthdayDate - todayDate) / (1000 * 60 * 60 * 24));
               upcomingBirthdays.staff.push({
                 id: staffMember.id,
                 name: staffMember.user?.full_name || 'Staff Member',
@@ -758,7 +772,7 @@ const Dashboard = () => {
         expiringThisMonth,
         expiringSoon,
         totalRevenue,
-        revenueGrowth: parseFloat(revenueGrowth),
+        revenueGrowth: parseFloat(revenueGrowth.toFixed(1)),
         totalExpenses: statsApiData.total_expenses || 0,
         monthlyExpenses: statsApiData.monthly_expenses || 0,
         expenseGrowth: statsApiData.expense_growth || 0,
@@ -801,6 +815,38 @@ const Dashboard = () => {
     }
   }, [canSeeDashboard, canSeeMembers, canSeePayments, canSeeMemberships, canSeeStaff, canSeeBalances, canSeeLeads, getCache, setCache]);
 
+  // ✅ Function to force refresh dashboard data (called after payments/members changes)
+  const refreshDashboard = useCallback(() => {
+    clearCachePattern(CACHE_KEYS.DASHBOARD_STATS);
+    clearCachePattern(CACHE_KEYS.DASHBOARD_BALANCE_OVERVIEW);
+    clearCachePattern(CACHE_KEYS.PAYMENTS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBER_BALANCES);
+    invalidateCache();
+    fetchDashboardData(false);
+    fetchFollowupsCount();
+  }, [clearCachePattern, invalidateCache, fetchDashboardData, fetchFollowupsCount]);
+
+  // ✅ Listen for data change events to refresh dashboard
+  useEffect(() => {
+    const handleDataChange = () => {
+      refreshDashboard();
+    };
+
+    window.addEventListener('memberAdded', handleDataChange);
+    window.addEventListener('paymentAdded', handleDataChange);
+    window.addEventListener('paymentUpdated', handleDataChange);
+    window.addEventListener('leadAdded', handleDataChange);
+    window.addEventListener('leadUpdated', handleDataChange);
+    
+    return () => {
+      window.removeEventListener('memberAdded', handleDataChange);
+      window.removeEventListener('paymentAdded', handleDataChange);
+      window.removeEventListener('paymentUpdated', handleDataChange);
+      window.removeEventListener('leadAdded', handleDataChange);
+      window.removeEventListener('leadUpdated', handleDataChange);
+    };
+  }, [refreshDashboard]);
+
   useEffect(() => {
     if (!permissionsLoading) {
       fetchDashboardData(false);
@@ -828,25 +874,6 @@ const Dashboard = () => {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [fetchDashboardData, fetchFollowupsCount]);
-
-  useEffect(() => {
-    const handleDataChange = () => {
-      fetchDashboardData(true);
-      fetchFollowupsCount();
-    };
-
-    window.addEventListener('memberAdded', handleDataChange);
-    window.addEventListener('paymentAdded', handleDataChange);
-    window.addEventListener('leadAdded', handleDataChange);
-    window.addEventListener('leadUpdated', handleDataChange);
-    
-    return () => {
-      window.removeEventListener('memberAdded', handleDataChange);
-      window.removeEventListener('paymentAdded', handleDataChange);
-      window.removeEventListener('leadAdded', handleDataChange);
-      window.removeEventListener('leadUpdated', handleDataChange);
-    };
   }, [fetchDashboardData, fetchFollowupsCount]);
 
   useEffect(() => {
@@ -878,6 +905,9 @@ const Dashboard = () => {
     }
     if (canSeeLeads) {
       nav.push({ name: 'Leads', icon: Target, id: 'leads', section: 'management' });
+    }
+    if (canSeeLeads) {
+      nav.push({ name: 'Follow-Ups', icon: Calendar, id: 'follow-ups', section: 'management' });
     }
     nav.push({ name: 'Diet Plans', icon: Utensils, id: 'diet-plans', section: 'management' });
     
@@ -1773,8 +1803,7 @@ const Dashboard = () => {
               }
             }}
             onRefresh={() => {
-              fetchDashboardData(true);
-              fetchFollowupsCount();
+              refreshDashboard();
             }}
           />
         </div>
@@ -2347,6 +2376,9 @@ const Dashboard = () => {
               initialLeadId={selectedLeadId}
               onLeadSelect={(id) => setSelectedLeadId(id)}
             />
+          )}
+          {activeTab === 'follow-ups' && canSeeLeads && (
+            <FollowUpPage />
           )}
           {activeTab === 'trainer-schedule' && <TrainerSchedule />}
           {activeTab === 'historical-invoices' && <HistoricalInvoices />}

@@ -1686,6 +1686,7 @@ const MembershipSelector = ({
       const plan = membershipPlans.find(p => String(p.id) === String(planId));
       if (plan) {
         const price = plan.discounted_price || plan.price;
+        // ✅ Set amount_paid to full price when plan is selected
         setFormData(prev => ({ 
           ...prev, 
           amount_paid: String(price),
@@ -2208,7 +2209,7 @@ const MemberModal = ({ isOpen, onClose,
     discount_applied: '',
     renew_membership: false,
     custom_due_date: '',
-    payment_date: today, // ✅ NEW: Payment date for renewal
+    payment_date: today,
     pt_trainer_id: '',
     pt_start_date: '',
     pt_end_date: '',
@@ -2570,6 +2571,8 @@ const MemberModal = ({ isOpen, onClose,
       };
   
       console.log('🔍 FORM DATA DEBUG:');
+      console.log('  - amount_paid (raw):', formData.amount_paid);
+      console.log('  - discount_applied (raw):', formData.discount_applied);
       console.log('  - custom_due_date (raw):', formData.custom_due_date);
       console.log('  - payment_date (raw):', formData.payment_date);
       console.log('  - PT trainer_id:', formData.pt_trainer_id);
@@ -2594,17 +2597,24 @@ const MemberModal = ({ isOpen, onClose,
       
       let payload;
       
+      // ✅ CRITICAL: Parse amount_paid and discount properly
+      const amountPaid = formData.amount_paid ? parseFloat(formData.amount_paid) : 0;
+      const discountApplied = formData.discount_applied ? parseFloat(formData.discount_applied) : 0;
+      
+      console.log('💰 Parsed amount_paid:', amountPaid);
+      console.log('💰 Parsed discount_applied:', discountApplied);
+      
       if (isEdit && formData.renew_membership) {
         payload = {
           ...memberFields,
           plan_id: formData.plan_id,
           membership_start_date: formData.membership_start_date,
           payment_method: formData.payment_method,
-          amount_paid: formData.amount_paid || 0,
-          discount_applied: formData.discount_applied || 0,
+          amount_paid: amountPaid,
+          discount_applied: discountApplied,
           renew_membership: true,
           custom_due_date: dueDate,
-          payment_date: formData.payment_date, // ✅ Pass payment date for renewal
+          payment_date: formData.payment_date,
           pt_data: ptData,
           addons: selectedAddons.map(a => ({
             addon_id: a.id,
@@ -2623,10 +2633,10 @@ const MemberModal = ({ isOpen, onClose,
           plan_id: formData.plan_id,
           membership_start_date: formData.membership_start_date,
           payment_method: formData.payment_method,
-          amount_paid: formData.amount_paid || 0,
-          discount_applied: formData.discount_applied || 0,
+          amount_paid: amountPaid,
+          discount_applied: discountApplied,
           custom_due_date: dueDate,
-          payment_date: formData.payment_date, // ✅ Pass payment date for new members too
+          payment_date: formData.payment_date,
           pt_data: ptData,
           addons: selectedAddons.map(a => ({
             addon_id: a.id,
@@ -2968,7 +2978,7 @@ const MemberModal = ({ isOpen, onClose,
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             <span className="flex items-center gap-1.5">
                               <Calendar className="h-4 w-4 text-gray-400" />
-                              Payment Date <span className="text-red-500">*</span>
+                              Payment Received Date <span className="text-red-500">*</span>
                             </span>
                           </label>
                           <PaymentDatePicker
@@ -2976,7 +2986,10 @@ const MemberModal = ({ isOpen, onClose,
                             onChange={(date) => setFormData(prev => ({ ...prev, payment_date: date }))}
                           />
                           <p className="text-xs text-gray-500 mt-1.5">
-                            📅 The date when the payment was received (defaults to today)
+                            📅 The date when the payment was actually received (defaults to today)
+                          </p>
+                          <p className="text-xs text-blue-500 mt-1">
+                            💡 Next Payment Due Date will be set to the membership expiry date
                           </p>
                         </div>
                       )}
