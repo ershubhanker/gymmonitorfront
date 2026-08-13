@@ -1,4 +1,4 @@
-// src/pages/Members.jsx - Full Updated with Caching
+// src/pages/Members.jsx - Full Updated with Proper Cache Invalidation
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Search, Filter, Edit, Trash2, UserPlus, Download,
@@ -170,7 +170,8 @@ const DeleteConfirmationModal = ({
 const Members = ({ initialMemberId, onMemberSelect }) => {
   const { user } = useAuth(); 
   const { devices, syncMemberToDevice, removeMemberFromDevice, refreshAllData, attendanceApi } = useAttendance();
-  const { getCache, setCache, clearCache } = useCache();
+  const { getCache, setCache, clearCache, clearCachePattern, invalidateMembersCache, invalidateCache } = useCache();
+  
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [showFilters, setShowFilters] = useState(false);
@@ -225,15 +226,20 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   });
 
   // ============================================================
-  // CACHE INVALIDATION HELPER
+  // CACHE INVALIDATION HELPER - UPDATED
   // ============================================================
   const invalidateMemberCache = useCallback(() => {
-    clearCache(CACHE_KEYS.MEMBERS_LIST);
-    clearCache(CACHE_KEYS.MEMBER_STATS);
-    clearCache(CACHE_KEYS.MEMBER_PT_DATA);
-    clearCache(CACHE_KEYS.MEMBER_BALANCES);
-    clearCache(CACHE_KEYS.DASHBOARD_STATS);
-  }, [clearCache]);
+    // Clear all member-related caches using the new pattern-based clearing
+    invalidateMembersCache();
+    clearCachePattern(CACHE_KEYS.DASHBOARD_STATS);
+    clearCachePattern(CACHE_KEYS.DASHBOARD_BALANCE_OVERVIEW);
+    clearCachePattern(CACHE_KEYS.MEMBER_STATS);
+    clearCachePattern(CACHE_KEYS.MEMBER_BALANCES);
+    clearCachePattern(CACHE_KEYS.MEMBER_PT_DATA);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+    // Also clear the global cache version to force all caches to refresh
+    invalidateCache();
+  }, [invalidateMembersCache, clearCachePattern, invalidateCache]);
 
   // ============================================================
   // FETCH PT DATA WITH CACHING
@@ -339,7 +345,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     }
     setCurrentPage(1);
     // Clear single member cache
-    clearCache(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
     fetchMembers();
   };
 
@@ -366,13 +372,13 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     
     setLoading(true);
     try {
-      // Generate cache key based on search and filters
-      const cacheKey = `${CACHE_KEYS.MEMBERS_LIST}_${debouncedSearchTerm}_${filters.status}_${currentPage}`;
+      // ✅ Include all filter params in cache key for better granularity
+      const cacheKey = `${CACHE_KEYS.MEMBERS_LIST}_${debouncedSearchTerm}_${filters.status}_${filters.gender}_${currentPage}`;
       
       // Check cache
       const cached = getCache(cacheKey);
       if (cached) {
-        console.log('📋 Using cached members data');
+        console.log('📋 Using cached members data for key:', cacheKey);
         setMembers(cached.items || []);
         setTotalMembersCount(cached.total || 0);
         setTotalPages(cached.totalPages || 0);
@@ -447,8 +453,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         totalPages: data.total_pages || 0
       };
       
-      // Cache the result
-      setCache(cacheKey, result, 3 * 60 * 1000);
+      // Cache the result with a shorter expiry for member lists (2 minutes)
+      setCache(cacheKey, result, 2 * 60 * 1000);
       
       setMembers(transformed);
       setTotalMembersCount(data.total || 0);
@@ -462,7 +468,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, filters.status, currentPage, itemsPerPage, showSingleMember, fetchPTData, getCache, setCache]);
+  }, [debouncedSearchTerm, filters.status, filters.gender, currentPage, itemsPerPage, showSingleMember, fetchPTData, getCache, setCache]);
 
   // ============================================================
   // OPTIMIZED: FETCH STATS WITH CACHING
@@ -668,7 +674,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       setTotalMembersCount(1);
       setTotalPages(1);
     }
-  }, [debouncedSearchTerm, filters.status, currentPage, showSingleMember, singleMemberData]);
+  }, [debouncedSearchTerm, filters.status, filters.gender, currentPage, showSingleMember, singleMemberData]);
 
   // ============================================================
   // DELETE FUNCTION WITH CONFIRMATION
@@ -706,8 +712,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         toast.success('Member deleted successfully! (No device sync needed)');
       }
       
-      // Invalidate cache
+      // ✅ Invalidate cache with stronger invalidation
       invalidateMemberCache();
+      clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
       
       if (showSingleMember) {
         handleBackToAllMembers();
@@ -798,6 +805,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       setSelectedMembers([]);
       fetchStats();
       invalidateMemberCache();
+      clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
       toast.success(`${selectedMembers.length} members deleted successfully!`);
     } catch (error) {
       toast.error('Failed to delete some members');
@@ -914,8 +922,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
     }
 
-    // Invalidate cache
+    // ✅ Invalidate cache after adding
     invalidateMemberCache();
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
     
     await fetchMembers();
     fetchStats();
@@ -1036,8 +1045,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
     }
   
-    // Invalidate cache
+    // ✅ Invalidate cache after updating
     invalidateMemberCache();
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
     
     await fetchMembers();
     fetchStats();
@@ -1154,7 +1164,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     setShowNewThisMonthOnly(false);
     setSearchTerm('');
     setCurrentPage(1);
-    clearCache(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
   };
 
   const handleFilterActive = () => {
@@ -1163,7 +1173,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     setShowNewThisMonthOnly(false);
     setSearchTerm('');
     setCurrentPage(1);
-    clearCache(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
   };
 
   const handleFilterInactive = () => {
@@ -1172,7 +1182,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     setShowNewThisMonthOnly(false);
     setSearchTerm('');
     setCurrentPage(1);
-    clearCache(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
   };
 
   const handleFilterNewThisMonth = () => {
@@ -1181,7 +1191,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     setShowNewThisMonthOnly(true);
     setSearchTerm('');
     setCurrentPage(1);
-    clearCache(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
   };
 
   // ============================================================
@@ -1499,7 +1509,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                     // Clear cache on search
-                    clearCache(CACHE_KEYS.MEMBERS_LIST);
+                    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
                   }
                 }}
                 disabled={showSingleMember}
@@ -1522,7 +1532,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 if (showSingleMember) {
                   handleBackToAllMembers();
                 } else {
-                  clearCache(CACHE_KEYS.MEMBERS_LIST);
+                  clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
                   fetchMembers();
                 }
               }}
@@ -1538,7 +1548,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   setShowNewThisMonthOnly(false);
                   setSearchTerm('');
                   setCurrentPage(1);
-                  clearCache(CACHE_KEYS.MEMBERS_LIST);
+                  clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
                 }}
                 className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm flex items-center gap-1"
               >
@@ -1607,7 +1617,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   setFilters({ ...filters, status: e.target.value });
                   setShowNewThisMonthOnly(false);
                   setCurrentPage(1);
-                  clearCache(CACHE_KEYS.MEMBERS_LIST);
+                  clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
                 }}
                 className="w-full border border-gray-300 rounded-lg p-2"
               >
@@ -1623,7 +1633,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 onChange={(e) => {
                   setFilters({ ...filters, gender: e.target.value });
                   setCurrentPage(1);
-                  clearCache(CACHE_KEYS.MEMBERS_LIST);
+                  clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
                 }}
                 className="w-full border border-gray-300 rounded-lg p-2"
               >
@@ -1641,7 +1651,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                     onClick={() => {
                       setShowNewThisMonthOnly(false);
                       setCurrentPage(1);
-                      clearCache(CACHE_KEYS.MEMBERS_LIST);
+                      clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
                     }}
                     className="ml-2 text-blue-600 hover:text-blue-800"
                   >
@@ -1940,7 +1950,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           setSelectedMember(null);
           // Refresh data when modal closes
           if (!showSingleMember) {
-            clearCache(CACHE_KEYS.MEMBERS_LIST);
+            clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
             fetchMembers();
           }
         }}
@@ -1958,7 +1968,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         member={selectedMemberForSync}
         onSyncComplete={handleSyncComplete}
         refreshMemberList={() => {
-          clearCache(CACHE_KEYS.MEMBERS_LIST);
+          clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
           fetchMembers();
         }}
       />
@@ -1969,14 +1979,14 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           onClose={() => {
             setShowProfileModal(false);
             setSelectedMemberForProfile(null);
-            clearCache(CACHE_KEYS.MEMBERS_LIST);
-            clearCache(CACHE_KEYS.MEMBER_STATS);
+            clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+            clearCachePattern(CACHE_KEYS.MEMBER_STATS);
             fetchMembers();
             fetchStats();
           }}
           onUpdate={() => {
-            clearCache(CACHE_KEYS.MEMBERS_LIST);
-            clearCache(CACHE_KEYS.MEMBER_STATS);
+            clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+            clearCachePattern(CACHE_KEYS.MEMBER_STATS);
             fetchMembers();
             fetchStats();
           }}
@@ -1987,14 +1997,14 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         isOpen={showBulkImportModal}
         onClose={() => {
           setShowBulkImportModal(false);
-          clearCache(CACHE_KEYS.MEMBERS_LIST);
-          clearCache(CACHE_KEYS.MEMBER_STATS);
+          clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+          clearCachePattern(CACHE_KEYS.MEMBER_STATS);
           fetchMembers();
           fetchStats();
         }}
         onImportComplete={() => {
-          clearCache(CACHE_KEYS.MEMBERS_LIST);
-          clearCache(CACHE_KEYS.MEMBER_STATS);
+          clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+          clearCachePattern(CACHE_KEYS.MEMBER_STATS);
           fetchMembers();
           fetchStats();
         }}
