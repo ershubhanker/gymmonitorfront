@@ -1,4 +1,4 @@
-// MemberModal.jsx - Updated with Personal Training, ADD-ONS, and Optimized Camera Capture
+// MemberModal.jsx - Updated with Payment Date and Proper Renewal Logic
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -24,15 +24,6 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const ITEM_H = 40;
 
 // ─── Optimized Image Compression ──────────────────────────────────────────────
-// IMPORTANT: this uses createImageBitmap() instead of FileReader.readAsDataURL()
-// + new Image(). readAsDataURL() has to base64-encode the entire file into a
-// giant string and then have the browser re-decode that string synchronously
-// on the main thread before it can even start resizing — on a multi-MB phone
-// photo this can freeze the UI for several seconds, which is what was causing
-// the app to appear to "hang" and eventually drop the session. createImageBitmap
-// decodes the image directly from the Blob/File (no base64 round-trip) and on
-// most browsers the decode happens off the main thread, so it's dramatically
-// faster and doesn't block the UI.
 const resizeBitmapToFile = (bitmap, sourceFile, maxWidth, maxHeight, quality) => {
   return new Promise((resolve, reject) => {
     let width = bitmap.width;
@@ -79,7 +70,6 @@ const resizeBitmapToFile = (bitmap, sourceFile, maxWidth, maxHeight, quality) =>
   });
 };
 
-// Legacy fallback for the rare browser without createImageBitmap support.
 const compressImageLegacy = (file, maxWidth, maxHeight, quality) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -106,8 +96,7 @@ const compressImage = async (file, maxWidth = 600, maxHeight = 600, quality = 0.
       const bitmap = await createImageBitmap(file);
       return await resizeBitmapToFile(bitmap, file, maxWidth, maxHeight, quality);
     } catch (err) {
-      // Fall through to the legacy path if decoding via createImageBitmap fails
-      // for this particular file (e.g. an unusual EXIF/orientation edge case).
+      // Fall through to legacy path
     }
   }
 
@@ -269,8 +258,8 @@ const CameraCapture = ({ onCapture, onClose }) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [stream, setStream] = useState(null);
-  const [capturedImage, setCapturedImage] = useState(null); // object URL for preview
-  const [capturedBlob, setCapturedBlob] = useState(null);   // actual image data
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [capturedBlob, setCapturedBlob] = useState(null);
   const [facingMode, setFacingMode] = useState('environment');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -286,8 +275,6 @@ const CameraCapture = ({ onCapture, onClose }) => {
   }, [facingMode]);
 
   useEffect(() => {
-    // Revoke the captured-photo object URL when the camera closes/unmounts
-    // so we don't leak memory across repeated open/retake cycles.
     return () => {
       if (capturedImage) URL.revokeObjectURL(capturedImage);
     };
@@ -327,9 +314,6 @@ const CameraCapture = ({ onCapture, onClose }) => {
     }
   };
 
-  // Max long-edge size for a captured photo. Scaling proportionally here
-  // (instead of independently clamping width/height) avoids the previous
-  // code's aspect-ratio distortion on wide video feeds.
   const MAX_CAPTURE_DIM = 640;
 
   const capturePhoto = () => {
@@ -355,10 +339,6 @@ const CameraCapture = ({ onCapture, onClose }) => {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, width, height);
 
-    // Go straight to a Blob — no base64 data URL in between. This is what
-    // let us drop the manual atob() decode loop in confirmPhoto(), which
-    // was the biggest single source of the main-thread freeze after
-    // tapping "Use Photo".
     canvas.toBlob(
       (blob) => {
         setCapturing(false);
@@ -564,15 +544,6 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
 
   const handleCameraCapture = async (file) => {
     setShowCamera(false);
-
-    // NOTE: the file coming from CameraCapture is already downscaled
-    // (max 640px long edge) and JPEG-compressed by the capture canvas —
-    // see capturePhoto() above. Previously this ran the file through
-    // compressImage() a *second* time, which meant decoding the image,
-    // resizing it, and re-encoding it all over again for no benefit.
-    // That redundant pass was the main cause of the multi-second freeze
-    // (and resulting logout) after taking a photo, so we just use the
-    // capture as-is.
     setUploading(true);
     toast.loading('Saving photo...', { id: 'compress' });
 
@@ -734,7 +705,6 @@ const PhotoUploader = ({ memberId, currentPhotoUrl, onPhotoUploaded, getPendingF
         />
       </div>
 
-      {/* Camera Modal */}
       {showCamera && (
         <CameraCapture
           onCapture={handleCameraCapture}
@@ -1030,6 +1000,110 @@ const CustomDueDatePicker = ({
               className="flex-1 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
             >
               +7 Days
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowPicker(false)}
+            className="mt-3 w-full py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 active:bg-blue-800 transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Payment Date Picker ──────────────────────────────────────────────────────
+const PaymentDatePicker = ({ value, onChange, disabled }) => {
+  const [showPicker, setShowPicker] = useState(false);
+  const containerRef = useRef(null);
+  const today = new Date().toISOString().split('T')[0];
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr + 'T00:00:00');
+      return d.toLocaleDateString('en-IN', { 
+        day: 'numeric', 
+        month: 'short', 
+        year: 'numeric' 
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setShowPicker(false);
+      }
+    };
+    if (showPicker) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showPicker]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => !disabled && setShowPicker(!showPicker)}
+        disabled={disabled}
+        className={`w-full flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-all ${
+          disabled 
+            ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200'
+            : showPicker 
+              ? 'border-blue-500 ring-2 ring-blue-100 bg-white' 
+              : 'border-gray-300 hover:border-blue-400 bg-white'
+        } ${value ? 'text-gray-800' : 'text-gray-400'}`}
+      >
+        <Calendar className="h-4 w-4 flex-shrink-0" />
+        <span className="flex-1 text-left">
+          {value ? formatDate(value) : 'Payment date (today)'}
+        </span>
+        {!disabled && (
+          <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${showPicker ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+      
+      {showPicker && !disabled && (
+        <div className="absolute left-0 mt-2 z-[60] bg-white border border-gray-200 rounded-2xl shadow-2xl p-5 min-w-[280px]">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider text-center mb-3">Select Payment Date</p>
+          <input
+            type="date"
+            value={value || today}
+            max={today}
+            onChange={(e) => {
+              onChange(e.target.value);
+              setShowPicker(false);
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          />
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const todayStr = new Date().toISOString().split('T')[0];
+                onChange(todayStr);
+                setShowPicker(false);
+              }}
+              className="flex-1 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                onChange(yesterday.toISOString().split('T')[0]);
+                setShowPicker(false);
+              }}
+              className="flex-1 py-1.5 text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              Yesterday
             </button>
           </div>
           <button
@@ -2134,6 +2208,7 @@ const MemberModal = ({ isOpen, onClose,
     discount_applied: '',
     renew_membership: false,
     custom_due_date: '',
+    payment_date: today, // ✅ NEW: Payment date for renewal
     pt_trainer_id: '',
     pt_start_date: '',
     pt_end_date: '',
@@ -2276,6 +2351,7 @@ const MemberModal = ({ isOpen, onClose,
         discount_applied: '',
         renew_membership: false,
         custom_due_date: '',
+        payment_date: today,
         pt_trainer_id: '',
         pt_start_date: '',
         pt_end_date: '',
@@ -2315,6 +2391,7 @@ const MemberModal = ({ isOpen, onClose,
         discount_applied: '',
         renew_membership: false,
         custom_due_date: '',
+        payment_date: today,
         pt_trainer_id: '',
         pt_start_date: '',
         pt_end_date: '',
@@ -2347,6 +2424,7 @@ const MemberModal = ({ isOpen, onClose,
         discount_applied: '',
         renew_membership: false,
         custom_due_date: '',
+        payment_date: today,
         pt_trainer_id: '',
         pt_start_date: '',
         pt_end_date: '',
@@ -2447,6 +2525,13 @@ const MemberModal = ({ isOpen, onClose,
       return;
     }
   
+    // ✅ Validate payment date for renewal
+    if (isEdit && formData.renew_membership && !formData.payment_date) {
+      toast.error('Please select a payment date for the renewal');
+      setActiveTab('membership');
+      return;
+    }
+  
     if (!isEdit) {
       try {
         const phoneCheck = await api.get(`/gym/members?search=${encodeURIComponent(formData.phone.trim())}`);
@@ -2486,6 +2571,7 @@ const MemberModal = ({ isOpen, onClose,
   
       console.log('🔍 FORM DATA DEBUG:');
       console.log('  - custom_due_date (raw):', formData.custom_due_date);
+      console.log('  - payment_date (raw):', formData.payment_date);
       console.log('  - PT trainer_id:', formData.pt_trainer_id);
       console.log('  - PT start_date:', formData.pt_start_date);
       console.log('  - PT end_date:', formData.pt_end_date);
@@ -2518,6 +2604,7 @@ const MemberModal = ({ isOpen, onClose,
           discount_applied: formData.discount_applied || 0,
           renew_membership: true,
           custom_due_date: dueDate,
+          payment_date: formData.payment_date, // ✅ Pass payment date for renewal
           pt_data: ptData,
           addons: selectedAddons.map(a => ({
             addon_id: a.id,
@@ -2539,6 +2626,7 @@ const MemberModal = ({ isOpen, onClose,
           amount_paid: formData.amount_paid || 0,
           discount_applied: formData.discount_applied || 0,
           custom_due_date: dueDate,
+          payment_date: formData.payment_date, // ✅ Pass payment date for new members too
           pt_data: ptData,
           addons: selectedAddons.map(a => ({
             addon_id: a.id,
@@ -2836,6 +2924,7 @@ const MemberModal = ({ isOpen, onClose,
                           plan_id: '',
                           amount_paid: '',
                           custom_due_date: '',
+                          payment_date: today,
                         }))}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
                           formData.renew_membership ? 'bg-blue-600' : 'bg-gray-200'
@@ -2855,22 +2944,43 @@ const MemberModal = ({ isOpen, onClose,
                       <p className="text-sm">Loading plans...</p>
                     </div>
                   ) : (
-                    <MembershipSelector
-                      formData={formData}
-                      setFormData={setFormData}
-                      membershipPlans={membershipPlans}
-                      setMembershipPlans={setMembershipPlans}
-                      showPlanCreator={showPlanCreator}
-                      setShowPlanCreator={setShowPlanCreator}
-                      inputCls={inputCls}
-                      labelCls={labelCls}
-                      onRefreshPlans={refreshMembershipPlans}
-                      userManuallyChangedAmount={userManuallyChangedAmount}
-                      setUserManuallyChangedAmount={setUserManuallyChangedAmount}
-                      handleAmountChange={handleAmountChange}
-                      amountError={amountError}
-                      setAmountError={setAmountError}
-                    />
+                    <>
+                      <MembershipSelector
+                        formData={formData}
+                        setFormData={setFormData}
+                        membershipPlans={membershipPlans}
+                        setMembershipPlans={setMembershipPlans}
+                        showPlanCreator={showPlanCreator}
+                        setShowPlanCreator={setShowPlanCreator}
+                        inputCls={inputCls}
+                        labelCls={labelCls}
+                        onRefreshPlans={refreshMembershipPlans}
+                        userManuallyChangedAmount={userManuallyChangedAmount}
+                        setUserManuallyChangedAmount={setUserManuallyChangedAmount}
+                        handleAmountChange={handleAmountChange}
+                        amountError={amountError}
+                        setAmountError={setAmountError}
+                      />
+
+                      {/* ✅ Payment Date Picker - Show for renewal and new members */}
+                      {(isEdit && formData.renew_membership || !isEdit) && (
+                        <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            <span className="flex items-center gap-1.5">
+                              <Calendar className="h-4 w-4 text-gray-400" />
+                              Payment Date <span className="text-red-500">*</span>
+                            </span>
+                          </label>
+                          <PaymentDatePicker
+                            value={formData.payment_date}
+                            onChange={(date) => setFormData(prev => ({ ...prev, payment_date: date }))}
+                          />
+                          <p className="text-xs text-gray-500 mt-1.5">
+                            📅 The date when the payment was received (defaults to today)
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )
                 )}
 
