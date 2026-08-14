@@ -1,4 +1,4 @@
-// src/pages/Leads.jsx - Updated with date range filter
+// src/pages/Leads.jsx - Updated with date field in form
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -67,6 +67,7 @@ const EMPTY_FORM = {
   source: 'walk_in', interest: '', preferred_plan: '',
   budget: '', next_follow_up: '', notes: '', assigned_to: '',
   lead_quality: 'warm',
+  created_date: '',  // ✅ ADD THIS
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -348,6 +349,7 @@ const LeadModal = ({ lead, onClose, onSave }) => {
         budget: lead.budget ?? '',
         lead_quality: lead.lead_quality ?? 'warm',
         assigned_to: lead.assigned_to ?? '',
+        created_date: lead.created_date || lead.created_at?.split('T')[0] || '',  // ✅ ADD THIS
         next_follow_up: lead.next_follow_up
           ? new Date(lead.next_follow_up).toISOString().slice(0, 16)
           : '',
@@ -411,6 +413,7 @@ const LeadModal = ({ lead, onClose, onSave }) => {
       next_follow_up: form.next_follow_up || null,
       assigned_to: form.assigned_to ? parseInt(form.assigned_to) : null,
       email: form.email || null,
+      created_date: form.created_date || null,  // ✅ ADD THIS
     };
 
     try {
@@ -491,6 +494,12 @@ const LeadModal = ({ lead, onClose, onSave }) => {
           {field('Age', 'age', 'number', { min: 10, max: 100, placeholder: '25' })}
           {select('Gender', 'gender', GENDER_OPTIONS)}
           
+          {/* ✅ CREATED DATE FIELD - Allows back-dating */}
+          {field('Lead Date', 'created_date', 'date', { 
+            max: new Date().toISOString().split('T')[0],
+            title: 'Set the date when this lead was created. Can be back-dated.' 
+          })}
+
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Lead Quality</label>
             <select
@@ -1301,9 +1310,18 @@ const Leads = () => {
                           </div>
                           <div>
                             <p className="font-semibold text-gray-900 hover:text-blue-600 transition-colors">{lead.full_name}</p>
-                            {lead.gender && (
-                              <p className="text-xs text-gray-400">{lead.gender}{lead.age ? `, ${lead.age} yrs` : ''}</p>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {lead.gender && (
+                                <p className="text-xs text-gray-400">{lead.gender}{lead.age ? `, ${lead.age} yrs` : ''}</p>
+                              )}
+                              {/* ✅ Show created date in the table row */}
+                              {lead.created_date && (
+                                <p className="text-xs text-gray-400 flex items-center gap-1">
+                                  <Calendar className="h-2.5 w-2.5" />
+                                  {formatDate(lead.created_date)}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -1368,7 +1386,7 @@ const Leads = () => {
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-xs text-gray-400">
-                          {formatDate(lead.created_at)}
+                          {formatDate(lead.created_date || lead.created_at)}
                         </span>
                       </td>
                       <td className="px-4 py-3">
