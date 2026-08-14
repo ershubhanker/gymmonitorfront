@@ -629,11 +629,15 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       const response = await api.get(`/gym/members/${memberId}`);
       const memberData = response.data;
       
-      // Ensure is_active is properly set - use the value from API
-      // If is_active is undefined, default to true (active)
-      if (memberData.is_active === undefined) {
-        memberData.is_active = true;
-      }
+      // NOTE: Do NOT default is_active to true when missing/undefined.
+      // Members.jsx (list page) computes status as:
+      //   status: member.is_active ? 'active' : 'inactive'
+      // which treats undefined/null/0 as inactive. Previously this modal
+      // force-defaulted a missing is_active to `true`, which caused the
+      // modal to show "Active" for members the list page correctly showed
+      // as "Inactive". Leaving the raw API value here (and letting
+      // getMemberStatus() below apply the same truthy check) keeps both
+      // views consistent.
       
       setMember(memberData);
       setEditFormData({
@@ -1458,10 +1462,14 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   };
 
   // ===== Get member status consistently =====
-  // Use is_active from the API response, default to true if undefined
+  // Mirrors the Members list page (Members.jsx), which computes:
+  //   status: member.is_active ? 'active' : 'inactive'
+  // is_active may come back as a boolean or a number (0/1) or a string,
+  // depending on the endpoint, so we normalize all "truthy active" forms
+  // here — but we do NOT default a missing/undefined/null value to true.
+  // A missing value means inactive, same as the list page.
   const getMemberStatus = () => {
     if (!member) return 'inactive';
-    // is_active could be a boolean or number
     const isActive = member.is_active === true || member.is_active === 1 || member.is_active === 'true';
     return isActive ? 'active' : 'inactive';
   };
