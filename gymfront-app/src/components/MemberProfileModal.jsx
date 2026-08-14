@@ -620,7 +620,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     fetchPtSessions();
     fetchPlans();
     fetchFreezeHistory();
-    fetchMemberAddons(); // 👈 ADD THIS
+    fetchMemberAddons();
   }, [memberId]);
 
   const fetchMemberDetails = async () => {
@@ -628,6 +628,13 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setLoading(true);
       const response = await api.get(`/gym/members/${memberId}`);
       const memberData = response.data;
+      
+      // Ensure is_active is properly set - use the value from API
+      // If is_active is undefined, default to true (active)
+      if (memberData.is_active === undefined) {
+        memberData.is_active = true;
+      }
+      
       setMember(memberData);
       setEditFormData({
         full_name: memberData.full_name || '',
@@ -771,9 +778,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setLoadingFreezes(true);
       const response = await api.get(`/gym/members/${memberId}/freezes`);
       setFreezeHistory(response.data || []);
-    } catch (error) {
-      console.error('Error fetching freeze history:', error);
-      setFreezeHistory([]);
     } finally {
       setLoadingFreezes(false);
     }
@@ -1453,6 +1457,15 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     };
   };
 
+  // ===== Get member status consistently =====
+  // Use is_active from the API response, default to true if undefined
+  const getMemberStatus = () => {
+    if (!member) return 'inactive';
+    // is_active could be a boolean or number
+    const isActive = member.is_active === true || member.is_active === 1 || member.is_active === 'true';
+    return isActive ? 'active' : 'inactive';
+  };
+
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -1485,6 +1498,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   const activeFreeze = freezeHistory.find(f => f.status === 'active');
   const hasActiveFreeze = !!activeFreeze;
+  
+  // Get consistent member status
+  const memberStatus = getMemberStatus();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
@@ -1515,7 +1531,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 )}
               </div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
-                {getStatusBadge(member.is_active ? 'active' : 'inactive')}
+                {/* Use consistent status badge */}
+                {getStatusBadge(memberStatus)}
                 {currentMembership && (
                   <span className="text-xs text-gray-500">
                     Member since {formatDate(member.joined_date)}
