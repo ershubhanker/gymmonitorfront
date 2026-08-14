@@ -843,12 +843,14 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       pt_data,
       ...memberFields 
     } = memberData;
-
+  
     let memberResponse;
     let createdMember = null;
     let hasError = false;
+    let membershipCreated = false;
     
     try {
+      // Step 1: Create the member
       memberResponse = await api.post('/gym/members', memberFields);
       createdMember = memberResponse.data;
       console.log('✅ Member created:', createdMember);
@@ -860,9 +862,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
       throw error;
     }
-
+  
     const memberId = createdMember.id;
-
+  
+    // Step 2: Create membership with payment (if plan is selected)
     if (plan_id && membership_start_date && memberId) {
       try {
         const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
@@ -892,48 +895,17 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         
         console.log('📤 Membership payload:', membershipPayload);
         
+        // ✅ This creates the membership AND the payment record
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
+        membershipCreated = true;
+        console.log('✅ Membership created with payment:', membershipResponse.data);
         
-        if (paidAmount > 0) {
-          try {
-            await api.post('/gym/memberships/' + membershipResponse.data.id + '/partial-payment', {
-              membership_id: membershipResponse.data.id,
-              amount: paidAmount,
-              payment_method: payment_method || 'cash',
-              payment_date: payment_date || new Date().toISOString(),
-              notes: 'Initial payment'
-            });
-            console.log('✅ Payment record created for ₹', paidAmount);
-          } catch (paymentError) {
-            console.error('Payment creation error:', paymentError);
-            hasError = true;
-            toast.error('Member added but payment record creation failed. Please record payment manually.');
-          }
-        }
+        // ✅ DO NOT create a separate payment record here - it's already handled by the membership creation
+        // The membership creation endpoint already creates the payment record when amount_paid > 0
         
-        if (pt_data && pt_data.trainer_id) {
-          try {
-            const ptPayload = {
-              member_id: memberId,
-              trainer_id: parseInt(pt_data.trainer_id),
-              start_date: pt_data.start_date,
-              end_date: pt_data.end_date,
-              session_time: pt_data.session_time,
-              session_days: pt_data.session_days || '[]',
-              total_amount: pt_data.total_amount ? parseFloat(pt_data.total_amount) : null,
-              amount_paid: pt_data.amount_paid ? parseFloat(pt_data.amount_paid) : 0,
-              notes: pt_data.notes || null
-            };
-            
-            console.log('📤 Creating personal training session:', ptPayload);
-            await api.post('/gym/personal-training', ptPayload);
-            console.log('✅ Personal training session created');
-            toast.success('Personal training session added!');
-          } catch (ptError) {
-            console.error('Error creating PT session:', ptError);
-            toast('Member added but personal training session could not be created.');
-          }
-        }
+        // ✅ Trigger payment added event to refresh Payments page
+        window.dispatchEvent(new CustomEvent('paymentAdded'));
+        window.dispatchEvent(new CustomEvent('paymentUpdated'));
         
       } catch (membershipError) {
         console.error('Membership creation error:', membershipError);
@@ -942,7 +914,33 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         return createdMember;
       }
     }
-
+  
+    // Step 3: Create PT session (if applicable)
+    if (pt_data && pt_data.trainer_id && !hasError) {
+      try {
+        const ptPayload = {
+          member_id: memberId,
+          trainer_id: parseInt(pt_data.trainer_id),
+          start_date: pt_data.start_date,
+          end_date: pt_data.end_date,
+          session_time: pt_data.session_time,
+          session_days: pt_data.session_days || '[]',
+          total_amount: pt_data.total_amount ? parseFloat(pt_data.total_amount) : null,
+          amount_paid: pt_data.amount_paid ? parseFloat(pt_data.amount_paid) : 0,
+          notes: pt_data.notes || null
+        };
+        
+        console.log('📤 Creating personal training session:', ptPayload);
+        await api.post('/gym/personal-training', ptPayload);
+        console.log('✅ Personal training session created');
+        toast.success('Personal training session added!');
+      } catch (ptError) {
+        console.error('Error creating PT session:', ptError);
+        toast('Member added but personal training session could not be created.');
+      }
+    }
+  
+    // Step 4: Invalidate cache and refresh data
     invalidateMemberCache();
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
     
@@ -950,9 +948,21 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     fetchStats();
     setIsModalOpen(false);
     
+    // Step 5: Show success message
     if (!hasError) {
-      toast.success('Member added successfully!');
+      // ✅ Show appropriate success message
+      if (membershipCreated) {
+        const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
+        if (paidAmount > 0) {
+          toast.success(`✅ ${createdMember.full_name} added successfully with ₹${paidAmount} payment!`);
+        } else {
+          toast.success(`✅ ${createdMember.full_name} added successfully!`);
+        }
+      } else {
+        toast.success(`✅ ${createdMember.full_name} added successfully!`);
+      }
       
+      // Step 6: Sync to device (if devices exist)
       if (createdMember && createdMember.id) {
         setTimeout(async () => {
           const synced = await syncMemberToBridge(createdMember.id);
@@ -962,6 +972,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         }, 1000);
       }
       
+      // Step 7: Ask to sync to device
       const activeDevices = devices.filter(d => d.is_active);
       if (activeDevices.length > 0) {
         setTimeout(() => {
@@ -975,9 +986,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         }, 500);
       }
     }
+    
     return createdMember;
   };
-
   // ============================================================
   // HANDLE UPDATE MEMBER - FIXED WITH membershipPlans
   // ============================================================
