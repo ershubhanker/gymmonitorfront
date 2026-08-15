@@ -1,3 +1,5 @@
+// invoiceGenerator.js - Complete updated with Add-on and PT support
+
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -96,6 +98,9 @@ export const generateMemberInvoice = async (
     let membership;
     let payments;
     let gymDetails;
+    let ptData;
+    let addons;
+    let addonPayments;
 
     const isNewStyle =
       gymDetailsArg === undefined &&
@@ -133,25 +138,35 @@ export const generateMemberInvoice = async (
       };
 
       payments = Array.isArray(d.payments) ? d.payments : [];
+      
+      // ✅ Add PT data if available
+      ptData = d.pt_data || null;
+      
+      // ✅ Add addons data if available
+      addons = Array.isArray(d.addons) ? d.addons : [];
+      addonPayments = Array.isArray(d.addon_payments) ? d.addon_payments : [];
     } else {
       member = invoiceDataOrMember;
       membership = gymDetailsOrMembership;
       payments = paymentsArg || [];
       gymDetails = gymDetailsArg || {};
+      ptData = null;
+      addons = [];
+      addonPayments = [];
     }
 
     if (!member || !member.full_name) {
       throw new Error('Member information is missing');
     }
 
-    return buildProfessionalPDF(member, membership, payments, gymDetails);
+    return buildProfessionalPDF(member, membership, payments, gymDetails, ptData, addons, addonPayments);
   } catch (error) {
     console.error('Error in generateMemberInvoice:', error);
     throw error;
   }
 };
 
-const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails = {}) => {
+const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails = {}, ptData = null, addons = [], addonPayments = []) => {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -176,13 +191,31 @@ const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails
     border: [226, 232, 240],
     sectionFill: [248, 250, 252],
     sectionText: [30, 41, 59],
+    pt: [124, 58, 237],    // Purple for PT
+    addon: [234, 88, 12],  // Orange for Add-ons
   };
 
   const plan = membership?.plan || {};
   const planPrice = normalizeAmount(plan.discounted_price || plan.price);
   const amountPaid = normalizeAmount(membership?.amount_paid);
   const discountApplied = normalizeAmount(membership?.discount_applied);
-  const balanceDue = Math.max(0, planPrice - discountApplied - amountPaid);
+  const membershipBalance = Math.max(0, planPrice - discountApplied - amountPaid);
+  
+  // ✅ Calculate PT totals
+  const ptTotal = ptData ? normalizeAmount(ptData.total_amount) : 0;
+  const ptPaid = ptData ? normalizeAmount(ptData.amount_paid) : 0;
+  const ptBalance = Math.max(0, ptTotal - ptPaid);
+  
+  // ✅ Calculate Add-on totals
+  const addonTotal = addons.reduce((sum, a) => sum + normalizeAmount(a.price), 0);
+  const addonPaid = addons.reduce((sum, a) => sum + normalizeAmount(a.amount_paid || 0), 0);
+  const addonBalance = Math.max(0, addonTotal - addonPaid);
+  
+  // ✅ Calculate overall totals
+  const totalDue = planPrice - discountApplied + ptTotal + addonTotal;
+  const totalPaid = amountPaid + ptPaid + addonPaid;
+  const totalBalance = membershipBalance + ptBalance + addonBalance;
+  
   const currencyLabel = getCurrencyLabel(gymDetails);
   const gymName = safeText(gymDetails.name, 'GYMMONITOR FITNESS');
   const gstNumber = gymDetails.gst_number || '';
@@ -323,20 +356,153 @@ const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails
 
   y = doc.lastAutoTable.finalY + 10;
 
-  // Payment Summary Section (Simple - No GST breakdown)
+  // ✅ Add PT Details Section if PT data exists
+  if (ptData && ptTotal > 0) {
+    addSectionTitle(doc, 'Personal Training Details', margin, y, contentWidth, colors);
+    y += 10;
+
+    const ptRows = [
+      ['Trainer', safeText(ptData.trainer_name || 'N/A')],
+      ['Start Date', ptData.start_date ? formatDate(ptData.start_date, 'full') : 'N/A'],
+      ['End Date', ptData.end_date ? formatDate(ptData.end_date, 'full') : 'N/A'],
+      ['Session Time', safeText(ptData.session_time || 'N/A')],
+      ['Session Days', safeText(ptData.session_days_display || '—')],
+      ['Status', safeText(ptData.status || 'Pending').toUpperCase()],
+    ];
+
+    if (ptData.notes) {
+      ptRows.push(['Notes', safeText(ptData.notes)]);
+    }
+
+    autoTable(doc, {
+      startY: y,
+      theme: 'grid',
+      head: [['Item', 'Details']],
+      body: ptRows,
+      margin: { left: margin, right: margin },
+      headStyles: {
+        fillColor: colors.pt,
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        halign: 'left',
+        fontSize: 9.5,
+      },
+      bodyStyles: {
+        textColor: colors.text,
+        fontSize: 9,
+        cellPadding: 5,
+      },
+      alternateRowStyles: {
+        fillColor: colors.brandSoft,
+      },
+      columnStyles: {
+        0: { cellWidth: 48, fontStyle: 'bold' },
+        1: { cellWidth: 'auto' },
+      },
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+  }
+
+  // ✅ Add Add-on Details Section if addons exist
+  if (addons && addons.length > 0) {
+    addSectionTitle(doc, 'Add-on Details', margin, y, contentWidth, colors);
+    y += 10;
+
+    const addonRows = addons.map(addon => [
+      safeText(addon.name || 'Add-on'),
+      safeText(addon.category || 'Other'),
+      formatCurrency(addon.price, currencyLabel),
+      addon.status ? safeText(addon.status).toUpperCase() : 'Active',
+    ]);
+
+    autoTable(doc, {
+      startY: y,
+      theme: 'grid',
+      head: [['Name', 'Category', 'Price', 'Status']],
+      body: addonRows,
+      margin: { left: margin, right: margin },
+      headStyles: {
+        fillColor: colors.addon,
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        halign: 'left',
+        fontSize: 9.5,
+      },
+      bodyStyles: {
+        textColor: colors.text,
+        fontSize: 9,
+        cellPadding: 5,
+      },
+      alternateRowStyles: {
+        fillColor: colors.brandSoft,
+      },
+      columnStyles: {
+        0: { cellWidth: 48 },
+        1: { cellWidth: 42 },
+        2: { cellWidth: 40, halign: 'right' },
+        3: { cellWidth: 30, halign: 'center' },
+      },
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+  }
+
+  // Payment Summary Section
   addSectionTitle(doc, 'Payment Summary', margin, y, contentWidth, colors);
   y += 10;
 
-  const paymentRows = [
-    ['Plan Price', formatCurrency(planPrice, currencyLabel)],
-  ];
-  
+  const paymentRows = [];
+
+  // Membership section
+  paymentRows.push(['MEMBERSHIP', '']);
+  paymentRows.push(['Plan Price', formatCurrency(planPrice, currencyLabel)]);
   if (discountApplied > 0) {
     paymentRows.push(['Discount Applied', `- ${formatCurrency(discountApplied, currencyLabel)}`]);
   }
-  
   paymentRows.push(['Amount Paid', formatCurrency(amountPaid, currencyLabel)]);
-  paymentRows.push(['Balance Due', formatCurrency(balanceDue, currencyLabel)]);
+  if (membershipBalance > 0) {
+    paymentRows.push(['Balance Due', formatCurrency(membershipBalance, currencyLabel)]);
+  } else {
+    paymentRows.push(['Balance Due', formatCurrency(0, currencyLabel)]);
+  }
+
+  // PT section if exists
+  if (ptTotal > 0) {
+    paymentRows.push(['', '']);
+    paymentRows.push(['PERSONAL TRAINING', '']);
+    paymentRows.push(['PT Total', formatCurrency(ptTotal, currencyLabel)]);
+    if (ptPaid > 0) {
+      paymentRows.push(['PT Paid', formatCurrency(ptPaid, currencyLabel)]);
+    }
+    if (ptBalance > 0) {
+      paymentRows.push(['PT Balance Due', formatCurrency(ptBalance, currencyLabel)]);
+    } else {
+      paymentRows.push(['PT Balance Due', formatCurrency(0, currencyLabel)]);
+    }
+  }
+
+  // Add-on section if exists
+  if (addonTotal > 0) {
+    paymentRows.push(['', '']);
+    paymentRows.push(['ADD-ONS', '']);
+    paymentRows.push(['Add-on Total', formatCurrency(addonTotal, currencyLabel)]);
+    if (addonPaid > 0) {
+      paymentRows.push(['Add-on Paid', formatCurrency(addonPaid, currencyLabel)]);
+    }
+    if (addonBalance > 0) {
+      paymentRows.push(['Add-on Balance Due', formatCurrency(addonBalance, currencyLabel)]);
+    } else {
+      paymentRows.push(['Add-on Balance Due', formatCurrency(0, currencyLabel)]);
+    }
+  }
+
+  // Separator and totals
+  paymentRows.push(['', '']);
+  paymentRows.push(['─' , '─']);
+  paymentRows.push(['TOTAL DUE', formatCurrency(totalDue, currencyLabel)]);
+  paymentRows.push(['TOTAL PAID', formatCurrency(totalPaid, currencyLabel)]);
+  paymentRows.push(['TOTAL BALANCE', formatCurrency(totalBalance, currencyLabel)]);
 
   autoTable(doc, {
     startY: y,
@@ -367,32 +533,53 @@ const buildProfessionalPDF = (member, membership = {}, payments = [], gymDetails
       if (hookData.section !== 'body' || hookData.column.index !== 1) return;
 
       const rowTitle = hookData.row.raw[0];
-      if (rowTitle === 'Balance Due' && balanceDue > 0) {
-        hookData.cell.styles.textColor = colors.danger;
+      
+      // Skip separator rows
+      if (rowTitle === '─' || rowTitle === '') return;
+
+      // Total rows styling
+      if (rowTitle === 'TOTAL DUE') {
         hookData.cell.styles.fontStyle = 'bold';
-      } else if (rowTitle === 'Amount Paid') {
+        hookData.cell.styles.textColor = colors.brand;
+        hookData.row.raw[0] = 'TOTAL DUE';
+      } else if (rowTitle === 'TOTAL PAID') {
+        hookData.cell.styles.fontStyle = 'bold';
         hookData.cell.styles.textColor = colors.success;
+        hookData.row.raw[0] = 'TOTAL PAID';
+      } else if (rowTitle === 'TOTAL BALANCE') {
         hookData.cell.styles.fontStyle = 'bold';
-      } else if (rowTitle === 'Discount Applied' && discountApplied > 0) {
-        hookData.cell.styles.textColor = colors.accent;
+        hookData.cell.styles.textColor = totalBalance > 0 ? colors.danger : colors.success;
+        hookData.row.raw[0] = 'TOTAL BALANCE';
+      }
+      // Section headers
+      else if (rowTitle === 'MEMBERSHIP' || rowTitle === 'PERSONAL TRAINING' || rowTitle === 'ADD-ONS') {
+        hookData.cell.styles.fontStyle = 'bold';
+        hookData.cell.styles.fillColor = colors.brandSoft;
+        hookData.cell.styles.textColor = colors.brand;
+        hookData.cell.styles.halign = 'left';
+      }
+      // Balance rows with balance > 0
+      else if (rowTitle && (rowTitle.includes('Balance Due') || rowTitle.includes('Balance'))) {
+        const amount = parseFloat(hookData.cell.raw) || 0;
+        if (amount > 0) {
+          hookData.cell.styles.textColor = colors.danger;
+          hookData.cell.styles.fontStyle = 'bold';
+        }
       }
     },
   });
 
   y = doc.lastAutoTable.finalY + 10;
 
-  // ⚠️ PAYMENT HISTORY SECTION - COMPLETELY REMOVED ⚠️
-  // No payment history table anymore
-
   // Balance Status Message
-  if (balanceDue > 0) {
+  if (totalBalance > 0) {
     doc.setFillColor(...colors.dangerSoft);
     doc.setDrawColor(254, 202, 202);
     doc.roundedRect(margin, y, contentWidth, 12, 2, 2, 'FD');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...colors.danger);
-    doc.text(`⚠️ Outstanding Balance: ${formatCurrency(balanceDue, currencyLabel)}`, margin + 4, y + 8);
+    doc.text(`⚠️ Outstanding Balance: ${formatCurrency(totalBalance, currencyLabel)}`, margin + 4, y + 8);
     y += 18;
   } else {
     doc.setFillColor(...colors.successSoft);
