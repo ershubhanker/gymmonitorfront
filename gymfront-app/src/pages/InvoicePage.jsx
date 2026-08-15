@@ -1,4 +1,5 @@
-// src/pages/InvoicePage.jsx
+// src/pages/InvoicePage.jsx - Updated to use the correct backend endpoint
+
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
@@ -15,11 +16,18 @@ const InvoicePage = () => {
   useEffect(() => {
     const fetchInvoice = async () => {
       try {
+        // ✅ FIX: Use the correct backend endpoint that includes add-ons
+        // The endpoint should be: /gym/members/{member_id}/invoice
+        // This is the same endpoint used by the Members page download button
         const response = await axios.get(
-          `${API_BASE_URL}/api/invoices/${memberId}/${membershipId}`,
+          `${API_BASE_URL}/gym/members/${memberId}/invoice`,
           { 
             responseType: 'blob',
-            withCredentials: false // Don't send cookies/auth
+            headers: {
+              // If the endpoint requires authentication, you may need to handle it
+              // For public viewing, you might need a public endpoint
+              // 'Authorization': `Bearer ${yourToken}`
+            }
           }
         );
 
@@ -37,6 +45,8 @@ const InvoicePage = () => {
           setError('Invoice not found. It may have been deleted or expired.');
         } else if (err.response?.status === 500) {
           setError('Server error. Please try again later.');
+        } else if (err.response?.status === 401 || err.response?.status === 403) {
+          setError('You need to be logged in to view this invoice.');
         } else {
           setError('Failed to load invoice. Please try again later.');
         }
