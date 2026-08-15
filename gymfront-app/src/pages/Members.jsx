@@ -1,4 +1,4 @@
-// src/pages/Members.jsx - Full Updated with Fixed Renewal and membershipPlans
+// src/pages/Members.jsx - Full Updated with Device Sync Integration
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
@@ -678,7 +678,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     fetchStats();
     fetchGymDetails();
     fetchPTData();
-    fetchMembershipPlans(); // ✅ Fetch membership plans on mount
+    fetchMembershipPlans();
   }, []);
 
   useEffect(() => {
@@ -691,6 +691,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     }
   }, [debouncedSearchTerm, filters.status, filters.gender, currentPage, showSingleMember, singleMemberData]);
 
+ 
   // ============================================================
   // DELETE FUNCTION WITH CONFIRMATION
   // ============================================================
@@ -827,7 +828,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ============================================================
-  // HANDLE ADD MEMBER - FIXED
+  // HANDLE ADD MEMBER
   // ============================================================
   const handleAddMember = async (memberData) => {
     console.log('📥 MemberModal sending data:', memberData);
@@ -900,9 +901,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         membershipCreated = true;
         console.log('✅ Membership created with payment:', membershipResponse.data);
         
-        // ✅ DO NOT create a separate payment record here - it's already handled by the membership creation
-        // The membership creation endpoint already creates the payment record when amount_paid > 0
-        
         // ✅ Trigger payment added event to refresh Payments page
         window.dispatchEvent(new CustomEvent('paymentAdded'));
         window.dispatchEvent(new CustomEvent('paymentUpdated'));
@@ -950,7 +948,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     
     // Step 5: Show success message
     if (!hasError) {
-      // ✅ Show appropriate success message
       if (membershipCreated) {
         const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
         if (paidAmount > 0) {
@@ -962,17 +959,14 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         toast.success(`✅ ${createdMember.full_name} added successfully!`);
       }
       
-      // Step 6: Sync to device (if devices exist)
+      // Step 6: Sync to device (smart sync)
       if (createdMember && createdMember.id) {
         setTimeout(async () => {
-          const synced = await syncMemberToBridge(createdMember.id);
-          if (synced) {
-            toast.success(`${createdMember.full_name} synced to attendance device!`, { duration: 3000 });
-          }
-        }, 1000);
+          await syncMemberToDevice(createdMember.id, true);
+        }, 1500);
       }
       
-      // Step 7: Ask to sync to device
+      // Step 7: Ask to sync to device (fallback)
       const activeDevices = devices.filter(d => d.is_active);
       if (activeDevices.length > 0) {
         setTimeout(() => {
@@ -989,8 +983,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     
     return createdMember;
   };
+
   // ============================================================
-  // HANDLE UPDATE MEMBER - FIXED WITH membershipPlans
+  // HANDLE UPDATE MEMBER
   // ============================================================
   const handleUpdateMember = async (memberData) => {
     const {
@@ -1012,9 +1007,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     console.log('📅 payment_date received:', payment_date);
 
     let hasError = false;
+    let memberId = selectedMember?.id;
 
     try {
-      await api.put(`/gym/members/${selectedMember.id}`, memberFields);
+      await api.put(`/gym/members/${memberId}`, memberFields);
       console.log('✅ Member details updated');
     } catch (error) {
       console.error('Member update error:', error);
@@ -1024,14 +1020,12 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
 
     if (renew_membership && plan_id && membership_start_date) {
       try {
-        // ✅ Parse payment amounts
         const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
         const discount = discount_applied ? parseFloat(discount_applied) : 0;
         
         console.log('💰 Final payment amount for renewal:', paidAmount);
         console.log('💰 Discount for renewal:', discount);
         
-        // ✅ Get the selected plan from membershipPlans state
         const selectedPlan = membershipPlans.find(p => String(p.id) === String(plan_id));
         if (selectedPlan) {
           const planPrice = selectedPlan.discounted_price || selectedPlan.price;
@@ -1042,7 +1036,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         }
         
         const membershipPayload = {
-          member_id: selectedMember.id,
+          member_id: memberId,
           plan_id: parseInt(plan_id),
           start_date: membership_start_date,
           amount_paid: paidAmount,
@@ -1058,7 +1052,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
         console.log('✅ Membership renewed:', membershipResponse.data);
         
-        // ✅ Trigger payment added event to refresh Payments page
         window.dispatchEvent(new CustomEvent('paymentAdded'));
         window.dispatchEvent(new CustomEvent('paymentUpdated'));
         
@@ -1066,6 +1059,13 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           toast.success(`✅ Membership renewed successfully with ₹${paidAmount} payment!`);
         } else {
           toast.warning('⚠️ Membership renewed but no payment was recorded.');
+        }
+        
+        // ✅ After successful renewal, sync member to device
+        if (memberId) {
+          setTimeout(async () => {
+            await syncMemberToDevice(memberId, true);
+          }, 1500);
         }
         
       } catch (err) {
@@ -1077,12 +1077,12 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
 
     if (pt_data && pt_data.trainer_id) {
       try {
-        const existingPtResponse = await api.get(`/gym/members/${selectedMember.id}/personal-training`);
+        const existingPtResponse = await api.get(`/gym/members/${memberId}/personal-training`);
         const existingPtSessions = existingPtResponse.data || [];
         const activePt = existingPtSessions.find(s => s.status === 'active' || s.status === 'pending');
         
         const ptPayload = {
-          member_id: selectedMember.id,
+          member_id: memberId,
           trainer_id: parseInt(pt_data.trainer_id),
           start_date: pt_data.start_date,
           end_date: pt_data.end_date,
@@ -1120,20 +1120,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     
     if (!hasError) {
       toast.success('Member updated successfully!');
-      
-      if (selectedMember && selectedMember.id) {
-        setTimeout(async () => {
-          const synced = await syncMemberToBridge(selectedMember.id);
-          if (synced) {
-            toast.success(`${selectedMember.full_name} synced to attendance device!`, { duration: 3000 });
-          }
-        }, 1000);
-      }
     }
   };
 
   // ============================================================
-  // SYNC MEMBER TO BRIDGE
+  // LEGACY SYNC MEMBER TO BRIDGE (keep for compatibility)
   // ============================================================
   const syncMemberToBridge = async (memberId) => {
     try {

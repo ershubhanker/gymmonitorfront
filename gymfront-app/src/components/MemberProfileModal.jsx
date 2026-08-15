@@ -9,7 +9,7 @@ import {
   Edit, RefreshCw, Loader2, Trash2, Save, XCircle,
   Dumbbell, Pencil, Maximize2, Hash, Snowflake,
   Heart, AlertTriangle, Filter, Plus, ChevronDown,
-  Percent, Camera
+  Percent, Camera, Wifi
 } from 'lucide-react';
 import api, { API_BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
@@ -107,35 +107,21 @@ const COMMENT_CATEGORIES = {
 };
 
 // ============================================================
-// HELPER: Properly construct image URL
+// HELPER: Properly construct image URL (size=512 full, 128 thumbnail)
 // ============================================================
-const getImageUrl = (profileImage, fullName) => {
+const getImageUrl = (profileImage, fullName, size = 512) => {
   if (!profileImage) {
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName || 'User')}&background=0D9488&color=fff&size=512`;
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName || 'User')}&background=0D9488&color=fff&size=${size}`;
   }
-  
   if (profileImage.startsWith('http')) {
     return profileImage;
   }
-  
   const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
   const imagePath = profileImage.startsWith('/') ? profileImage : `/${profileImage}`;
   return `${baseUrl}${imagePath}`;
 };
 
-const getThumbnailUrl = (profileImage, fullName) => {
-  if (!profileImage) {
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName || 'User')}&background=0D9488&color=fff&size=128`;
-  }
-  
-  if (profileImage.startsWith('http')) {
-    return profileImage;
-  }
-  
-  const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
-  const imagePath = profileImage.startsWith('/') ? profileImage : `/${profileImage}`;
-  return `${baseUrl}${imagePath}`;
-};
+const getThumbnailUrl = (profileImage, fullName) => getImageUrl(profileImage, fullName, 128);
 
 // ============================================================
 // PROFILE IMAGE EDITOR COMPONENT (with zoom support)
@@ -610,6 +596,19 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ===== CATEGORY DROPDOWN STATE =====
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
+  // ===== DEVICE SYNC STATE =====
+  // Sync status (synced / deviceUserId) is now DERIVED directly from
+  // `member.device_user_id` (see `deviceSync` below, computed at render time)
+  // instead of being tracked in separate state. The backend's single-member
+  // endpoint previously omitted `device_user_id`, which is why this modal
+  // always showed "Not Synced" even for synced members even though
+  // Members.jsx (which reads the same field from the list endpoint) showed
+  // the correct status. Now that the backend includes the field on every
+  // member response, deriving it here keeps both views permanently in sync
+  // with a single source of truth and removes the need for the extra
+  // network round-trip this used to make on every load/refresh.
+  const [syncingToDevice, setSyncingToDevice] = useState(false);
+
   useEffect(() => {
     fetchMemberDetails();
     fetchComments();
@@ -640,6 +639,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       // views consistent.
       
       setMember(memberData);
+
       setEditFormData({
         full_name: memberData.full_name || '',
         email: memberData.email || '',
@@ -684,6 +684,41 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ===== SYNC TO DEVICE =====
+  const SYNC_ACTION_MESSAGES = {
+    removed: (name) => `🔴 ${name} removed from device (inactive)`,
+    added: (name) => `🟢 ${name} synced to device (active)`,
+    already_removed: (name) => `✅ ${name} already removed from device`,
+  };
+
+  const handleSyncToDevice = async () => {
+    setSyncingToDevice(true);
+    try {
+      toast.loading('Syncing to device...', { id: 'sync-device' });
+      const response = await api.post(`/gym/members/${memberId}/sync-to-device`);
+      toast.dismiss('sync-device');
+
+      if (response.data.success) {
+        const buildMessage = SYNC_ACTION_MESSAGES[response.data.action] || ((name) => `✅ ${name} synced to device`);
+        toast.success(buildMessage(member.full_name));
+        // Refresh member data so `member.device_user_id` (and therefore the
+        // derived sync badge) reflects the new state from the server.
+        await fetchMemberDetails();
+        if (onUpdate) onUpdate();
+      } else if (response.data.action === 'bridge_offline') {
+        toast.error('Device bridge is not reachable. Please ensure the bridge is running.');
+      } else {
+        toast.warning(response.data.message || 'Sync completed with warnings');
+      }
+    } catch (error) {
+      toast.dismiss('sync-device');
+      console.error('Sync error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to sync member to device');
+    } finally {
+      setSyncingToDevice(false);
     }
   };
 
@@ -1280,17 +1315,19 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       toast.error('Please enter a comment');
       return;
     }
-
+  
     setSubmitting(true);
     try {
+      // ✅ Get the category label
       const categoryLabel = COMMENT_CATEGORIES[selectedCategory]?.label || 'General';
-      const commentWithCategory = `[${categoryLabel}] ${newComment}`;
+      // ✅ Format: [Category] comment text (with space after bracket)
+      const commentWithCategory = `[${categoryLabel}] ${newComment.trim()}`;
       
       const response = await api.post(`/gym/members/${memberId}/comments`, { 
         comment: commentWithCategory 
       });
       
-      toast.success('Comment added successfully');
+      toast.success(`Comment added in "${categoryLabel}" category!`);
       setNewComment('');
       setSelectedCategory('general');
       setComments(prev => [response.data, ...prev]);
@@ -1306,11 +1343,19 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const detectCategoryFromComment = (commentText) => {
     if (!commentText) return 'general';
     
-    const match = commentText.match(/^\[([^\]]+)\]/);
+    // Try to match [Category] pattern
+    const match = commentText.match(/^\[([^\]]+)\]\s*/);
     if (match) {
-      const label = match[1];
+      const label = match[1].trim();
+      // Find matching category by label
       for (const [key, config] of Object.entries(COMMENT_CATEGORIES)) {
         if (config.label === label) {
+          return key;
+        }
+      }
+      // If label doesn't match any category, try case-insensitive
+      for (const [key, config] of Object.entries(COMMENT_CATEGORIES)) {
+        if (config.label.toLowerCase() === label.toLowerCase()) {
           return key;
         }
       }
@@ -1320,6 +1365,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   const cleanCommentText = (commentText) => {
     if (!commentText) return '';
+    // Remove [Category] prefix (including the brackets and any following whitespace)
     const match = commentText.match(/^\[[^\]]+\]\s*/);
     if (match) {
       return commentText.substring(match[0].length);
@@ -1474,6 +1520,19 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     return isActive ? 'active' : 'inactive';
   };
 
+  // ===== Device sync status for display =====
+  // Derived straight from `member.device_user_id`, the same field
+  // Members.jsx uses, so both views always agree on sync status.
+  const getDeviceSyncDisplay = () => {
+    if (syncingToDevice) {
+      return { label: 'Syncing...', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: RefreshCw };
+    }
+    if (member?.device_user_id) {
+      return { label: 'Device Synced', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle };
+    }
+    return { label: 'Not Synced', color: 'bg-gray-100 text-gray-500 border-gray-200', icon: XCircle };
+  };
+
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -1509,6 +1568,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   
   // Get consistent member status
   const memberStatus = getMemberStatus();
+  const deviceSyncDisplay = getDeviceSyncDisplay();
+  const DeviceSyncIcon = deviceSyncDisplay.icon;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
@@ -1546,6 +1607,11 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     Member since {formatDate(member.joined_date)}
                   </span>
                 )}
+                {/* Device sync status - derived from member.device_user_id */}
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${deviceSyncDisplay.color}`}>
+                  <DeviceSyncIcon className="h-3 w-3" />
+                  {deviceSyncDisplay.label}
+                </span>
               </div>
             </div>
           </div>
@@ -1728,6 +1794,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               >
                 <Calendar className="h-4 w-4" />
                 Edit Membership
+              </button>
+            )}
+ 
+            {currentMembership && !isEditingMembership && !isEditingPayment && !isEditing && (
+              <button
+                onClick={handleSyncToDevice}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50"
+                disabled={syncingToDevice}
+              >
+                <Wifi className="h-4 w-4" />
+                {syncingToDevice ? 'Syncing...' : 'Sync to Device'}
               </button>
             )}
           </div>
@@ -3017,176 +3094,176 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             )}
           </div>
 
-          {/* Comments Section with Categories */}
-          <div className="border-t border-gray-100 pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                <MessageCircle className="h-5 w-5" />
-                Comments & Communication History
-                <span className="text-xs font-normal text-gray-400 ml-2">
-                  ({comments.length} comments)
-                </span>
-              </h3>
-              {commentFilter && (
+         {/* Comments Section with Categories */}
+<div className="border-t border-gray-100 pt-6">
+  <div className="flex items-center justify-between mb-4">
+    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+      <MessageCircle className="h-5 w-5" />
+      Comments & Communication History
+      <span className="text-xs font-normal text-gray-400 ml-2">
+        ({comments.length} comments)
+      </span>
+    </h3>
+    {commentFilter && (
+      <button
+        onClick={() => setCommentFilter(null)}
+        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+      >
+        <X className="h-3 w-3" />
+        Clear Filter
+      </button>
+    )}
+  </div>
+
+  <CategoryFilter 
+    selectedCategory={commentFilter}
+    onSelect={setCommentFilter}
+    countMap={commentCounts}
+  />
+
+  <div className="flex flex-col gap-3 mb-6">
+    <div className="flex gap-3">
+      <textarea
+        value={newComment}
+        onChange={(e) => setNewComment(e.target.value)}
+        placeholder="Add a comment about this member..."
+        rows={3}
+        className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+      />
+      <button
+        onClick={handleAddComment}
+        disabled={submitting || !newComment.trim()}
+        className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 h-fit flex items-center gap-2"
+      >
+        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        Send
+      </button>
+    </div>
+    
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium text-gray-500">Tag as:</span>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+            COMMENT_CATEGORIES[selectedCategory]?.color || 'bg-gray-100 text-gray-700 border-gray-200'
+          }`}
+        >
+          {selectedCategory && COMMENT_CATEGORIES[selectedCategory]?.icon && (
+            <CommentCategoryBadge category={selectedCategory} size="sm" />
+          )}
+          <ChevronDown className="h-3 w-3" />
+        </button>
+        
+        {showCategoryDropdown && (
+          <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-[160px] py-1">
+            {Object.entries(COMMENT_CATEGORIES).map(([key, config]) => {
+              const Icon = config.icon;
+              const isSelected = selectedCategory === key;
+              return (
                 <button
-                  onClick={() => setCommentFilter(null)}
-                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory(key);
+                    setShowCategoryDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
+                    isSelected ? 'bg-gray-100' : 'hover:bg-gray-50'
+                  }`}
                 >
-                  <X className="h-3 w-3" />
-                  Clear Filter
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${config.color}`}>
+                    <Icon className="h-3 w-3" />
+                    {config.label}
+                  </span>
+                  {isSelected && <CheckCircle className="h-3 w-3 text-blue-500 ml-auto" />}
                 </button>
-              )}
-            </div>
-
-            <CategoryFilter 
-              selectedCategory={commentFilter}
-              onSelect={setCommentFilter}
-              countMap={commentCounts}
-            />
-
-            <div className="flex flex-col gap-3 mb-6">
-              <div className="flex gap-3">
-                <textarea
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Add a comment about this member..."
-                  rows={3}
-                  className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-                />
-                <button
-                  onClick={handleAddComment}
-                  disabled={submitting || !newComment.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 h-fit flex items-center gap-2"
-                >
-                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  Send
-                </button>
-              </div>
-              
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-gray-500">Tag as:</span>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                      COMMENT_CATEGORIES[selectedCategory]?.color || 'bg-gray-100 text-gray-700 border-gray-200'
-                    }`}
-                  >
-                    {selectedCategory && COMMENT_CATEGORIES[selectedCategory]?.icon && (
-                      <CommentCategoryBadge category={selectedCategory} size="sm" />
-                    )}
-                    <ChevronDown className="h-3 w-3" />
-                  </button>
-                  
-                  {showCategoryDropdown && (
-                    <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-[160px] py-1">
-                      {Object.entries(COMMENT_CATEGORIES).map(([key, config]) => {
-                        const Icon = config.icon;
-                        const isSelected = selectedCategory === key;
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            onClick={() => {
-                              setSelectedCategory(key);
-                              setShowCategoryDropdown(false);
-                            }}
-                            className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
-                              isSelected ? 'bg-gray-100' : 'hover:bg-gray-50'
-                            }`}
-                          >
-                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${config.color}`}>
-                              <Icon className="h-3 w-3" />
-                              {config.label}
-                            </span>
-                            {isSelected && <CheckCircle className="h-3 w-3 text-blue-500 ml-auto" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-                {selectedCategory && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCategory('general')}
-                    className="text-xs text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-                <span className="text-xs text-gray-400 ml-2">
-                  Category: <span className="font-medium">{COMMENT_CATEGORIES[selectedCategory]?.label || 'General'}</span>
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-4 max-h-[400px] overflow-y-auto">
-              {loadingComments ? (
-                <div className="text-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
-                </div>
-              ) : filteredComments.length > 0 ? (
-                filteredComments.map((comment) => {
-                  const category = detectCategoryFromComment(comment.comment);
-                  const cleanComment = cleanCommentText(comment.comment);
-                  const config = COMMENT_CATEGORIES[category] || COMMENT_CATEGORIES.general;
-                  const Icon = config.icon;
-                  
-                  return (
-                    <div key={comment.id} className="bg-gray-50 rounded-xl p-4 group">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                            {comment.user_name?.charAt(0).toUpperCase() || 'U'}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">{comment.user_name || 'Unknown User'}</p>
-                            <p className="text-xs text-gray-400">{formatDateTime(comment.created_at)}</p>
-                          </div>
-                          <CommentCategoryBadge category={category} size="sm" />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400 capitalize">{comment.user_role?.replace('_', ' ')}</span>
-                          <button
-                            onClick={() => handleDeleteComment(comment.id)}
-                            disabled={deletingComment === comment.id}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-red-100 text-red-500 disabled:opacity-50"
-                            title="Delete comment"
-                          >
-                            {deletingComment === comment.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-3 w-3" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-sm text-gray-700 ml-10">{cleanComment}</p>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="text-center py-8 text-gray-400">
-                  <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">
-                    {commentFilter 
-                      ? `No comments in "${COMMENT_CATEGORIES[commentFilter]?.label}" category` 
-                      : 'No comments yet. Add the first comment!'}
-                  </p>
-                  {commentFilter && (
-                    <button
-                      onClick={() => setCommentFilter(null)}
-                      className="text-xs text-blue-500 hover:text-blue-700 mt-2"
-                    >
-                      Show all comments
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+              );
+            })}
           </div>
+        )}
+      </div>
+      {selectedCategory && (
+        <button
+          type="button"
+          onClick={() => setSelectedCategory('general')}
+          className="text-xs text-gray-400 hover:text-gray-600"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+      <span className="text-xs text-gray-400 ml-2">
+        Category: <span className="font-medium">{COMMENT_CATEGORIES[selectedCategory]?.label || 'General'}</span>
+      </span>
+    </div>
+  </div>
+
+  <div className="space-y-4 max-h-[400px] overflow-y-auto">
+    {loadingComments ? (
+      <div className="text-center py-8">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
+      </div>
+    ) : filteredComments.length > 0 ? (
+      filteredComments.map((comment) => {
+        const category = detectCategoryFromComment(comment.comment);
+        const cleanComment = cleanCommentText(comment.comment);
+        const config = COMMENT_CATEGORIES[category] || COMMENT_CATEGORIES.general;
+        const Icon = config.icon;
+        
+        return (
+          <div key={comment.id} className="bg-gray-50 rounded-xl p-4 group">
+            <div className="flex items-start justify-between mb-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                  {comment.user_name?.charAt(0).toUpperCase() || 'U'}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{comment.user_name || 'Unknown User'}</p>
+                  <p className="text-xs text-gray-400">{formatDateTime(comment.created_at)}</p>
+                </div>
+                <CommentCategoryBadge category={category} size="sm" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 capitalize">{comment.user_role?.replace('_', ' ')}</span>
+                <button
+                  onClick={() => handleDeleteComment(comment.id)}
+                  disabled={deletingComment === comment.id}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-red-100 text-red-500 disabled:opacity-50"
+                  title="Delete comment"
+                >
+                  {deletingComment === comment.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3 w-3" />
+                  )}
+                </button>
+              </div>
+            </div>
+            <p className="text-sm text-gray-700 ml-10">{cleanComment}</p>
+          </div>
+        );
+      })
+    ) : (
+      <div className="text-center py-8 text-gray-400">
+        <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+        <p className="text-sm">
+          {commentFilter 
+            ? `No comments in "${COMMENT_CATEGORIES[commentFilter]?.label}" category` 
+            : 'No comments yet. Add the first comment!'}
+        </p>
+        {commentFilter && (
+          <button
+            onClick={() => setCommentFilter(null)}
+            className="text-xs text-blue-500 hover:text-blue-700 mt-2"
+          >
+            Show all comments
+          </button>
+        )}
+      </div>
+    )}
+  </div>
+</div>
         </div>
 
         {/* Footer */}
