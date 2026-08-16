@@ -2688,6 +2688,22 @@ const MemberModal = ({ isOpen, onClose,
             toast.warning('Member created but some add-ons could not be assigned.');
           }
         }
+
+        // ✅ Send the WhatsApp invoice LAST, only after the member, membership,
+        // PT session, and add-ons have all been created. Sending it earlier
+        // (e.g. right after membership creation) meant the invoice was
+        // generated before add-ons existed in the database, so it always
+        // showed up without them. This single explicit call replaces the
+        // automatic send that used to happen inside membership creation.
+        if (formData.plan_id) {
+          try {
+            await api.post(`/gym/members/${savedMember.id}/send-invoice`);
+            toast.success('Invoice sent via WhatsApp!');
+          } catch (invoiceError) {
+            console.error('Error sending invoice:', invoiceError);
+            toast.warning('Member added but the invoice could not be sent automatically. You can resend it from the members page.');
+          }
+        }
       }
     } catch (error) {
       console.error('Save error:', error);
