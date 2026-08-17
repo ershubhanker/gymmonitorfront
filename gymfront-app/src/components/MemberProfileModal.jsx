@@ -1,4 +1,4 @@
-// src/components/MemberProfileModal.jsx - WITH PROPER COST HANDLING, NO DECIMALS, IMAGE UPLOAD/DELETE, AND ADD-ON SUPPORT
+// src/components/MemberProfileModal.jsx - WITH PROPER COST HANDLING (ALL AMOUNTS IN RUPEES)
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -15,53 +15,27 @@ import api, { API_BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 
 // ============================================================
-// HELPER: Properly format currency (handles paisa to rupee conversion)
+// HELPER: Properly format currency (ALL AMOUNTS IN RUPEES)
 // Shows whole numbers without decimal places
 // ============================================================
 const formatCurrency = (amount) => {
   if (amount === null || amount === undefined || isNaN(amount)) {
     return '₹0';
   }
-  if (typeof amount === 'number' && amount > 10000 && Number.isInteger(amount)) {
-    const rupeeAmount = amount / 100;
-    return `₹${Math.round(rupeeAmount).toLocaleString('en-IN')}`;
+  const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (isNaN(numAmount) || numAmount === 0) {
+    return '₹0';
   }
-  if (typeof amount === 'number') {
-    return `₹${Math.round(amount).toLocaleString('en-IN')}`;
-  }
-  if (typeof amount === 'string') {
-    const numAmount = parseFloat(amount);
-    if (!isNaN(numAmount)) {
-      if (numAmount > 10000 && Number.isInteger(numAmount)) {
-        return `₹${Math.round(numAmount / 100).toLocaleString('en-IN')}`;
-      }
-      return `₹${Math.round(numAmount).toLocaleString('en-IN')}`;
-    }
-  }
-  return `₹${Math.round(Number(amount)).toLocaleString('en-IN')}`;
+  return `₹${Math.round(numAmount).toLocaleString('en-IN')}`;
 };
 
-// Helper to get raw rupee value from paisa or rupee (for calculations)
+// Helper to get raw rupee value (for calculations)
 const getRupeeValue = (amount) => {
   if (amount === null || amount === undefined || isNaN(amount)) {
     return 0;
   }
-  if (typeof amount === 'number' && amount > 10000 && Number.isInteger(amount)) {
-    return amount / 100;
-  }
-  if (typeof amount === 'number') {
-    return amount;
-  }
-  if (typeof amount === 'string') {
-    const numAmount = parseFloat(amount);
-    if (!isNaN(numAmount)) {
-      if (numAmount > 10000 && Number.isInteger(numAmount)) {
-        return numAmount / 100;
-      }
-      return numAmount;
-    }
-  }
-  return 0;
+  const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+  return isNaN(numAmount) ? 0 : numAmount;
 };
 
 // ============================================================
@@ -597,16 +571,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
   // ===== DEVICE SYNC STATE =====
-  // Sync status (synced / deviceUserId) is now DERIVED directly from
-  // `member.device_user_id` (see `deviceSync` below, computed at render time)
-  // instead of being tracked in separate state. The backend's single-member
-  // endpoint previously omitted `device_user_id`, which is why this modal
-  // always showed "Not Synced" even for synced members even though
-  // Members.jsx (which reads the same field from the list endpoint) showed
-  // the correct status. Now that the backend includes the field on every
-  // member response, deriving it here keeps both views permanently in sync
-  // with a single source of truth and removes the need for the extra
-  // network round-trip this used to make on every load/refresh.
   const [syncingToDevice, setSyncingToDevice] = useState(false);
 
   useEffect(() => {
@@ -628,16 +592,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       const response = await api.get(`/gym/members/${memberId}`);
       const memberData = response.data;
       
-      // NOTE: Do NOT default is_active to true when missing/undefined.
-      // Members.jsx (list page) computes status as:
-      //   status: member.is_active ? 'active' : 'inactive'
-      // which treats undefined/null/0 as inactive. Previously this modal
-      // force-defaulted a missing is_active to `true`, which caused the
-      // modal to show "Active" for members the list page correctly showed
-      // as "Inactive". Leaving the raw API value here (and letting
-      // getMemberStatus() below apply the same truthy check) keeps both
-      // views consistent.
-      
       setMember(memberData);
 
       setEditFormData({
@@ -657,8 +611,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       });
       
       if (memberData.current_membership) {
-        const amountPaid = getRupeeValue(memberData.current_membership.amount_paid || 0);
-        const discountApplied = getRupeeValue(memberData.current_membership.discount_applied || 0);
+        // Values are already in rupees
+        const amountPaid = memberData.current_membership.amount_paid || 0;
+        const discountApplied = memberData.current_membership.discount_applied || 0;
         
         setPaymentEditData({
           amount_paid: amountPaid.toString(),
@@ -704,8 +659,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       if (response.data.success) {
         const buildMessage = SYNC_ACTION_MESSAGES[response.data.action] || ((name) => `✅ ${name} synced to device`);
         toast.success(buildMessage(member.full_name));
-        // Refresh member data so `member.device_user_id` (and therefore the
-        // derived sync badge) reflects the new state from the server.
         await fetchMemberDetails();
         if (onUpdate) onUpdate();
       } else if (response.data.action === 'bridge_offline') {
@@ -1131,8 +1084,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ===== PAYMENT EDIT FUNCTIONS =====
   const handleEditPaymentClick = () => {
     if (member?.current_membership) {
-      const amountPaid = getRupeeValue(member.current_membership.amount_paid || 0);
-      const discountApplied = getRupeeValue(member.current_membership.discount_applied || 0);
+      // Values are already in rupees
+      const amountPaid = member.current_membership.amount_paid || 0;
+      const discountApplied = member.current_membership.discount_applied || 0;
       
       setPaymentEditData({
         amount_paid: amountPaid.toString(),
@@ -1154,7 +1108,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   };
 
   const validatePaymentEdit = () => {
-    const planPrice = getRupeeValue(member?.current_membership?.plan?.price || 0);
+    const planPrice = member?.current_membership?.plan?.price || 0;
     const discountApplied = parseFloat(paymentEditData.discount_applied) || 0;
     const amountPaid = parseFloat(paymentEditData.amount_paid) || 0;
     const finalPrice = Math.max(0, planPrice - discountApplied);
@@ -1185,26 +1139,27 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       toast.error('No active membership to update');
       return;
     }
-  
+
     if (!validatePaymentEdit()) {
       return;
     }
-  
+
     setSavingPayment(true);
     try {
       const membershipId = member.current_membership.id;
       const discountApplied = parseFloat(paymentEditData.discount_applied) || 0;
       const amountPaid = parseFloat(paymentEditData.amount_paid) || 0;
-  
+
+      // Values are already in rupees - send directly
       const payload = {
-        amount_paid: Math.round(amountPaid * 100),
-        discount_applied: Math.round(discountApplied * 100),
+        amount_paid: amountPaid,
+        discount_applied: discountApplied,
         notes: paymentEditData.notes || '',
         payment_method: paymentEditData.payment_method || 'cash',
       };
       
       await api.put(`/gym/memberships/${membershipId}/payment`, payload);
-  
+
       toast.success('Payment details updated successfully!');
       setIsEditingPayment(false);
       await fetchMemberDetails();
@@ -1315,12 +1270,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       toast.error('Please enter a comment');
       return;
     }
-  
+
     setSubmitting(true);
     try {
-      // ✅ Get the category label
       const categoryLabel = COMMENT_CATEGORIES[selectedCategory]?.label || 'General';
-      // ✅ Format: [Category] comment text (with space after bracket)
       const commentWithCategory = `[${categoryLabel}] ${newComment.trim()}`;
       
       const response = await api.post(`/gym/members/${memberId}/comments`, { 
@@ -1343,17 +1296,14 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const detectCategoryFromComment = (commentText) => {
     if (!commentText) return 'general';
     
-    // Try to match [Category] pattern
     const match = commentText.match(/^\[([^\]]+)\]\s*/);
     if (match) {
       const label = match[1].trim();
-      // Find matching category by label
       for (const [key, config] of Object.entries(COMMENT_CATEGORIES)) {
         if (config.label === label) {
           return key;
         }
       }
-      // If label doesn't match any category, try case-insensitive
       for (const [key, config] of Object.entries(COMMENT_CATEGORIES)) {
         if (config.label.toLowerCase() === label.toLowerCase()) {
           return key;
@@ -1365,7 +1315,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   const cleanCommentText = (commentText) => {
     if (!commentText) return '';
-    // Remove [Category] prefix (including the brackets and any following whitespace)
     const match = commentText.match(/^\[[^\]]+\]\s*/);
     if (match) {
       return commentText.substring(match[0].length);
@@ -1480,14 +1429,14 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     );
   };
 
-  // ===== Get payment summary with proper currency conversion =====
+  // ===== Get payment summary - ALL VALUES IN RUPEES =====
   const getPaymentSummary = () => {
     const membership = member?.current_membership;
     if (!membership) return null;
     
-    const planPrice = getRupeeValue(membership.plan?.price || 0);
-    const discountApplied = getRupeeValue(membership.discount_applied || 0);
-    const amountPaid = getRupeeValue(membership.amount_paid || 0);
+    const planPrice = membership.plan?.price || 0;
+    const discountApplied = membership.discount_applied || 0;
+    const amountPaid = membership.amount_paid || 0;
     const finalPrice = Math.max(0, planPrice - discountApplied);
     const balanceDue = Math.max(0, finalPrice - amountPaid);
     
@@ -1508,12 +1457,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   };
 
   // ===== Get member status consistently =====
-  // Mirrors the Members list page (Members.jsx), which computes:
-  //   status: member.is_active ? 'active' : 'inactive'
-  // is_active may come back as a boolean or a number (0/1) or a string,
-  // depending on the endpoint, so we normalize all "truthy active" forms
-  // here — but we do NOT default a missing/undefined/null value to true.
-  // A missing value means inactive, same as the list page.
   const getMemberStatus = () => {
     if (!member) return 'inactive';
     const isActive = member.is_active === true || member.is_active === 1 || member.is_active === 'true';
@@ -1521,8 +1464,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   };
 
   // ===== Device sync status for display =====
-  // Derived straight from `member.device_user_id`, the same field
-  // Members.jsx uses, so both views always agree on sync status.
   const getDeviceSyncDisplay = () => {
     if (syncingToDevice) {
       return { label: 'Syncing...', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: RefreshCw };
@@ -1549,16 +1490,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const currentMembership = member.current_membership;
   const paymentSummary = getPaymentSummary();
   
-  const totalPaid = payments.reduce((sum, p) => sum + getRupeeValue(p.amount || 0), 0);
+  // ALL VALUES ARE IN RUPEES - no conversion needed
+  const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
   
   let balanceDue = 0;
   if (balanceDetails?.balance_due !== undefined) {
-    balanceDue = getRupeeValue(balanceDetails.balance_due);
+    balanceDue = balanceDetails.balance_due;
   } else if (currentMembership?.balance_due !== undefined) {
-    balanceDue = getRupeeValue(currentMembership.balance_due);
+    balanceDue = currentMembership.balance_due;
   }
   
-  const totalPlanAmount = getRupeeValue(balanceDetails?.total_amount || currentMembership?.plan?.price || 0);
+  const totalPlanAmount = balanceDetails?.total_amount || currentMembership?.plan?.price || 0;
 
   const profileImageUrl = getImageUrl(member.profile_image, member.full_name);
   const thumbnailImageUrl = getThumbnailUrl(member.profile_image, member.full_name);
@@ -1566,7 +1508,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const activeFreeze = freezeHistory.find(f => f.status === 'active');
   const hasActiveFreeze = !!activeFreeze;
   
-  // Get consistent member status
   const memberStatus = getMemberStatus();
   const deviceSyncDisplay = getDeviceSyncDisplay();
   const DeviceSyncIcon = deviceSyncDisplay.icon;
@@ -1600,14 +1541,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 )}
               </div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
-                {/* Use consistent status badge */}
                 {getStatusBadge(memberStatus)}
                 {currentMembership && (
                   <span className="text-xs text-gray-500">
                     Member since {formatDate(member.joined_date)}
                   </span>
                 )}
-                {/* Device sync status - derived from member.device_user_id */}
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${deviceSyncDisplay.color}`}>
                   <DeviceSyncIcon className="h-3 w-3" />
                   {deviceSyncDisplay.label}
@@ -2093,7 +2032,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 </div>
                 
                 {(() => {
-                  const planPrice = getRupeeValue(currentMembership.plan?.price || 0);
+                  const planPrice = currentMembership.plan?.price || 0;
                   const discount = parseFloat(paymentEditData.discount_applied) || 0;
                   const paid = parseFloat(paymentEditData.amount_paid) || 0;
                   const finalPrice = Math.max(0, planPrice - discount);
@@ -3095,175 +3034,175 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
           </div>
 
          {/* Comments Section with Categories */}
-<div className="border-t border-gray-100 pt-6">
-  <div className="flex items-center justify-between mb-4">
-    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-      <MessageCircle className="h-5 w-5" />
-      Comments & Communication History
-      <span className="text-xs font-normal text-gray-400 ml-2">
-        ({comments.length} comments)
-      </span>
-    </h3>
-    {commentFilter && (
-      <button
-        onClick={() => setCommentFilter(null)}
-        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
-      >
-        <X className="h-3 w-3" />
-        Clear Filter
-      </button>
-    )}
-  </div>
-
-  <CategoryFilter 
-    selectedCategory={commentFilter}
-    onSelect={setCommentFilter}
-    countMap={commentCounts}
-  />
-
-  <div className="flex flex-col gap-3 mb-6">
-    <div className="flex gap-3">
-      <textarea
-        value={newComment}
-        onChange={(e) => setNewComment(e.target.value)}
-        placeholder="Add a comment about this member..."
-        rows={3}
-        className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-      />
-      <button
-        onClick={handleAddComment}
-        disabled={submitting || !newComment.trim()}
-        className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 h-fit flex items-center gap-2"
-      >
-        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        Send
-      </button>
-    </div>
-    
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs font-medium text-gray-500">Tag as:</span>
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-            COMMENT_CATEGORIES[selectedCategory]?.color || 'bg-gray-100 text-gray-700 border-gray-200'
-          }`}
-        >
-          {selectedCategory && COMMENT_CATEGORIES[selectedCategory]?.icon && (
-            <CommentCategoryBadge category={selectedCategory} size="sm" />
-          )}
-          <ChevronDown className="h-3 w-3" />
-        </button>
-        
-        {showCategoryDropdown && (
-          <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-[160px] py-1">
-            {Object.entries(COMMENT_CATEGORIES).map(([key, config]) => {
-              const Icon = config.icon;
-              const isSelected = selectedCategory === key;
-              return (
+          <div className="border-t border-gray-100 pt-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <MessageCircle className="h-5 w-5" />
+                Comments & Communication History
+                <span className="text-xs font-normal text-gray-400 ml-2">
+                  ({comments.length} comments)
+                </span>
+              </h3>
+              {commentFilter && (
                 <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    setSelectedCategory(key);
-                    setShowCategoryDropdown(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
-                    isSelected ? 'bg-gray-100' : 'hover:bg-gray-50'
-                  }`}
+                  onClick={() => setCommentFilter(null)}
+                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
                 >
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${config.color}`}>
-                    <Icon className="h-3 w-3" />
-                    {config.label}
-                  </span>
-                  {isSelected && <CheckCircle className="h-3 w-3 text-blue-500 ml-auto" />}
+                  <X className="h-3 w-3" />
+                  Clear Filter
                 </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-      {selectedCategory && (
-        <button
-          type="button"
-          onClick={() => setSelectedCategory('general')}
-          className="text-xs text-gray-400 hover:text-gray-600"
-        >
-          <X className="h-3 w-3" />
-        </button>
-      )}
-      <span className="text-xs text-gray-400 ml-2">
-        Category: <span className="font-medium">{COMMENT_CATEGORIES[selectedCategory]?.label || 'General'}</span>
-      </span>
-    </div>
-  </div>
+              )}
+            </div>
 
-  <div className="space-y-4 max-h-[400px] overflow-y-auto">
-    {loadingComments ? (
-      <div className="text-center py-8">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
-      </div>
-    ) : filteredComments.length > 0 ? (
-      filteredComments.map((comment) => {
-        const category = detectCategoryFromComment(comment.comment);
-        const cleanComment = cleanCommentText(comment.comment);
-        const config = COMMENT_CATEGORIES[category] || COMMENT_CATEGORIES.general;
-        const Icon = config.icon;
-        
-        return (
-          <div key={comment.id} className="bg-gray-50 rounded-xl p-4 group">
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                  {comment.user_name?.charAt(0).toUpperCase() || 'U'}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">{comment.user_name || 'Unknown User'}</p>
-                  <p className="text-xs text-gray-400">{formatDateTime(comment.created_at)}</p>
-                </div>
-                <CommentCategoryBadge category={category} size="sm" />
+            <CategoryFilter 
+              selectedCategory={commentFilter}
+              onSelect={setCommentFilter}
+              countMap={commentCounts}
+            />
+
+            <div className="flex flex-col gap-3 mb-6">
+              <div className="flex gap-3">
+                <textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Add a comment about this member..."
+                  rows={3}
+                  className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                />
+                <button
+                  onClick={handleAddComment}
+                  disabled={submitting || !newComment.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 h-fit flex items-center gap-2"
+                >
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Send
+                </button>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 capitalize">{comment.user_role?.replace('_', ' ')}</span>
-                <button
-                  onClick={() => handleDeleteComment(comment.id)}
-                  disabled={deletingComment === comment.id}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-red-100 text-red-500 disabled:opacity-50"
-                  title="Delete comment"
-                >
-                  {deletingComment === comment.id ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-3 w-3" />
+              
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-gray-500">Tag as:</span>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                      COMMENT_CATEGORIES[selectedCategory]?.color || 'bg-gray-100 text-gray-700 border-gray-200'
+                    }`}
+                  >
+                    {selectedCategory && COMMENT_CATEGORIES[selectedCategory]?.icon && (
+                      <CommentCategoryBadge category={selectedCategory} size="sm" />
+                    )}
+                    <ChevronDown className="h-3 w-3" />
+                  </button>
+                  
+                  {showCategoryDropdown && (
+                    <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-[160px] py-1">
+                      {Object.entries(COMMENT_CATEGORIES).map(([key, config]) => {
+                        const Icon = config.icon;
+                        const isSelected = selectedCategory === key;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCategory(key);
+                              setShowCategoryDropdown(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
+                              isSelected ? 'bg-gray-100' : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${config.color}`}>
+                              <Icon className="h-3 w-3" />
+                              {config.label}
+                            </span>
+                            {isSelected && <CheckCircle className="h-3 w-3 text-blue-500 ml-auto" />}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
-                </button>
+                </div>
+                {selectedCategory && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory('general')}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+                <span className="text-xs text-gray-400 ml-2">
+                  Category: <span className="font-medium">{COMMENT_CATEGORIES[selectedCategory]?.label || 'General'}</span>
+                </span>
               </div>
             </div>
-            <p className="text-sm text-gray-700 ml-10">{cleanComment}</p>
+
+            <div className="space-y-4 max-h-[400px] overflow-y-auto">
+              {loadingComments ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
+                </div>
+              ) : filteredComments.length > 0 ? (
+                filteredComments.map((comment) => {
+                  const category = detectCategoryFromComment(comment.comment);
+                  const cleanComment = cleanCommentText(comment.comment);
+                  const config = COMMENT_CATEGORIES[category] || COMMENT_CATEGORIES.general;
+                  const Icon = config.icon;
+                  
+                  return (
+                    <div key={comment.id} className="bg-gray-50 rounded-xl p-4 group">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                            {comment.user_name?.charAt(0).toUpperCase() || 'U'}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">{comment.user_name || 'Unknown User'}</p>
+                            <p className="text-xs text-gray-400">{formatDateTime(comment.created_at)}</p>
+                          </div>
+                          <CommentCategoryBadge category={category} size="sm" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400 capitalize">{comment.user_role?.replace('_', ' ')}</span>
+                          <button
+                            onClick={() => handleDeleteComment(comment.id)}
+                            disabled={deletingComment === comment.id}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-red-100 text-red-500 disabled:opacity-50"
+                            title="Delete comment"
+                          >
+                            {deletingComment === comment.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3 w-3" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-700 ml-10">{cleanComment}</p>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-8 text-gray-400">
+                  <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">
+                    {commentFilter 
+                      ? `No comments in "${COMMENT_CATEGORIES[commentFilter]?.label}" category` 
+                      : 'No comments yet. Add the first comment!'}
+                  </p>
+                  {commentFilter && (
+                    <button
+                      onClick={() => setCommentFilter(null)}
+                      className="text-xs text-blue-500 hover:text-blue-700 mt-2"
+                    >
+                      Show all comments
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        );
-      })
-    ) : (
-      <div className="text-center py-8 text-gray-400">
-        <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-        <p className="text-sm">
-          {commentFilter 
-            ? `No comments in "${COMMENT_CATEGORIES[commentFilter]?.label}" category` 
-            : 'No comments yet. Add the first comment!'}
-        </p>
-        {commentFilter && (
-          <button
-            onClick={() => setCommentFilter(null)}
-            className="text-xs text-blue-500 hover:text-blue-700 mt-2"
-          >
-            Show all comments
-          </button>
-        )}
-      </div>
-    )}
-  </div>
-</div>
         </div>
 
         {/* Footer */}
