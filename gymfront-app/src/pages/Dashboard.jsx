@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx - Updated with proper revenue calculation
+// src/pages/Dashboard.jsx - Complete Updated with Add-Ons Navigation
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -11,7 +11,8 @@ import {
   Flame, Zap, TrendingUp as TrendUp, MessageCircle, Mail, CheckCircle,
   Briefcase, Wallet, ChevronLeft, ChevronRight, Wifi, Phone,
   Mail as MailIcon, Clock, AlertTriangle, Eye, Shield, RefreshCw,
-  MessageSquare, Send, Download, Filter, FileText, Utensils
+  MessageSquare, Send, Download, Filter, FileText, Utensils,
+  Tag  // ✅ ADDED Tag icon for Add-Ons
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCache, CACHE_KEYS } from '../context/CacheContext';
@@ -39,9 +40,10 @@ import WhatsAppLogs from './WhatsAppLogs';
 import TrainerSchedule from '../components/TrainerSchedule';
 import IrregularMembers from '../components/attendance/IrregularMembers';
 import DietPlans from './DietPlans';
-import FollowUpPage from '../components/FollowUpPage'; 
+import FollowUpPage from '../components/FollowUpPage';
+import AddOns from './AddOns';  // ✅ IMPORT ADD-ONS PAGE
 
-const AUTO_REFRESH_INTERVAL = 60000; // Increased to 60 seconds
+const AUTO_REFRESH_INTERVAL = 60000;
 
 const CURRENCIES = [
   { symbol: '₹', label: 'Indian Rupee (INR)', flag: '🇮🇳' },
@@ -226,7 +228,6 @@ const Dashboard = () => {
   const [membersWithBalanceList, setMembersWithBalanceList] = useState([]);
   const [recentLeads, setRecentLeads] = useState([]);
 
-  // ✅ Close user menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -249,7 +250,6 @@ const Dashboard = () => {
     };
   }, [showUserMenu]);
 
-  // ✅ Fetch follow-ups count
   const fetchFollowupsCount = useCallback(async () => {
     if (!canSeeLeads) return;
     
@@ -265,7 +265,6 @@ const Dashboard = () => {
     }
   }, [canSeeLeads]);
 
-  // ✅ Fetch WhatsApp logs
   const fetchWhatsAppLogs = useCallback(async (date) => {
     try {
       const response = await api.get(`/whatsapp/logs?limit=100&start_date=${date}T00:00:00&end_date=${date}T23:59:59`);
@@ -279,7 +278,6 @@ const Dashboard = () => {
     }
   }, []);
 
-  // ✅ Fetch WhatsApp stats
   const fetchWhatsAppStats = useCallback(async () => {
     try {
       const response = await api.get('/whatsapp/logs/stats');
@@ -349,7 +347,6 @@ const Dashboard = () => {
     }
   }, [user, loading]);
 
-  // ✅ Silent fetch function
   const fetchSilently = async (url, options = {}) => {
     try {
       const response = await api.get(url, options);
@@ -362,12 +359,10 @@ const Dashboard = () => {
     }
   };
 
-  // ✅ MAIN FETCH FUNCTION WITH CACHING
   const fetchDashboardData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     
     try {
-      // ✅ Try to get cached dashboard stats
       const cachedStats = getCache(CACHE_KEYS.DASHBOARD_STATS);
       if (cachedStats && !silent) {
         console.log('📊 Using cached dashboard stats');
@@ -410,7 +405,6 @@ const Dashboard = () => {
               upcoming_classes: statsResult.upcoming_classes || []
             } };
             
-            // ✅ Cache the stats with 3 minute expiry
             setCache(CACHE_KEYS.DASHBOARD_STATS, statsData.data, 3 * 60 * 1000);
           }
         } catch (err) {
@@ -525,7 +519,6 @@ const Dashboard = () => {
   
       const currentYear = new Date().getFullYear();
       
-      // ✅ FIX: Calculate total revenue from ALL payments (including new ones)
       const totalRevenue = payments
         .filter(p => {
           const paymentDate = p.payment_date ? new Date(p.payment_date) : null;
@@ -533,7 +526,6 @@ const Dashboard = () => {
         })
         .reduce((sum, p) => sum + (p.amount || 0), 0);
       
-      // ✅ FIX: Calculate monthly revenue from payments in current month
       const monthlyRevenue = payments
         .filter(p => {
           if (!p.payment_date) return false;
@@ -544,7 +536,6 @@ const Dashboard = () => {
         })
         .reduce((sum, p) => sum + (p.amount || 0), 0);
       
-      // ✅ FIX: Calculate revenue growth
       const todayDate = new Date();
       const firstDayOfCurrentMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
       const firstDayOfLastMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
@@ -615,7 +606,6 @@ const Dashboard = () => {
   
       const todayCheckins = statsApiData.today_checkins || 0;
   
-      // ✅ FIX: Get recent payments with proper sorting
       const recentPayments = payments
         .sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date))
         .slice(0, 5)
@@ -816,7 +806,6 @@ const Dashboard = () => {
     }
   }, [canSeeDashboard, canSeeMembers, canSeePayments, canSeeMemberships, canSeeStaff, canSeeBalances, canSeeLeads, getCache, setCache]);
 
-  // ✅ Function to force refresh dashboard data (called after payments/members changes)
   const refreshDashboard = useCallback(() => {
     clearCachePattern(CACHE_KEYS.DASHBOARD_STATS);
     clearCachePattern(CACHE_KEYS.DASHBOARD_BALANCE_OVERVIEW);
@@ -827,7 +816,6 @@ const Dashboard = () => {
     fetchFollowupsCount();
   }, [clearCachePattern, invalidateCache, fetchDashboardData, fetchFollowupsCount]);
 
-  // ✅ Listen for data change events to refresh dashboard
   useEffect(() => {
     const handleDataChange = () => {
       refreshDashboard();
@@ -885,7 +873,7 @@ const Dashboard = () => {
   }, [activeTab, fetchWhatsAppLogs, fetchWhatsAppStats]);
 
   // ============================================================
-  // NAVIGATION - Grouped and organized
+  // NAVIGATION - Updated with Add-Ons
   // ============================================================
   const getNavigation = () => {
     const nav = [];
@@ -898,6 +886,10 @@ const Dashboard = () => {
       nav.push({ name: 'Members', icon: UsersIcon, id: 'members', section: 'management' });
     }
     nav.push({ name: 'Membership Plans', icon: Dumbbell, id: 'membership-plans', section: 'management' });
+    
+    // ✅ ADD ADD-ONS NAVIGATION
+    nav.push({ name: 'Add-Ons', icon: Tag, id: 'addons', section: 'management' });
+    
     if (canSeeBalances) {
       nav.push({ name: 'Balance', icon: Wallet, id: 'balance', section: 'management' });
     }
@@ -1044,7 +1036,7 @@ const Dashboard = () => {
   }
 
   // ============================================================
-  // RENDER DASHBOARD - ALL CARDS AND DATA
+  // RENDER DASHBOARD
   // ============================================================
   const renderDashboard = () => (
     <div className="space-y-6">
@@ -2077,7 +2069,7 @@ const Dashboard = () => {
       </button>
 
       {/* ============================================================
-          SIDEBAR - UPDATED WITH SCROLLING AND GROUPS
+          SIDEBAR - UPDATED WITH ADD-ONS BUTTON
           ============================================================ */}
       <aside className={`
         fixed top-0 left-0 z-40 h-screen bg-gradient-to-b from-blue-900 to-purple-900 
@@ -2357,6 +2349,10 @@ const Dashboard = () => {
             />
           )}
           {activeTab === 'membership-plans' && <MembershipPlans />}
+          
+          {/* ✅ ADD ADD-ONS TAB */}
+          {activeTab === 'addons' && <AddOns />}
+          
           {activeTab === 'balance' && canSeeBalances && <Balance />}
           {activeTab === 'devices' && canSeeDevices && <DeviceManager />}
           {activeTab === 'attendance' && canSeeAttendance && <LiveMonitoring />}

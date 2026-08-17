@@ -23,6 +23,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import TrainerSchedule from './components/TrainerSchedule';
 import HistoricalInvoices from './pages/HistoricalInvoices';
 import FollowUpPage from './components/FollowUpPage'; // ✅ Import FollowUpPage
+import AddOns from './pages/AddOns';
 
 function AdminRoute({ children }) {
   const { user, initialLoading } = useAuth();
@@ -106,7 +107,7 @@ function App() {
                       <WhatsAppLogs />
                     </AdminRoute>
                   } />
-                  
+                  <Route path="/add-ons" element={<AddOns />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </div>
