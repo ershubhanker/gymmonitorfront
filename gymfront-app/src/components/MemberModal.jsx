@@ -2697,11 +2697,21 @@ const MemberModal = ({ isOpen, onClose,
         // automatic send that used to happen inside membership creation.
         if (formData.plan_id) {
           try {
-            await api.post(`/gym/members/${savedMember.id}/send-invoice`);
-            toast.success('Invoice sent via WhatsApp!');
+            const invoiceResponse = await api.post(`/gym/members/${savedMember.id}/send-invoice`);
+            if (invoiceResponse?.data?.success) {
+              toast.success('Invoice sent via WhatsApp!');
+            } else {
+              // WhatsApp didn't go through (e.g. number not on WhatsApp, provider
+              // timeout). This is NOT a server error — the member was saved fine,
+              // and the attempt is already recorded in the WhatsApp logs, so we
+              // just give a soft heads-up instead of an alarming error toast.
+              console.warn('WhatsApp invoice not sent:', invoiceResponse?.data?.message);
+              toast('Member added. WhatsApp invoice could not be sent — check WhatsApp logs for details.', { icon: '⚠️' });
+            }
           } catch (invoiceError) {
+            // Only genuine network/auth/unexpected failures land here now.
             console.error('Error sending invoice:', invoiceError);
-            toast.warning('Member added but the invoice could not be sent automatically. You can resend it from the members page.');
+            toast('Member added, but the invoice request failed. Check WhatsApp logs for details.', { icon: '⚠️' });
           }
         }
       }

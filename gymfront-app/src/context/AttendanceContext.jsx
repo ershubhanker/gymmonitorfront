@@ -299,8 +299,23 @@ export const AttendanceProvider = ({ children }) => {
     }
   };
 
-  // Sync member to device - SHOW ERROR on 403
-  const syncMemberToDevice = async (deviceId, member) => {
+  // Sync member to device - SHOW ERROR on 403 (unless a silent background sync)
+  const syncMemberToDevice = async (deviceId, member, options = {}) => {
+    const { silent = false } = options;
+
+    // Defensive guard: this is also called from background "best effort"
+    // flows (e.g. right after adding a member). If it's ever called without
+    // a real device id or a real member object — instead of hitting the API
+    // with garbage and surfacing a confusing "device not found" error — fail
+    // quietly and log it for developers instead.
+    if (!deviceId || !member || typeof member !== 'object') {
+      console.warn('syncMemberToDevice called without a valid device/member — skipping.', { deviceId, member });
+      if (!silent) {
+        toast.error('Unable to sync: missing device or member information');
+      }
+      return { success: false, error: 'Missing device or member information' };
+    }
+
     try {
       const response = await api.post(`/attendance/devices/${deviceId}/sync-member`, {
         id: member.id,
@@ -321,10 +336,16 @@ export const AttendanceProvider = ({ children }) => {
     } catch (error) {
       console.error('Error syncing member to device:', error);
       const errorMsg = getErrorMessage(error);
-      if (isPermissionDenied(error)) {
-        toast.error('You don\'t have permission to sync members to devices');
-      } else {
-        toast.error(errorMsg);
+      // Background/best-effort syncs (silent === true) should never
+      // interrupt the person with an alert — the device may simply be
+      // offline, mid-setup, or this gym doesn't rely on it being perfectly
+      // in sync in real time. Only user-initiated syncs show a toast.
+      if (!silent) {
+        if (isPermissionDenied(error)) {
+          toast.error('You don\'t have permission to sync members to devices');
+        } else {
+          toast.error(errorMsg);
+        }
       }
       return {
         success: false,

@@ -959,10 +959,20 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         toast.success(`✅ ${createdMember.full_name} added successfully!`);
       }
       
-      // Step 6: Sync to device (smart sync)
-      if (createdMember && createdMember.id) {
+      // Step 6: Sync to device (smart sync) — background/best-effort only.
+      // Many gyms don't use a biometric/attendance device at all, so only
+      // attempt this when the gym actually has one active. syncMemberToDevice
+      // needs (deviceId, memberObject) — previously this called it with
+      // (memberId, true), which sent the member's own id as the deviceId and
+      // caused a bogus "Device not found" 404. Pass the real device and mark
+      // this call silent so a background sync failure never shows an alert.
+      const autoSyncDevice = devices.find(d => d.is_active);
+      if (createdMember && createdMember.id && autoSyncDevice) {
         setTimeout(async () => {
-          await syncMemberToDevice(createdMember.id, true);
+          const result = await syncMemberToDevice(autoSyncDevice.id, createdMember, { silent: true });
+          if (!result?.success) {
+            console.warn('Background device sync skipped/failed (no alert shown):', result?.error);
+          }
         }, 1500);
       }
       
@@ -1061,10 +1071,22 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           toast.warning('⚠️ Membership renewed but no payment was recorded.');
         }
         
-        // ✅ After successful renewal, sync member to device
-        if (memberId) {
+        // ✅ After successful renewal, sync member to device — only when the
+        // gym has an active device, using the real device id + member object
+        // (previously this passed memberId as the deviceId and `true` as the
+        // member, which is why it 404'd with "Device not found"). Always
+        // silent — this is a background action, not a user-facing save.
+        const renewalSyncDevice = devices.find(d => d.is_active);
+        if (memberId && renewalSyncDevice) {
           setTimeout(async () => {
-            await syncMemberToDevice(memberId, true);
+            const result = await syncMemberToDevice(
+              renewalSyncDevice.id,
+              { id: memberId, ...memberFields },
+              { silent: true }
+            );
+            if (!result?.success) {
+              console.warn('Background device sync skipped/failed (no alert shown):', result?.error);
+            }
           }, 1500);
         }
         
