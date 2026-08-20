@@ -1,30 +1,201 @@
-// src/components/BulkImportModal.jsx - COMPLETE FIXED VERSION
-// Features: Robust error handling, skips invalid members, handles all data types
+// src/components/BulkImportModal.jsx - COMPLETE ULTIMATE VERSION
+// Supports: Sanatoriyam format, Excel exports, and any other format
 
 import React, { useState, useRef, useMemo } from 'react';
-import { X, Upload, FileSpreadsheet, Loader2, CheckCircle, XCircle, AlertCircle, FileText } from 'lucide-react';
+import { X, Upload, FileSpreadsheet, Loader2, CheckCircle, XCircle, AlertCircle, FileText, AlertTriangle, Download, ArrowLeft, ArrowRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import Papa from 'papaparse';
 
+// ============================================================
+// CONFIGURATION
+// ============================================================
+const UPLOAD_CONFIG = {
+  MAX_FILE_SIZE_MB: 20,
+  ALLOWED_EXTENSIONS: ['xlsx', 'xls', 'csv', 'tsv'],
+  PREVIEW_ROWS: 50,
+  MAX_PREVIEW_ROWS: 100,
+};
+
+// ============================================================
+// FIELD SYNONYMS - Comprehensive coverage
+// ============================================================
+const FIELD_SYNONYMS = {
+  full_name: [
+    'full name', 'fullname', 'member name', 'membername', 'name', 
+    'customer name', 'customer', 'client name', 'client', 'person name',
+    'complete name', 'display name', 'candidate name', 'employee name',
+    'patient name', 'student name', 'user name', 'username',
+    // Sanatoriyam format
+    'member_name', 'membername', 'member name'
+  ],
+  first_name: ['first name', 'firstname', 'given name', 'first', 'fname'],
+  last_name: ['last name', 'lastname', 'surname', 'family name', 'lname'],
+  phone: [
+    'phone', 'mobile', 'cell', 'contact', 'telephone', 'phone number',
+    'mobile number', 'contact number', 'cell phone', 'phone no', 'mob',
+    'mobile no', 'contact no', 'telephone number', 'phone#', 'mobile#',
+    'whatsapp', 'whatsapp number', 'primary phone', 'secondary phone',
+    // Sanatoriyam format
+    'member_contact', 'membercontact', 'contact'
+  ],
+  email: [
+    'email', 'e-mail', 'email address', 'mail', 'email id', 'e-mail id',
+    // Sanatoriyam format
+    'member_email_id', 'memberemail', 'member_email', 'email id'
+  ],
+  plan_name: [
+    'plan', 'membership', 'plan name', 'membership plan', 'package',
+    'subscription', 'plan type', 'member plan', 'plan category',
+    'membership type', 'subscription plan', 'package name', 'tier',
+    'membership level', 'plan id', 'member type', 'category',
+    // Sanatoriyam format
+    'package_name', 'packagename', 'package'
+  ],
+  status: ['status', 'active', 'member status', 'membership status', 'is active', 'active status', 'state'],
+  gender: ['gender', 'sex', 'gender identity'],
+  address: ['address', 'addr', 'street', 'location', 'residence', 'home address', 'mailing address'],
+  date_of_birth: ['dob', 'birth date', 'date of birth', 'birthday', 'birth', 'born', 'date of birth'],
+  joined_date: [
+    'joined date', 'join date', 'start date', 'membership start', 
+    'valid from', 'from date', 'begin date', 'effective date',
+    'enrollment date', 'registration date', 'signup date', 'start',
+    'membership from', 'activate date', 'member since',
+    // Sanatoriyam format
+    'start_date', 'startdate'
+  ],
+  membership_end: [
+    'end date', 'expiry date', 'membership end', 'valid to', 'to date',
+    'expiration', 'expires', 'membership until', 'until', 'valid till',
+    'expiration date', 'renewal date', 'due date', 'membership expiry',
+    // Sanatoriyam format
+    'end_date', 'enddate'
+  ],
+  base_cost: [
+    'base cost', 'original cost', 'base price', 'original price', 
+    'list price', 'mrp', 'base amount', 'gross amount', 'gross',
+    'subtotal', 'before discount', 'regular price', 'standard price',
+    'plan cost', 'membership cost',
+    // Sanatoriyam format
+    'package_fees', 'packagefees', 'fees'
+  ],
+  net_cost: [
+    'net cost', 'net price', 'discounted cost', 'amount', 'fee', 
+    'total', 'price', 'cost', 'net amount', 'net', 'payable',
+    'total amount', 'amount paid', 'payment amount', 'final price',
+    'discounted price', 'special price', 'offer price', 'billing amount',
+    'invoice amount', 'payable amount', 'due amount',
+    // Sanatoriyam format
+    'final_paid', 'finalpaid', 'paid', 'rate'
+  ],
+  discount: [
+    'discount', 'discount applied', 'discount amount', 'disc',
+    // Sanatoriyam format
+    'discount'
+  ],
+  member_id: [
+    'member id', 'member_id', 'memberid', 'id', 'user id',
+    // Sanatoriyam format
+    'member_id'
+  ],
+  invoice_id: [
+    'invoice id', 'invoice_id', 'invoiceid', 'invoice number',
+    // Sanatoriyam format
+    'invoice_id', 'invoice id'
+  ],
+  plan_type: [
+    'plan type', 'plan_type', 'membership type', 'package type',
+    // Sanatoriyam format
+    'package_type', 'packagetype'
+  ],
+  duration_days: [
+    'duration', 'duration days', 'duration_days', 'validity',
+    // Sanatoriyam format
+    'duration_days', 'durationdays'
+  ],
+  session_count: [
+    'sessions', 'session count', 'total sessions',
+    // Sanatoriyam format
+    'session'
+  ],
+  balance: [
+    'balance', 'balance due', 'final balance', 'pending',
+    // Sanatoriyam format
+    'final_balance', 'finalbalance'
+  ],
+  emergency_contact_name: [
+    'emergency contact', 'emergency name', 'emergency contact name',
+    'emergency person', 'next of kin', 'contact person', 'relative',
+    'emergency', 'guardian', 'emergency contact person'
+  ],
+  emergency_contact_phone: [
+    'emergency phone', 'emergency contact number', 'emergency mobile',
+    'emergency contact phone', 'next of kin phone', 'guardian phone',
+    'emergency number', 'emergency contact no'
+  ],
+  medical_conditions: [
+    'medical conditions', 'medical', 'health issues', 'condition',
+    'health condition', 'existing conditions', 'diagnosis', 'illness',
+    'disease', 'medical history', 'health conditions'
+  ],
+  allergies: ['allergies', 'allergy', 'allergic', 'allergens'],
+  medications: ['medications', 'medication', 'drugs', 'current medicines', 'prescription', 'meds', 'medicines'],
+};
+
+// ============================================================
+// FIELD GROUPS FOR MAPPING UI
+// ============================================================
+const MAPPING_FIELDS = [
+  { key: 'full_name', label: 'Full Name', required: true },
+  { key: 'phone', label: 'Phone Number', required: true },
+  { key: 'plan_name', label: 'Plan Name', required: true },
+  { key: 'joined_date', label: 'Start Date (Valid From)', required: false },
+  { key: 'membership_end', label: 'End Date (Valid To)', required: false },
+  { key: 'email', label: 'Email', required: false },
+  { key: 'base_cost', label: 'Base Cost', required: false },
+  { key: 'net_cost', label: 'Net Cost (Final Paid)', required: false },
+  { key: 'date_of_birth', label: 'Date of Birth', required: false },
+  { key: 'gender', label: 'Gender', required: false },
+  { key: 'address', label: 'Address', required: false },
+  { key: 'member_id', label: 'Member ID (optional)', required: false },
+  { key: 'invoice_id', label: 'Invoice ID (optional)', required: false },
+  { key: 'plan_type', label: 'Plan Type (Gym/PT)', required: false },
+  { key: 'discount', label: 'Discount Amount', required: false },
+  { key: 'emergency_contact_name', label: 'Emergency Contact Name', required: false },
+  { key: 'emergency_contact_phone', label: 'Emergency Contact Phone', required: false },
+  { key: 'medical_conditions', label: 'Medical Conditions', required: false },
+  { key: 'allergies', label: 'Allergies', required: false },
+  { key: 'medications', label: 'Medications', required: false },
+];
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
+  // ─── State ──────────────────────────────────────────────────
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState('');
   const [fileType, setFileType] = useState('');
+  const [rawData, setRawData] = useState([]);
+  const [headers, setHeaders] = useState([]);
   const [previewData, setPreviewData] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
   const [results, setResults] = useState(null);
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(1); // 1=upload, 2=mapping, 3=preview, 4=complete
   const [plansCreated, setPlansCreated] = useState([]);
   const [dateFormatDetected, setDateFormatDetected] = useState('');
-  const [hasExcelDateSerial, setHasExcelDateSerial] = useState(false);
   const [costFormatDetected, setCostFormatDetected] = useState('');
   const [skippedRows, setSkippedRows] = useState([]);
   const [skippedCount, setSkippedCount] = useState(0);
   const [invalidRows, setInvalidRows] = useState([]);
   const [invalidCount, setInvalidCount] = useState(0);
+  const [fieldMapping, setFieldMapping] = useState({});
+  const [mappingConfidence, setMappingConfidence] = useState({});
+  const [showMappingHelp, setShowMappingHelp] = useState(false);
+  const [autoDetectedFields, setAutoDetectedFields] = useState([]);
+  const [fileStats, setFileStats] = useState({ rows: 0, columns: 0, sampleRows: [] });
   
   const isCancelledRef = useRef(false);
   const abortControllerRef = useRef(null);
@@ -32,15 +203,13 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   if (!isOpen) return null;
 
   // ============================================================
-  // 🛡️ SAFE STRING HELPERS - Handle all data types safely
+  // 🛡️ SAFE STRING HELPERS
   // ============================================================
   const safeString = (value) => {
     if (value === undefined || value === null) return '';
     if (typeof value === 'string') return value.trim();
     if (typeof value === 'number') {
-      // Check if it's a date serial number (Excel dates are numbers > 25569)
       if (value > 25569 && value < 50000) {
-        // This might be an Excel date serial, keep as number for date parsing
         return String(value);
       }
       return String(value);
@@ -55,16 +224,19 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     return str.toLowerCase();
   };
 
+  const isEmpty = (value) => {
+    if (value === undefined || value === null) return true;
+    if (typeof value === 'string') return value.trim() === '';
+    return false;
+  };
+
   // ============================================================
-  // 🧠 SMART COST PARSER - Detects paisa vs rupee
+  // 🧠 SMART COST PARSER
   // ============================================================
   const parseCost = (value) => {
-    if (value === undefined || value === null || value === '') {
-      return null;
-    }
+    if (isEmpty(value)) return null;
 
     if (typeof value === 'number') {
-      // If value > 10000, it's likely in paisa
       if (value > 10000) {
         return value / 100;
       }
@@ -73,10 +245,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
     if (typeof value === 'string') {
       let cleaned = value.trim();
-      // Remove currency symbols and commas
-      cleaned = cleaned.replace(/[₹$,]/g, '').trim();
+      cleaned = cleaned.replace(/[₹$,€£¥]/g, '').replace(/,/g, '').trim();
       
-      // Check if it's empty after cleaning
       if (!cleaned) return null;
       
       const hasDecimal = cleaned.includes('.');
@@ -85,12 +255,10 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         return null;
       }
 
-      // If no decimal and value > 10000, it's likely paisa
       if (!hasDecimal && numValue > 10000) {
         return numValue / 100;
       }
 
-      // If has decimal, it's already in rupees
       if (hasDecimal) {
         return numValue;
       }
@@ -105,15 +273,15 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   // SMART COST DETECTION
   // ============================================================
   const detectCostFormat = (rows) => {
-    const costFields = ['Base Cost', 'Base_Cost', 'base_cost', 'Net Cost', 'Net_Cost', 'net_cost', 'Amount', 'amount', 'Cost', 'cost', 'Price', 'price'];
+    const costFields = ['Package_Fees', 'Final_paid', 'Rate', 'Base Cost', 'Net Cost', 'Amount', 'Cost', 'Price'];
     let paisaCount = 0;
     let rupeeCount = 0;
 
     for (const row of rows) {
       for (const field of costFields) {
         const val = row[field];
-        if (val !== undefined && val !== null && val !== '') {
-          const numVal = typeof val === 'number' ? val : parseFloat(safeString(val).replace(/[₹$,]/g, ''));
+        if (!isEmpty(val)) {
+          const numVal = typeof val === 'number' ? val : parseFloat(safeString(val).replace(/[₹$,€£¥]/g, '').replace(/,/g, ''));
           if (!isNaN(numVal) && numVal > 0) {
             if (numVal > 10000) {
               paisaCount++;
@@ -139,65 +307,63 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   // 🧠 SUPER SMART DATE PARSER
   // ============================================================
   const parseDate = (dateStr) => {
-    if (!dateStr) return null;
+    if (!dateStr || isEmpty(dateStr)) return null;
     
     if (dateStr instanceof Date) {
-      return dateStr.toISOString().split('T')[0];
+      const d = dateStr;
+      if (!isNaN(d.getTime()) && d.getFullYear() > 1900 && d.getFullYear() < 2100) {
+        return d.toISOString().split('T')[0];
+      }
+      return null;
     }
     
     if (typeof dateStr === 'string') {
       dateStr = dateStr.trim();
       if (!dateStr) return null;
 
-      // Already in YYYY-MM-DD format
       if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
         return dateStr;
       }
 
-      // Try native Date parsing
       const nativeDate = new Date(dateStr);
       if (!isNaN(nativeDate.getTime()) && nativeDate.getFullYear() > 1900 && nativeDate.getFullYear() < 2100) {
         return nativeDate.toISOString().split('T')[0];
       }
     }
     
-    // Excel date serial number (number)
     if (typeof dateStr === 'number' && dateStr > 0) {
-      // Excel serial number starts from 1 for 1900-01-01
-      // Excel's 1900 system has a bug where it thinks 1900 is a leap year
-      // But for dates after 1900-03-01, it works correctly
       if (dateStr > 25569 && dateStr < 50000) {
         const excelDate = new Date((dateStr - 25569) * 86400 * 1000);
         if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1900 && excelDate.getFullYear() < 2100) {
-          setHasExcelDateSerial(true);
           return excelDate.toISOString().split('T')[0];
         }
       }
     }
 
-    // String that looks like a number (Excel serial as string)
     if (typeof dateStr === 'string' && !isNaN(dateStr) && Number(dateStr) > 0) {
       const numVal = Number(dateStr);
       if (numVal > 25569 && numVal < 50000) {
         const excelDate = new Date((numVal - 25569) * 86400 * 1000);
         if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1900 && excelDate.getFullYear() < 2100) {
-          setHasExcelDateSerial(true);
           return excelDate.toISOString().split('T')[0];
         }
       }
     }
 
-    // Try various date string patterns
     if (typeof dateStr === 'string') {
       let cleaned = dateStr.replace(/\s+/g, ' ').trim();
       
       const patterns = [
         { regex: /^(\d{1,2})[-/](\w{3,9})[-/](\d{2,4})$/i, groups: ['day', 'monthName', 'year'] },
         { regex: /^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/, groups: ['day', 'month', 'year'] },
-        { regex: /^(\d{2,4})[-/](\w{3,9})[-/](\d{2,4})$/i, groups: ['year', 'monthName', 'day'] },
+        { regex: /^(\d{2,4})[-/](\d{1,2})[-/](\d{1,2})$/, groups: ['year', 'month', 'day'] },
         { regex: /^(\w{3,9})\s+(\d{1,2}),?\s*(\d{2,4})$/i, groups: ['monthName', 'day', 'year'] },
         { regex: /^(\d{1,2})\s+(\w{3,9})\s+(\d{2,4})$/i, groups: ['day', 'monthName', 'year'] },
         { regex: /^(\d{2,4})\s+(\w{3,9})\s+(\d{1,2})$/i, groups: ['year', 'monthName', 'day'] },
+        { regex: /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/, groups: ['day', 'month', 'year'] },
+        { regex: /^(\d{4})\.(\d{1,2})\.(\d{1,2})$/, groups: ['year', 'month', 'day'] },
+        { regex: /^(\d{1,2})[-/](\w{3,9})[-/](\d{2})$/i, groups: ['day', 'monthName', 'yearShort'] },
+        { regex: /^(\d{1,2})[-/](\d{1,2})[-/](\d{2})$/, groups: ['day', 'month', 'yearShort'] },
       ];
 
       const monthMap = {
@@ -212,8 +378,11 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         return monthMap[month] || parseInt(month) || 1;
       };
 
-      const normalizeYear = (year) => {
+      const normalizeYear = (year, isShort = false) => {
         const numYear = parseInt(year);
+        if (isShort && numYear < 100) {
+          return 2000 + numYear;
+        }
         if (numYear < 100) {
           return 2000 + numYear;
         }
@@ -231,6 +400,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               const value = parts[i] || '';
               if (groupName === 'year') {
                 year = normalizeYear(value);
+              } else if (groupName === 'yearShort') {
+                year = normalizeYear(value, true);
               } else if (groupName === 'day') {
                 day = parseInt(value);
               } else if (groupName === 'month') {
@@ -241,13 +412,42 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             }
 
             if (year && month && day && year > 1900 && year < 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-              const dateObj = new Date(year, month - 1, day);
+              const daysInMonth = new Date(year, month, 0).getDate();
+              if (day <= daysInMonth) {
+                const dateObj = new Date(year, month - 1, day);
+                if (!isNaN(dateObj.getTime())) {
+                  return dateObj.toISOString().split('T')[0];
+                }
+              }
+            }
+          } catch (e) {
+            // Continue
+          }
+        }
+      }
+
+      // Handle dd/mm/yyyy vs mm/dd/yyyy ambiguity
+      if (cleaned.includes('/') || cleaned.includes('-')) {
+        const parts = cleaned.split(/[/-]/);
+        if (parts.length === 3) {
+          const a = parseInt(parts[0]);
+          const b = parseInt(parts[1]);
+          const c = parseInt(parts[2]);
+          if (!isNaN(a) && !isNaN(b) && !isNaN(c) && c > 1900 && c < 2100) {
+            // If a > 12, it's definitely dd/mm/yyyy
+            if (a > 12) {
+              const dateObj = new Date(c, b - 1, a);
               if (!isNaN(dateObj.getTime())) {
                 return dateObj.toISOString().split('T')[0];
               }
             }
-          } catch (e) {
-            // Continue to next pattern
+            // If b > 12, it's mm/dd/yyyy
+            if (b > 12) {
+              const dateObj = new Date(c, a - 1, b);
+              if (!isNaN(dateObj.getTime())) {
+                return dateObj.toISOString().split('T')[0];
+              }
+            }
           }
         }
       }
@@ -257,174 +457,200 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   // ============================================================
-  // VALIDATE EMAIL
+  // VALIDATE EMAIL & PHONE
   // ============================================================
   const isValidEmail = (email) => {
-    if (!email) return false;
+    if (!email || isEmpty(email)) return false;
     const str = safeString(email);
     if (!str) return false;
-    // Basic email validation - checks for @ and dot
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(str);
   };
 
-  // ============================================================
-  // VALIDATE PHONE NUMBER
-  // ============================================================
   const isValidPhone = (phone) => {
-    if (!phone) return false;
+    if (!phone || isEmpty(phone)) return false;
     const str = safeString(phone);
     if (!str) return false;
-    // Accept various phone formats: numbers, +, spaces, hyphens
-    // Minimum 7 digits, maximum 15 digits (international)
-    const cleaned = str.replace(/[\s\-()+]/g, '');
+    const cleaned = str.replace(/[\s\-()+.]/g, '');
     return cleaned.length >= 7 && cleaned.length <= 15 && /^\d+$/.test(cleaned);
   };
 
+  const cleanPhone = (phone) => {
+    if (!phone || isEmpty(phone)) return '';
+    return safeString(phone).replace(/[\s\-()+.]/g, '');
+  };
+
   // ============================================================
-  // SMART COLUMN MAPPING
+  // 🔍 SMART COLUMN MAPPING WITH FUZZY MATCHING
   // ============================================================
-  const mapColumns = (row) => {
-    const keys = Object.keys(row);
-    
-    const findKey = (patterns) => {
-      for (const pattern of patterns) {
-        const found = keys.find(k => {
-          if (!k || typeof k !== 'string') return false;
-          return safeLowerCase(k) === safeLowerCase(pattern);
-        });
-        if (found) return found;
-      }
-      for (const pattern of patterns) {
-        const found = keys.find(k => {
-          if (!k || typeof k !== 'string') return false;
-          return safeLowerCase(k).includes(safeLowerCase(pattern));
-        });
-        if (found) return found;
-      }
-      return null;
-    };
+  const findBestKey = (keys, synonyms, fieldKey) => {
+    let bestScore = 0;
+    let bestKey = null;
+    let matchedSynonym = '';
 
-    const nameKey = findKey(['Full Name', 'Full_Name', 'Name', 'full_name', 'Member Name', 'member_name']);
-    const phoneKey = findKey(['Phone', 'Mobile', 'Contact', 'phone', 'mobile', 'contact_no', 'Contact No', 'contact number']);
-    const emailKey = findKey(['Email', 'email', 'e-mail', 'E-mail']);
-    const planKey = findKey(['Plan Name', 'Plan_Name', 'Plan', 'plan_name', 'plan', 'Membership Type', 'membership_type', 'membership']);
-    const statusKey = findKey(['Status', 'status', 'Active', 'is_active']);
-    const genderKey = findKey(['Gender', 'gender', 'Sex', 'sex']);
-    const addressKey = findKey(['Address', 'address', 'addr', 'Addr']);
-    const dobKey = findKey(['Date of Birth', 'DOB', 'dob', 'date_of_birth', 'Birth Date', 'birth_date']);
-    
-    const startDateKey = findKey([
-      'Valid From', 'Valid_From', 'valid_from', 
-      'Start Date', 'Start_Date', 'start_date', 
-      'Start', 'Joined Date', 'joined_date', 
-      'Join Date', 'Membership Start', 'membership_start'
-    ]);
-    
-    const endDateKey = findKey([
-      'Valid To', 'Valid_To', 'valid_to',
-      'End Date', 'End_Date', 'end_date', 
-      'End', 'Expiry Date', 'expiry_date',
-      'Membership End', 'membership_end', 'Valid Till', 'valid_till'
-    ]);
-    
-    const baseCostKey = findKey([
-      'Base Cost', 'Base_Cost', 'base_cost',
-      'Base Price', 'base_price', 'Base_Price',
-      'Original Cost', 'original_cost',
-    ]);
-
-    const netCostKey = findKey([
-      'Net Cost', 'Net_Cost', 'net_cost',
-      'Net Price', 'net_price', 'Net_Price',
-      'Discounted Cost', 'discounted_cost',
-      'Amount', 'amount', 'Cost', 'cost', 'Price', 'price'
-    ]);
-
-    const emergencyNameKey = findKey(['Emergency Contact', 'emergency_contact', 'Emergency Name', 'emergency_name']);
-    const emergencyPhoneKey = findKey(['Emergency Phone', 'emergency_phone', 'Emergency Contact No']);
-    const medicalKey = findKey(['Medical Conditions', 'medical_conditions', 'Medical', 'medical']);
-    const allergiesKey = findKey(['Allergies', 'allergies', 'Allergy']);
-    const medicationsKey = findKey(['Medications', 'medications', 'Medication']);
-
-    let baseCost = null;
-    let netCost = null;
-
-    if (baseCostKey) {
-      const rawValue = row[baseCostKey];
-      if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
-        baseCost = parseCost(rawValue);
-      }
-    }
-
-    if (netCostKey) {
-      const rawValue = row[netCostKey];
-      if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
-        netCost = parseCost(rawValue);
-      }
-    }
-
-    if (baseCost === null && netCost !== null) {
-      baseCost = netCost;
-    }
-
-    // Get email and validate
-    let email = '';
-    if (emailKey) {
-      const rawEmail = row[emailKey];
-      if (rawEmail !== undefined && rawEmail !== null && rawEmail !== '') {
-        email = safeString(rawEmail);
-        // Only keep if it's a valid email
-        if (!isValidEmail(email)) {
-          email = '';
+    // First pass: exact matches
+    for (const key of keys) {
+      const lowerKey = safeLowerCase(key);
+      for (const syn of synonyms) {
+        if (lowerKey === safeLowerCase(syn)) {
+          return { key, score: 100, synonym: syn };
         }
       }
     }
 
-    // Get phone and validate
-    let phone = '';
-    if (phoneKey) {
-      const rawPhone = row[phoneKey];
-      if (rawPhone !== undefined && rawPhone !== null && rawPhone !== '') {
-        phone = safeString(rawPhone);
-        // Clean phone number for storage
-        phone = phone.replace(/[\s\-()]/g, '');
+    // Second pass: substring matches with scoring
+    for (const key of keys) {
+      const lowerKey = safeLowerCase(key);
+      for (const syn of synonyms) {
+        const lowerSyn = safeLowerCase(syn);
+        
+        if (lowerKey.includes(lowerSyn) || lowerSyn.includes(lowerKey)) {
+          const lengthRatio = Math.max(lowerKey.length, lowerSyn.length) / Math.min(lowerKey.length, lowerSyn.length);
+          const specificity = lowerSyn.length > 3 ? 1.2 : 1.0;
+          const score = (1 / lengthRatio) * 100 * specificity;
+          
+          if (score > bestScore) {
+            bestScore = score;
+            bestKey = key;
+            matchedSynonym = syn;
+          }
+        }
       }
     }
 
-    return {
-      full_name: nameKey ? safeString(row[nameKey]) : '',
-      phone: phone,
-      email: email,
-      plan_name: planKey ? safeString(row[planKey]) : '',
-      status: statusKey ? row[statusKey] : 'active',
-      gender: genderKey ? safeString(row[genderKey]) : 'male',
-      address: addressKey ? safeString(row[addressKey]) : '',
-      date_of_birth: dobKey ? row[dobKey] : '',
-      joined_date: startDateKey ? row[startDateKey] : '',
-      membership_end: endDateKey ? row[endDateKey] : '',
-      base_cost: baseCost,
-      net_cost: netCost,
-      emergency_contact_name: emergencyNameKey ? safeString(row[emergencyNameKey]) : '',
-      emergency_contact_phone: emergencyPhoneKey ? safeString(row[emergencyPhoneKey]) : '',
-      medical_conditions: medicalKey ? safeString(row[medicalKey]) : '',
-      allergies: allergiesKey ? safeString(row[allergiesKey]) : '',
-      medications: medicationsKey ? safeString(row[medicationsKey]) : '',
+    // Third pass: check if key contains any synonym as a word
+    for (const key of keys) {
+      const lowerKey = safeLowerCase(key);
+      const words = lowerKey.split(/[\s_\-]+/);
+      for (const word of words) {
+        if (word.length < 3) continue;
+        for (const syn of synonyms) {
+          const lowerSyn = safeLowerCase(syn);
+          if (word === lowerSyn || word.includes(lowerSyn) || lowerSyn.includes(word)) {
+            const score = 60 + (word.length / lowerSyn.length) * 20;
+            if (score > bestScore) {
+              bestScore = score;
+              bestKey = key;
+              matchedSynonym = syn;
+            }
+          }
+        }
+      }
+    }
+
+    return { key: bestKey, score: bestScore, synonym: matchedSynonym };
+  };
+
+  // ============================================================
+  // AUTO-MAP COLUMNS
+  // ============================================================
+  const autoMapColumns = (rowKeys) => {
+    const mapping = {};
+    const confidence = {};
+    const detected = [];
+
+    for (const field of MAPPING_FIELDS) {
+      const synonyms = FIELD_SYNONYMS[field.key] || [];
+      const result = findBestKey(rowKeys, synonyms, field.key);
+      
+      if (result.key && result.score > 30) {
+        mapping[field.key] = result.key;
+        confidence[field.key] = Math.round(result.score);
+        detected.push(field.key);
+      } else {
+        // Special handling for full_name: check first_name + last_name
+        if (field.key === 'full_name') {
+          const firstNameKey = findBestKey(rowKeys, FIELD_SYNONYMS.first_name, 'first_name');
+          const lastNameKey = findBestKey(rowKeys, FIELD_SYNONYMS.last_name, 'last_name');
+          if (firstNameKey.key && lastNameKey.key) {
+            mapping[field.key] = 'COMBINE_FIRST_LAST';
+            confidence[field.key] = 80;
+            detected.push(field.key);
+            continue;
+          }
+        }
+        
+        // Special handling for phone
+        if (field.key === 'phone') {
+          const phoneKey = rowKeys.find(k => 
+            /^[\d\s\-()+.]{7,}$/.test(safeString(k)) || 
+            /phone|mobile|cell|contact/i.test(k)
+          );
+          if (phoneKey) {
+            mapping[field.key] = phoneKey;
+            confidence[field.key] = 40;
+            detected.push(field.key);
+          }
+        }
+      }
+    }
+
+    return { mapping, confidence, detected };
+  };
+
+  // ============================================================
+  // MAP A SINGLE ROW USING THE MAPPING
+  // ============================================================
+  const mapRow = (row, mapping) => {
+    const mapped = {
       _raw: row,
       _mapped: true,
       _isValid: true,
-      _validationErrors: []
+      _validationErrors: [],
+      _warnings: [],
     };
+
+    for (const field of MAPPING_FIELDS) {
+      const key = mapping[field.key];
+      
+      if (key === 'COMBINE_FIRST_LAST') {
+        const firstNameKey = findBestKey(Object.keys(row), FIELD_SYNONYMS.first_name, 'first_name').key;
+        const lastNameKey = findBestKey(Object.keys(row), FIELD_SYNONYMS.last_name, 'last_name').key;
+        const first = firstNameKey ? safeString(row[firstNameKey]) : '';
+        const last = lastNameKey ? safeString(row[lastNameKey]) : '';
+        mapped[field.key] = `${first} ${last}`.trim();
+      } else if (key && row[key] !== undefined) {
+        const value = row[key];
+        
+        if (field.key === 'phone') {
+          mapped[field.key] = cleanPhone(value);
+        } else if (field.key === 'email') {
+          const email = safeString(value);
+          mapped[field.key] = isValidEmail(email) ? email : '';
+        } else if (field.key === 'base_cost' || field.key === 'net_cost' || field.key === 'discount') {
+          mapped[field.key] = parseCost(value);
+        } else if (field.key === 'date_of_birth' || field.key === 'joined_date' || field.key === 'membership_end') {
+          mapped[field.key] = value;
+        } else {
+          mapped[field.key] = safeString(value);
+        }
+      } else {
+        mapped[field.key] = '';
+      }
+    }
+
+    // 🆕 Smart plan name enhancement: Combine Package_Type + Package_Name
+    if (mapped.plan_name && mapped.plan_type) {
+      // If plan_type is 'PT' or 'Gym', prepend it to plan name for clarity
+      const planType = safeString(mapped.plan_type);
+      if (planType && (planType.toLowerCase() === 'pt' || planType.toLowerCase() === 'gym')) {
+        // Already has both, keep as is but make plan_name more descriptive
+        if (!mapped.plan_name.toLowerCase().includes(planType.toLowerCase())) {
+          mapped.plan_name = `${planType} - ${mapped.plan_name}`;
+        }
+      }
+    }
+
+    return mapped;
   };
 
   // ============================================================
   // VALIDATE A SINGLE ROW
   // ============================================================
-  const validateRow = (row) => {
+  const validateRow = (row, mapping) => {
     const errors = [];
     const warnings = [];
 
-    // Check required fields
     if (!row.full_name || row.full_name.trim() === '') {
       errors.push('Missing Full Name');
     }
@@ -432,29 +658,36 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     if (!row.phone || row.phone.trim() === '') {
       errors.push('Missing Phone Number');
     } else if (!isValidPhone(row.phone)) {
-      errors.push('Invalid Phone Number (must be 7-15 digits)');
+      errors.push(`Invalid Phone Number: "${row.phone}" (must be 7-15 digits)`);
     }
 
     if (!row.plan_name || row.plan_name.trim() === '') {
       errors.push('Missing Plan Name');
     }
 
-    // Check if email is valid (if provided)
     if (row.email && row.email.trim() !== '' && !isValidEmail(row.email)) {
-      errors.push('Invalid Email Format');
+      errors.push(`Invalid Email Format: "${row.email}"`);
     }
 
-    // Check dates
     const parsedStart = parseDate(row.joined_date);
     const parsedEnd = parseDate(row.membership_end);
 
     if (!parsedStart && !parsedEnd) {
-      errors.push('Missing Valid From OR Valid To date');
+      warnings.push('Missing both Start Date and End Date - will use today as start if plan exists');
     }
 
-    // Check cost (warn if invalid)
-    if (row.base_cost !== null && (isNaN(row.base_cost) || row.base_cost <= 0)) {
-      errors.push('Invalid Cost Value');
+    if (row.base_cost !== null && row.base_cost !== undefined && row.base_cost !== '') {
+      const cost = parseCost(row.base_cost);
+      if (cost === null || cost <= 0) {
+        warnings.push(`Invalid Base Cost: "${row.base_cost}" - will be treated as 0`);
+      }
+    }
+
+    if (row.net_cost !== null && row.net_cost !== undefined && row.net_cost !== '') {
+      const cost = parseCost(row.net_cost);
+      if (cost === null || cost <= 0) {
+        warnings.push(`Invalid Net Cost: "${row.net_cost}" - will be treated as 0`);
+      }
     }
 
     return {
@@ -471,24 +704,24 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   // DETECT DATE FORMAT
   // ============================================================
   const detectDateFormat = (rows) => {
-    const dateFields = ['Valid From', 'Valid To', 'Start Date', 'End Date', 'Joined Date', 'Date of Birth', 'DOB'];
+    const dateFields = ['Start_Date', 'End_Date', 'Valid From', 'Valid To', 'Joined Date', 'Date of Birth', 'DOB'];
     let formats = [];
     
     for (const row of rows) {
       for (const field of dateFields) {
         const val = row[field];
-        if (val !== undefined && val !== null && val !== '') {
+        if (!isEmpty(val)) {
           if (typeof val === 'number' && val > 0 && val > 25569 && val < 50000) {
             formats.push('Excel Serial Number');
           } else if (typeof val === 'string') {
-            if (val.match(/^\d{1,2}[-/]\w{3,9}[-/]\d{2,4}$/i)) {
+            if (val.match(/^\d{4}-\d{2}-\d{2}/)) {
+              formats.push('YYYY-MM-DD');
+            } else if (val.match(/^\d{1,2}[-/]\w{3,9}[-/]\d{2,4}$/i)) {
               formats.push('DD-MMM-YYYY');
             } else if (val.match(/^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/)) {
               formats.push('DD/MM/YYYY');
             } else if (val.match(/^\w{3,9}\s+\d{1,2},?\s+\d{2,4}$/i)) {
               formats.push('Month DD, YYYY');
-            } else if (val.match(/^\d{2,4}[-/]\d{1,2}[-/]\d{1,2}$/)) {
-              formats.push('YYYY-MM-DD');
             }
           }
           break;
@@ -504,7 +737,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   // EXTRACT DURATION FROM PLAN NAME
   // ============================================================
   const extractDuration = (planName) => {
-    if (!planName) return { durationDays: 30, planType: 'monthly' };
+    if (!planName || isEmpty(planName)) return { durationDays: 30, planType: 'monthly' };
     
     const safeName = safeString(planName);
     if (!safeName) return { durationDays: 30, planType: 'monthly' };
@@ -538,8 +771,17 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         return { durationDays: years * 365, planType: 'yearly' };
       }
     }
+
+    // Check for specific numbers in plan name (e.g., "3 Months", "1 Year")
+    const numberMatch = safeName.match(/(\d+)\s*(month|year|day)/i);
+    if (numberMatch) {
+      const num = parseInt(numberMatch[1]);
+      const unit = numberMatch[2].toLowerCase();
+      if (unit === 'year') return { durationDays: num * 365, planType: 'yearly' };
+      if (unit === 'month') return { durationDays: num * 30, planType: num >= 12 ? 'yearly' : 'monthly' };
+      if (unit === 'day') return { durationDays: num, planType: 'monthly' };
+    }
     
-    // Common plan patterns
     const offerMap = {
       '1+1': { days: 55, type: 'monthly' },
       '3+3': { days: 180, type: 'half_yearly' },
@@ -556,6 +798,16 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       if (lower.includes(key)) {
         return { durationDays: value.days, planType: value.type };
       }
+    }
+    
+    if (lower.includes('yearly') || lower.includes('annual')) {
+      return { durationDays: 365, planType: 'yearly' };
+    }
+    if (lower.includes('half') || lower.includes('6 month')) {
+      return { durationDays: 180, planType: 'half_yearly' };
+    }
+    if (lower.includes('quarter') || lower.includes('3 month')) {
+      return { durationDays: 90, planType: 'quarterly' };
     }
     
     return { durationDays: 30, planType: 'monthly' };
@@ -615,7 +867,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 if (value instanceof Date) {
                   cleaned[key] = value.toISOString().split('T')[0];
                 } else if (typeof value === 'number' && value > 0 && value > 25569 && value < 50000) {
-                  // This might be an Excel date serial
                   cleaned[key] = value;
                 } else {
                   cleaned[key] = value !== undefined && value !== null ? String(value) : '';
@@ -643,15 +894,20 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
 
+    const extension = selectedFile.name.split('.').pop().toLowerCase();
+    if (!UPLOAD_CONFIG.ALLOWED_EXTENSIONS.includes(extension)) {
+      toast.error(`Unsupported file type: ${extension}. Please use .xlsx, .xls, .csv, or .tsv`);
+      return;
+    }
+
+    if (selectedFile.size > UPLOAD_CONFIG.MAX_FILE_SIZE_MB * 1024 * 1024) {
+      toast.error(`File too large: ${(selectedFile.size / 1024 / 1024).toFixed(1)}MB. Maximum ${UPLOAD_CONFIG.MAX_FILE_SIZE_MB}MB`);
+      return;
+    }
+
     setFileName(selectedFile.name);
-    setFileType(selectedFile.name.split('.').pop().toLowerCase());
+    setFileType(extension);
     isCancelledRef.current = false;
-    setHasExcelDateSerial(false);
-    setCostFormatDetected('');
-    setSkippedRows([]);
-    setSkippedCount(0);
-    setInvalidRows([]);
-    setInvalidCount(0);
 
     toast.loading('Reading file...', { id: 'file-reading' });
 
@@ -664,111 +920,49 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           return;
         }
 
-        // Map columns smartly
-        const mappedData = data.map(row => mapColumns(row));
+        const headers = Object.keys(data[0] || {});
         
-        // Filter out rows without name or phone
-        const validData = mappedData.filter(m => m.full_name && m.phone);
+        // 🆕 Detect if this is a Sanatoriyam format file
+        const isSanatoriyamFormat = headers.some(h => 
+          /member_name|member_contact|package_name|start_date|end_date|package_fees|final_paid/i.test(h)
+        );
         
-        if (validData.length === 0) {
-          toast.error('No valid rows found. Please ensure "Full Name" and "Phone" columns exist.');
+        if (isSanatoriyamFormat) {
+          console.log('📋 Detected Sanatoriyam format - applying special handling');
+        }
+        
+        const { mapping, confidence, detected } = autoMapColumns(headers);
+        
+        const requiredFields = ['full_name', 'phone', 'plan_name'];
+        const missingRequired = requiredFields.filter(f => !mapping[f]);
+        const foundCount = Object.keys(mapping).length;
+
+        const lowConfidence = Object.values(confidence).filter(c => c < 50);
+        const hasLowConfidence = lowConfidence.length > 0;
+
+        setRawData(data);
+        setHeaders(headers);
+        setFieldMapping(mapping);
+        setMappingConfidence(confidence);
+        setAutoDetectedFields(detected);
+        
+        setFileStats({
+          rows: data.length,
+          columns: headers.length,
+          sampleRows: data.slice(0, 5),
+        });
+
+        if (missingRequired.length > 0 || hasLowConfidence) {
+          setStep(2);
+          toast.info(
+            `⚠️ Some fields need your attention. Please verify the column mapping.`,
+            { duration: 4000 }
+          );
           return;
         }
 
-        // ============================================================
-        // 🔥 VALIDATE EACH ROW
-        // ============================================================
-        const validatedData = [];
-        const invalidData = [];
+        processMappedData(data, mapping);
         
-        for (const row of validData) {
-          const validation = validateRow(row);
-          if (validation.isValid) {
-            validatedData.push({
-              ...row,
-              _parsedStart: validation.parsedStart,
-              _parsedEnd: validation.parsedEnd,
-              _validationErrors: []
-            });
-          } else {
-            invalidData.push({
-              ...row,
-              _validationErrors: validation.errors,
-              _isValid: false
-            });
-          }
-        }
-
-        setInvalidRows(invalidData);
-        setInvalidCount(invalidData.length);
-
-        // ============================================================
-        // 🔥 SMART FILTERING: Skip rows without plan OR valid dates
-        // ============================================================
-        const filteredData = [];
-        const skippedData = [];
-        
-        for (const row of validatedData) {
-          // Check if row has plan AND (start date OR end date)
-          const hasPlan = row.plan_name && row.plan_name.trim() !== '';
-          const hasValidStart = row._parsedStart !== null;
-          const hasValidEnd = row._parsedEnd !== null;
-          
-          if (hasPlan && (hasValidStart || hasValidEnd)) {
-            filteredData.push(row);
-          } else {
-            skippedData.push(row);
-          }
-        }
-
-        setSkippedRows(skippedData);
-        setSkippedCount(skippedData.length);
-
-        // Detect date format
-        const dateFormat = detectDateFormat(data);
-        setDateFormatDetected(dateFormat);
-
-        // Detect cost format
-        const costFormat = detectCostFormat(data);
-        setCostFormatDetected(costFormat === 'paisa' ? 'Paisa (₹)' : 'Rupee (₹)');
-
-        // Parse dates and costs
-        const parsedData = filteredData.map(m => ({
-          ...m,
-          joined_date: m._parsedStart || parseDate(m.joined_date),
-          membership_end: m._parsedEnd || parseDate(m.membership_end),
-          date_of_birth: parseDate(m.date_of_birth),
-        }));
-
-        // Show preview with cost info
-        const membersWithCost = parsedData.filter(m => m.base_cost !== null);
-        const totalCost = membersWithCost.reduce((sum, m) => sum + (m.base_cost || 0), 0);
-
-        console.log(`📊 Import Stats:`);
-        console.log(`  - Total rows: ${validData.length}`);
-        console.log(`  - Invalid rows: ${invalidData.length}`);
-        console.log(`  - Valid rows: ${validatedData.length}`);
-        console.log(`  - Skipped rows (no plan/dates): ${skippedData.length}`);
-        console.log(`  - Final rows: ${filteredData.length}`);
-        console.log(`  - Rows with cost: ${membersWithCost.length}`);
-        console.log(`  - Total cost: ₹${totalCost}`);
-
-        setPreviewData(parsedData);
-        setFile(selectedFile);
-        setStep(2);
-        setResults(null);
-        
-        let message = `✅ Loaded ${parsedData.length} valid members`;
-        if (invalidData.length > 0) {
-          message += `, ⚠️ ${invalidData.length} invalid rows skipped (check errors)`;
-        }
-        if (skippedData.length > 0) {
-          message += `, ⏭️ ${skippedData.length} rows skipped (missing plan/dates)`;
-        }
-        if (costFormat === 'paisa') {
-          message += ' (Cost converted from paisa to rupee)';
-        }
-        toast.success(message, { duration: 5000 });
       })
       .catch((error) => {
         toast.dismiss('file-reading');
@@ -778,7 +972,173 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   // ============================================================
-  // HANDLE IMPORT
+  // PROCESS MAPPED DATA
+  // ============================================================
+  const processMappedData = (data, mapping) => {
+    const mappedData = data.map(row => mapRow(row, mapping));
+    
+    const validData = mappedData.filter(m => m.full_name && m.phone);
+    
+    if (validData.length === 0) {
+      toast.error('No valid rows found. Please ensure "Full Name" and "Phone" columns are correctly mapped.');
+      return;
+    }
+
+    const validatedData = [];
+    const invalidData = [];
+    
+    for (const row of validData) {
+      const validation = validateRow(row, mapping);
+      if (validation.isValid) {
+        validatedData.push({
+          ...row,
+          _parsedStart: validation.parsedStart,
+          _parsedEnd: validation.parsedEnd,
+          _validationErrors: [],
+          _warnings: validation.warnings || [],
+        });
+      } else {
+        invalidData.push({
+          ...row,
+          _validationErrors: validation.errors,
+          _isValid: false,
+          _warnings: validation.warnings || [],
+        });
+      }
+    }
+
+    setInvalidRows(invalidData);
+    setInvalidCount(invalidData.length);
+
+    const filteredData = [];
+    const skippedData = [];
+    
+    for (const row of validatedData) {
+      const hasPlan = row.plan_name && row.plan_name.trim() !== '';
+      const hasValidStart = row._parsedStart !== null;
+      const hasValidEnd = row._parsedEnd !== null;
+      
+      if (hasPlan && (hasValidStart || hasValidEnd)) {
+        filteredData.push(row);
+      } else {
+        skippedData.push({
+          ...row,
+          _skipReason: !hasPlan ? 'Missing Plan Name' : 'Missing Valid From/To dates',
+        });
+      }
+    }
+
+    setSkippedRows(skippedData);
+    setSkippedCount(skippedData.length);
+
+    const dateFormat = detectDateFormat(data);
+    setDateFormatDetected(dateFormat);
+
+    const costFormat = detectCostFormat(data);
+    setCostFormatDetected(costFormat === 'paisa' ? 'Paisa (₹)' : 'Rupee (₹)');
+
+    const parsedData = filteredData.map(m => ({
+      ...m,
+      joined_date: m._parsedStart || parseDate(m.joined_date) || new Date().toISOString().split('T')[0],
+      membership_end: m._parsedEnd || parseDate(m.membership_end),
+      date_of_birth: parseDate(m.date_of_birth),
+      base_cost: parseCost(m.base_cost),
+      net_cost: parseCost(m.net_cost),
+      discount: parseCost(m.discount),
+    }));
+
+    const membersWithCost = parsedData.filter(m => m.base_cost !== null && m.base_cost > 0);
+    const totalCost = membersWithCost.reduce((sum, m) => sum + (m.base_cost || 0), 0);
+
+    console.log(`📊 Import Stats:`);
+    console.log(`  - Total rows: ${data.length}`);
+    console.log(`  - Invalid rows: ${invalidData.length}`);
+    console.log(`  - Valid rows: ${validatedData.length}`);
+    console.log(`  - Skipped rows (no plan/dates): ${skippedData.length}`);
+    console.log(`  - Final rows: ${parsedData.length}`);
+    console.log(`  - Rows with cost: ${membersWithCost.length}`);
+    console.log(`  - Total cost: ₹${totalCost}`);
+
+    setPreviewData(parsedData);
+    setFile(data);
+    setStep(3);
+    setResults(null);
+    
+    let message = `✅ Loaded ${parsedData.length} valid members`;
+    if (invalidData.length > 0) {
+      message += `, ⚠️ ${invalidData.length} invalid rows skipped (check errors)`;
+    }
+    if (skippedData.length > 0) {
+      message += `, ⏭️ ${skippedData.length} rows skipped (missing plan/dates)`;
+    }
+    if (costFormat === 'paisa') {
+      message += ' (Cost converted from paisa to rupee)';
+    }
+    toast.success(message, { duration: 5000 });
+  };
+
+  // ============================================================
+  // HANDLE MANUAL MAPPING
+  // ============================================================
+  const handleMappingChange = (fieldKey, columnKey) => {
+    setFieldMapping(prev => ({
+      ...prev,
+      [fieldKey]: columnKey === 'skip' ? null : columnKey,
+    }));
+  };
+
+  const handleApplyMapping = () => {
+    const requiredFields = ['full_name', 'phone', 'plan_name'];
+    const missingRequired = requiredFields.filter(f => !fieldMapping[f]);
+    
+    if (missingRequired.length > 0) {
+      toast.error(`Please map these required fields: ${missingRequired.join(', ')}`);
+      return;
+    }
+
+    processMappedData(rawData, fieldMapping);
+  };
+
+  const exportSkippedRows = () => {
+    if (skippedRows.length === 0 && invalidRows.length === 0) {
+      toast.info('No skipped rows to export');
+      return;
+    }
+
+    const allSkipped = [
+      ...skippedRows.map(r => ({ ...r, _reason: r._skipReason || 'Missing Plan or Dates' })),
+      ...invalidRows.map(r => ({ ...r, _reason: r._validationErrors.join(', ') })),
+    ];
+
+    const csvRows = [
+      ['Row', 'Full Name', 'Phone', 'Plan', 'Reason', 'Data'],
+    ];
+
+    allSkipped.forEach((row, idx) => {
+      csvRows.push([
+        idx + 1,
+        row.full_name || '',
+        row.phone || '',
+        row.plan_name || '',
+        row._reason || 'Unknown',
+        JSON.stringify(row._raw || {}).slice(0, 100),
+      ]);
+    });
+
+    const csv = csvRows.map(row => row.join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `skipped_rows_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    toast.success(`Exported ${allSkipped.length} skipped rows`);
+  };
+
+  // ============================================================
+  // HANDLE IMPORT (same as before, kept for brevity)
   // ============================================================
   const handleImport = async () => {
     isCancelledRef.current = false;
@@ -896,8 +1256,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         const member = previewData[i];
         setImportProgress({ current: i + 1, total: previewData.length });
 
-        // Validate member before import
-        const validation = validateRow(member);
+        const validation = validateRow(member, fieldMapping);
         if (!validation.isValid) {
           results.skipped++;
           results.errors.push({
@@ -939,23 +1298,19 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             joined_date: member.joined_date || new Date().toISOString().split('T')[0],
           };
 
-          // ✅ Only add email if valid
           if (member.email && member.email.trim() !== '' && isValidEmail(member.email)) {
             memberData.email = safeString(member.email);
           }
 
-          // ✅ Only add address if not empty
           if (member.address && member.address.trim() !== '') {
             memberData.address = safeString(member.address);
           }
 
-          // ✅ Only add DOB if valid
           if (member.date_of_birth) {
             const dob = parseDate(member.date_of_birth);
             if (dob) memberData.date_of_birth = dob;
           }
 
-          // ✅ Add optional fields if they exist
           if (member.emergency_contact_name && member.emergency_contact_name.trim() !== '') {
             memberData.emergency_contact_name = safeString(member.emergency_contact_name);
           }
@@ -972,14 +1327,12 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             memberData.medications = safeString(member.medications);
           }
 
-          // Create the member
           const memberResponse = await api.post('/gym/members', memberData);
           const newMember = memberResponse.data;
           
           importSuccess = true;
           successfullyImportedPhones.add(phone);
 
-          // Find plan ID
           let planId = null;
           let planName = safeString(member.plan_name);
           
@@ -988,7 +1341,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             planId = planIdMap[cleanPlanName];
             
             if (!planId) {
-              // Try partial match
               for (const [key, id] of Object.entries(planIdMap)) {
                 if (key.includes(cleanPlanName) || cleanPlanName.includes(key)) {
                   planId = id;
@@ -1003,7 +1355,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             planName = defaultPlan.name;
           }
 
-          // Create membership if member is active and has a plan
           if (shouldBeActive && planId) {
             try {
               let startDate = member.joined_date || new Date().toISOString().split('T')[0];
@@ -1034,7 +1385,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                   start_date: startDate,
                   end_date: endDate,
                   amount_paid: amountPaid,
-                  discount_applied: 0,
+                  discount_applied: member.discount || 0,
                 };
                 
                 await api.post('/gym/memberships', membershipPayload);
@@ -1046,7 +1397,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 member: member.full_name,
                 error: `Membership failed: ${membershipError.response?.data?.detail || membershipError.message}`
               });
-              // Don't increment failed count for membership errors, the member was created
             }
           }
 
@@ -1057,7 +1407,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           
           const errorMsg = error.response?.data?.detail || error.message || 'Unknown error';
           
-          // Check if this is a duplicate error
           const isDuplicateError = safeLowerCase(errorMsg).includes('already exists') || 
                                    safeLowerCase(errorMsg).includes('duplicate') || 
                                    safeLowerCase(errorMsg).includes('phone');
@@ -1079,7 +1428,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           }
         }
 
-        // Small delay between imports to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
@@ -1091,7 +1439,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
       setResults(results);
       setPlansCreated(createdPlans);
-      setStep(3);
+      setStep(4);
       
       let summaryMessage = `✅ Import complete! ${results.success} members imported.`;
       if (invalidCount > 0) summaryMessage += ` ⚠️ ${invalidCount} invalid rows skipped.`;
@@ -1134,6 +1482,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     setFile(null);
     setFileName('');
     setFileType('');
+    setRawData([]);
+    setHeaders([]);
     setPreviewData([]);
     setResults(null);
     setPlansCreated([]);
@@ -1141,18 +1491,21 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     setImportProgress({ current: 0, total: 0 });
     setUploading(false);
     setDateFormatDetected('');
-    setHasExcelDateSerial(false);
     setCostFormatDetected('');
     setSkippedRows([]);
     setSkippedCount(0);
     setInvalidRows([]);
     setInvalidCount(0);
+    setFieldMapping({});
+    setMappingConfidence({});
+    setAutoDetectedFields([]);
+    setFileStats({ rows: 0, columns: 0, sampleRows: [] });
     if (onImportComplete) onImportComplete();
     onClose();
   };
 
   // ============================================================
-  // RENDER STEP 1
+  // RENDER FUNCTIONS (same as previous version)
   // ============================================================
   const renderStep1 = () => (
     <div className="text-center py-8">
@@ -1165,9 +1518,11 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         <br />
         <strong className="text-gray-700">Required:</strong> Full Name, Phone, Plan Name
         <br />
-        <strong className="text-gray-700">Required:</strong> Valid From OR Valid To date
-        <br />
         <span className="text-gray-400">Optional: Email, Base Cost, Net Cost, Status, Gender, Address, DOB, etc.</span>
+        <br />
+        <span className="text-xs text-blue-500">The system will auto-detect column names and data formats</span>
+        <br />
+        <span className="text-xs text-green-500">✓ Supports Sanatoriyam format (Member_Name, Member_Contact, Package_Name, etc.)</span>
       </p>
       
       <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-blue-500 hover:bg-blue-50/50 transition-all cursor-pointer">
@@ -1181,7 +1536,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         <label htmlFor="file-upload" className="cursor-pointer block">
           <Upload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
           <p className="text-gray-600 font-medium">Click to upload or drag and drop</p>
-          <p className="text-xs text-gray-400 mt-1">Supports .xlsx, .xls, .csv, .tsv files</p>
+          <p className="text-xs text-gray-400 mt-1">Supports .xlsx, .xls, .csv, .tsv files (Max {UPLOAD_CONFIG.MAX_FILE_SIZE_MB}MB)</p>
         </label>
       </div>
 
@@ -1190,33 +1545,155 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           <span className="text-green-600">✓</span> Smart Features:
         </p>
         <ul className="text-xs text-gray-600 mt-2 space-y-1 list-disc list-inside">
-          <li>Auto-detects column names (Valid From, Valid To, Base Cost, Net Cost, etc.)</li>
-          <li><strong className="text-blue-600">Auto-filters:</strong> Skips rows without Plan Name OR Valid From/To dates</li>
-          <li><strong className="text-red-600">Auto-validation:</strong> Skips rows with invalid data (phone, email, costs)</li>
+          <li><strong>Auto-detects</strong> column names using fuzzy matching</li>
+          <li>Supports <strong>Sanatoriyam format</strong> (Member_Name, Member_Contact, Package_Name, etc.)</li>
+          <li>Supports <strong>First Name + Last Name</strong> combined automatically</li>
+          <li><strong>Auto-filters:</strong> Skips rows without Plan Name OR Valid From/To dates</li>
+          <li><strong>Auto-validation:</strong> Skips rows with invalid data (phone, email, costs)</li>
           <li>Auto-detects cost format (Paisa or Rupee)</li>
-          <li>Auto-detects date formats (DD/MM/YYYY, DD-MMM-YY, Month DD, YYYY, etc.)</li>
-          <li>Supports both <strong>Base Cost</strong> (original price) and <strong>Net Cost</strong> (discounted price)</li>
+          <li>Auto-detects <strong>10+ date formats</strong> (DD/MM/YYYY, DD-MMM-YY, Month DD, YYYY, etc.)</li>
+          <li>Supports both <strong>Base Cost</strong> (original) and <strong>Net Cost</strong> (discounted)</li>
           <li>Auto-creates membership plans if they don't exist</li>
           <li>Skips duplicate phone numbers automatically</li>
+          <li><strong>Manual mapping fallback</strong> if auto-detection fails</li>
         </ul>
       </div>
     </div>
   );
 
-  // ============================================================
-  // RENDER STEP 2
-  // ============================================================
-  const renderStep2 = () => {
+  const renderStep2 = () => (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-yellow-500" />
+            Column Mapping
+          </h3>
+          <p className="text-sm text-gray-500">
+            Map your file columns to the required fields. <strong>Required</strong> fields are marked with *
+          </p>
+        </div>
+        <button
+          onClick={() => setShowMappingHelp(!showMappingHelp)}
+          className="text-sm text-blue-600 hover:text-blue-700"
+        >
+          {showMappingHelp ? 'Hide Help' : 'Show Help'}
+        </button>
+      </div>
+
+      {showMappingHelp && (
+        <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm text-blue-700 font-medium mb-2">📋 Mapping Tips:</p>
+          <ul className="text-xs text-blue-600 space-y-1 list-disc list-inside">
+            <li>If you have separate <strong>First Name</strong> and <strong>Last Name</strong> columns, map <strong>Full Name</strong> to combine them automatically</li>
+            <li>For <strong>Phone</strong>, the system will auto-clean formatting</li>
+            <li><strong>Plan Name</strong> will auto-create new plans if they don't exist</li>
+            <li>Leave a field as <strong>"Skip"</strong> if the column doesn't exist in your file</li>
+            <li>The system will auto-detect date formats from your data</li>
+            <li><strong>Sanatoriyam format:</strong> Member_Name → Full Name, Member_Contact → Phone, Package_Name → Plan Name</li>
+          </ul>
+        </div>
+      )}
+
+      <div className="overflow-x-auto mb-4">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border">Field</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border">Map to Column</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border">Confidence</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {MAPPING_FIELDS.map((field) => {
+              const isRequired = field.required;
+              const currentValue = fieldMapping[field.key] || '';
+              const confidence = mappingConfidence[field.key] || 0;
+              const isAutoDetected = autoDetectedFields.includes(field.key);
+              
+              return (
+                <tr key={field.key} className={isRequired ? 'bg-blue-50/30' : ''}>
+                  <td className="px-4 py-2 text-sm text-gray-700 border">
+                    {field.label}
+                    {isRequired && <span className="text-red-500 ml-1">*</span>}
+                    {isAutoDetected && (
+                      <span className="ml-2 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
+                        Auto
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 border">
+                    <select
+                      value={currentValue}
+                      onChange={(e) => handleMappingChange(field.key, e.target.value)}
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                    >
+                      <option value="">-- Skip --</option>
+                      {headers.map((header) => (
+                        <option key={header} value={header}>
+                          {header}
+                          {currentValue === header && ' ✓'}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-4 py-2 border">
+                    {confidence > 0 ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full ${
+                              confidence >= 70 ? 'bg-green-500' : 
+                              confidence >= 40 ? 'bg-yellow-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${confidence}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-gray-500">{confidence}%</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400">Manual</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          onClick={() => setStep(1)}
+          className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+        >
+          <ArrowLeft className="h-4 w-4 inline mr-1" />
+          Back
+        </button>
+        <button
+          onClick={handleApplyMapping}
+          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+        >
+          Apply Mapping & Preview
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="mt-4 text-xs text-gray-400">
+        {rawData.length} rows loaded • {headers.length} columns detected
+      </div>
+    </div>
+  );
+
+  const renderStep3 = () => {
     const phoneCounts = {};
     previewData.forEach(m => {
       const phone = safeString(m.phone);
       phoneCounts[phone] = (phoneCounts[phone] || 0) + 1;
     });
     const duplicates = Object.entries(phoneCounts).filter(([phone, count]) => count > 1);
-    const membersWithCost = previewData.filter(m => m.base_cost !== null);
+    const membersWithCost = previewData.filter(m => m.base_cost !== null && m.base_cost > 0);
     const totalCost = membersWithCost.reduce((sum, m) => sum + (m.base_cost || 0), 0);
-
-    const totalValidRows = previewData.length + skippedCount + invalidCount;
 
     return (
       <div>
@@ -1259,13 +1736,31 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               )}
             </div>
           </div>
-          <button
-            onClick={() => setStep(1)}
-            className="text-sm text-blue-600 hover:text-blue-700"
-            disabled={uploading}
-          >
-            Upload different file
-          </button>
+          <div className="flex gap-2">
+            {(invalidCount > 0 || skippedCount > 0) && (
+              <button
+                onClick={exportSkippedRows}
+                className="text-sm text-orange-600 hover:text-orange-700 flex items-center gap-1"
+              >
+                <Download className="h-4 w-4" />
+                Export Skipped
+              </button>
+            )}
+            <button
+              onClick={() => setStep(2)}
+              className="text-sm text-blue-600 hover:text-blue-700"
+              disabled={uploading}
+            >
+              Adjust Mapping
+            </button>
+            <button
+              onClick={() => setStep(1)}
+              className="text-sm text-gray-500 hover:text-gray-700"
+              disabled={uploading}
+            >
+              Upload different file
+            </button>
+          </div>
         </div>
 
         {invalidCount > 0 && (
@@ -1334,13 +1829,14 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {previewData.slice(0, 50).map((member, index) => {
+              {previewData.slice(0, UPLOAD_CONFIG.PREVIEW_ROWS).map((member, index) => {
                 const phone = safeString(member.phone);
                 const isDuplicate = previewData.filter(m => safeString(m.phone) === phone).length > 1;
                 const isFirstOccurrence = previewData.findIndex(m => safeString(m.phone) === phone) === index;
+                const hasWarnings = member._warnings && member._warnings.length > 0;
                 
                 return (
-                  <tr key={index} className={`${isDuplicate && !isFirstOccurrence ? 'bg-yellow-50' : ''}`}>
+                  <tr key={index} className={`${isDuplicate && !isFirstOccurrence ? 'bg-yellow-50' : ''} ${hasWarnings ? 'border-l-4 border-l-yellow-400' : ''}`}>
                     <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{member.full_name}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{member.phone}</td>
@@ -1355,7 +1851,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                     <td className="px-4 py-3 text-sm text-gray-500">{member.joined_date || '—'}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{member.membership_end || '—'}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">
-                      {member.base_cost !== null ? (
+                      {member.base_cost !== null && member.base_cost > 0 ? (
                         <span className="text-green-600 font-medium">
                           ₹{member.base_cost.toLocaleString('en-IN')}
                         </span>
@@ -1371,9 +1867,9 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               })}
             </tbody>
           </table>
-          {previewData.length > 50 && (
+          {previewData.length > UPLOAD_CONFIG.PREVIEW_ROWS && (
             <div className="px-4 py-2 text-sm text-gray-500 bg-gray-50 text-center">
-              Showing first 50 of {previewData.length} valid members
+              Showing first {UPLOAD_CONFIG.PREVIEW_ROWS} of {previewData.length} valid members
             </div>
           )}
         </div>
@@ -1443,10 +1939,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     );
   };
 
-  // ============================================================
-  // RENDER STEP 3
-  // ============================================================
-  const renderStep3 = () => (
+  const renderStep4 = () => (
     <div>
       <div className="text-center mb-6">
         {results.failed === 0 && results.skipped === 0 && skippedCount === 0 && invalidCount === 0 ? (
@@ -1537,6 +2030,9 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     </div>
   );
 
+  // ============================================================
+  // MAIN RENDER
+  // ============================================================
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-y-auto">
@@ -1544,6 +2040,11 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5 text-blue-600" />
             Bulk Import Members
+            {step > 1 && (
+              <span className="text-sm font-normal text-gray-400 ml-2">
+                Step {step - 1} of {step === 2 ? 'Mapping' : step === 3 ? 'Preview' : 'Complete'}
+              </span>
+            )}
           </h2>
           <button onClick={handleClose} className="p-1 hover:bg-gray-100 rounded-lg">
             <X className="h-5 w-5 text-gray-500" />
@@ -1554,6 +2055,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
+          {step === 4 && renderStep4()}
         </div>
       </div>
     </div>
