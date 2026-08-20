@@ -3,8 +3,8 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
-const API_BASE_URL = 'https://api.gymmonitor.in';
-// const API_BASE_URL = 'http://localhost:8001'; // for local host
+// const API_BASE_URL = 'https://api.gymmonitor.in';
+const API_BASE_URL = 'http://localhost:8001'; // for local host
 
 export { API_BASE_URL };
 
@@ -351,6 +351,16 @@ export const generateBulkInvoices = async (memberIds) => {
   }
 };
 
+
+export const resendInvoiceWhatsApp = async (memberId) => {
+  try {
+    const response = await api.post(`/gym/members/${memberId}/invoice/resend-whatsapp`);
+    return response.data;
+  } catch (error) {
+    console.error('Error resending invoice via WhatsApp:', error);
+    throw error;
+  }
+};
 // ============================================================
 // KEEP ALL YOUR EXISTING EXPORTS AS THEY WERE
 // ============================================================
