@@ -676,7 +676,8 @@ const Payments = () => {
           Select the applicable GST rate for your gym. Currently: <span className="font-semibold text-purple-700">{gstRate}%</span>
         </p>
         <div className="space-y-3">
-          {[5, 18].map((rate) => (
+          {/* ✅ Add 0% GST option */}
+          {[0, 5, 18].map((rate) => (
             <button
               key={rate}
               disabled={updatingGst}
@@ -698,8 +699,12 @@ const Payments = () => {
               }`}
             >
               <div className="text-left">
-                <p className="font-semibold">{rate}% GST</p>
-                <p className="text-xs text-gray-500">CGST {rate/2}% + SGST {rate/2}%</p>
+                <p className="font-semibold">
+                  {rate === 0 ? '0% GST (Exempt)' : `${rate}% GST`}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {rate === 0 ? 'No GST charges applied' : `CGST ${rate/2}% + SGST ${rate/2}%`}
+                </p>
               </div>
               {gstRate === rate && <CheckCircle className="h-5 w-5 text-purple-600" />}
             </button>
