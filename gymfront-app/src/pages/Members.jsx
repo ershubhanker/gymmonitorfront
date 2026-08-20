@@ -1,4 +1,4 @@
-// src/pages/Members.jsx - Full Updated with Device Sync Integration
+// src/pages/Members.jsx - Full Updated with Device Sync Integration & Resend Invoice WhatsApp
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
@@ -6,12 +6,12 @@ import {
   ChevronLeft, ChevronRight, X, CheckCircle, XCircle,
   Clock, FileText, RefreshCw, Wifi, Loader2, WifiOff,
   FileSpreadsheet, Link, AlertTriangle, Smartphone, User,
-  ArrowLeft, Dumbbell
+  ArrowLeft, Dumbbell, Send
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
 import toast from 'react-hot-toast';
-import api, { API_BASE_URL, fetchMembersOptimized, fetchMemberStatsOptimized } from '../services/api';
+import api, { API_BASE_URL, fetchMembersOptimized, fetchMemberStatsOptimized, resendInvoiceWhatsApp } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useAttendance } from '../context/AttendanceContext';
 import { useCache, CACHE_KEYS } from '../context/CacheContext';
@@ -201,6 +201,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [totalMembersCount, setTotalMembersCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const [resendingInvoice, setResendingInvoice] = useState(null);
   
   // PT Data
   const [ptData, setPtData] = useState({});
@@ -691,7 +692,37 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     }
   }, [debouncedSearchTerm, filters.status, filters.gender, currentPage, showSingleMember, singleMemberData]);
 
- 
+  // ============================================================
+  // HANDLE RESEND INVOICE VIA WHATSAPP
+  // ============================================================
+  const handleResendInvoiceWhatsApp = async (member) => {
+    if (!member.phone) {
+      toast.error('Member has no phone number to send invoice');
+      return;
+    }
+
+    setResendingInvoice(member.id);
+    toast.loading(`Sending invoice to ${member.fullName} via WhatsApp...`, { id: 'resend-invoice' });
+
+    try {
+      const result = await resendInvoiceWhatsApp(member.id);
+      toast.dismiss('resend-invoice');
+
+      if (result.success) {
+        toast.success(`✅ Invoice sent to ${member.fullName} via WhatsApp!`);
+      } else {
+        toast.error(result.error || 'Failed to send invoice');
+      }
+    } catch (error) {
+      toast.dismiss('resend-invoice');
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to send invoice';
+      toast.error(`❌ ${errorMsg}`);
+      console.error('Error resending invoice:', error);
+    } finally {
+      setResendingInvoice(null);
+    }
+  };
+
   // ============================================================
   // DELETE FUNCTION WITH CONFIRMATION
   // ============================================================
@@ -960,12 +991,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
       
       // Step 6: Sync to device (smart sync) — background/best-effort only.
-      // Many gyms don't use a biometric/attendance device at all, so only
-      // attempt this when the gym actually has one active. syncMemberToDevice
-      // needs (deviceId, memberObject) — previously this called it with
-      // (memberId, true), which sent the member's own id as the deviceId and
-      // caused a bogus "Device not found" 404. Pass the real device and mark
-      // this call silent so a background sync failure never shows an alert.
       const autoSyncDevice = devices.find(d => d.is_active);
       if (createdMember && createdMember.id && autoSyncDevice) {
         setTimeout(async () => {
@@ -1071,11 +1096,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           toast.warning('⚠️ Membership renewed but no payment was recorded.');
         }
         
-        // ✅ After successful renewal, sync member to device — only when the
-        // gym has an active device, using the real device id + member object
-        // (previously this passed memberId as the deviceId and `true` as the
-        // member, which is why it 404'd with "Device not found"). Always
-        // silent — this is a background action, not a user-facing save.
+        // ✅ After successful renewal, sync member to device
         const renewalSyncDevice = devices.find(d => d.is_active);
         if (memberId && renewalSyncDevice) {
           setTimeout(async () => {
@@ -1932,10 +1953,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        {/* Download Invoice PDF */}
                         <button 
                           onClick={() => handleDownloadInvoice(member)} 
-                          className="text-green-600 hover:text-green-900 mr-3 inline-flex items-center"
-                          title="Download Invoice"
+                          className="text-green-600 hover:text-green-900 mr-2 inline-flex items-center"
+                          title="Download Invoice PDF"
                           disabled={downloadingInvoice === member.id}
                         >
                           {downloadingInvoice === member.id ? (
@@ -1945,6 +1967,25 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                           )}
                         </button>
                         
+                        {/* Resend Invoice via WhatsApp */}
+                        <button 
+                          onClick={() => handleResendInvoiceWhatsApp(member)} 
+                          className={`mr-2 inline-flex items-center ${
+                            member.phone 
+                              ? 'text-blue-500 hover:text-blue-700' 
+                              : 'text-gray-300 cursor-not-allowed'
+                          }`}
+                          title={member.phone ? "Resend Invoice via WhatsApp" : "No phone number available"}
+                          disabled={!member.phone || resendingInvoice === member.id}
+                        >
+                          {resendingInvoice === member.id ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                        </button>
+                        
+                        {/* Sync to Attendance Device */}
                         <button 
                           onClick={() => {
                             const memberForSync = {
@@ -1964,16 +2005,18 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                             };
                             openDeviceSyncModal(memberForSync);
                           }} 
-                          className="text-purple-600 hover:text-purple-900 mr-3"
+                          className="text-purple-600 hover:text-purple-900 mr-2"
                           title="Sync to Attendance Device"
                         >
                           <Wifi className="h-4 w-4" />
                         </button>
                         
-                        <button onClick={() => openEditModal(member)} className="text-blue-600 hover:text-blue-900 mr-3">
+                        {/* Edit Member */}
+                        <button onClick={() => openEditModal(member)} className="text-blue-600 hover:text-blue-900 mr-2">
                           <Edit className="h-4 w-4" />
                         </button>
                         
+                        {/* Delete Member */}
                         <button onClick={() => handleDeleteClick(member)} className="text-red-600 hover:text-red-900">
                           <Trash2 className="h-4 w-4" />
                         </button>
