@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx - Complete Updated with Add-Ons Navigation
+// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH GRANULAR PERMISSIONS
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,7 +12,7 @@ import {
   Briefcase, Wallet, ChevronLeft, ChevronRight, Wifi, Phone,
   Mail as MailIcon, Clock, AlertTriangle, Eye, Shield, RefreshCw,
   MessageSquare, Send, Download, Filter, FileText, Utensils,
-  Tag  // ✅ ADDED Tag icon for Add-Ons
+  Tag
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCache, CACHE_KEYS } from '../context/CacheContext';
@@ -41,7 +41,7 @@ import TrainerSchedule from '../components/TrainerSchedule';
 import IrregularMembers from '../components/attendance/IrregularMembers';
 import DietPlans from './DietPlans';
 import FollowUpPage from '../components/FollowUpPage';
-import AddOns from './AddOns';  // ✅ IMPORT ADD-ONS PAGE
+import AddOns from './AddOns';
 
 const AUTO_REFRESH_INTERVAL = 60000;
 
@@ -150,20 +150,44 @@ const Dashboard = () => {
   const userMenuRef = useRef(null);
   const userButtonRef = useRef(null);
 
-  const canViewDashboard = hasPermission('view_dashboard');
-  const canViewMembers = hasPermission('view_members');
-  const canViewPayments = hasPermission('view_payments');
-  const canViewMemberships = hasPermission('view_memberships');
-  const canViewBalances = hasPermission('view_balances');
-  const canViewStaff = hasPermission('view_staff');
-  const canViewExpenses = hasPermission('view_expenses');
-  const canViewAttendance = hasPermission('view_attendance');
-  const canViewDevices = hasPermission('view_devices');
-  const canViewLeads = hasPermission('view_leads');
+  // ─── PERMISSION CHECKS FOR DASHBOARD CARDS ──────────────────────────────
+  // These determine which cards are visible on the dashboard
   
+  // Can the user see the dashboard at all?
+  const canViewDashboard = hasPermission('view_dashboard');
   const isAdmin = userRole === 'gym_owner' || userRole === 'super_admin';
+  
+  // Card-level permissions (these determine which cards are shown)
+  const canViewMemberStats = isAdmin || hasPermission('dashboard_view_member_stats') || hasPermission('view_members');
+  // const canViewMemberStats = isAdmin || canViewDashboard || hasPermission('view_members') || hasPermission('view_member_profile');
+  const canViewRevenueStats = isAdmin || hasPermission('dashboard_view_revenue_stats') || hasPermission('view_payments');
+  // const canViewRevenueStats = isAdmin || canViewDashboard || hasPermission('view_payments') || hasPermission('view_balances');
+  const canViewExpenseStats = isAdmin || hasPermission('dashboard_view_expense_stats') || hasPermission('view_expenses');
+  // const canViewExpenseStats = isAdmin || canViewDashboard || hasPermission('view_expenses');
+  const canViewAttendanceStats = isAdmin || hasPermission('dashboard_view_attendance_stats') || hasPermission('view_attendance');
+  // const canViewAttendanceStats = isAdmin || canViewDashboard || hasPermission('view_attendance') || hasPermission('mark_attendance');
+  const canViewBalanceStats = isAdmin || hasPermission('dashboard_view_balance_stats') || hasPermission('view_balances');
+  // const canViewBalanceStats = isAdmin || canViewDashboard || hasPermission('view_balances');
+  const canViewLeadStats = isAdmin || hasPermission('dashboard_view_lead_stats') || hasPermission('view_leads');
+  // const canViewLeadStats = isAdmin || canViewDashboard || hasPermission('view_leads');
+  const canViewStaffStats = isAdmin || hasPermission('dashboard_view_staff_stats') || hasPermission('view_staff');
+  // const canViewStaffStats = isAdmin || canViewDashboard || hasPermission('view_staff');
+  const canViewClasses = isAdmin || hasPermission('dashboard_view_classes');
+  const canViewBirthdays = isAdmin || hasPermission('dashboard_view_birthdays');
+  const canViewActivity = isAdmin || hasPermission('dashboard_view_activity');
+  const canViewAlerts = isAdmin || hasPermission('dashboard_view_alerts');
+  // Navigation permissions
+  const canViewMembers = isAdmin || hasPermission('view_members');
+  const canViewPayments = isAdmin || hasPermission('view_payments');
+  const canViewMemberships = isAdmin || hasPermission('view_memberships');
+  const canViewBalances = isAdmin || hasPermission('view_balances');
+  const canViewStaff = isAdmin || hasPermission('view_staff');
+  const canViewExpenses = isAdmin || hasPermission('view_expenses');
+  const canViewAttendance = isAdmin || hasPermission('view_attendance');
+  const canViewDevices = isAdmin || hasPermission('view_devices');
+  const canViewLeads = isAdmin || hasPermission('view_leads');
 
-  const canSeeDashboard = isAdmin || canViewDashboard;
+  const canSeeDashboard = isAdmin || canViewDashboard || hasPermission('view_members') || hasPermission('view_payments') || hasPermission('view_attendance');
   const canSeeMembers = isAdmin || canViewMembers;
   const canSeePayments = isAdmin || canViewPayments;
   const canSeeMemberships = isAdmin || canViewMemberships;
@@ -228,28 +252,18 @@ const Dashboard = () => {
   const [membersWithBalanceList, setMembersWithBalanceList] = useState([]);
   const [recentLeads, setRecentLeads] = useState([]);
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (
-        showUserMenu && 
-        userMenuRef.current && 
-        userButtonRef.current &&
-        !userMenuRef.current.contains(event.target) && 
-        !userButtonRef.current.contains(event.target)
-      ) {
-        setShowUserMenu(false);
-      }
-    };
+  // ─── PERMISSION CHECK: Can user access the dashboard? ────────────────────
+  // If user has NO permissions at all, redirect to a simple page
+  const hasAnyPermission = isAdmin || 
+    hasPermission('view_members') || 
+    hasPermission('view_payments') || 
+    hasPermission('view_attendance') ||
+    hasPermission('view_staff') ||
+    hasPermission('view_expenses') ||
+    hasPermission('view_leads') ||
+    hasPermission('view_dashboard');
 
-    if (showUserMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showUserMenu]);
-
+  // ─── FETCH FOLLOWUPS COUNT ──────────────────────────────────────────────
   const fetchFollowupsCount = useCallback(async () => {
     if (!canSeeLeads) return;
     
@@ -265,6 +279,7 @@ const Dashboard = () => {
     }
   }, [canSeeLeads]);
 
+  // ─── FETCH WHATSAPP LOGS ────────────────────────────────────────────────
   const fetchWhatsAppLogs = useCallback(async (date) => {
     try {
       const response = await api.get(`/whatsapp/logs?limit=100&start_date=${date}T00:00:00&end_date=${date}T23:59:59`);
@@ -359,6 +374,7 @@ const Dashboard = () => {
     }
   };
 
+  // ─── FETCH DASHBOARD DATA ───────────────────────────────────────────────
   const fetchDashboardData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     
@@ -378,6 +394,7 @@ const Dashboard = () => {
       let balanceMembersData = { data: [] };
       let leadsData = { data: [] };
   
+      // Fetch stats if user has any permission to see stats
       if (canSeeDashboard) {
         try {
           const statsResult = await fetchMemberStatsOptimized();
@@ -438,9 +455,6 @@ const Dashboard = () => {
       if (canSeeBalances) {
         promises.push(fetchSilently('/gym/balance/overview'));
         endpointMap.balance = promises.length - 1;
-      }
-  
-      if (canSeeBalances) {
         promises.push(fetchSilently('/gym/members/balances?has_balance=true&limit=10'));
         endpointMap.balanceMembers = promises.length - 1;
       }
@@ -872,9 +886,7 @@ const Dashboard = () => {
     }
   }, [activeTab, fetchWhatsAppLogs, fetchWhatsAppStats]);
 
-  // ============================================================
-  // NAVIGATION - Updated with Add-Ons
-  // ============================================================
+  // ─── NAVIGATION ──────────────────────────────────────────────────────────
   const getNavigation = () => {
     const nav = [];
     
@@ -886,8 +898,6 @@ const Dashboard = () => {
       nav.push({ name: 'Members', icon: UsersIcon, id: 'members', section: 'management' });
     }
     nav.push({ name: 'Membership Plans', icon: Dumbbell, id: 'membership-plans', section: 'management' });
-    
-    // ✅ ADD ADD-ONS NAVIGATION
     nav.push({ name: 'Add-Ons', icon: Tag, id: 'addons', section: 'management' });
     
     if (canSeeBalances) {
@@ -1010,19 +1020,21 @@ const Dashboard = () => {
     return labels[status] || status;
   };
 
-  // If user doesn't have permission to view dashboard
-  if (!permissionsLoading && !canSeeDashboard && !isAdmin) {
+  // ─── PERMISSION CHECK: No permissions at all ────────────────────────────
+  if (!permissionsLoading && !hasAnyPermission) {
     return (
       <div className="p-6 min-h-screen flex items-center justify-center bg-gray-50">
         <div className="bg-white rounded-2xl shadow-xl p-12 text-center max-w-md">
-          <div className="bg-red-100 rounded-full p-4 w-20 h-20 mx-auto mb-6 flex items-center justify-center">
-            <Shield className="h-10 w-10 text-red-600" />
+          <div className="bg-yellow-100 rounded-full p-4 w-20 h-20 mx-auto mb-6 flex items-center justify-center">
+            <Shield className="h-10 w-10 text-yellow-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">Access Denied</h2>
-          <p className="text-gray-600 mb-6">You don't have permission to view the dashboard. Please contact your gym administrator.</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">Limited Access</h2>
+          <p className="text-gray-600 mb-6">
+            Your account doesn't have any permissions assigned yet. 
+            Please contact your gym administrator to set up your access.
+          </p>
           <div className="bg-gray-50 rounded-lg p-4 text-left">
             <p className="text-sm text-gray-500">Your role: <span className="font-medium text-gray-700">{user?.role || 'Unknown'}</span></p>
-            <p className="text-sm text-gray-500 mt-1">Required permission: <span className="font-medium text-gray-700">view_dashboard</span></p>
           </div>
           <button
             onClick={handleLogout}
@@ -1036,11 +1048,11 @@ const Dashboard = () => {
   }
 
   // ============================================================
-  // RENDER DASHBOARD
+  // RENDER DASHBOARD - With Granular Card Permissions
   // ============================================================
   const renderDashboard = () => (
     <div className="space-y-6">
-      {/* Welcome Header */}
+      {/* Welcome Header - Always visible */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white shadow-xl">
         <div className="flex justify-between items-center">
           <div>
@@ -1063,18 +1075,24 @@ const Dashboard = () => {
             <Calendar className="h-4 w-4" />
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </div>
+          
+          {/* Today's check-ins - only if user can view attendance */}
           {canSeeAttendance && (
             <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
               <Users className="h-4 w-4" />
               {stats.todayCheckins} check-ins today
             </div>
           )}
+          
+          {/* Monthly revenue - only if user can view payments */}
           {canSeePayments && (
             <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
               <TrendUp className="h-4 w-4" />
               {stats.monthlyRevenue > 0 ? formatCurrency(stats.monthlyRevenue) : 'No revenue yet'} this month
             </div>
           )}
+          
+          {/* Follow-ups - only if user can view leads */}
           {canSeeLeads && followupsCount > 0 && (
             <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2 animate-pulse">
               <Calendar className="h-4 w-4" />
@@ -1084,9 +1102,10 @@ const Dashboard = () => {
         </div>
       </div>
   
-      {/* Key Stats Cards - Row 1 */}
+      {/* ─── ROW 1: Key Stats Cards ────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {canSeeMembers && (
+        {/* Total Members Card - visible if user can view members */}
+        {canViewMemberStats && (
           <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-blue-500">
             <div className="flex items-center justify-between mb-4">
               <div className="bg-blue-100 p-3 rounded-xl">
@@ -1111,7 +1130,8 @@ const Dashboard = () => {
           </div>
         )}
 
-        {canSeeMembers && (
+        {/* New Members Card - visible if user can view members */}
+        {canViewMemberStats && (
           <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-green-500">
             <div className="flex items-center justify-between mb-4">
               <div className="bg-green-100 p-3 rounded-xl">
@@ -1136,7 +1156,8 @@ const Dashboard = () => {
           </div>
         )}
   
-        {canSeePayments && (
+        {/* Monthly Revenue Card - visible if user can view payments */}
+        {canViewRevenueStats && (
           <div 
             className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-purple-500 cursor-pointer group"
             onClick={() => setActiveTab('payments')}
@@ -1164,7 +1185,8 @@ const Dashboard = () => {
           </div>
         )}
   
-        {canSeePayments && (
+        {/* Total Revenue Card - visible if user can view payments */}
+        {canViewRevenueStats && (
           <div 
             className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-orange-500 cursor-pointer group"
             onClick={() => setActiveTab('payments')}
@@ -1195,8 +1217,8 @@ const Dashboard = () => {
         )}
       </div>
   
-      {/* Balance Overview Cards - Row 2 */}
-      {canSeeBalances && (
+      {/* ─── ROW 2: Balance Overview Cards ─────────────────────────────────── */}
+      {canViewBalanceStats && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
             <div className="flex items-center justify-between">
@@ -1261,34 +1283,36 @@ const Dashboard = () => {
         </div>
       )}
   
-      {/* Expense and Profit Cards */}
-      {canSeeExpenses && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-red-500">
+      {/* ─── ROW 3: Expense and Profit Cards ────────────────────────────────── */}
+      {canViewExpenseStats && (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Monthly Expenses Card */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-red-500">
             <div className="flex items-center justify-between mb-4">
-              <div className="bg-red-100 p-3 rounded-xl">
-                <Wallet className="h-6 w-6 text-red-600" />
-              </div>
-              <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-                stats.expenseGrowth <= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-              }`}>
-                {stats.expenseGrowth <= 0 ? '↓' : '↑'} {Math.abs(stats.expenseGrowth || 0)}%
-              </span>
+                <div className="bg-red-100 p-3 rounded-xl">
+                    <Wallet className="h-6 w-6 text-red-600" />
+                </div>
+                <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+                    stats.expenseGrowth <= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                }`}>
+                    {stats.expenseGrowth <= 0 ? '↓' : '↑'} {Math.abs(stats.expenseGrowth || 0)}%
+                </span>
             </div>
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Expenses</h3>
             <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrency(stats.monthlyExpenses || 0)}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-              <span className="text-gray-600 flex items-center text-sm">
-                <Calendar className="h-4 w-4 mr-1" />
-                This month
-              </span>
-              <span className="text-red-600 font-medium text-sm flex items-center">
-                <TrendingDown className="h-4 w-4 mr-1" />
-                Total: {formatCurrency(stats.totalExpenses || 0)}
-              </span>
+                <span className="text-gray-600 flex items-center text-sm">
+                    <Calendar className="h-4 w-4 mr-1" />
+                    This month
+                </span>
+                <span className="text-red-600 font-medium text-sm flex items-center">
+                    <TrendingDown className="h-4 w-4 mr-1" />
+                    Total: {formatCurrency(stats.totalExpenses || 0)}
+                </span>
             </div>
-          </div>
-  
+        </div>
+
+        {(canViewExpenseStats && canViewRevenueStats) && (
           <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-emerald-500">
             <div className="flex items-center justify-between mb-4">
               <div className="bg-emerald-100 p-3 rounded-xl">
@@ -1312,6 +1336,7 @@ const Dashboard = () => {
               </span>
             </div>
           </div>
+           )}
   
           <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-cyan-500">
             <div className="flex items-center justify-between mb-4">
@@ -1341,7 +1366,8 @@ const Dashboard = () => {
               </button>
             </div>
           </div>
-  
+          
+          {(canViewExpenseStats && canViewRevenueStats) && (
           <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
             <div className="flex items-center justify-between mb-4">
               <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
@@ -1375,12 +1401,15 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
+           )}
         </div>
+     
       )}
   
-      {/* Member Demographics and Expiring Memberships Row */}
+      {/* ─── ROW 4: Member Demographics and Expiring Memberships ───────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {canSeeMembers && (
+        {/* Member Demographics - visible if user can view members */}
+        {canViewMemberStats && (
           <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-1 hover:shadow-xl transition-all">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -1462,8 +1491,8 @@ const Dashboard = () => {
           </div>
         )}
   
-        {/* Expiring Memberships Card */}
-        {canSeeMembers && stats.expiringMembers.length > 0 && (
+        {/* Expiring Memberships Card - visible if user can view members */}
+        {canViewMemberStats && stats.expiringMembers.length > 0 && (
           <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
@@ -1555,7 +1584,7 @@ const Dashboard = () => {
           </div>
         )}
   
-        {canSeeMembers && stats.expiringMembers.length === 0 && (
+        {canViewMemberStats && stats.expiringMembers.length === 0 && (
           <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
@@ -1577,9 +1606,10 @@ const Dashboard = () => {
         )}
       </div>
   
-      {/* Members with Balance & Recent Leads Cards */}
+      {/* ─── ROW 5: Members with Balance & Recent Leads ────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {canSeeBalances && (
+        {/* Members with Balance - visible if user can view balances */}
+        {canViewBalanceStats && (
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all">
             <div className="bg-gradient-to-r from-red-500 to-orange-500 px-6 py-4">
               <div className="flex items-center justify-between">
@@ -1673,7 +1703,8 @@ const Dashboard = () => {
           </div>
         )}
   
-        {canSeeLeads && (
+        {/* Recent Leads - visible if user can view leads */}
+        {canViewLeadStats && (
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all">
             <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-4">
               <div className="flex items-center justify-between">
@@ -1783,8 +1814,8 @@ const Dashboard = () => {
         )}
       </div>
   
-      {/* Follow-Up Card */}
-      {canSeeLeads && (
+      {/* ─── ROW 6: Follow-Up Card ──────────────────────────────────────────── */}
+      {canViewLeadStats && (
         <div className="grid grid-cols-1 gap-6">
           <FollowUpCard 
             onFollowUpClick={(lead) => {
@@ -1802,7 +1833,7 @@ const Dashboard = () => {
         </div>
       )}
   
-      {/* Birthday Notifications Section */}
+      {/* ─── ROW 7: Birthday Notifications ──────────────────────────────────── */}
       {(stats.upcomingBirthdays?.members?.length > 0 || stats.upcomingBirthdays?.staff?.length > 0) && (
         <div className="space-y-4">
           <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -1811,7 +1842,8 @@ const Dashboard = () => {
           </h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {stats.upcomingBirthdays?.members?.length > 0 && (
+            {/* Member Birthdays - visible if user can view members */}
+            {canViewMemberStats && stats.upcomingBirthdays?.members?.length > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all border-l-4 border-pink-500">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
@@ -1857,7 +1889,8 @@ const Dashboard = () => {
               </div>
             )}
             
-            {stats.upcomingBirthdays?.staff?.length > 0 && (
+            {/* Staff Birthdays - visible if user can view staff */}
+            {canViewStaffStats && stats.upcomingBirthdays?.staff?.length > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all border-l-4 border-purple-500">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
@@ -1910,103 +1943,109 @@ const Dashboard = () => {
         </div>
       )}
   
-      {/* Recent Activities and Classes Row */}
+      {/* ─── ROW 8: Recent Activities and Classes ───────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <div className="bg-indigo-100 p-2 rounded-lg">
-                <Activity className="h-5 w-5 text-indigo-600" />
-              </div>
-              Recent Activity
-            </h3>
-          </div>
-          
-          <div className="space-y-4">
-            {recentActivities.length > 0 && recentActivities[0]?.member !== 'No activities yet' ? (
-              recentActivities.map((activity) => (
-                <div key={activity.id} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-all">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold ${getActivityColor(activity.type)}`}>
-                    {activity.avatar || activity.member?.charAt(0) || 'U'}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-900">{activity.member}</p>
-                    <p className="text-sm text-gray-500">{activity.action}</p>
-                  </div>
-                  <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
-                    {activity.time}
-                  </span>
+        {/* Recent Activities - visible if user has any relevant permission */}
+        {(canViewMemberStats || canViewRevenueStats) && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <div className="bg-indigo-100 p-2 rounded-lg">
+                  <Activity className="h-5 w-5 text-indigo-600" />
                 </div>
-              ))
-            ) : (
-              <p className="text-gray-400 text-center py-8">No recent activities</p>
-            )}
-          </div>
-        </div>
-  
-        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <div className="bg-orange-100 p-2 rounded-lg">
-                <CalendarIcon className="h-5 w-5 text-orange-600" />
-              </div>
-              Today's Classes
-            </h3>
-            <button 
-              onClick={() => setActiveTab('classes')}
-              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-            >
-              Schedule
-            </button>
-          </div>
-          
-          <div className="space-y-4">
-            {upcomingClasses.length > 0 ? (
-              upcomingClasses.map((classItem) => (
-                <div key={classItem.id} className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl hover:shadow-md transition-all">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-bold text-gray-900 flex items-center gap-2">
-                      <Dumbbell className="h-4 w-4 text-blue-500" />
-                      {classItem.name}
-                    </h4>
-                    <span className="text-xs bg-blue-100 text-blue-600 px-3 py-1 rounded-full font-medium">
-                      {classItem.attendees || 0}/{classItem.capacity || 20} booked
+                Recent Activity
+              </h3>
+            </div>
+            
+            <div className="space-y-4">
+              {recentActivities.length > 0 && recentActivities[0]?.member !== 'No activities yet' ? (
+                recentActivities.map((activity) => (
+                  <div key={activity.id} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-all">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold ${getActivityColor(activity.type)}`}>
+                      {activity.avatar || activity.member?.charAt(0) || 'U'}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900">{activity.member}</p>
+                      <p className="text-sm text-gray-500">{activity.action}</p>
+                    </div>
+                    <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
+                      {activity.time}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-3 text-gray-600">
-                      <span className="flex items-center gap-1">
-                        <ClockIcon className="h-4 w-4" />
-                        {classItem.time}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <User className="h-4 w-4" />
-                        {classItem.trainer || 'TBA'}
+                ))
+              ) : (
+                <p className="text-gray-400 text-center py-8">No recent activities</p>
+              )}
+            </div>
+          </div>
+        )}
+  
+        {/* Today's Classes - visible if user can view attendance or memberships */}
+        {(canSeeAttendance || canViewMemberStats) && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <div className="bg-orange-100 p-2 rounded-lg">
+                  <CalendarIcon className="h-5 w-5 text-orange-600" />
+                </div>
+                Today's Classes
+              </h3>
+              <button 
+                onClick={() => setActiveTab('classes')}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Schedule
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {upcomingClasses.length > 0 ? (
+                upcomingClasses.map((classItem) => (
+                  <div key={classItem.id} className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl hover:shadow-md transition-all">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                        <Dumbbell className="h-4 w-4 text-blue-500" />
+                        {classItem.name}
+                      </h4>
+                      <span className="text-xs bg-blue-100 text-blue-600 px-3 py-1 rounded-full font-medium">
+                        {classItem.attendees || 0}/{classItem.capacity || 20} booked
                       </span>
                     </div>
-                    <button className="text-xs bg-white px-3 py-1 rounded-full text-blue-600 hover:bg-blue-600 hover:text-white transition-colors">
-                      Join
-                    </button>
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-3 text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <ClockIcon className="h-4 w-4" />
+                          {classItem.time}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <User className="h-4 w-4" />
+                          {classItem.trainer || 'TBA'}
+                        </span>
+                      </div>
+                      <button className="text-xs bg-white px-3 py-1 rounded-full text-blue-600 hover:bg-blue-600 hover:text-white transition-colors">
+                        Join
+                      </button>
+                    </div>
                   </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <CalendarIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-400">No classes scheduled today</p>
+                  <button className="mt-3 text-blue-600 hover:text-blue-700 text-sm font-medium">
+                    Schedule a class →
+                  </button>
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-8">
-                <CalendarIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-400">No classes scheduled today</p>
-                <button className="mt-3 text-blue-600 hover:text-blue-700 text-sm font-medium">
-                  Schedule a class →
-                </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
   
-      {/* Alerts Section */}
+      {/* ─── ROW 9: Alerts Section ──────────────────────────────────────────── */}
       {(stats.expiringThisMonth > 0 || stats.pendingPayments > 0 || stats.overdueCount > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {canSeeBalances && stats.overdueCount > 0 && (
+          {canViewBalanceStats && stats.overdueCount > 0 && (
             <div className="bg-gradient-to-r from-red-600 to-red-800 rounded-2xl p-6 shadow-lg text-white">
               <div className="flex items-start gap-4">
                 <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
@@ -2025,12 +2064,32 @@ const Dashboard = () => {
               </div>
             </div>
           )}
+          
+          {canViewMemberStats && stats.expiringSoon > 0 && (
+            <div className="bg-gradient-to-r from-orange-500 to-yellow-600 rounded-2xl p-6 shadow-lg text-white">
+              <div className="flex items-start gap-4">
+                <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                  <ClockIcon className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-lg mb-1">Expiring Memberships</h4>
+                  <p className="text-white/90 mb-3">{stats.expiringSoon} memberships expire within 7 days</p>
+                  <button 
+                    onClick={() => setActiveTab('members')}
+                    className="bg-white text-orange-600 px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
+                  >
+                    View Members →
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 
-  // Don't show loading state if already logged in
+  // ─── LOADING STATE ────────────────────────────────────────────────────────
   if (loading && !user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
@@ -2049,6 +2108,7 @@ const Dashboard = () => {
     );
   }
 
+  // ─── MAIN RENDER ─────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
       {showCurrencyModal && (
@@ -2068,16 +2128,14 @@ const Dashboard = () => {
         <Menu className="h-5 w-5" />
       </button>
 
-      {/* ============================================================
-          SIDEBAR - UPDATED WITH ADD-ONS BUTTON
-          ============================================================ */}
+      {/* ─── SIDEBAR ────────────────────────────────────────────────────────── */}
       <aside className={`
         fixed top-0 left-0 z-40 h-screen bg-gradient-to-b from-blue-900 to-purple-900 
         transition-all duration-300 shadow-xl flex flex-col
         ${sidebarCollapsed ? 'w-20' : 'w-64'}
         ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
-        {/* Logo - Fixed at top */}
+        {/* Logo */}
         <div className="flex items-center justify-between p-4 border-b border-white/10 flex-shrink-0">
           {!sidebarCollapsed && (
             <div className="flex items-center gap-2 cursor-pointer" onClick={goToDashboard}>
@@ -2102,7 +2160,7 @@ const Dashboard = () => {
           </button>
         </div>
 
-        {/* User Info - Fixed */}
+        {/* User Info */}
         <div className={`p-4 border-b border-white/10 flex-shrink-0 ${sidebarCollapsed ? 'text-center' : ''}`}>
           <div className={`flex ${sidebarCollapsed ? 'flex-col items-center' : 'items-center gap-3'}`}>
             <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold flex-shrink-0">
@@ -2117,7 +2175,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Navigation - Scrollable area with custom scrollbar */}
+        {/* Navigation */}
         <div className="flex-1 overflow-y-auto py-3 px-2 custom-scrollbar">
           {Object.entries(groupedNav).map(([section, items]) => {
             if (items.length === 0) return null;
@@ -2169,7 +2227,7 @@ const Dashboard = () => {
           })}
         </div>
 
-        {/* Bottom Actions - Fixed at bottom */}
+        {/* Bottom Actions */}
         <div className="p-3 border-t border-white/10 flex-shrink-0">
           <button
             onClick={() => {
@@ -2217,7 +2275,7 @@ const Dashboard = () => {
         </div>
       </aside>
 
-      {/* Overlay for mobile */}
+      {/* Mobile overlay */}
       {mobileMenuOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-30 md:hidden"
@@ -2225,9 +2283,7 @@ const Dashboard = () => {
         />
       )}
 
-      {/* ============================================================
-          MAIN CONTENT
-          ============================================================ */}
+      {/* ─── MAIN CONTENT ───────────────────────────────────────────────────── */}
       <main className={`
         transition-all duration-300
         ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-64'}
@@ -2246,7 +2302,6 @@ const Dashboard = () => {
               </h1>
             </div>
             
-            {/* Search Bar - Desktop */}
             <div className="flex-1 max-w-xl w-full hidden md:block">
               <SearchBar 
                 onSelect={handleSearchSelect}
@@ -2254,9 +2309,7 @@ const Dashboard = () => {
               />
             </div>
             
-            {/* Right Header Actions */}
             <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-              {/* Search Bar - Mobile */}
               <div className="md:hidden flex-1">
                 <SearchBar 
                   onSelect={handleSearchSelect}
@@ -2287,7 +2340,7 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* User Dropdown Menu */}
+          {/* User Dropdown */}
           {showUserMenu && (
             <div 
               ref={userMenuRef}
@@ -2349,10 +2402,7 @@ const Dashboard = () => {
             />
           )}
           {activeTab === 'membership-plans' && <MembershipPlans />}
-          
-          {/* ✅ ADD ADD-ONS TAB */}
           {activeTab === 'addons' && <AddOns />}
-          
           {activeTab === 'balance' && canSeeBalances && <Balance />}
           {activeTab === 'devices' && canSeeDevices && <DeviceManager />}
           {activeTab === 'attendance' && canSeeAttendance && <LiveMonitoring />}
