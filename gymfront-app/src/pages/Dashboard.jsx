@@ -835,7 +835,12 @@ const Dashboard = () => {
       refreshDashboard();
     };
 
+    // ✅ Listen for every kind of member/payment/lead mutation so the
+    // Dashboard refreshes itself live, without the user needing to
+    // manually reload the page or switch tabs.
     window.addEventListener('memberAdded', handleDataChange);
+    window.addEventListener('memberUpdated', handleDataChange);
+    window.addEventListener('memberDeleted', handleDataChange);
     window.addEventListener('paymentAdded', handleDataChange);
     window.addEventListener('paymentUpdated', handleDataChange);
     window.addEventListener('leadAdded', handleDataChange);
@@ -843,6 +848,8 @@ const Dashboard = () => {
     
     return () => {
       window.removeEventListener('memberAdded', handleDataChange);
+      window.removeEventListener('memberUpdated', handleDataChange);
+      window.removeEventListener('memberDeleted', handleDataChange);
       window.removeEventListener('paymentAdded', handleDataChange);
       window.removeEventListener('paymentUpdated', handleDataChange);
       window.removeEventListener('leadAdded', handleDataChange);

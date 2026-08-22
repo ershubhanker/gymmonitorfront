@@ -386,14 +386,17 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   // ============================================================
   // OPTIMIZED: FETCH MEMBERS WITH CACHING
   // ============================================================
-  const fetchMembersOptimizedFn = useCallback(async () => {
+  const fetchMembersOptimizedFn = useCallback(async (force = false) => {
     if (showSingleMember) return;
     
     setLoading(true);
     try {
       const cacheKey = `${CACHE_KEYS.MEMBERS_LIST}_${debouncedSearchTerm}_${filters.status}_${filters.gender}_${currentPage}`;
       
-      const cached = getCache(cacheKey);
+      // ✅ When force=true (e.g. right after add/edit/delete), skip the cache
+      // entirely so we always hit the network for fresh data instead of
+      // risking a stale cached page.
+      const cached = force ? null : getCache(cacheKey);
       if (cached) {
         console.log('📋 Using cached members data for key:', cacheKey);
         setMembers(cached.items || []);
@@ -623,7 +626,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   // ============================================================
   // MAIN FETCH FUNCTION
   // ============================================================
-  const fetchMembers = useCallback(async () => {
+  const fetchMembers = useCallback(async (force = false) => {
     if (showSingleMember && singleMemberData) {
       setMembers([singleMemberData]);
       setTotalMembersCount(1);
@@ -632,7 +635,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     }
     
     try {
-      await fetchMembersOptimizedFn();
+      await fetchMembersOptimizedFn(force);
     } catch (error) {
       console.log('Optimized fetch failed, falling back to legacy...');
       await fetchMembersLegacy();
@@ -771,6 +774,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
       
       refreshAllData();
+
+      // ✅ Notify other open views (Dashboard, etc.) so they refresh live.
+      window.dispatchEvent(new CustomEvent('memberDeleted', { detail: { memberId: memberToDelete.id } }));
       
       setShowDeleteModal(false);
       setMemberToDelete(null);
@@ -846,13 +852,18 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     if (!window.confirm(message)) return;
     
     try {
-      await Promise.all(selectedMembers.map(id => api.delete(`/gym/members/${id}`)));
-      setMembers(members.filter(m => !selectedMembers.includes(m.id)));
+      const deletedIds = [...selectedMembers];
+      await Promise.all(deletedIds.map(id => api.delete(`/gym/members/${id}`)));
+      setMembers(members.filter(m => !deletedIds.includes(m.id)));
       setSelectedMembers([]);
       fetchStats();
       invalidateMemberCache();
       clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-      toast.success(`${selectedMembers.length} members deleted successfully!`);
+
+      // ✅ Notify other open views (Dashboard, etc.) so they refresh live.
+      window.dispatchEvent(new CustomEvent('memberDeleted', { detail: { memberIds: deletedIds } }));
+
+      toast.success(`${deletedIds.length} members deleted successfully!`);
     } catch (error) {
       toast.error('Failed to delete some members');
     }
@@ -969,13 +980,19 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
     }
   
-    // Step 4: Invalidate cache and refresh data
+    // Step 4: Invalidate cache and refresh data (force = bypass cache so the
+    // new member shows up immediately, without needing a manual page refresh)
     invalidateMemberCache();
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
     
-    await fetchMembers();
+    await fetchMembers(true);
     fetchStats();
     setIsModalOpen(false);
+
+    // ✅ Let other open views (e.g. Dashboard) know a member was added so
+    // they can refresh themselves live instead of waiting for their next
+    // poll interval or a manual page reload.
+    window.dispatchEvent(new CustomEvent('memberAdded', { detail: { member: createdMember } }));
     
     // Step 5: Show success message
     if (!hasError) {
@@ -1157,9 +1174,12 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     invalidateMemberCache();
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
     
-    await fetchMembers();
+    await fetchMembers(true);
     fetchStats();
     setIsModalOpen(false);
+
+    // ✅ Notify other open views (Dashboard, etc.) so they refresh live.
+    window.dispatchEvent(new CustomEvent('memberUpdated', { detail: { memberId } }));
     
     if (!hasError) {
       toast.success('Member updated successfully!');
@@ -1356,7 +1376,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     }
     
     setTimeout(() => {
-      fetchMembers();
+      fetchMembers(true);
     }, 1000);
   };
 
@@ -1631,7 +1651,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   handleBackToAllMembers();
                 } else {
                   clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-                  fetchMembers();
+                  fetchMembers(true);
                 }
               }}
               className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -2070,7 +2090,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           setSelectedMember(null);
           if (!showSingleMember) {
             clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-            fetchMembers();
+            fetchMembers(true);
           }
         }}
         onSave={selectedMember ? handleUpdateMember : handleAddMember}
@@ -2088,7 +2108,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         onSyncComplete={handleSyncComplete}
         refreshMemberList={() => {
           clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-          fetchMembers();
+          fetchMembers(true);
         }}
       />
 
@@ -2100,14 +2120,15 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
             setSelectedMemberForProfile(null);
             clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
             clearCachePattern(CACHE_KEYS.MEMBER_STATS);
-            fetchMembers();
+            fetchMembers(true);
             fetchStats();
           }}
           onUpdate={() => {
             clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
             clearCachePattern(CACHE_KEYS.MEMBER_STATS);
-            fetchMembers();
+            fetchMembers(true);
             fetchStats();
+            window.dispatchEvent(new CustomEvent('memberUpdated', { detail: { memberId: selectedMemberForProfile.id } }));
           }}
         />
       )}
@@ -2118,14 +2139,15 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           setShowBulkImportModal(false);
           clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
           clearCachePattern(CACHE_KEYS.MEMBER_STATS);
-          fetchMembers();
+          fetchMembers(true);
           fetchStats();
         }}
         onImportComplete={() => {
           clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
           clearCachePattern(CACHE_KEYS.MEMBER_STATS);
-          fetchMembers();
+          fetchMembers(true);
           fetchStats();
+          window.dispatchEvent(new CustomEvent('memberAdded'));
         }}
       />
 
