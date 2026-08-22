@@ -1,4 +1,4 @@
-// src/components/BulkImportModal.jsx - MAPPING FORM VERSION
+// src/components/BulkImportModal.jsx - COMPLETE FIXED VERSION
 // Users define column mappings manually for perfect imports every time
 
 import React, { useState, useRef } from 'react';
@@ -273,7 +273,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
       const monthMap = {
         'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
-        'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
+        'apr': 4, 'april': 4, 'may': 5, 'june': 6, 'jun': 6, 'july': 7,
         'aug': 8, 'august': 8, 'sep': 9, 'september': 9, 'oct': 10, 'october': 10,
         'nov': 11, 'november': 11, 'dec': 12, 'december': 12
       };
@@ -361,14 +361,28 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   // ============================================================
-  // 📱 PHONE & EMAIL VALIDATION
+  // 📱 PHONE & EMAIL VALIDATION (FIXED)
   // ============================================================
   const isValidEmail = (email) => {
     if (!email || isEmpty(email)) return false;
     const str = safeString(email);
     if (!str) return false;
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(str);
+    
+    // More lenient email validation for bulk import
+    const cleaned = str.toLowerCase().trim();
+    if (!cleaned.includes('@')) return false;
+    
+    const parts = cleaned.split('@');
+    if (parts.length !== 2) return false;
+    
+    const localPart = parts[0];
+    const domainPart = parts[1];
+    
+    if (!localPart || localPart.length === 0) return false;
+    if (!domainPart || domainPart.length < 3) return false;
+    if (!domainPart.includes('.')) return false;
+    
+    return true;
   };
 
   const isValidPhone = (phone) => {
@@ -620,19 +634,13 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     const validRows = mappedData.filter(row => row._isValid);
     const invalidRows = mappedData.filter(row => !row._isValid);
 
-    // If skipping rows with missing required, filter them out
-    let finalData = validRows;
-    if (skipRowsWithMissingRequired) {
-      // Already filtered above
-    }
-
     setInvalidRows(invalidRows);
     setInvalidCount(invalidRows.length);
-    setPreviewData(finalData);
+    setPreviewData(validRows);
     setStep(3);
 
     toast.success(
-      `✅ ${finalData.length} valid rows ready to import. ` +
+      `✅ ${validRows.length} valid rows ready to import. ` +
       `${invalidRows.length} invalid rows will be skipped.`
     );
   };
@@ -763,7 +771,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   // ============================================================
-  // 🚀 HANDLE IMPORT
+  // 🚀 HANDLE IMPORT (FIXED ERROR HANDLING)
   // ============================================================
   const handleImport = async () => {
     isCancelledRef.current = false;
@@ -833,9 +841,11 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             
           } catch (error) {
             console.error(`❌ Failed to create plan ${planName}:`, error);
+            const errorMsg = error?.response?.data?.detail || error?.message || 'Unknown error';
+            const errorText = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg);
             results.errors.push({
               member: 'SYSTEM',
-              error: `Failed to create plan: ${planName} - ${error.response?.data?.detail || error.message}`
+              error: `Failed to create plan: ${planName} - ${errorText}`
             });
           }
         }
@@ -909,8 +919,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           continue;
         }
 
-        let importSuccess = false;
-
         try {
           // Determine if member should be active based on end date
           const shouldBeActive = statusBasedOnEndDate && member.end_date 
@@ -957,7 +965,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           const memberResponse = await api.post('/gym/members', memberData);
           const newMember = memberResponse.data;
           
-          importSuccess = true;
           successfullyImportedPhones.add(phone);
 
           let planId = null;
@@ -1020,9 +1027,11 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               
             } catch (membershipError) {
               console.error('Membership creation error:', membershipError);
+              const errorMsg = membershipError?.response?.data?.detail || membershipError?.message || 'Unknown error';
+              const errorText = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg);
               results.errors.push({
                 member: member.full_name,
-                error: `Membership failed: ${membershipError.response?.data?.detail || membershipError.message}`
+                error: `Membership failed: ${errorText}`
               });
             }
           }
@@ -1032,11 +1041,21 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         } catch (error) {
           console.error('Error importing member:', error);
           
-          const errorMsg = error.response?.data?.detail || error.message || 'Unknown error';
+          let errorMsg = 'Unknown error';
+          if (error?.response?.data?.detail) {
+            errorMsg = typeof error.response.data.detail === 'string' 
+              ? error.response.data.detail 
+              : JSON.stringify(error.response.data.detail);
+          } else if (error?.message) {
+            errorMsg = typeof error.message === 'string' ? error.message : JSON.stringify(error.message);
+          }
           
-          const isDuplicateError = errorMsg.toLowerCase().includes('already exists') || 
-                                   errorMsg.toLowerCase().includes('duplicate') || 
-                                   errorMsg.toLowerCase().includes('phone');
+          const errorText = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg);
+          
+          const isDuplicateError = errorText.toLowerCase().includes('already exists') || 
+                                   errorText.toLowerCase().includes('duplicate') || 
+                                   errorText.toLowerCase().includes('phone') ||
+                                   errorText.toLowerCase().includes('email');
           
           if (isDuplicateError) {
             results.skipped++;
@@ -1050,7 +1069,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             failedPhoneNumbers.add(phone);
             results.errors.push({
               member: member.full_name,
-              error: errorMsg
+              error: errorText
             });
           }
         }
@@ -1077,11 +1096,22 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       toast.success(summaryMessage, { duration: 6000 });
       
     } catch (error) {
+      let errorText = 'Unknown error occurred';
+      if (error?.response?.data?.detail) {
+        errorText = typeof error.response.data.detail === 'string' 
+          ? error.response.data.detail 
+          : JSON.stringify(error.response.data.detail);
+      } else if (error?.message) {
+        errorText = typeof error.message === 'string' ? error.message : JSON.stringify(error.message);
+      } else if (typeof error === 'string') {
+        errorText = error;
+      }
+      
       if (error.name === 'AbortError' || isCancelledRef.current) {
         toast.info('Import cancelled.');
       } else {
         console.error('Import error:', error);
-        toast.error('Failed to import members: ' + (error.response?.data?.detail || error.message));
+        toast.error('Failed to import members: ' + errorText);
       }
     } finally {
       setUploading(false);
