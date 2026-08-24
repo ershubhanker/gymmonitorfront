@@ -1,4 +1,4 @@
-// src/components/MemberProfileModal.jsx - WITH PROPER COST HANDLING (ALL AMOUNTS IN RUPEES)
+// src/components/MemberProfileModal.jsx - WITH DEVICE ACCESS TOGGLE
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -9,7 +9,7 @@ import {
   Edit, RefreshCw, Loader2, Trash2, Save, XCircle,
   Dumbbell, Pencil, Maximize2, Hash, Snowflake,
   Heart, AlertTriangle, Filter, Plus, ChevronDown,
-  Percent, Camera, Wifi
+  Percent, Camera, Wifi, Lock, Unlock
 } from 'lucide-react';
 import api, { API_BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
@@ -573,6 +573,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ===== DEVICE SYNC STATE =====
   const [syncingToDevice, setSyncingToDevice] = useState(false);
 
+  // ===== DEVICE ACCESS TOGGLE STATE =====
+  const [togglingAccess, setTogglingAccess] = useState(false);
+
   useEffect(() => {
     fetchMemberDetails();
     fetchComments();
@@ -672,6 +675,53 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       toast.error(error.response?.data?.detail || 'Failed to sync member to device');
     } finally {
       setSyncingToDevice(false);
+    }
+  };
+
+  // ===== TOGGLE DEVICE ACCESS =====
+  const handleToggleDeviceAccess = async () => {
+    if (!member?.device_user_id) {
+      toast.error('Member is not synced to device yet. Please sync first.');
+      return;
+    }
+  
+    setTogglingAccess(true);
+    try {
+      // Determine the action based on current state
+      const currentIsActive = member.is_device_active !== false;
+      const action = currentIsActive ? 'deactivate' : 'activate';
+      
+      console.log(`🔄 Toggling device access: ${action} for member ${member.id}`);
+      
+      const response = await api.post(`/gym/members/${memberId}/toggle-device-access`, {
+        action: action,
+        device_user_id: member.device_user_id
+      });
+  
+      console.log('📥 Toggle response:', response.data);
+  
+      if (response.data.success) {
+        // Update local state immediately
+        const newIsActive = response.data.is_active;
+        setMember(prev => ({
+          ...prev,
+          is_device_active: newIsActive,
+          device_user_id: response.data.device_user_id || prev.device_user_id
+        }));
+        
+        toast.success(response.data.message || `Access ${newIsActive ? 'activated' : 'deactivated'} successfully`);
+        
+        // Refresh member details to get latest state
+        await fetchMemberDetails();
+        if (onUpdate) onUpdate();
+      } else {
+        toast.error(response.data.message || 'Failed to toggle device access');
+      }
+    } catch (error) {
+      console.error('Error toggling device access:', error);
+      toast.error(error.response?.data?.detail || 'Failed to toggle device access');
+    } finally {
+      setTogglingAccess(false);
     }
   };
 
@@ -1474,6 +1524,19 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     return { label: 'Not Synced', color: 'bg-gray-100 text-gray-500 border-gray-200', icon: XCircle };
   };
 
+  // ===== Get device access status =====
+  const getDeviceAccessStatus = () => {
+    if (!member?.device_user_id) {
+      return { label: 'Not Synced', color: 'bg-gray-100 text-gray-500', icon: null };
+    }
+    const isActive = member.is_device_active !== false;
+    return {
+      label: isActive ? 'Access Allowed' : 'Access Blocked',
+      color: isActive ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200',
+      icon: isActive ? CheckCircle : XCircle
+    };
+  };
+
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -1511,6 +1574,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const memberStatus = getMemberStatus();
   const deviceSyncDisplay = getDeviceSyncDisplay();
   const DeviceSyncIcon = deviceSyncDisplay.icon;
+  
+  const accessStatus = getDeviceAccessStatus();
+  const AccessStatusIcon = accessStatus.icon;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
@@ -1537,6 +1603,13 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium border border-blue-200 flex-shrink-0">
                     <Snowflake className="h-3 w-3" />
                     Frozen
+                  </span>
+                )}
+                {/* Access Status Badge */}
+                {member?.device_user_id && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${accessStatus.color} flex-shrink-0`}>
+                    {AccessStatusIcon && <AccessStatusIcon className="h-3 w-3" />}
+                    {accessStatus.label}
                   </span>
                 )}
               </div>
@@ -1683,6 +1756,34 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 Freeze Membership
               </button>
             )}
+
+            {/* Device Access Toggle Button */}
+            {member?.device_user_id && (
+                <button
+                  onClick={handleToggleDeviceAccess}
+                  disabled={togglingAccess}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                    member.is_device_active !== false
+                      ? 'bg-red-600 hover:bg-red-700 text-white'
+                      : 'bg-green-600 hover:bg-green-700 text-white'
+                  } disabled:opacity-50`}
+                  title={member.is_device_active !== false ? 'Block member from accessing the gate' : 'Allow member to access the gate'}
+                >
+                  {togglingAccess ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : member.is_device_active !== false ? (
+                    <>
+                      <Lock className="h-4 w-4" />
+                      Block Access
+                    </>
+                  ) : (
+                    <>
+                      <Unlock className="h-4 w-4" />
+                      Allow Access
+                    </>
+                  )}
+                </button>
+              )}
 
             {!isEditing ? (
               <button
