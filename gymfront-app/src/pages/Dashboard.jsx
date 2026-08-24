@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH GRANULAR PERMISSIONS
+// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH GRANULAR PERMISSIONS & PT PAGE
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,7 +12,7 @@ import {
   Briefcase, Wallet, ChevronLeft, ChevronRight, Wifi, Phone,
   Mail as MailIcon, Clock, AlertTriangle, Eye, Shield, RefreshCw,
   MessageSquare, Send, Download, Filter, FileText, Utensils,
-  Tag
+  Tag, CalendarRange, Clock as ClockIcon2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCache, CACHE_KEYS } from '../context/CacheContext';
@@ -42,6 +42,7 @@ import IrregularMembers from '../components/attendance/IrregularMembers';
 import DietPlans from './DietPlans';
 import FollowUpPage from '../components/FollowUpPage';
 import AddOns from './AddOns';
+import PTPage from './PTPage';
 
 const AUTO_REFRESH_INTERVAL = 60000;
 
@@ -159,19 +160,12 @@ const Dashboard = () => {
   
   // Card-level permissions (these determine which cards are shown)
   const canViewMemberStats = isAdmin || hasPermission('dashboard_view_member_stats') || hasPermission('view_members');
-  // const canViewMemberStats = isAdmin || canViewDashboard || hasPermission('view_members') || hasPermission('view_member_profile');
   const canViewRevenueStats = isAdmin || hasPermission('dashboard_view_revenue_stats') || hasPermission('view_payments');
-  // const canViewRevenueStats = isAdmin || canViewDashboard || hasPermission('view_payments') || hasPermission('view_balances');
   const canViewExpenseStats = isAdmin || hasPermission('dashboard_view_expense_stats') || hasPermission('view_expenses');
-  // const canViewExpenseStats = isAdmin || canViewDashboard || hasPermission('view_expenses');
   const canViewAttendanceStats = isAdmin || hasPermission('dashboard_view_attendance_stats') || hasPermission('view_attendance');
-  // const canViewAttendanceStats = isAdmin || canViewDashboard || hasPermission('view_attendance') || hasPermission('mark_attendance');
   const canViewBalanceStats = isAdmin || hasPermission('dashboard_view_balance_stats') || hasPermission('view_balances');
-  // const canViewBalanceStats = isAdmin || canViewDashboard || hasPermission('view_balances');
   const canViewLeadStats = isAdmin || hasPermission('dashboard_view_lead_stats') || hasPermission('view_leads');
-  // const canViewLeadStats = isAdmin || canViewDashboard || hasPermission('view_leads');
   const canViewStaffStats = isAdmin || hasPermission('dashboard_view_staff_stats') || hasPermission('view_staff');
-  // const canViewStaffStats = isAdmin || canViewDashboard || hasPermission('view_staff');
   const canViewClasses = isAdmin || hasPermission('dashboard_view_classes');
   const canViewBirthdays = isAdmin || hasPermission('dashboard_view_birthdays');
   const canViewActivity = isAdmin || hasPermission('dashboard_view_activity');
@@ -907,6 +901,9 @@ const Dashboard = () => {
     nav.push({ name: 'Membership Plans', icon: Dumbbell, id: 'membership-plans', section: 'management' });
     nav.push({ name: 'Add-Ons', icon: Tag, id: 'addons', section: 'management' });
     
+    // ✅ PT Page
+    nav.push({ name: 'Personal Training', icon: Dumbbell, id: 'pt', section: 'management' });
+    
     if (canSeeBalances) {
       nav.push({ name: 'Balance', icon: Wallet, id: 'balance', section: 'management' });
     }
@@ -1292,58 +1289,58 @@ const Dashboard = () => {
   
       {/* ─── ROW 3: Expense and Profit Cards ────────────────────────────────── */}
       {canViewExpenseStats && (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Monthly Expenses Card */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-red-500">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Monthly Expenses Card */}
+          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-red-500">
             <div className="flex items-center justify-between mb-4">
-                <div className="bg-red-100 p-3 rounded-xl">
-                    <Wallet className="h-6 w-6 text-red-600" />
-                </div>
-                <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-                    stats.expenseGrowth <= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-                }`}>
-                    {stats.expenseGrowth <= 0 ? '↓' : '↑'} {Math.abs(stats.expenseGrowth || 0)}%
-                </span>
+              <div className="bg-red-100 p-3 rounded-xl">
+                <Wallet className="h-6 w-6 text-red-600" />
+              </div>
+              <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+                stats.expenseGrowth <= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+              }`}>
+                {stats.expenseGrowth <= 0 ? '↓' : '↑'} {Math.abs(stats.expenseGrowth || 0)}%
+              </span>
             </div>
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Expenses</h3>
             <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrency(stats.monthlyExpenses || 0)}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                <span className="text-gray-600 flex items-center text-sm">
-                    <Calendar className="h-4 w-4 mr-1" />
-                    This month
-                </span>
-                <span className="text-red-600 font-medium text-sm flex items-center">
-                    <TrendingDown className="h-4 w-4 mr-1" />
-                    Total: {formatCurrency(stats.totalExpenses || 0)}
-                </span>
-            </div>
-        </div>
-
-        {(canViewExpenseStats && canViewRevenueStats) && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-emerald-500">
-            <div className="flex items-center justify-between mb-4">
-              <div className="bg-emerald-100 p-3 rounded-xl">
-                <TrendingUp className="h-6 w-6 text-emerald-600" />
-              </div>
-              <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-                stats.profitMargin >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-              }`}>
-                {stats.profitMargin >= 0 ? '↑' : '↓'} {Math.abs(stats.profitMargin || 0)}% margin
-              </span>
-            </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Net Profit</h3>
-            <p className="text-4xl font-bold text-emerald-600 mt-1">{formatCurrency(stats.netProfit || 0)}</p>
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
               <span className="text-gray-600 flex items-center text-sm">
-                Revenue: {formatCurrency(stats.monthlyRevenue || 0)}
+                <Calendar className="h-4 w-4 mr-1" />
+                This month
               </span>
-              <span className="text-emerald-600 font-medium text-sm flex items-center">
-                <CheckCircle className="h-4 w-4 mr-1" />
-                Profit: {stats.profitMargin || 0}%
+              <span className="text-red-600 font-medium text-sm flex items-center">
+                <TrendingDown className="h-4 w-4 mr-1" />
+                Total: {formatCurrency(stats.totalExpenses || 0)}
               </span>
             </div>
           </div>
-           )}
+
+          {(canViewExpenseStats && canViewRevenueStats) && (
+            <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-emerald-500">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-emerald-100 p-3 rounded-xl">
+                  <TrendingUp className="h-6 w-6 text-emerald-600" />
+                </div>
+                <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+                  stats.profitMargin >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                }`}>
+                  {stats.profitMargin >= 0 ? '↑' : '↓'} {Math.abs(stats.profitMargin || 0)}% margin
+                </span>
+              </div>
+              <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Net Profit</h3>
+              <p className="text-4xl font-bold text-emerald-600 mt-1">{formatCurrency(stats.netProfit || 0)}</p>
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                <span className="text-gray-600 flex items-center text-sm">
+                  Revenue: {formatCurrency(stats.monthlyRevenue || 0)}
+                </span>
+                <span className="text-emerald-600 font-medium text-sm flex items-center">
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Profit: {stats.profitMargin || 0}%
+                </span>
+              </div>
+            </div>
+          )}
   
           <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-cyan-500">
             <div className="flex items-center justify-between mb-4">
@@ -1375,42 +1372,41 @@ const Dashboard = () => {
           </div>
           
           {(canViewExpenseStats && canViewRevenueStats) && (
-          <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-            <div className="flex items-center justify-between mb-4">
-              <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
-                <DollarSign className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-sm font-medium bg-white/20 text-white px-3 py-1 rounded-full backdrop-blur-sm">
-                Financial Health
-              </span>
-            </div>
-            <h3 className="text-white/80 text-sm font-medium uppercase tracking-wider">Profit vs Expenses</h3>
-            <div className="mt-3 space-y-2">
-              <div className="flex justify-between text-sm text-white">
-                <span>Profit</span>
-                <span className="font-semibold">{stats.profitMargin || 0}%</span>
-              </div>
-              <div className="w-full bg-white/30 rounded-full h-2 overflow-hidden">
-                <div 
-                  className="bg-green-400 rounded-full h-2 transition-all duration-500" 
-                  style={{ width: `${Math.min(Math.max(stats.profitMargin || 0, 0), 100)}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-sm text-white/80 mt-2">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                  Revenue: {formatCurrency(stats.monthlyRevenue || 0)}
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 bg-red-400 rounded-full"></span>
-                  Expenses: {formatCurrency(stats.monthlyExpenses || 0)}
+            <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                  <DollarSign className="h-6 w-6 text-white" />
+                </div>
+                <span className="text-sm font-medium bg-white/20 text-white px-3 py-1 rounded-full backdrop-blur-sm">
+                  Financial Health
                 </span>
               </div>
+              <h3 className="text-white/80 text-sm font-medium uppercase tracking-wider">Profit vs Expenses</h3>
+              <div className="mt-3 space-y-2">
+                <div className="flex justify-between text-sm text-white">
+                  <span>Profit</span>
+                  <span className="font-semibold">{stats.profitMargin || 0}%</span>
+                </div>
+                <div className="w-full bg-white/30 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className="bg-green-400 rounded-full h-2 transition-all duration-500" 
+                    style={{ width: `${Math.min(Math.max(stats.profitMargin || 0, 0), 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-sm text-white/80 mt-2">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                    Revenue: {formatCurrency(stats.monthlyRevenue || 0)}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-red-400 rounded-full"></span>
+                    Expenses: {formatCurrency(stats.monthlyExpenses || 0)}
+                  </span>
+                </div>
+              </div>
             </div>
-          </div>
-           )}
+          )}
         </div>
-     
       )}
   
       {/* ─── ROW 4: Member Demographics and Expiring Memberships ───────────── */}
@@ -2408,6 +2404,7 @@ const Dashboard = () => {
               onMemberSelect={(id) => setSelectedMemberId(id)}
             />
           )}
+          {activeTab === 'pt' && <PTPage />}
           {activeTab === 'membership-plans' && <MembershipPlans />}
           {activeTab === 'addons' && <AddOns />}
           {activeTab === 'balance' && canSeeBalances && <Balance />}
