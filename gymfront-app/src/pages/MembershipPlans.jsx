@@ -47,6 +47,7 @@ const MembershipPlans = () => {
     duration_days: '',
     plan_type: 'monthly',
     features: '',
+    custom_plan_label: '', // ✅ NEW FIELD for custom plan type label
   });
 
   const planTypes = [
@@ -54,6 +55,7 @@ const MembershipPlans = () => {
     { label: 'Quarterly', value: 'quarterly' },
     { label: 'Half Yearly', value: 'half_yearly' },
     { label: 'Yearly', value: 'yearly' },
+    { label: 'Custom', value: 'custom' }, 
   ];
 
   const fetchPlans = async () => {
@@ -89,6 +91,12 @@ const MembershipPlans = () => {
       toast.error('Please enter a valid duration');
       return;
     }
+    
+    // ✅ Validate custom plan label if plan_type is 'custom'
+    if (formData.plan_type === 'custom' && !formData.custom_plan_label.trim()) {
+      toast.error('Please enter a custom plan label (e.g., Weekly, 7 Months)');
+      return;
+    }
 
     try {
       const payload = {
@@ -100,6 +108,7 @@ const MembershipPlans = () => {
         plan_type: formData.plan_type,
         features: formData.features || null,
         is_active: true,
+        custom_plan_label: formData.plan_type === 'custom' ? formData.custom_plan_label : null, // ✅ Send custom label
       };
 
       await api.post('/gym/plans', payload);
@@ -129,6 +138,12 @@ const MembershipPlans = () => {
       toast.error('Please enter a valid duration');
       return;
     }
+    
+    // ✅ Validate custom plan label if plan_type is 'custom'
+    if (formData.plan_type === 'custom' && !formData.custom_plan_label.trim()) {
+      toast.error('Please enter a custom plan label (e.g., Weekly, 7 Months)');
+      return;
+    }
 
     try {
       const payload = {
@@ -139,6 +154,7 @@ const MembershipPlans = () => {
         duration_days: parseInt(formData.duration_days),
         plan_type: formData.plan_type,
         features: formData.features || null,
+        custom_plan_label: formData.plan_type === 'custom' ? formData.custom_plan_label : null, // ✅ Send custom label
       };
 
       await api.put(`/gym/plans/${editingPlan.id}`, payload);
@@ -251,6 +267,7 @@ const MembershipPlans = () => {
       duration_days: '',
       plan_type: 'monthly',
       features: '',
+      custom_plan_label: '', // ✅ Reset custom label
     });
   };
 
@@ -264,6 +281,7 @@ const MembershipPlans = () => {
       duration_days: plan.duration_days?.toString() || '',
       plan_type: plan.plan_type || 'monthly',
       features: plan.features || '',
+      custom_plan_label: plan.custom_plan_label || '', // ✅ Load custom label
     });
   };
 
@@ -292,6 +310,14 @@ const MembershipPlans = () => {
       setSelectedPlans(new Set(allIds));
     }
     setSelectAll(!selectAll);
+  };
+
+  // Helper function to get display label for plan type
+  const getPlanTypeDisplay = (plan) => {
+    if (plan.plan_type === 'custom' && plan.custom_plan_label) {
+      return plan.custom_plan_label;
+    }
+    return plan.plan_type?.replace('_', ' ') || '';
   };
 
   // Filter plans
@@ -537,6 +563,12 @@ const MembershipPlans = () => {
                               Discounted
                             </span>
                           )}
+                          {/* ✅ Show custom label badge */}
+                          {plan.plan_type === 'custom' && plan.custom_plan_label && (
+                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">
+                              {plan.custom_plan_label}
+                            </span>
+                          )}
                         </div>
                         {plan.description && (
                           <p className="text-sm text-gray-500 mt-1 line-clamp-2">{plan.description}</p>
@@ -554,7 +586,7 @@ const MembershipPlans = () => {
                             {plan.duration_days} days
                           </span>
                           <span className="text-gray-500 capitalize">
-                            {plan.plan_type.replace('_', ' ')}
+                            {getPlanTypeDisplay(plan)} {/* ✅ Use helper for display */}
                           </span>
                         </div>
                       </div>
@@ -613,7 +645,10 @@ const MembershipPlans = () => {
                       <div>
                         <h4 className="text-sm font-semibold text-gray-700 mb-2">Plan Details</h4>
                         <div className="space-y-1 text-sm text-gray-600">
-                          <p><span className="font-medium">Plan Type:</span> {plan.plan_type.replace('_', ' ').toUpperCase()}</p>
+                          <p><span className="font-medium">Plan Type:</span> {getPlanTypeDisplay(plan)}</p>
+                          {plan.plan_type === 'custom' && plan.custom_plan_label && (
+                            <p><span className="font-medium">Custom Label:</span> {plan.custom_plan_label}</p>
+                          )}
                           <p><span className="font-medium">Duration:</span> {plan.duration_days} days</p>
                           <p><span className="font-medium">Price:</span> ₹{plan.price}</p>
                           {plan.discounted_price && (
@@ -651,9 +686,8 @@ const MembershipPlans = () => {
         )}
       </div>
 
-      {/* Create/Edit Modal - Keep your existing modal code */}
+      {/* Create/Edit Modal */}
       {(showCreateModal || editingPlan) && (
-        // ... your existing modal JSX
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-100 p-6 rounded-t-2xl">
@@ -713,11 +747,16 @@ const MembershipPlans = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
                     Plan Type *
                   </label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {planTypes.map((type) => (
                       <button
                         key={type.value}
-                        onClick={() => setFormData({ ...formData, plan_type: type.value })}
+                        onClick={() => setFormData({ 
+                          ...formData, 
+                          plan_type: type.value,
+                          // ✅ Clear custom label when switching away from custom
+                          custom_plan_label: type.value === 'custom' ? formData.custom_plan_label : ''
+                        })}
                         className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
                           formData.plan_type === type.value
                             ? 'bg-blue-600 text-white shadow-sm'
@@ -729,6 +768,26 @@ const MembershipPlans = () => {
                     ))}
                   </div>
                 </div>
+
+                {/* ✅ Custom Plan Label - Only show when plan_type is 'custom' */}
+                {formData.plan_type === 'custom' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Custom Plan Label *
+                      <span className="text-xs text-gray-400 ml-2">(e.g., Weekly, 7 Months, 10 Months)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.custom_plan_label}
+                      onChange={(e) => setFormData({ ...formData, custom_plan_label: e.target.value })}
+                      placeholder="e.g., Weekly, 7 Months, 10 Months"
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                      This label will be displayed on the plan card and in reports
+                    </p>
+                  </div>
+                )}
 
                 {/* Price and Duration */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -770,6 +829,9 @@ const MembershipPlans = () => {
                     placeholder="e.g., 30"
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                   />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Number of days the membership will be valid
+                  </p>
                 </div>
 
                 {/* Features */}
