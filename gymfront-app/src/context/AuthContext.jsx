@@ -5,7 +5,7 @@ import api from '../services/api';
 
 const AuthContext = createContext();
 
-// const API_BA÷SE_URL = 'http://localhost:8001';
+// const API_BASE_URL = 'http://localhost:8001';
 const API_BASE_URL = 'https://api.gymmonitor.in';
 
 

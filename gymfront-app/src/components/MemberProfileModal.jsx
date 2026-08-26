@@ -923,6 +923,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setAddonPaymentAmount('');
       setAddonPaymentNotes('');
       
+      // ✅ These will now fetch the payment from the main Payments table
       await fetchMemberAddons();
       await fetchPayments();
       await fetchBalanceDetails();
