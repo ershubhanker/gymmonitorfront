@@ -671,8 +671,9 @@ const StatCard = ({ icon: Icon, label, value, sub, color = 'purple', onClick }) 
       <div className={`inline-flex p-2.5 rounded-xl mb-3 ${colors[color]}`}>
         <Icon className="h-5 w-5" />
       </div>
-      <p className="text-gray-400 text-sm">{label}</p>
-      <p className="text-3xl font-bold text-white mt-1">{value}</p>
+      <p className="text-gray-400 text-xs font-medium">{label}</p>
+      {/* ✅ REDUCED FONT SIZE: from text-3xl to text-2xl */}
+      <p className="text-2xl font-bold text-white mt-1">{value}</p>
       {sub && <p className="text-xs text-gray-500 mt-2">{sub}</p>}
     </div>
   );
@@ -1156,8 +1157,8 @@ const AdminDashboard = () => {
           {/* ==================== TAB CONTENT ==================== */}
           {/* OVERVIEW */}
           {selectedTab === 'overview' && (
-            // ... (same as before, keeping all dashboard stats)
             <div className="space-y-6">
+              {/* ✅ Stat cards with reduced font size (text-2xl instead of text-3xl) */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
                 <StatCard icon={Building2} label="Total Gyms" value={stats.total_gyms || 0}
                   sub={`${stats.active_gyms || 0} active`} color="purple"

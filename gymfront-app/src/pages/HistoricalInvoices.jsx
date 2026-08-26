@@ -1,4 +1,4 @@
-// src/pages/HistoricalInvoices.jsx - Updated with fixed toast methods
+// src/pages/HistoricalInvoices.jsx - Fixed PT display (only show if PT exists)
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
@@ -29,11 +29,49 @@ import api, { API_BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 // ============================================================
+// PT STATUS HELPER - Check if session is active based on dates
+// ============================================================
+const getPtStatus = (session) => {
+  if (!session) return null;
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const startDate = session.start_date ? new Date(session.start_date) : null;
+  const endDate = session.end_date ? new Date(session.end_date) : null;
+  
+  if (session.status === 'cancelled') {
+    return { status: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-700' };
+  }
+  
+  if (session.status === 'completed') {
+    return { status: 'completed', label: 'Completed', color: 'bg-blue-100 text-blue-700' };
+  }
+  
+  if (startDate && endDate) {
+    if (today >= startDate && today <= endDate) {
+      return { status: 'active', label: 'Active', color: 'bg-green-100 text-green-700' };
+    }
+    if (today < startDate) {
+      return { status: 'upcoming', label: 'Upcoming', color: 'bg-purple-100 text-purple-700' };
+    }
+    if (today > endDate) {
+      return { status: 'expired', label: 'Expired', color: 'bg-gray-100 text-gray-600' };
+    }
+  }
+  
+  return { 
+    status: session.status || 'inactive', 
+    label: session.status?.charAt(0).toUpperCase() + session.status?.slice(1) || 'Inactive',
+    color: session.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+  };
+};
+
+// ============================================================
 // SUB-COMPONENTS
 // ============================================================
 
 const MemberSearchItem = ({ member, onSelect, isSelected }) => {
-  // ✅ Proper avatar URL construction
   let avatarUrl;
   if (member.profile_image) {
     if (member.profile_image.startsWith('http')) {
@@ -158,6 +196,72 @@ const PaymentHistoryItem = ({ payment, membership, onDownload, downloading }) =>
   );
 };
 
+// ============================================================
+// PT SESSION DISPLAY COMPONENT
+// ============================================================
+const PtSessionDisplay = ({ ptSession }) => {
+  if (!ptSession) return null;
+  
+  const ptStatus = getPtStatus(ptSession);
+  if (!ptStatus) return null;
+  
+  // Only show if there's actual PT data (total_amount > 0 or amount_paid > 0)
+  const hasPtData = (ptSession.total_amount || 0) > 0 || (ptSession.amount_paid || 0) > 0;
+  if (!hasPtData) return null;
+  
+  const isExpired = ptStatus.status === 'expired';
+  
+  return (
+    <div className={`rounded-lg p-3 ${isExpired ? 'bg-gray-50 border border-gray-200' : 'bg-purple-50 border border-purple-200'}`}>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+          <Dumbbell className="h-4 w-4 text-purple-600" />
+          Personal Training
+        </h4>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${ptStatus.color}`}>
+          {ptStatus.label}
+          {isExpired && (
+            <span className="text-xs opacity-75">(Expired)</span>
+          )}
+        </span>
+      </div>
+      <div className="space-y-1 text-sm">
+        <div className="flex justify-between">
+          <span className="text-gray-500">Trainer</span>
+          <span className="font-medium">{ptSession.trainer_name || 'N/A'}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-500">Total Amount</span>
+          <span className="font-medium">₹{ptSession.total_amount?.toLocaleString() || 0}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-500">Amount Paid</span>
+          <span className="font-medium text-green-600">₹{ptSession.amount_paid?.toLocaleString() || 0}</span>
+        </div>
+        {(ptSession.balance_due || 0) > 0 && (
+          <div className="flex justify-between">
+            <span className="text-gray-500">Balance Due</span>
+            <span className="font-medium text-orange-600">₹{ptSession.balance_due?.toLocaleString() || 0}</span>
+          </div>
+        )}
+        {ptSession.start_date && ptSession.end_date && (
+          <div className="flex justify-between text-xs text-gray-400">
+            <span>Period</span>
+            <span>
+              {new Date(ptSession.start_date).toLocaleDateString()} - {new Date(ptSession.end_date).toLocaleDateString()}
+            </span>
+          </div>
+        )}
+        {isExpired && (
+          <div className="mt-2 text-xs text-gray-500 bg-gray-100 rounded p-1.5 text-center">
+            ⚠️ This PT session expired on {new Date(ptSession.end_date).toLocaleDateString()}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const MembershipHistoryItem = ({ membership, onDownload, downloading }) => {
   const [expanded, setExpanded] = useState(false);
   
@@ -177,6 +281,11 @@ const MembershipHistoryItem = ({ membership, onDownload, downloading }) => {
   // Calculate total payments and count
   const totalPayments = membership.payments?.length || 0;
   const totalPaid = membership.payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || membership.amount_paid || 0;
+
+  // Check if PT exists and has data
+  const hasPt = membership.has_pt && membership.pt_session;
+  const ptStatus = hasPt ? getPtStatus(membership.pt_session) : null;
+  const hasPtData = hasPt && ((membership.pt_session?.total_amount || 0) > 0 || (membership.pt_session?.amount_paid || 0) > 0);
 
   return (
     <div className={`border rounded-lg overflow-hidden transition-all ${
@@ -203,10 +312,10 @@ const MembershipHistoryItem = ({ membership, onDownload, downloading }) => {
                 <StatusIcon className="h-3 w-3" />
                 {statusConfig.label}
               </span>
-              {membership.has_pt && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+              {hasPtData && ptStatus && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${ptStatus.color}`}>
                   <Dumbbell className="h-3 w-3" />
-                  PT Included
+                  PT {ptStatus.label}
                 </span>
               )}
               {totalPayments > 0 && (
@@ -298,20 +407,16 @@ const MembershipHistoryItem = ({ membership, onDownload, downloading }) => {
               </div>
             </div>
 
-            {/* PT Details if exists */}
-            {membership.has_pt && membership.pt_session && (
-              <div className="bg-purple-50 rounded-lg p-3">
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Personal Training</h4>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Trainer</span>
-                    <span className="font-medium">{membership.pt_session.trainer_name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Total Amount</span>
-                    <span className="font-medium">₹{membership.pt_session.total_amount.toLocaleString()}</span>
-                  </div>
-                </div>
+            {/* PT Details - Only show if PT has data */}
+            {hasPtData && membership.pt_session && (
+              <PtSessionDisplay ptSession={membership.pt_session} />
+            )}
+
+            {/* Show empty state if no PT */}
+            {!hasPtData && (
+              <div className="bg-gray-50 rounded-lg p-3 flex items-center justify-center text-gray-400 text-sm">
+                <Dumbbell className="h-4 w-4 mr-2 text-gray-300" />
+                No Personal Training for this period
               </div>
             )}
           </div>
@@ -326,11 +431,10 @@ const MembershipHistoryItem = ({ membership, onDownload, downloading }) => {
                 </h4>
                 <button
                   onClick={() => {
-                    // Download all payment invoices
                     membership.payments.forEach((p, index) => {
                       setTimeout(() => {
                         onDownload(membership.membership_id);
-                      }, index * 500); // Stagger downloads to avoid issues
+                      }, index * 500);
                     });
                   }}
                   disabled={downloading === membership.membership_id}
@@ -416,7 +520,6 @@ const HistoricalInvoices = () => {
       setSearchResults(response.data || []);
     } catch (error) {
       console.error('Search error:', error);
-      // Check if it's a 404 (endpoint not found)
       if (error.response?.status === 404) {
         setError('API endpoint not found. Please check server configuration.');
       } else if (error.response?.status === 403) {
@@ -443,16 +546,21 @@ const HistoricalInvoices = () => {
     return () => clearTimeout(timer);
   }, [searchTerm, searchMembers]);
 
-  // Load member's historical memberships - FIXED
+  // Load member's historical memberships
   const loadMemberMemberships = useCallback(async (member) => {
     setLoading(true);
     setError(null);
     try {
       const response = await api.get(`/gym/members/${member.id}/historical-memberships`);
-      // Ensure payments array exists on each membership
       const membershipsData = (response.data || []).map(m => ({
         ...m,
-        payments: m.payments || [] // Ensure payments array exists
+        payments: m.payments || [],
+        pt_session: m.pt_session ? {
+          ...m.pt_session,
+          amount_paid: m.pt_session.amount_paid || 0,
+          balance_due: m.pt_session.balance_due || 0,
+          total_amount: m.pt_session.total_amount || 0,
+        } : null
       }));
       setMemberships(membershipsData);
       setMemberDetails(member);
@@ -484,7 +592,6 @@ const HistoricalInvoices = () => {
   // Handle member selection
   const handleMemberSelect = (member) => {
     if (selectedMember?.id === member.id) {
-      // Deselect
       setSelectedMember(null);
       setMemberships([]);
       setMemberDetails(null);
@@ -505,7 +612,6 @@ const HistoricalInvoices = () => {
         { responseType: 'blob' }
       );
       
-      // Get filename from headers
       const contentDisposition = response.headers['content-disposition'];
       let filename = `Invoice_${selectedMember.full_name.replace(/\s+/g, '_')}_${membershipId}.pdf`;
       if (contentDisposition) {
@@ -515,7 +621,6 @@ const HistoricalInvoices = () => {
         }
       }
       
-      // Download
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -703,7 +808,6 @@ const HistoricalInvoices = () => {
               <button
                 onClick={() => {
                   if (memberships.length > 0) {
-                    // Download all invoices
                     memberships.forEach((m, index) => {
                       setTimeout(() => {
                         handleDownloadInvoice(m.membership_id);

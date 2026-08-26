@@ -1,6 +1,6 @@
-// src/components/MemberProfileModal.jsx - WITH DEVICE ACCESS TOGGLE
+// src/components/MemberProfileModal.jsx - WITH OPTIMIZED PT STATUS UPDATE
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, Phone, Mail, Calendar, MapPin, DollarSign, Tag, 
   MessageCircle, User, Clock, CheckCircle, AlertCircle,
@@ -16,7 +16,6 @@ import toast from 'react-hot-toast';
 
 // ============================================================
 // HELPER: Properly format currency (ALL AMOUNTS IN RUPEES)
-// Shows whole numbers without decimal places
 // ============================================================
 const formatCurrency = (amount) => {
   if (amount === null || amount === undefined || isNaN(amount)) {
@@ -27,15 +26,6 @@ const formatCurrency = (amount) => {
     return '₹0';
   }
   return `₹${Math.round(numAmount).toLocaleString('en-IN')}`;
-};
-
-// Helper to get raw rupee value (for calculations)
-const getRupeeValue = (amount) => {
-  if (amount === null || amount === undefined || isNaN(amount)) {
-    return 0;
-  }
-  const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-  return isNaN(numAmount) ? 0 : numAmount;
 };
 
 // ============================================================
@@ -81,7 +71,7 @@ const COMMENT_CATEGORIES = {
 };
 
 // ============================================================
-// HELPER: Properly construct image URL (size=512 full, 128 thumbnail)
+// HELPER: Properly construct image URL
 // ============================================================
 const getImageUrl = (profileImage, fullName, size = 512) => {
   if (!profileImage) {
@@ -98,7 +88,89 @@ const getImageUrl = (profileImage, fullName, size = 512) => {
 const getThumbnailUrl = (profileImage, fullName) => getImageUrl(profileImage, fullName, 128);
 
 // ============================================================
-// PROFILE IMAGE EDITOR COMPONENT (with zoom support)
+// PT STATUS HELPER - Check if session is active based on dates
+// ============================================================
+const getPtStatus = (session) => {
+  if (!session) return { status: 'inactive', label: 'Inactive', color: 'bg-gray-100 text-gray-600' };
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const startDate = session.start_date ? new Date(session.start_date) : null;
+  const endDate = session.end_date ? new Date(session.end_date) : null;
+  
+  if (session.status === 'cancelled') {
+    return { status: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-700' };
+  }
+  
+  if (session.status === 'completed') {
+    return { status: 'completed', label: 'Completed', color: 'bg-blue-100 text-blue-700' };
+  }
+  
+  if (startDate && endDate) {
+    if (today >= startDate && today <= endDate) {
+      return { status: 'active', label: 'Active', color: 'bg-green-100 text-green-700' };
+    }
+    if (today < startDate) {
+      return { status: 'upcoming', label: 'Upcoming', color: 'bg-purple-100 text-purple-700' };
+    }
+    if (today > endDate) {
+      return { status: 'expired', label: 'Expired', color: 'bg-gray-100 text-gray-600' };
+    }
+  }
+  
+  return { 
+    status: session.status || 'inactive', 
+    label: session.status?.charAt(0).toUpperCase() + session.status?.slice(1) || 'Inactive',
+    color: session.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+  };
+};
+
+const getPtRemainingDays = (session) => {
+  if (!session || !session.end_date) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const endDate = new Date(session.end_date);
+  endDate.setHours(0, 0, 0, 0);
+  
+  if (today > endDate) return 0;
+  const diffTime = endDate - today;
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+
+// ============================================================
+// PT Status Badge Component
+// ============================================================
+const PtStatusBadge = ({ session }) => {
+  const status = getPtStatus(session);
+  const remainingDays = getPtRemainingDays(session);
+  
+  const IconMap = {
+    active: CheckCircle,
+    upcoming: Clock,
+    expired: XCircle,
+    completed: CheckCircle,
+    cancelled: XCircle,
+    inactive: XCircle
+  };
+  const Icon = IconMap[status.status] || Clock;
+  
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${status.color}`}>
+      <Icon className="h-3 w-3" />
+      {status.label}
+      {status.status === 'active' && remainingDays !== null && remainingDays > 0 && (
+        <span className="ml-1 text-xs opacity-75">({remainingDays}d left)</span>
+      )}
+      {status.status === 'expired' && (
+        <span className="ml-1 text-xs opacity-75">(Expired)</span>
+      )}
+    </span>
+  );
+};
+
+// ============================================================
+// PROFILE IMAGE EDITOR COMPONENT
 // ============================================================
 const ProfileImageEditor = ({ 
   member, 
@@ -117,7 +189,7 @@ const ProfileImageEditor = ({
   const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
   const MAX_SIZE_MB = 5;
 
-  const compressImage = (file, maxWidth = 400, maxHeight = 400, quality = 0.8) => {
+  const compressImage = useCallback((file, maxWidth = 400, maxHeight = 400, quality = 0.8) => {
     return new Promise((resolve, reject) => {
       if (!file.type.startsWith('image/')) {
         reject(new Error('Not an image file'));
@@ -196,7 +268,7 @@ const ProfileImageEditor = ({
         reject(new Error('Failed to read file'));
       };
     });
-  };
+  }, []);
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -576,20 +648,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ===== DEVICE ACCESS TOGGLE STATE =====
   const [togglingAccess, setTogglingAccess] = useState(false);
 
-  useEffect(() => {
-    fetchMemberDetails();
-    fetchComments();
-    fetchPayments();
-    fetchMembershipHistory();
-    fetchAttendanceHistory();
-    fetchBalanceDetails();
-    fetchPtSessions();
-    fetchPlans();
-    fetchFreezeHistory();
-    fetchMemberAddons();
-  }, [memberId]);
-
-  const fetchMemberDetails = async () => {
+  // ============================================================
+  // FETCH FUNCTIONS
+  // ============================================================
+  const fetchMemberDetails = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.get(`/gym/members/${memberId}`);
@@ -614,7 +676,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       });
       
       if (memberData.current_membership) {
-        // Values are already in rupees
         const amountPaid = memberData.current_membership.amount_paid || 0;
         const discountApplied = memberData.current_membership.discount_applied || 0;
         
@@ -643,89 +704,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [memberId, onClose]);
 
-  // ===== SYNC TO DEVICE =====
-  const SYNC_ACTION_MESSAGES = {
-    removed: (name) => `🔴 ${name} removed from device (inactive)`,
-    added: (name) => `🟢 ${name} synced to device (active)`,
-    already_removed: (name) => `✅ ${name} already removed from device`,
-  };
-
-  const handleSyncToDevice = async () => {
-    setSyncingToDevice(true);
-    try {
-      toast.loading('Syncing to device...', { id: 'sync-device' });
-      const response = await api.post(`/gym/members/${memberId}/sync-to-device`);
-      toast.dismiss('sync-device');
-
-      if (response.data.success) {
-        const buildMessage = SYNC_ACTION_MESSAGES[response.data.action] || ((name) => `✅ ${name} synced to device`);
-        toast.success(buildMessage(member.full_name));
-        await fetchMemberDetails();
-        if (onUpdate) onUpdate();
-      } else if (response.data.action === 'bridge_offline') {
-        toast.error('Device bridge is not reachable. Please ensure the bridge is running.');
-      } else {
-        toast.warning(response.data.message || 'Sync completed with warnings');
-      }
-    } catch (error) {
-      toast.dismiss('sync-device');
-      console.error('Sync error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to sync member to device');
-    } finally {
-      setSyncingToDevice(false);
-    }
-  };
-
-  // ===== TOGGLE DEVICE ACCESS =====
-  const handleToggleDeviceAccess = async () => {
-    if (!member?.device_user_id) {
-      toast.error('Member is not synced to device yet. Please sync first.');
-      return;
-    }
-  
-    setTogglingAccess(true);
-    try {
-      // Determine the action based on current state
-      const currentIsActive = member.is_device_active !== false;
-      const action = currentIsActive ? 'deactivate' : 'activate';
-      
-      console.log(`🔄 Toggling device access: ${action} for member ${member.id}`);
-      
-      const response = await api.post(`/gym/members/${memberId}/toggle-device-access`, {
-        action: action,
-        device_user_id: member.device_user_id
-      });
-  
-      console.log('📥 Toggle response:', response.data);
-  
-      if (response.data.success) {
-        // Update local state immediately
-        const newIsActive = response.data.is_active;
-        setMember(prev => ({
-          ...prev,
-          is_device_active: newIsActive,
-          device_user_id: response.data.device_user_id || prev.device_user_id
-        }));
-        
-        toast.success(response.data.message || `Access ${newIsActive ? 'activated' : 'deactivated'} successfully`);
-        
-        // Refresh member details to get latest state
-        await fetchMemberDetails();
-        if (onUpdate) onUpdate();
-      } else {
-        toast.error(response.data.message || 'Failed to toggle device access');
-      }
-    } catch (error) {
-      console.error('Error toggling device access:', error);
-      toast.error(error.response?.data?.detail || 'Failed to toggle device access');
-    } finally {
-      setTogglingAccess(false);
-    }
-  };
-
-  const fetchPlans = async () => {
+  const fetchPlans = useCallback(async () => {
     try {
       setLoadingPlans(true);
       const response = await api.get('/gym/plans');
@@ -736,9 +717,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     } finally {
       setLoadingPlans(false);
     }
-  };
+  }, []);
 
-  const fetchComments = async () => {
+  const fetchComments = useCallback(async () => {
     try {
       setLoadingComments(true);
       const response = await api.get(`/gym/members/${memberId}/comments`);
@@ -749,9 +730,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     } finally {
       setLoadingComments(false);
     }
-  };
+  }, [memberId]);
 
-  const fetchPayments = async () => {
+  const fetchPayments = useCallback(async () => {
     try {
       setLoadingPayments(true);
       const response = await api.get(`/gym/payments?limit=100`);
@@ -763,9 +744,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     } finally {
       setLoadingPayments(false);
     }
-  };
+  }, [memberId]);
 
-  const fetchBalanceDetails = async () => {
+  const fetchBalanceDetails = useCallback(async () => {
     try {
       setLoadingBalance(true);
       const response = await api.get(`/gym/members/${memberId}/balance`);
@@ -776,9 +757,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     } finally {
       setLoadingBalance(false);
     }
-  };
+  }, [memberId]);
 
-  const fetchMembershipHistory = async () => {
+  const fetchMembershipHistory = useCallback(async () => {
     try {
       const response = await api.get(`/gym/members/${memberId}`);
       const memberData = response.data;
@@ -787,9 +768,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       console.error('Error fetching membership history:', error);
       setMembershipHistory([]);
     }
-  };
+  }, [memberId]);
 
-  const fetchAttendanceHistory = async () => {
+  const fetchAttendanceHistory = useCallback(async () => {
     try {
       setLoadingAttendance(true);
       const response = await api.get(`/attendance/members/${memberId}/history`);
@@ -800,22 +781,70 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     } finally {
       setLoadingAttendance(false);
     }
-  };
+  }, [memberId]);
 
-  const fetchPtSessions = async () => {
+  // ===== FETCH PT SESSIONS WITH STATUS UPDATE =====
+  const fetchPtSessions = useCallback(async () => {
     try {
       setLoadingPt(true);
       const response = await api.get(`/gym/members/${memberId}/personal-training`);
-      setPtSessions(response.data || []);
+      const sessions = response.data || [];
+      
+      // Update statuses on the backend if they've changed based on dates
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const updatePromises = [];
+      
+      for (const session of sessions) {
+        // Only check sessions that are not cancelled or completed
+        if (session.status !== 'cancelled' && session.status !== 'completed') {
+          const endDate = session.end_date ? new Date(session.end_date) : null;
+          const startDate = session.start_date ? new Date(session.start_date) : null;
+          
+          let newStatus = null;
+          
+          if (endDate && endDate < today) {
+            newStatus = 'expired';
+          } else if (startDate && startDate > today) {
+            newStatus = 'upcoming';
+          } else if (startDate && startDate <= today && endDate && endDate >= today) {
+            newStatus = 'active';
+          }
+          
+          // If status should change, update it on backend using the correct endpoint
+          if (newStatus && newStatus !== session.status) {
+            try {
+              // ✅ CORRECT ENDPOINT: /gym/pt/personal-training/{session_id}/update-status
+              const updatePromise = api.post(`/gym/pt/personal-training/${session.id}/update-status`, {
+                status: newStatus
+              }).then(() => {
+                session.status = newStatus;
+                console.log(`🔄 Updated PT session ${session.id} status to: ${newStatus}`);
+              }).catch((err) => {
+                console.error(`Failed to update PT session ${session.id}:`, err);
+              });
+              updatePromises.push(updatePromise);
+            } catch (updateError) {
+              console.error(`Failed to update PT session ${session.id}:`, updateError);
+            }
+          }
+        }
+      }
+      
+      // Wait for all updates to complete
+      await Promise.allSettled(updatePromises);
+      
+      setPtSessions(sessions);
     } catch (error) {
       console.error('Error fetching PT sessions:', error);
       setPtSessions([]);
     } finally {
       setLoadingPt(false);
     }
-  };
+  }, [memberId]);
 
-  const fetchFreezeHistory = async () => {
+  const fetchFreezeHistory = useCallback(async () => {
     try {
       setLoadingFreezes(true);
       const response = await api.get(`/gym/members/${memberId}/freezes`);
@@ -823,10 +852,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     } finally {
       setLoadingFreezes(false);
     }
-  };
+  }, [memberId]);
 
   // ===== ADD-ONS FUNCTIONS =====
-  const fetchMemberAddons = async () => {
+  const fetchMemberAddons = useCallback(async () => {
     try {
       setLoadingAddons(true);
       const response = await api.get(`/gym/members/${memberId}/addons`);
@@ -837,7 +866,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     } finally {
       setLoadingAddons(false);
     }
-  };
+  }, [memberId]);
 
   const getAddonStatusBadge = (status) => {
     const statusConfig = {
@@ -918,24 +947,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     fetchMemberDetails();
   };
 
-  // ===== PT Status Badge =====
-  const getPtStatusBadge = (status) => {
-    const statusConfig = {
-      active: { color: 'bg-green-100 text-green-700', icon: CheckCircle },
-      completed: { color: 'bg-blue-100 text-blue-700', icon: CheckCircle },
-      cancelled: { color: 'bg-red-100 text-red-700', icon: XCircle },
-      pending: { color: 'bg-yellow-100 text-yellow-700', icon: Clock },
-    };
-    const config = statusConfig[status] || statusConfig.pending;
-    const Icon = config.icon;
-    return (
-      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${config.color}`}>
-        <Icon className="h-3 w-3" />
-        {status?.charAt(0).toUpperCase() + status?.slice(1) || 'Unknown'}
-      </span>
-    );
-  };
-
   const parseSessionDays = (sessionDays) => {
     if (!sessionDays) return [];
     if (Array.isArray(sessionDays)) return sessionDays;
@@ -948,6 +959,83 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       }
     }
     return [];
+  };
+
+  // ===== SYNC TO DEVICE =====
+  const SYNC_ACTION_MESSAGES = {
+    removed: (name) => `🔴 ${name} removed from device (inactive)`,
+    added: (name) => `🟢 ${name} synced to device (active)`,
+    already_removed: (name) => `✅ ${name} already removed from device`,
+  };
+
+  const handleSyncToDevice = async () => {
+    setSyncingToDevice(true);
+    try {
+      toast.loading('Syncing to device...', { id: 'sync-device' });
+      const response = await api.post(`/gym/members/${memberId}/sync-to-device`);
+      toast.dismiss('sync-device');
+
+      if (response.data.success) {
+        const buildMessage = SYNC_ACTION_MESSAGES[response.data.action] || ((name) => `✅ ${name} synced to device`);
+        toast.success(buildMessage(member.full_name));
+        await fetchMemberDetails();
+        if (onUpdate) onUpdate();
+      } else if (response.data.action === 'bridge_offline') {
+        toast.error('Device bridge is not reachable. Please ensure the bridge is running.');
+      } else {
+        toast.warning(response.data.message || 'Sync completed with warnings');
+      }
+    } catch (error) {
+      toast.dismiss('sync-device');
+      console.error('Sync error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to sync member to device');
+    } finally {
+      setSyncingToDevice(false);
+    }
+  };
+
+  // ===== TOGGLE DEVICE ACCESS =====
+  const handleToggleDeviceAccess = async () => {
+    if (!member?.device_user_id) {
+      toast.error('Member is not synced to device yet. Please sync first.');
+      return;
+    }
+  
+    setTogglingAccess(true);
+    try {
+      const currentIsActive = member.is_device_active !== false;
+      const action = currentIsActive ? 'deactivate' : 'activate';
+      
+      console.log(`🔄 Toggling device access: ${action} for member ${member.id}`);
+      
+      const response = await api.post(`/gym/members/${memberId}/toggle-device-access`, {
+        action: action,
+        device_user_id: member.device_user_id
+      });
+  
+      console.log('📥 Toggle response:', response.data);
+  
+      if (response.data.success) {
+        const newIsActive = response.data.is_active;
+        setMember(prev => ({
+          ...prev,
+          is_device_active: newIsActive,
+          device_user_id: response.data.device_user_id || prev.device_user_id
+        }));
+        
+        toast.success(response.data.message || `Access ${newIsActive ? 'activated' : 'deactivated'} successfully`);
+        
+        await fetchMemberDetails();
+        if (onUpdate) onUpdate();
+      } else {
+        toast.error(response.data.message || 'Failed to toggle device access');
+      }
+    } catch (error) {
+      console.error('Error toggling device access:', error);
+      toast.error(error.response?.data?.detail || 'Failed to toggle device access');
+    } finally {
+      setTogglingAccess(false);
+    }
   };
 
   // ===== FREEZE FUNCTIONS =====
@@ -1134,7 +1222,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ===== PAYMENT EDIT FUNCTIONS =====
   const handleEditPaymentClick = () => {
     if (member?.current_membership) {
-      // Values are already in rupees
       const amountPaid = member.current_membership.amount_paid || 0;
       const discountApplied = member.current_membership.discount_applied || 0;
       
@@ -1200,7 +1287,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       const discountApplied = parseFloat(paymentEditData.discount_applied) || 0;
       const amountPaid = parseFloat(paymentEditData.amount_paid) || 0;
 
-      // Values are already in rupees - send directly
       const payload = {
         amount_paid: amountPaid,
         discount_applied: discountApplied,
@@ -1479,7 +1565,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     );
   };
 
-  // ===== Get payment summary - ALL VALUES IN RUPEES =====
+  // ===== Get payment summary =====
   const getPaymentSummary = () => {
     const membership = member?.current_membership;
     if (!membership) return null;
@@ -1537,6 +1623,27 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     };
   };
 
+  // ============================================================
+  // EFFECTS
+  // ============================================================
+  useEffect(() => {
+    const fetchAll = async () => {
+      await Promise.all([
+        fetchMemberDetails(),
+        fetchComments(),
+        fetchPayments(),
+        fetchMembershipHistory(),
+        fetchAttendanceHistory(),
+        fetchBalanceDetails(),
+        fetchPtSessions(),
+        fetchPlans(),
+        fetchFreezeHistory(),
+        fetchMemberAddons()
+      ]);
+    };
+    fetchAll();
+  }, [memberId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -1553,7 +1660,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const currentMembership = member.current_membership;
   const paymentSummary = getPaymentSummary();
   
-  // ALL VALUES ARE IN RUPEES - no conversion needed
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
   
   let balanceDue = 0;
@@ -1605,7 +1711,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     Frozen
                   </span>
                 )}
-                {/* Access Status Badge */}
                 {member?.device_user_id && (
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${accessStatus.color} flex-shrink-0`}>
                     {AccessStatusIcon && <AccessStatusIcon className="h-3 w-3" />}
@@ -1757,33 +1862,32 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               </button>
             )}
 
-            {/* Device Access Toggle Button */}
             {member?.device_user_id && (
-                <button
-                  onClick={handleToggleDeviceAccess}
-                  disabled={togglingAccess}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
-                    member.is_device_active !== false
-                      ? 'bg-red-600 hover:bg-red-700 text-white'
-                      : 'bg-green-600 hover:bg-green-700 text-white'
-                  } disabled:opacity-50`}
-                  title={member.is_device_active !== false ? 'Block member from accessing the gate' : 'Allow member to access the gate'}
-                >
-                  {togglingAccess ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : member.is_device_active !== false ? (
-                    <>
-                      <Lock className="h-4 w-4" />
-                      Block Access
-                    </>
-                  ) : (
-                    <>
-                      <Unlock className="h-4 w-4" />
-                      Allow Access
-                    </>
-                  )}
-                </button>
-              )}
+              <button
+                onClick={handleToggleDeviceAccess}
+                disabled={togglingAccess}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                  member.is_device_active !== false
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-green-600 hover:bg-green-700 text-white'
+                } disabled:opacity-50`}
+                title={member.is_device_active !== false ? 'Block member from accessing the gate' : 'Allow member to access the gate'}
+              >
+                {togglingAccess ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : member.is_device_active !== false ? (
+                  <>
+                    <Lock className="h-4 w-4" />
+                    Block Access
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="h-4 w-4" />
+                    Allow Access
+                  </>
+                )}
+              </button>
+            )}
 
             {!isEditing ? (
               <button
@@ -2829,7 +2933,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           </div>
 
-          {/* Personal Training Section */}
+          {/* Personal Training Section - UPDATED with PT Status */}
           <div className="border-t border-gray-100 pt-6">
             <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Dumbbell className="h-5 w-5 text-purple-600" />
@@ -2847,17 +2951,49 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   const daysDisplay = daysArray.length > 0 
                     ? daysArray.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ')
                     : '—';
+                  const ptStatus = getPtStatus(session);
+                  const remainingDays = getPtRemainingDays(session);
+                  const IconMap = {
+                    active: CheckCircle,
+                    upcoming: Clock,
+                    expired: XCircle,
+                    completed: CheckCircle,
+                    cancelled: XCircle,
+                    inactive: XCircle
+                  };
+                  const StatusIcon = IconMap[ptStatus.status] || Clock;
                   
                   return (
-                    <div key={session.id} className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                    <div key={session.id} className={`border rounded-xl p-4 ${
+                      ptStatus.status === 'active' ? 'bg-green-50 border-green-200' :
+                      ptStatus.status === 'upcoming' ? 'bg-purple-50 border-purple-200' :
+                      ptStatus.status === 'expired' ? 'bg-gray-50 border-gray-200' :
+                      'bg-purple-50 border-purple-200'
+                    }`}>
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          <Dumbbell className="h-5 w-5 text-purple-600" />
+                          <Dumbbell className={`h-5 w-5 ${
+                            ptStatus.status === 'active' ? 'text-green-600' :
+                            ptStatus.status === 'upcoming' ? 'text-purple-600' :
+                            'text-gray-400'
+                          }`} />
                           <span className="font-semibold text-gray-900">
                             Trainer: {session.trainer_name || 'Unknown Trainer'}
                           </span>
                         </div>
-                        {getPtStatusBadge(session.status)}
+                        <div className="flex items-center gap-2">
+                          <PtStatusBadge session={session} />
+                          {ptStatus.status === 'active' && remainingDays !== null && remainingDays > 0 && (
+                            <span className="text-xs text-green-600 font-medium">
+                              {remainingDays} day{remainingDays !== 1 ? 's' : ''} remaining
+                            </span>
+                          )}
+                          {ptStatus.status === 'expired' && (
+                            <span className="text-xs text-gray-500">
+                              Ended {new Date(session.end_date).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
@@ -2879,7 +3015,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                         </div>
                       </div>
                       
-                      <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 pt-3 border-t border-purple-200">
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 pt-3 border-t border-gray-200">
                         <div>
                           <span className="text-gray-500 text-xs">Total Amount:</span>
                           <p className="font-semibold text-purple-700">{formatCurrency(session.total_amount || 0)}</p>
@@ -2896,12 +3032,14 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                         </div>
                         <div>
                           <span className="text-gray-500 text-xs">Status:</span>
-                          <p className="font-medium text-gray-900 capitalize">{session.status || 'Pending'}</p>
+                          <p className={`font-medium ${ptStatus.status === 'active' ? 'text-green-600' : ptStatus.status === 'expired' ? 'text-gray-500' : 'text-gray-900'} capitalize`}>
+                            {ptStatus.label}
+                          </p>
                         </div>
                       </div>
                       
                       {session.notes && (
-                        <div className="mt-3 pt-3 border-t border-purple-200">
+                        <div className="mt-3 pt-3 border-t border-gray-200">
                           <span className="text-gray-500 text-sm">Notes:</span>
                           <p className="text-sm text-gray-700 mt-1">{session.notes}</p>
                         </div>
@@ -3134,7 +3272,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             )}
           </div>
 
-         {/* Comments Section with Categories */}
+          {/* Comments Section with Categories */}
           <div className="border-t border-gray-100 pt-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">

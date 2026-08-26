@@ -1,4 +1,4 @@
-// src/pages/PTPage.jsx - Complete PT Management with Member ID Search & Manual Time Entry
+// src/pages/PTPage.jsx - Complete PT Management with Dynamic Total Sessions
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -8,7 +8,7 @@ import {
   Users, CreditCard, Wallet, AlertCircle, Check,
   X, Mail, Phone, Calendar as CalendarIcon, Tag,
   Clock as ClockIcon, UserPlus, Send, MessageSquare,
-  Hash
+  Hash, Pencil
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -28,8 +28,47 @@ const PTPage = () => {
   const [showPackageModal, setShowPackageModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showMemberSearch, setShowMemberSearch] = useState(false);
+  const [editingPackage, setEditingPackage] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingPackage, setDeletingPackage] = useState(null);
   
   const currencySymbol = user?.currency_symbol || '₹';
+
+  const getPtStatus = (session) => {
+    if (!session) return { status: 'inactive', label: 'Inactive', color: 'bg-gray-100 text-gray-600' };
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const startDate = session.start_date ? new Date(session.start_date) : null;
+    const endDate = session.end_date ? new Date(session.end_date) : null;
+    
+    if (session.status === 'cancelled') {
+      return { status: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-700' };
+    }
+    
+    if (session.status === 'completed') {
+      return { status: 'completed', label: 'Completed', color: 'bg-blue-100 text-blue-700' };
+    }
+    
+    if (startDate && endDate) {
+      if (today >= startDate && today <= endDate) {
+        return { status: 'active', label: 'Active', color: 'bg-green-100 text-green-700' };
+      }
+      if (today < startDate) {
+        return { status: 'upcoming', label: 'Upcoming', color: 'bg-purple-100 text-purple-700' };
+      }
+      if (today > endDate) {
+        return { status: 'expired', label: 'Expired', color: 'bg-gray-100 text-gray-600' };
+      }
+    }
+    
+    return { 
+      status: session.status || 'inactive', 
+      label: session.status?.charAt(0).toUpperCase() + session.status?.slice(1) || 'Inactive',
+      color: session.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+    };
+  };
 
   const formatCurrency = (amount) => {
     if (!amount && amount !== 0) return `${currencySymbol} 0`;
@@ -61,7 +100,8 @@ const PTPage = () => {
       completed: { color: 'bg-blue-100 text-blue-700', icon: CheckCircle },
       cancelled: { color: 'bg-red-100 text-red-700', icon: XCircle },
       pending: { color: 'bg-yellow-100 text-yellow-700', icon: AlertCircle },
-      upcoming: { color: 'bg-purple-100 text-purple-700', icon: Calendar }
+      upcoming: { color: 'bg-purple-100 text-purple-700', icon: Calendar },
+      expired: { color: 'bg-gray-100 text-gray-600', icon: Clock }
     };
     const c = config[status] || config.pending;
     const Icon = c.icon;
@@ -126,6 +166,36 @@ const PTPage = () => {
     }
   };
 
+  // Update package
+  const handleUpdatePackage = async (data) => {
+    if (!editingPackage) return;
+    
+    try {
+      const response = await api.put(`/gym/pt/packages/${editingPackage.id}`, data);
+      toast.success('PT Package updated successfully!');
+      setShowPackageModal(false);
+      setEditingPackage(null);
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update package');
+    }
+  };
+
+  // Delete package
+  const handleDeletePackage = async () => {
+    if (!deletingPackage) return;
+    
+    try {
+      await api.delete(`/gym/pt/packages/${deletingPackage.id}`);
+      toast.success('PT Package deleted successfully!');
+      setShowDeleteConfirm(false);
+      setDeletingPackage(null);
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to delete package');
+    }
+  };
+
   // Book session
   const handleBookSession = async (data) => {
     try {
@@ -169,6 +239,18 @@ const PTPage = () => {
     }
   };
 
+  // Open edit modal
+  const openEditModal = (pkg) => {
+    setEditingPackage(pkg);
+    setShowPackageModal(true);
+  };
+
+  // Open delete confirmation
+  const openDeleteConfirm = (pkg) => {
+    setDeletingPackage(pkg);
+    setShowDeleteConfirm(true);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -185,7 +267,10 @@ const PTPage = () => {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => setShowPackageModal(true)}
+              onClick={() => {
+                setEditingPackage(null);
+                setShowPackageModal(true);
+              }}
               className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-all"
             >
               <Plus className="h-5 w-5" />
@@ -274,10 +359,14 @@ const PTPage = () => {
       {/* Modals */}
       {showPackageModal && (
         <PackageModal
-          onClose={() => setShowPackageModal(false)}
-          onSave={handleCreatePackage}
+          onClose={() => {
+            setShowPackageModal(false);
+            setEditingPackage(null);
+          }}
+          onSave={editingPackage ? handleUpdatePackage : handleCreatePackage}
           trainers={trainers}
           currencySymbol={currencySymbol}
+          editPackage={editingPackage}
         />
       )}
       
@@ -288,6 +377,54 @@ const PTPage = () => {
           packages={packages}
           trainers={trainers}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && deletingPackage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertCircle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Delete PT Package</h3>
+                <p className="text-sm text-gray-500">This action cannot be undone.</p>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 rounded-lg p-3 mb-4">
+              <p className="font-medium text-gray-900">{deletingPackage.member_name}</p>
+              <p className="text-sm text-gray-500">{deletingPackage.package_name}</p>
+              <p className="text-sm text-gray-500">
+                {deletingPackage.remaining_sessions} sessions remaining
+              </p>
+            </div>
+            
+            <p className="text-sm text-gray-600 mb-6">
+              Are you sure you want to delete this PT package? This will remove all associated data including session history.
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeletingPackage(null);
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeletePackage}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Package
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -320,7 +457,10 @@ const PTPage = () => {
             <Dumbbell className="h-16 w-16 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500">No PT packages found</p>
             <button
-              onClick={() => setShowPackageModal(true)}
+              onClick={() => {
+                setEditingPackage(null);
+                setShowPackageModal(true);
+              }}
               className="mt-4 text-purple-600 hover:text-purple-700 font-medium"
             >
               Create your first package →
@@ -328,61 +468,100 @@ const PTPage = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((pkg) => (
-              <div
-                key={pkg.id}
-                className="border border-gray-200 rounded-xl p-4 hover:shadow-lg transition-all cursor-pointer"
-                onClick={() => setSelectedPackage(pkg)}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{pkg.member_name}</h3>
-                    <p className="text-sm text-gray-500 flex items-center gap-1">
-                      <Hash className="h-3 w-3" />
-                      ID: {pkg.member_id}
-                    </p>
-                    <p className="text-sm text-gray-500">{pkg.package_name}</p>
+            {filtered.map((pkg) => {
+              const ptStatus = getPtStatus(pkg);
+              return (
+                <div
+                  key={pkg.id}
+                  className={`border rounded-xl p-4 hover:shadow-lg transition-all ${
+                    ptStatus.status === 'expired' ? 'border-gray-300 bg-gray-50' :
+                    ptStatus.status === 'active' ? 'border-green-300 bg-green-50/30' :
+                    'border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 truncate">{pkg.member_name}</h3>
+                      <p className="text-sm text-gray-500 flex items-center gap-1">
+                        <Hash className="h-3 w-3" />
+                        ID: {pkg.member_id}
+                      </p>
+                      <p className="text-sm text-gray-500 truncate">{pkg.package_name}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 ml-2">
+                      {getStatusBadge(ptStatus.status)}
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditModal(pkg);
+                          }}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Edit package"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDeleteConfirm(pkg);
+                          }}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete package"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  {getStatusBadge(pkg.status)}
+                  
+                  <div className="grid grid-cols-3 gap-2 text-center mb-3">
+                    <div className="bg-gray-50 rounded-lg p-2">
+                      <p className="text-lg font-bold text-gray-900">{pkg.total_sessions}</p>
+                      <p className="text-xs text-gray-500">Total</p>
+                    </div>
+                    <div className="bg-blue-50 rounded-lg p-2">
+                      <p className="text-lg font-bold text-blue-600">{pkg.used_sessions}</p>
+                      <p className="text-xs text-gray-500">Used</p>
+                    </div>
+                    <div className={`rounded-lg p-2 ${pkg.remaining_sessions > 0 ? 'bg-green-50' : 'bg-gray-100'}`}>
+                      <p className={`text-lg font-bold ${pkg.remaining_sessions > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                        {pkg.remaining_sessions}
+                      </p>
+                      <p className="text-xs text-gray-500">Remaining</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between text-sm border-t border-gray-100 pt-3">
+                    <div>
+                      <p className="text-gray-500">Amount</p>
+                      <p className="font-semibold">{formatCurrency(pkg.total_amount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Paid</p>
+                      <p className="font-semibold text-green-600">{formatCurrency(pkg.amount_paid)}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Balance</p>
+                      <p className={`font-semibold ${pkg.balance_due > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        {formatCurrency(pkg.balance_due)}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-3 flex items-center justify-between text-xs">
+                    <span className="text-gray-400">
+                      Trainer: {pkg.trainer_name || 'Not Assigned'}
+                    </span>
+                    {pkg.start_date && pkg.end_date && (
+                      <span className="text-gray-400">
+                        {formatDate(pkg.start_date)} - {formatDate(pkg.end_date)}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                
-                <div className="grid grid-cols-3 gap-2 text-center mb-3">
-                  <div className="bg-gray-50 rounded-lg p-2">
-                    <p className="text-lg font-bold text-gray-900">{pkg.total_sessions}</p>
-                    <p className="text-xs text-gray-500">Total</p>
-                  </div>
-                  <div className="bg-blue-50 rounded-lg p-2">
-                    <p className="text-lg font-bold text-blue-600">{pkg.used_sessions}</p>
-                    <p className="text-xs text-gray-500">Used</p>
-                  </div>
-                  <div className="bg-green-50 rounded-lg p-2">
-                    <p className="text-lg font-bold text-green-600">{pkg.remaining_sessions}</p>
-                    <p className="text-xs text-gray-500">Remaining</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between text-sm border-t border-gray-100 pt-3">
-                  <div>
-                    <p className="text-gray-500">Amount</p>
-                    <p className="font-semibold">{formatCurrency(pkg.total_amount)}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Paid</p>
-                    <p className="font-semibold text-green-600">{formatCurrency(pkg.amount_paid)}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Balance</p>
-                    <p className={`font-semibold ${pkg.balance_due > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      {formatCurrency(pkg.balance_due)}
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="mt-3 text-xs text-gray-400">
-                  Trainer: {pkg.trainer_name || 'Not Assigned'}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -522,27 +701,81 @@ const PTPage = () => {
 };
 
 // ==================== PACKAGE MODAL ====================
-const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
+const PackageModal = ({ onClose, onSave, trainers, currencySymbol, editPackage }) => {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
   const [showMemberSearch, setShowMemberSearch] = useState(true);
   
-  const [formData, setFormData] = useState({
-    member_id: null,
-    package_name: '8 Sessions Package',
-    total_sessions: 8,
-    total_amount: 2000,
-    amount_paid: 2000,
-    payment_method: 'cash',
-    payment_date: new Date().toISOString().split('T')[0],
-    assign_trainer: false,
-    trainer_id: null,
-    notes: '',
-    start_date: new Date().toISOString().split('T')[0],
-    end_date: null
-  });
+  const isEditing = !!editPackage;
+
+  // Pre-defined package configurations
+  const getPackageConfig = (packageName) => {
+    const configs = {
+      '4 Sessions Package': { sessions: 4, defaultAmount: 1000 },
+      '8 Sessions Package': { sessions: 8, defaultAmount: 2000 },
+      '12 Sessions Package': { sessions: 12, defaultAmount: 3000 },
+      '16 Sessions Package': { sessions: 16, defaultAmount: 4000 },
+      '24 Sessions Package': { sessions: 24, defaultAmount: 6000 },
+      'Custom Package': { sessions: null, defaultAmount: 0 },
+    };
+    return configs[packageName] || { sessions: null, defaultAmount: 0 };
+  };
+
+  // Initialize form data
+  const getInitialFormData = () => {
+    if (editPackage) {
+      return {
+        member_id: editPackage.member_id,
+        package_name: editPackage.package_name || '8 Sessions Package',
+        total_sessions: editPackage.total_sessions || 8,
+        total_amount: editPackage.total_amount || 0,
+        amount_paid: editPackage.amount_paid || 0,
+        payment_method: 'cash',
+        payment_date: new Date().toISOString().split('T')[0],
+        assign_trainer: editPackage.trainer_id ? true : false,
+        trainer_id: editPackage.trainer_id || null,
+        notes: editPackage.notes || '',
+        start_date: editPackage.start_date || new Date().toISOString().split('T')[0],
+        end_date: editPackage.end_date || null,
+        status: editPackage.status || 'active'
+      };
+    }
+    return {
+      member_id: null,
+      package_name: '8 Sessions Package',
+      total_sessions: 8,
+      total_amount: 2000,
+      amount_paid: 2000,
+      payment_method: 'cash',
+      payment_date: new Date().toISOString().split('T')[0],
+      assign_trainer: false,
+      trainer_id: null,
+      notes: '',
+      start_date: new Date().toISOString().split('T')[0],
+      end_date: null,
+      status: 'active'
+    };
+  };
+
+  const [formData, setFormData] = useState(getInitialFormData);
+  const [showCustomSessions, setShowCustomSessions] = useState(formData.package_name === 'Custom Package');
+
+  // Handle package name change - update sessions and amount
+  const handlePackageNameChange = (packageName) => {
+    const config = getPackageConfig(packageName);
+    const isCustom = packageName === 'Custom Package';
+    
+    setShowCustomSessions(isCustom);
+    
+    setFormData(prev => ({
+      ...prev,
+      package_name: packageName,
+      total_sessions: isCustom ? prev.total_sessions : config.sessions,
+      total_amount: isCustom ? prev.total_amount : config.defaultAmount,
+    }));
+  };
 
   // Handle search - Now includes Member ID
   const handleSearch = async (query) => {
@@ -560,19 +793,54 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
     }
   };
 
+  // Set selected member when editing
+  useEffect(() => {
+    if (editPackage && editPackage.member_id) {
+      const fetchMember = async () => {
+        try {
+          const response = await api.get(`/gym/members/${editPackage.member_id}`);
+          setSelectedMember(response.data);
+          setShowMemberSearch(false);
+        } catch (error) {
+          console.error('Error fetching member:', error);
+        }
+      };
+      fetchMember();
+    }
+  }, [editPackage]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedMember) {
+    
+    if (!selectedMember && !editPackage) {
       toast.error('Please select a member');
+      return;
+    }
+    
+    // Validate amount_paid
+    if (formData.amount_paid > formData.total_amount) {
+      toast.error(`Amount paid cannot exceed total amount of ${currencySymbol} ${formData.total_amount}`);
+      return;
+    }
+    
+    // Validate total sessions for custom package
+    if (formData.package_name === 'Custom Package' && (!formData.total_sessions || formData.total_sessions < 1)) {
+      toast.error('Please enter a valid number of sessions for custom package');
       return;
     }
     
     setLoading(true);
     try {
-      await onSave({
+      const submitData = {
         ...formData,
-        member_id: selectedMember.id
-      });
+        member_id: selectedMember?.id || editPackage?.member_id,
+      };
+      
+      if (isEditing) {
+        submitData.id = editPackage.id;
+      }
+      
+      await onSave(submitData);
     } finally {
       setLoading(false);
     }
@@ -584,11 +852,19 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
         <div className="flex items-center justify-between p-5 border-b bg-gradient-to-r from-purple-50 to-indigo-50 rounded-t-2xl">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
-              <Dumbbell className="h-5 w-5 text-purple-600" />
+              {isEditing ? (
+                <Pencil className="h-5 w-5 text-purple-600" />
+              ) : (
+                <Dumbbell className="h-5 w-5 text-purple-600" />
+              )}
             </div>
             <div>
-              <h3 className="text-lg font-bold text-gray-900">New PT Package</h3>
-              <p className="text-sm text-gray-500">Create a new personal training package</p>
+              <h3 className="text-lg font-bold text-gray-900">
+                {isEditing ? 'Edit PT Package' : 'New PT Package'}
+              </h3>
+              <p className="text-sm text-gray-500">
+                {isEditing ? 'Update the personal training package' : 'Create a new personal training package'}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-lg transition-colors">
@@ -618,8 +894,9 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
                     setShowMemberSearch(true);
                   }}
                   className="text-red-500 hover:text-red-700 text-sm font-medium"
+                  disabled={isEditing}
                 >
-                  Change
+                  {isEditing ? 'Cannot change member while editing' : 'Change'}
                 </button>
               </div>
             ) : (
@@ -630,8 +907,9 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
                   value={searchTerm}
                   onChange={(e) => handleSearch(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  disabled={isEditing}
                 />
-                {searchResults.length > 0 && (
+                {searchResults.length > 0 && !isEditing && (
                   <div className="mt-2 border border-gray-200 rounded-lg max-h-48 overflow-y-auto">
                     {searchResults.map((member) => (
                       <button
@@ -661,9 +939,31 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
                     ))}
                   </div>
                 )}
+                {isEditing && !selectedMember && (
+                  <p className="text-sm text-red-500 mt-1">Member cannot be changed while editing</p>
+                )}
               </div>
             )}
           </div>
+
+          {/* Status - Only show when editing */}
+          {isEditing && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Status
+              </label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({...formData, status: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="pending">Pending</option>
+              </select>
+            </div>
+          )}
 
           {/* Package Details */}
           <div className="grid grid-cols-2 gap-4">
@@ -673,7 +973,7 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
               </label>
               <select
                 value={formData.package_name}
-                onChange={(e) => setFormData({...formData, package_name: e.target.value})}
+                onChange={(e) => handlePackageNameChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                 required
               >
@@ -685,19 +985,38 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
                 <option value="Custom Package">Custom Package</option>
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Total Sessions *
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={formData.total_sessions}
-                onChange={(e) => setFormData({...formData, total_sessions: parseInt(e.target.value)})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                required
-              />
-            </div>
+            
+            {/* Total Sessions - Only show for Custom Package */}
+            {showCustomSessions && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Total Sessions *
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={formData.total_sessions}
+                  onChange={(e) => setFormData({...formData, total_sessions: parseInt(e.target.value) || 0})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                  required
+                  placeholder="Enter number of sessions"
+                />
+                <p className="text-xs text-gray-400 mt-1">Enter the total number of sessions for this custom package</p>
+              </div>
+            )}
+            
+            {/* Show sessions count for non-custom packages */}
+            {!showCustomSessions && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Total Sessions
+                </label>
+                <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700">
+                  {formData.total_sessions} sessions
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Pre-defined package: {formData.package_name}</p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -710,7 +1029,7 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
                 min="0"
                 step="1"
                 value={formData.total_amount}
-                onChange={(e) => setFormData({...formData, total_amount: parseFloat(e.target.value)})}
+                onChange={(e) => setFormData({...formData, total_amount: parseFloat(e.target.value) || 0})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                 required
               />
@@ -732,6 +1051,7 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
               />
+              <p className="text-xs text-gray-400 mt-1">Cannot exceed total amount</p>
             </div>
           </div>
 
@@ -762,6 +1082,33 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
                 onChange={(e) => setFormData({...formData, payment_date: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
               />
+            </div>
+          </div>
+
+          {/* Dates */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Start Date
+              </label>
+              <input
+                type="date"
+                value={formData.start_date}
+                onChange={(e) => setFormData({...formData, start_date: e.target.value})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                End Date
+              </label>
+              <input
+                type="date"
+                value={formData.end_date || ''}
+                onChange={(e) => setFormData({...formData, end_date: e.target.value || null})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              />
+              <p className="text-xs text-gray-400 mt-1">Leave empty for 1 year default</p>
             </div>
           </div>
 
@@ -815,18 +1162,18 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
             </button>
             <button
               type="submit"
-              disabled={loading || !selectedMember}
+              disabled={loading || (!selectedMember && !editPackage)}
               className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating...
+                  {isEditing ? 'Updating...' : 'Creating...'}
                 </>
               ) : (
                 <>
-                  <Plus className="h-4 w-4" />
-                  Create Package
+                  {isEditing ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                  {isEditing ? 'Update Package' : 'Create Package'}
                 </>
               )}
             </button>
@@ -837,7 +1184,7 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
   );
 };
 
-// ==================== BOOKING MODAL - UPDATED ====================
+// ==================== BOOKING MODAL ====================
 const BookingModal = ({ onClose, onSave, packages, trainers }) => {
   const [loading, setLoading] = useState(false);
   const [selectedPackage, setSelectedPackage] = useState(null);
@@ -1055,7 +1402,7 @@ const BookingModal = ({ onClose, onSave, packages, trainers }) => {
             />
           </div>
 
-          {/* Manual Time Entry - Updated */}
+          {/* Manual Time Entry */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Session Time * (24-hour format)
