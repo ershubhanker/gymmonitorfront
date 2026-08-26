@@ -1,4 +1,4 @@
-// src/pages/PTPage.jsx - Complete PT Management
+// src/pages/PTPage.jsx - Complete PT Management with Member ID Search & Manual Time Entry
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -7,7 +7,8 @@ import {
   ChevronLeft, ChevronRight, Edit, Trash2, Eye,
   Users, CreditCard, Wallet, AlertCircle, Check,
   X, Mail, Phone, Calendar as CalendarIcon, Tag,
-  Clock as ClockIcon, UserPlus, Send, MessageSquare
+  Clock as ClockIcon, UserPlus, Send, MessageSquare,
+  Hash
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -97,7 +98,7 @@ const PTPage = () => {
     fetchData();
   }, [fetchData]);
 
-  // Handle search
+  // Handle search - Now includes Member ID search
   const handleSearch = async (query) => {
     if (query.length < 2) {
       setMembers([]);
@@ -105,7 +106,7 @@ const PTPage = () => {
     }
     
     try {
-      const response = await api.get(`/gym/pt/members/search?search=${query}`);
+      const response = await api.get(`/gym/pt/members/search?search=${encodeURIComponent(query)}`);
       setMembers(response.data || []);
       setShowMemberSearch(true);
     } catch (error) {
@@ -295,7 +296,8 @@ const PTPage = () => {
   function renderPackages() {
     const filtered = packages.filter(p =>
       p.member_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.package_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      p.package_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.member_id?.toString().includes(searchTerm)
     );
 
     return (
@@ -305,7 +307,7 @@ const PTPage = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search packages by member or package name..."
+              placeholder="Search by member name, ID, or package name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -335,6 +337,10 @@ const PTPage = () => {
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <h3 className="font-semibold text-gray-900">{pkg.member_name}</h3>
+                    <p className="text-sm text-gray-500 flex items-center gap-1">
+                      <Hash className="h-3 w-3" />
+                      ID: {pkg.member_id}
+                    </p>
                     <p className="text-sm text-gray-500">{pkg.package_name}</p>
                   </div>
                   {getStatusBadge(pkg.status)}
@@ -387,7 +393,8 @@ const PTPage = () => {
   function renderBookings() {
     const filtered = bookings.filter(b =>
       b.member_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      b.trainer_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      b.trainer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      b.member_id?.toString().includes(searchTerm)
     );
 
     return (
@@ -397,7 +404,7 @@ const PTPage = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search bookings..."
+              placeholder="Search by member name, ID, or trainer..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -442,6 +449,10 @@ const PTPage = () => {
                     <td className="px-4 py-3">
                       <div>
                         <p className="font-medium text-gray-900">{booking.member_name}</p>
+                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                          <Hash className="h-3 w-3" />
+                          ID: {booking.member_id}
+                        </p>
                         <p className="text-xs text-gray-500">{booking.member_phone}</p>
                       </div>
                     </td>
@@ -533,6 +544,7 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
     end_date: null
   });
 
+  // Handle search - Now includes Member ID
   const handleSearch = async (query) => {
     setSearchTerm(query);
     if (query.length < 2) {
@@ -541,7 +553,7 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
     }
     
     try {
-      const response = await api.get(`/gym/pt/members/search?search=${query}`);
+      const response = await api.get(`/gym/pt/members/search?search=${encodeURIComponent(query)}`);
       setSearchResults(response.data || []);
     } catch (error) {
       console.error('Error searching members:', error);
@@ -594,7 +606,10 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
               <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg p-3">
                 <div>
                   <p className="font-semibold text-gray-900">{selectedMember.full_name}</p>
-                  <p className="text-sm text-gray-500">{selectedMember.phone}</p>
+                  <p className="text-sm text-gray-500 flex items-center gap-1">
+                    <Hash className="h-3 w-3" />
+                    ID: {selectedMember.id} • {selectedMember.phone}
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -611,7 +626,7 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
               <div>
                 <input
                   type="text"
-                  placeholder="Search members by name or phone..."
+                  placeholder="Search by name, phone, or member ID..."
                   value={searchTerm}
                   onChange={(e) => handleSearch(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -632,7 +647,10 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
                       >
                         <div>
                           <p className="font-medium text-gray-900">{member.full_name}</p>
-                          <p className="text-sm text-gray-500">{member.phone}</p>
+                          <p className="text-sm text-gray-500 flex items-center gap-1">
+                            <Hash className="h-3 w-3" />
+                            ID: {member.id} • {member.phone}
+                          </p>
                         </div>
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
                           member.has_active_package ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
@@ -819,24 +837,61 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol }) => {
   );
 };
 
-// ==================== BOOKING MODAL ====================
+// ==================== BOOKING MODAL - UPDATED ====================
 const BookingModal = ({ onClose, onSave, packages, trainers }) => {
   const [loading, setLoading] = useState(false);
   const [selectedPackage, setSelectedPackage] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [showMemberSearch, setShowMemberSearch] = useState(true);
+  
   const [formData, setFormData] = useState({
     member_id: null,
     session_date: new Date().toISOString().split('T')[0],
-    session_time: '07:00 PM',
+    session_time: '07:00',
     trainer_id: null,
     duration_minutes: 60,
     notes: '',
     send_notification: true
   });
 
+  // Handle member search - includes Member ID
+  const handleSearch = async (query) => {
+    setSearchTerm(query);
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    
+    try {
+      const response = await api.get(`/gym/pt/members/search?search=${encodeURIComponent(query)}`);
+      setSearchResults(response.data || []);
+    } catch (error) {
+      console.error('Error searching members:', error);
+    }
+  };
+
+  // Handle member selection
+  const handleMemberSelect = (member) => {
+    setSelectedMember(member);
+    setFormData({...formData, member_id: member.id});
+    setShowMemberSearch(false);
+    setSearchTerm('');
+    setSearchResults([]);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedPackage) {
-      toast.error('Please select a PT package');
+    if (!selectedMember && !selectedPackage) {
+      toast.error('Please select a member or PT package');
+      return;
+    }
+    
+    // Validate time format
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!timeRegex.test(formData.session_time)) {
+      toast.error('Please enter time in HH:MM format (e.g., 07:00, 14:30)');
       return;
     }
     
@@ -844,12 +899,19 @@ const BookingModal = ({ onClose, onSave, packages, trainers }) => {
     try {
       await onSave({
         ...formData,
-        member_id: selectedPackage.member_id
+        member_id: selectedMember?.id || selectedPackage?.member_id,
+        session_time: formData.session_time
       });
     } finally {
       setLoading(false);
     }
   };
+
+  // Filter packages for selected member
+  const availablePackages = packages.filter(p => 
+    p.remaining_sessions > 0 && p.status === 'active' &&
+    (!selectedMember || p.member_id === selectedMember.id)
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-8">
@@ -870,37 +932,106 @@ const BookingModal = ({ onClose, onSave, packages, trainers }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Select Package */}
+          {/* Member Search */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Select PT Package *
+              Search Member *
             </label>
-            <select
-              value={selectedPackage?.id || ''}
-              onChange={(e) => {
-                const pkg = packages.find(p => p.id === parseInt(e.target.value));
-                setSelectedPackage(pkg);
-                if (pkg) {
-                  setFormData({...formData, member_id: pkg.member_id});
-                }
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-              required
-            >
-              <option value="">Select a package</option>
-              {packages
-                .filter(p => p.remaining_sessions > 0 && p.status === 'active')
-                .map((pkg) => (
-                  <option key={pkg.id} value={pkg.id}>
-                    {pkg.member_name} - {pkg.package_name} ({pkg.remaining_sessions} sessions left)
-                  </option>
-                ))}
-            </select>
+            {selectedMember ? (
+              <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg p-2">
+                <div>
+                  <p className="font-semibold text-gray-900">{selectedMember.full_name}</p>
+                  <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <Hash className="h-3 w-3" />
+                    ID: {selectedMember.id} • {selectedMember.phone}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMember(null);
+                    setSelectedPackage(null);
+                    setShowMemberSearch(true);
+                  }}
+                  className="text-red-500 hover:text-red-700 text-sm font-medium"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <div>
+                <input
+                  type="text"
+                  placeholder="Search by name, phone, or member ID..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+                {searchResults.length > 0 && (
+                  <div className="mt-2 border border-gray-200 rounded-lg max-h-48 overflow-y-auto">
+                    {searchResults.map((member) => (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => handleMemberSelect(member)}
+                        className="w-full px-3 py-2 text-left hover:bg-purple-50 transition-colors flex items-center justify-between"
+                      >
+                        <div>
+                          <p className="font-medium text-gray-900">{member.full_name}</p>
+                          <p className="text-xs text-gray-500 flex items-center gap-1">
+                            <Hash className="h-3 w-3" />
+                            ID: {member.id} • {member.phone}
+                          </p>
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          member.has_active_package ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {member.has_active_package ? `${member.total_remaining_sessions} sessions` : 'No package'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {selectedPackage && (
+          {/* Select Package */}
+          {selectedMember && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Select PT Package *
+              </label>
+              <select
+                value={selectedPackage?.id || ''}
+                onChange={(e) => {
+                  const pkg = packages.find(p => p.id === parseInt(e.target.value));
+                  setSelectedPackage(pkg);
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                required
+              >
+                <option value="">Select a package</option>
+                {availablePackages.map((pkg) => (
+                  <option key={pkg.id} value={pkg.id}>
+                    {pkg.package_name} ({pkg.remaining_sessions} sessions left)
+                    {pkg.trainer_name && ` - Trainer: ${pkg.trainer_name}`}
+                  </option>
+                ))}
+              </select>
+              {availablePackages.length === 0 && (
+                <p className="text-xs text-red-500 mt-1">No active packages with remaining sessions</p>
+              )}
+            </div>
+          )}
+
+          {selectedPackage && !selectedMember && (
             <div className="bg-gray-50 rounded-lg p-3 text-sm">
               <p className="font-medium text-gray-900">{selectedPackage.member_name}</p>
+              <p className="text-gray-500 flex items-center gap-1">
+                <Hash className="h-3 w-3" />
+                ID: {selectedPackage.member_id}
+              </p>
               <p className="text-gray-500">{selectedPackage.package_name}</p>
               <div className="flex items-center gap-4 mt-1">
                 <span className="text-green-600 font-semibold">{selectedPackage.remaining_sessions} sessions remaining</span>
@@ -918,38 +1049,26 @@ const BookingModal = ({ onClose, onSave, packages, trainers }) => {
               type="date"
               value={formData.session_date}
               onChange={(e) => setFormData({...formData, session_date: e.target.value})}
+              min={new Date().toISOString().split('T')[0]}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
               required
             />
           </div>
 
+          {/* Manual Time Entry - Updated */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Session Time *
+              Session Time * (24-hour format)
             </label>
-            <select
+            <input
+              type="text"
               value={formData.session_time}
               onChange={(e) => setFormData({...formData, session_time: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              placeholder="e.g., 07:00, 14:30, 19:00"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               required
-            >
-              <option value="06:00 AM">06:00 AM</option>
-              <option value="07:00 AM">07:00 AM</option>
-              <option value="08:00 AM">08:00 AM</option>
-              <option value="09:00 AM">09:00 AM</option>
-              <option value="10:00 AM">10:00 AM</option>
-              <option value="11:00 AM">11:00 AM</option>
-              <option value="12:00 PM">12:00 PM</option>
-              <option value="01:00 PM">01:00 PM</option>
-              <option value="02:00 PM">02:00 PM</option>
-              <option value="03:00 PM">03:00 PM</option>
-              <option value="04:00 PM">04:00 PM</option>
-              <option value="05:00 PM">05:00 PM</option>
-              <option value="06:00 PM">06:00 PM</option>
-              <option value="07:00 PM">07:00 PM</option>
-              <option value="08:00 PM">08:00 PM</option>
-              <option value="09:00 PM">09:00 PM</option>
-            </select>
+            />
+            <p className="text-xs text-gray-400 mt-1">Enter time in HH:MM format (24-hour)</p>
           </div>
 
           <div>

@@ -1,4 +1,4 @@
-// src/pages/HistoricalInvoices.jsx - Updated with better error handling
+// src/pages/HistoricalInvoices.jsx - Updated with fixed toast methods
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
@@ -21,7 +21,8 @@ import {
   RefreshCw,
   ArrowLeft,
   Printer,
-  Dumbbell
+  Dumbbell,
+  CreditCard
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
@@ -96,6 +97,67 @@ const MemberSearchItem = ({ member, onSelect, isSelected }) => {
   );
 };
 
+// ============================================================
+// INDIVIDUAL PAYMENT ITEM COMPONENT
+// ============================================================
+const PaymentHistoryItem = ({ payment, membership, onDownload, downloading }) => {
+  return (
+    <div className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-gray-900 text-sm">
+              Payment #{payment.id || 'N/A'}
+            </span>
+            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+              {payment.payment_method || 'Cash'}
+            </span>
+            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+              {payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : 'N/A'}
+            </span>
+            {payment.transaction_id && (
+              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-mono">
+                #{payment.transaction_id}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-4 mt-1 text-sm text-gray-600 flex-wrap">
+            <span>Plan: {membership.plan_name}</span>
+            <span>Amount: ₹{payment.amount.toLocaleString()}</span>
+            {payment.notes && (
+              <span className="text-xs text-gray-400">{payment.notes}</span>
+            )}
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="text-right">
+            <div className="text-sm text-gray-500">Paid</div>
+            <div className="font-semibold text-blue-600">
+              ₹{payment.amount.toLocaleString()}
+            </div>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDownload(membership.membership_id);
+            }}
+            disabled={downloading === membership.membership_id}
+            className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {downloading === membership.membership_id ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            <span className="text-sm hidden sm:inline">Invoice</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MembershipHistoryItem = ({ membership, onDownload, downloading }) => {
   const [expanded, setExpanded] = useState(false);
   
@@ -111,6 +173,10 @@ const MembershipHistoryItem = ({ membership, onDownload, downloading }) => {
 
   const statusConfig = getStatusConfig(membership.status);
   const StatusIcon = statusConfig.icon;
+
+  // Calculate total payments and count
+  const totalPayments = membership.payments?.length || 0;
+  const totalPaid = membership.payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || membership.amount_paid || 0;
 
   return (
     <div className={`border rounded-lg overflow-hidden transition-all ${
@@ -143,6 +209,12 @@ const MembershipHistoryItem = ({ membership, onDownload, downloading }) => {
                   PT Included
                 </span>
               )}
+              {totalPayments > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                  <CreditCard className="h-3 w-3" />
+                  {totalPayments} payment{totalPayments !== 1 ? 's' : ''}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-4 mt-1 text-sm text-gray-600 flex-wrap">
               <span className="flex items-center gap-1">
@@ -152,15 +224,15 @@ const MembershipHistoryItem = ({ membership, onDownload, downloading }) => {
                 {membership.end_date ? new Date(membership.end_date).toLocaleDateString() : 'N/A'}
               </span>
               <span>Duration: {membership.duration_days} days</span>
-              <span>Payments: {membership.payment_count}</span>
+              <span>Payments: {totalPayments}</span>
             </div>
           </div>
           
           <div className="flex items-center gap-3 flex-shrink-0">
             <div className="text-right">
-              <div className="text-sm text-gray-500">Paid</div>
+              <div className="text-sm text-gray-500">Total Paid</div>
               <div className="font-semibold text-blue-600">
-                ₹{membership.amount_paid.toLocaleString()}
+                ₹{totalPaid.toLocaleString()}
               </div>
             </div>
             <button
@@ -199,13 +271,13 @@ const MembershipHistoryItem = ({ membership, onDownload, downloading }) => {
       {expanded && (
         <div className="px-4 pb-4 border-t border-gray-100 pt-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Payment Details */}
+            {/* Payment Breakdown */}
             <div className="bg-gray-50 rounded-lg p-3">
               <h4 className="text-sm font-medium text-gray-700 mb-2">Payment Breakdown</h4>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Plan Price</span>
-                  <span className="font-medium">₹{membership.plan_price.toLocaleString()}</span>
+                  <span className="font-medium">₹{membership.plan_price?.toLocaleString() || 0}</span>
                 </div>
                 {membership.discount_applied > 0 && (
                   <div className="flex justify-between text-green-600">
@@ -214,8 +286,8 @@ const MembershipHistoryItem = ({ membership, onDownload, downloading }) => {
                   </div>
                 )}
                 <div className="flex justify-between font-medium pt-1 border-t border-gray-200">
-                  <span>Amount Paid</span>
-                  <span className="text-blue-600">₹{membership.amount_paid.toLocaleString()}</span>
+                  <span>Total Amount Paid</span>
+                  <span className="text-blue-600">₹{totalPaid.toLocaleString()}</span>
                 </div>
                 {membership.discounted_price && membership.discounted_price > 0 && (
                   <div className="flex justify-between text-sm text-gray-500">
@@ -242,32 +314,70 @@ const MembershipHistoryItem = ({ membership, onDownload, downloading }) => {
                 </div>
               </div>
             )}
+          </div>
 
-            {/* Invoice Status */}
-            <div className="md:col-span-2 flex items-center justify-between pt-2 border-t border-gray-100">
-              <span className="text-sm text-gray-500">
-                {membership.is_active 
-                  ? 'This is the current active membership' 
-                  : `This membership ${membership.status === 'expired' ? 'expired' : 'was ' + membership.status} on ${membership.end_date ? new Date(membership.end_date).toLocaleDateString() : 'N/A'}`}
-              </span>
-              <button
-                onClick={() => onDownload(membership.membership_id)}
-                disabled={downloading === membership.membership_id}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2 text-sm"
-              >
-                {downloading === membership.membership_id ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <FileText className="h-4 w-4" />
-                    Download Full Invoice
-                  </>
-                )}
-              </button>
+          {/* Individual Payments Section */}
+          {membership.payments && membership.payments.length > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-blue-500" />
+                  Individual Payments ({membership.payments.length})
+                </h4>
+                <button
+                  onClick={() => {
+                    // Download all payment invoices
+                    membership.payments.forEach((p, index) => {
+                      setTimeout(() => {
+                        onDownload(membership.membership_id);
+                      }, index * 500); // Stagger downloads to avoid issues
+                    });
+                  }}
+                  disabled={downloading === membership.membership_id}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                >
+                  <Download className="h-3 w-3" />
+                  Download All
+                </button>
+              </div>
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {membership.payments.map((payment, index) => (
+                  <PaymentHistoryItem
+                    key={payment.id || index}
+                    payment={payment}
+                    membership={membership}
+                    onDownload={onDownload}
+                    downloading={downloading}
+                  />
+                ))}
+              </div>
             </div>
+          )}
+
+          {/* Invoice Status */}
+          <div className="flex items-center justify-between pt-3 mt-3 border-t border-gray-100">
+            <span className="text-sm text-gray-500">
+              {membership.is_active 
+                ? 'This is the current active membership' 
+                : `This membership ${membership.status === 'expired' ? 'expired' : 'was ' + membership.status} on ${membership.end_date ? new Date(membership.end_date).toLocaleDateString() : 'N/A'}`}
+            </span>
+            <button
+              onClick={() => onDownload(membership.membership_id)}
+              disabled={downloading === membership.membership_id}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2 text-sm"
+            >
+              {downloading === membership.membership_id ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <FileText className="h-4 w-4" />
+                  Download Full Invoice
+                </>
+              )}
+            </button>
           </div>
         </div>
       )}
@@ -333,18 +443,28 @@ const HistoricalInvoices = () => {
     return () => clearTimeout(timer);
   }, [searchTerm, searchMembers]);
 
-  // Load member's historical memberships
+  // Load member's historical memberships - FIXED
   const loadMemberMemberships = useCallback(async (member) => {
     setLoading(true);
     setError(null);
     try {
       const response = await api.get(`/gym/members/${member.id}/historical-memberships`);
-      setMemberships(response.data || []);
+      // Ensure payments array exists on each membership
+      const membershipsData = (response.data || []).map(m => ({
+        ...m,
+        payments: m.payments || [] // Ensure payments array exists
+      }));
+      setMemberships(membershipsData);
       setMemberDetails(member);
       setSelectedMember(member);
       
-      if (response.data.length === 0) {
-        toast.info('No historical memberships found for this member');
+      const totalPayments = membershipsData.reduce((sum, m) => sum + (m.payments?.length || 0), 0);
+      if (membershipsData.length === 0) {
+        toast('No historical memberships found for this member', { icon: 'ℹ️' });
+      } else if (totalPayments === 0) {
+        toast('No payment records found for this member', { icon: 'ℹ️' });
+      } else {
+        toast.success(`Found ${membershipsData.length} membership(s) with ${totalPayments} payment(s)`);
       }
     } catch (error) {
       console.error('Error loading memberships:', error);
@@ -436,6 +556,11 @@ const HistoricalInvoices = () => {
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
   };
 
+  // Calculate total payments across all memberships
+  const getTotalPayments = () => {
+    return memberships.reduce((total, m) => total + (m.payments?.length || 0), 0);
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -447,7 +572,7 @@ const HistoricalInvoices = () => {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Historical Invoices</h1>
             <p className="text-sm text-gray-500">
-              Search for a member and download invoices from their previous plans
+              Search for a member and download invoices from their previous plans and individual payments
             </p>
           </div>
         </div>
@@ -551,6 +676,9 @@ const HistoricalInvoices = () => {
                 <span className="text-sm bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
                   {memberships.length} plan{memberships.length !== 1 ? 's' : ''}
                 </span>
+                <span className="text-sm bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                  {getTotalPayments()} payment{getTotalPayments() !== 1 ? 's' : ''}
+                </span>
               </div>
               <div className="flex items-center gap-4 text-sm text-gray-500 mt-1 flex-wrap">
                 <span className="flex items-center gap-1">
@@ -576,7 +704,11 @@ const HistoricalInvoices = () => {
                 onClick={() => {
                   if (memberships.length > 0) {
                     // Download all invoices
-                    memberships.forEach(m => handleDownloadInvoice(m.membership_id));
+                    memberships.forEach((m, index) => {
+                      setTimeout(() => {
+                        handleDownloadInvoice(m.membership_id);
+                      }, index * 500);
+                    });
                   }
                 }}
                 disabled={memberships.length === 0 || downloading}
@@ -625,7 +757,7 @@ const HistoricalInvoices = () => {
                   Membership History
                 </h3>
                 <span className="text-sm text-gray-500">
-                  {memberships.filter(m => m.is_active).length} active · {memberships.filter(m => !m.is_active).length} historical
+                  {memberships.filter(m => m.is_active).length} active · {memberships.filter(m => !m.is_active).length} historical · {getTotalPayments()} total payments
                 </span>
               </div>
               <div className="space-y-3">
@@ -655,7 +787,7 @@ const HistoricalInvoices = () => {
             </h3>
             <p className="text-gray-500">
               Enter a member's name, phone number, or email to view their membership history
-              and download invoices from their previous plans.
+              and download invoices from their previous plans and individual payments.
             </p>
             <div className="mt-4 flex items-center justify-center gap-2 text-sm text-gray-400">
               <span className="flex items-center gap-1">
