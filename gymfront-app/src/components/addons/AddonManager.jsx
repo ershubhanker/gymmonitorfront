@@ -1,34 +1,27 @@
-// src/components/addons/AddonManager.jsx - Updated with payment functionality
+// src/components/addons/AddonManager.jsx
+// Complete updated version with:
+// - Multiple add-on purchases allowed (no duplicate restriction)
+// - Proper payment flow with payment history
+// - CRUD operations for add-ons
+// - Assignment with optional initial payment
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   X, Plus, Edit, Trash2, Loader2, CheckCircle, XCircle,
-  DollarSign, Calendar, Tag, CreditCard, Wallet, RefreshCw
+  DollarSign, Calendar, Tag, CreditCard, Wallet, RefreshCw,
+  Phone, Mail, User, Search
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
 const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
+  // ===== STATE =====
   const [addons, setAddons] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  // Create/Edit Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingAddon, setEditingAddon] = useState(null);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedAddon, setSelectedAddon] = useState(null);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [paymentNotes, setPaymentNotes] = useState('');
-  const [paying, setPaying] = useState(false);
-  const [addonPayments, setAddonPayments] = useState([]);
-  const [loadingPayments, setLoadingPayments] = useState(false);
-
-  // ===== ASSIGN (with optional initial payment) STATE =====
-  const [showAssignModal, setShowAssignModal] = useState(false);
-  const [assignTarget, setAssignTarget] = useState(null);
-  const [assignAmount, setAssignAmount] = useState('');
-  const [assignMethod, setAssignMethod] = useState('cash');
-  const [assigning, setAssigning] = useState(false);
-  
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -39,13 +32,30 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
   });
   const [saving, setSaving] = useState(false);
 
+  // Assignment Modal
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assignTarget, setAssignTarget] = useState(null);
+  const [assignAmount, setAssignAmount] = useState('');
+  const [assignMethod, setAssignMethod] = useState('cash');
+  const [assigning, setAssigning] = useState(false);
+
+  // Payment Modal
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedAddon, setSelectedAddon] = useState(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [paying, setPaying] = useState(false);
+  const [addonPayments, setAddonPayments] = useState([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+
+  // ===== FETCH FUNCTIONS =====
+
   const fetchAddons = useCallback(async () => {
     setLoading(true);
     try {
-      // ✅ Pass memberId so the backend can attach this member's
-      // member_addon_id / amount_paid / balance_due / status to each addon.
-      // Without this, the UI can never tell an addon is already assigned,
-      // so "Pay Now" never appears and no addon payment can ever be recorded.
+      // ✅ Pass memberId so the backend attaches member_addon_id/amount_paid/balance_due/status
+      // This allows the UI to show "Pay Now" for already-assigned add-ons
       const response = await api.get('/gym/addons', {
         params: memberId ? { member_id: memberId } : {}
       });
@@ -58,11 +68,11 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
     }
   }, [memberId]);
 
-  const fetchAddonPayments = useCallback(async (addonId) => {
-    if (!memberId || !addonId) return;
+  const fetchAddonPayments = useCallback(async (memberAddonId) => {
+    if (!memberId || !memberAddonId) return;
     setLoadingPayments(true);
     try {
-      const response = await api.get(`/gym/members/${memberId}/addons/${addonId}/payments`);
+      const response = await api.get(`/gym/members/${memberId}/addons/${memberAddonId}/payments`);
       setAddonPayments(response.data || []);
     } catch (error) {
       console.error('Error fetching addon payments:', error);
@@ -77,6 +87,8 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
       fetchAddons();
     }
   }, [isOpen, memberId, fetchAddons]);
+
+  // ===== ADD-ON CRUD OPERATIONS =====
 
   const handleCreateAddon = async (e) => {
     e.preventDefault();
@@ -143,10 +155,9 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
     }
   };
 
-  // ✅ Opens a small dialog to collect how much (if anything) was paid right
-  // now, instead of silently assigning with amount_paid: 0. That silent 0
-  // is why paid add-ons never used to show up on the Payments page — no
-  // Payment record was ever created for the assignment.
+  // ===== ASSIGN ADD-ON TO MEMBER =====
+  // ✅ Allows multiple assignments of the same add-on (no duplicate check)
+  
   const handleAssignAddon = (addon) => {
     if (!memberId) {
       toast.error('No member selected');
@@ -197,13 +208,10 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
     }
   };
 
-  // ===== PAYMENT FUNCTIONS =====
-  // ✅ IMPORTANT: `addon.id` here is the catalog Addon's id. The pay/
-  // payment-history endpoints instead key off the *member's* assignment
-  // record, i.e. `addon.member_addon_id`. Using addon.id would 404 (or
-  // silently hit the wrong record), which was the second reason payments
-  // never made it to the Payments page.
+  // ===== MAKE PAYMENT ON ASSIGNED ADD-ON =====
+
   const handleOpenPaymentModal = async (addon) => {
+    // ✅ Must use member_addon_id (the assignment ID), not the catalog addon.id
     if (!addon.member_addon_id) {
       toast.error('This add-on has not been assigned to the member yet');
       return;
@@ -242,7 +250,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
         }
       );
       
-      toast.success(response.data.message);
+      toast.success(response.data.message || 'Payment recorded successfully');
       
       // Refresh addon data (fetches fresh member_addon_id/amount_paid/balance_due)
       fetchAddons();
@@ -269,6 +277,8 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
     }
   };
 
+  // ===== HELPERS =====
+
   const getCategoryIcon = (category) => {
     const icons = {
       locker: '🔒',
@@ -280,6 +290,19 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
       other: '📦'
     };
     return icons[category] || '📦';
+  };
+
+  const getCategoryLabel = (category) => {
+    const labels = {
+      locker: 'Locker',
+      protein: 'Protein',
+      towel: 'Towel',
+      supplement: 'Supplement',
+      training: 'Training',
+      parking: 'Parking',
+      other: 'Other'
+    };
+    return labels[category] || category;
   };
 
   const getStatusBadge = (status) => {
@@ -302,8 +325,10 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
 
   return (
     <>
+      {/* ===== MAIN MODAL ===== */}
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          {/* Header */}
           <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 sticky top-0 bg-white z-10">
             <div>
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -320,8 +345,8 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
           </div>
 
           <div className="p-6">
-            {/* Add New Addon Button */}
-            <div className="mb-6">
+            {/* Actions */}
+            <div className="flex flex-wrap gap-3 mb-6">
               <button
                 onClick={() => {
                   setEditingAddon(null);
@@ -340,9 +365,16 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
                 <Plus className="h-4 w-4" />
                 Create New Add-On
               </button>
+              <button
+                onClick={fetchAddons}
+                className="flex items-center gap-2 border border-gray-300 text-gray-700 px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </button>
             </div>
 
-            {/* Addons List */}
+            {/* Addons Grid */}
             {loading ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
@@ -355,18 +387,24 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {addons.map(addon => {
+                {addons.map((addon) => {
                   const balanceDue = addon.balance_due || 0;
+                  const isAssigned = !!addon.member_addon_id;
+                  
                   return (
-                    <div key={addon.id} className={`border rounded-xl p-4 transition-all ${
-                      addon.is_active ? 'border-gray-200 hover:border-blue-300' : 'border-gray-200 opacity-60'
-                    }`}>
+                    <div 
+                      key={addon.id} 
+                      className={`border rounded-xl p-4 transition-all ${
+                        addon.is_active ? 'border-gray-200 hover:border-blue-300' : 'border-gray-200 opacity-60'
+                      }`}
+                    >
+                      {/* Header */}
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
                           <div className="text-2xl">{getCategoryIcon(addon.category)}</div>
                           <div>
                             <p className="font-semibold text-gray-900">{addon.name}</p>
-                            <p className="text-xs text-gray-500">{addon.category}</p>
+                            <p className="text-xs text-gray-500">{getCategoryLabel(addon.category)}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -398,6 +436,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
                         </div>
                       </div>
 
+                      {/* Details */}
                       <div className="mt-2 space-y-1 text-sm">
                         <p className="text-gray-600">{addon.description || 'No description'}</p>
                         <div className="flex items-center gap-4">
@@ -409,9 +448,11 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
                             <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Inactive</span>
                           )}
                         </div>
+
+                        {/* Member-specific section */}
                         {memberId && (
                           <div className="mt-3 pt-3 border-t border-gray-100">
-                            {addon.member_addon_id ? (
+                            {isAssigned ? (
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between text-xs">
                                   <span className="text-gray-500">Amount Paid:</span>
@@ -425,7 +466,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
                                 </div>
                                 <div className="flex flex-wrap gap-2 mt-2">
                                   {addon.status && getStatusBadge(addon.status)}
-                                  {balanceDue > 0 && (
+                                  {balanceDue > 0 && addon.status === 'active' && (
                                     <button
                                       onClick={() => handleOpenPaymentModal(addon)}
                                       className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors"
@@ -433,6 +474,12 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
                                       <CreditCard className="h-3 w-3" />
                                       Pay Now
                                     </button>
+                                  )}
+                                  {balanceDue === 0 && addon.status === 'active' && (
+                                    <span className="text-xs text-green-600 px-2 py-1 rounded bg-green-50">
+                                      <CheckCircle className="h-3 w-3 inline mr-1" />
+                                      Fully Paid
+                                    </span>
                                   )}
                                 </div>
                               </div>
@@ -455,6 +502,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
             )}
           </div>
 
+          {/* Footer */}
           <div className="flex justify-end px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
             <button
               onClick={onClose}
@@ -466,7 +514,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
         </div>
       </div>
 
-      {/* Create/Edit Addon Modal */}
+      {/* ===== CREATE/EDIT ADD-ON MODAL ===== */}
       {showCreateModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -598,7 +646,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
         </div>
       )}
 
-      {/* Assign Add-On Modal (collects an optional initial payment) */}
+      {/* ===== ASSIGN ADD-ON MODAL ===== */}
       {showAssignModal && assignTarget && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -692,7 +740,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
         </div>
       )}
 
-      {/* Payment Modal */}
+      {/* ===== PAYMENT MODAL ===== */}
       {showPaymentModal && selectedAddon && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -716,7 +764,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Addon Summary */}
+              {/* Summary */}
               <div className="bg-gray-50 rounded-xl p-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Total Price:</span>
@@ -736,7 +784,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Payment Amount (₹)
+                    Payment Amount (₹) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
