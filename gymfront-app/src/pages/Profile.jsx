@@ -472,7 +472,7 @@ const Profile = () => {
           {/* Delete photo button - only show if photo exists */}
           {user?.profile_image && (
             <button
-              onClick={handlePhotoDelete}
+              onClick={() => handlePhotoDelete()}
               disabled={uploadingPhoto}
               className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 shadow-lg hover:bg-red-600 transition-all hover:scale-110 disabled:opacity-50"
               title="Remove photo"
