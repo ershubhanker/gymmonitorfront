@@ -3,11 +3,12 @@ import {
   User, Mail, Phone, Shield, Key, Save, Camera, Building2, 
   MapPin, Clock, Users, CreditCard, AlertCircle,
   CheckCircle, Loader2, IndianRupee,
-  X
+  X, MessageCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api, { API_BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
+import WhatsAppSignupTab from './WhatsAppSignupTab'; // adjust path
 
 const CURRENCIES = [
   { symbol: '₹', label: 'Indian Rupee', code: 'INR', flag: '🇮🇳' },
@@ -403,6 +404,7 @@ const Profile = () => {
     { id: 'gym', label: 'Gym Info', icon: Building2, roles: ['gym_owner'] },
     { id: 'preferences', label: 'Preferences', icon: IndianRupee, roles: ['super_admin', 'gym_owner', 'gym_staff'] },
     { id: 'security', label: 'Security', icon: Key, roles: ['super_admin', 'gym_owner', 'gym_staff'] },
+    { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, roles: ['gym_owner'] },
   ];
 
   const visibleTabs = tabs.filter(tab => tab.roles.includes(user?.role));
@@ -999,6 +1001,8 @@ const Profile = () => {
               </div>
             </form>
           )}
+
+          {activeTab === 'whatsapp' && <WhatsAppSignupTab />}
         </div>
       </div>
     </div>

@@ -7,7 +7,7 @@ import {
   Filter, ChevronDown, AlertTriangle, Save, UserPlus,
   CreditCard, FileText, Download, Eye, Package, Users,
   TrendingUp, BarChart3, ArrowUp, ArrowDown, MoreVertical, Phone, Mail,
-  User, UserSearch
+  User, UserSearch, Bell, RotateCw, ChevronRight, ChevronUp
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -701,6 +701,263 @@ const PaymentModal = ({ isOpen, onClose, onPay, memberAddon, loading }) => {
 };
 
 // ============================================================
+// RENEW ADD-ON MODAL
+// ============================================================
+const RenewAddOnModal = ({ isOpen, onClose, onRenew, memberAddon, addons, loading }) => {
+  const [months, setMonths] = useState(1);
+  const [amountPaid, setAmountPaid] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [notes, setNotes] = useState('');
+
+  // Prefer the live catalog price (it may have changed since assignment);
+  // fall back to whatever price is stored on the assignment itself.
+  const catalogAddon = addons.find(a => a.id === memberAddon?.addon_id);
+  const perMonthPrice = catalogAddon?.price ?? memberAddon?.price ?? 0;
+  const renewalCost = perMonthPrice * months;
+
+  useEffect(() => {
+    if (isOpen && memberAddon) {
+      setMonths(1);
+      setAmountPaid('');
+      setPaymentMethod('cash');
+      setNotes('');
+    }
+  }, [isOpen, memberAddon]);
+
+  if (!isOpen || !memberAddon) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!months || months < 1) {
+      toast.error('Please enter a valid number of months');
+      return;
+    }
+    const amount = amountPaid === '' ? 0 : parseFloat(amountPaid);
+    if (amount < 0 || amount > renewalCost) {
+      toast.error(`Amount paid must be between 0 and ₹${renewalCost}`);
+      return;
+    }
+    onRenew({
+      months: parseInt(months, 10),
+      amount_paid: amount,
+      payment_method: paymentMethod,
+      notes
+    });
+  };
+
+  const isExpired = memberAddon.is_expired || memberAddon.status === 'expired';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+        <div className="flex items-center justify-between p-5 border-b bg-gradient-to-r from-orange-50 to-amber-50 rounded-t-2xl">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center">
+              <RotateCw className="h-5 w-5 text-orange-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">Renew Add-On</h3>
+              <p className="text-sm text-gray-500">{memberAddon.addon_name}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-lg transition-colors">
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div className={`rounded-lg p-3 flex items-center gap-2 text-sm ${
+            isExpired ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+          }`}>
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            {isExpired ? (
+              <span>This add-on has expired{memberAddon.end_date ? ` on ${new Date(memberAddon.end_date).toLocaleDateString()}` : ''}. Renewing will start a new cycle from today.</span>
+            ) : (
+              <span>Currently active until {memberAddon.end_date ? new Date(memberAddon.end_date).toLocaleDateString() : 'N/A'}. Renewing will extend from that date.</span>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Number of Months *
+            </label>
+            <input
+              type="number"
+              value={months}
+              onChange={(e) => setMonths(e.target.value)}
+              min="1"
+              max="24"
+              step="1"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+              required
+            />
+            <p className="text-xs text-gray-400 mt-1">How many months is the member paying for?</p>
+          </div>
+
+          <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Price / month:</span>
+              <span className="font-medium text-gray-900">₹{perMonthPrice}</span>
+            </div>
+            <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-200">
+              <span className="text-gray-700">Renewal Cost ({months || 0} mo):</span>
+              <span className="text-orange-600">₹{renewalCost}</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Amount Paying Now (₹)
+            </label>
+            <input
+              type="number"
+              value={amountPaid}
+              onChange={(e) => setAmountPaid(e.target.value)}
+              min="0"
+              max={renewalCost}
+              step="1"
+              placeholder={`0 - ${renewalCost}`}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+            />
+            <p className="text-xs text-gray-400 mt-1">Leave as 0 to renew now and collect payment later.</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Payment Method
+            </label>
+            <select
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+            >
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="upi">UPI</option>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="online">Online</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Notes
+            </label>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Renewal notes..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCw className="h-4 w-4" />
+              )}
+              Renew Add-On
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// RENEWAL NOTIFICATIONS BANNER
+// ============================================================
+const RenewalNotificationsBanner = ({ renewalsDue, onRenewClick, onDismiss }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!renewalsDue || renewalsDue.count === 0) return null;
+
+  const { expiring_soon_count, expired_count, items } = renewalsDue;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-orange-200 mb-6 overflow-hidden">
+      <button
+        onClick={() => setExpanded(prev => !prev)}
+        className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-orange-50 to-amber-50 hover:from-orange-100 hover:to-amber-100 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Bell className="h-5 w-5 text-orange-600" />
+            <span className="absolute -top-2 -right-2 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
+              {renewalsDue.count}
+            </span>
+          </div>
+          <div className="text-left">
+            <p className="text-sm font-semibold text-gray-900">
+              {renewalsDue.count} add-on{renewalsDue.count > 1 ? 's' : ''} need{renewalsDue.count === 1 ? 's' : ''} renewal
+            </p>
+            <p className="text-xs text-gray-500">
+              {expired_count > 0 && `${expired_count} expired`}
+              {expired_count > 0 && expiring_soon_count > 0 && ' • '}
+              {expiring_soon_count > 0 && `${expiring_soon_count} expiring soon`}
+            </p>
+          </div>
+        </div>
+        {expanded ? (
+          <ChevronUp className="h-5 w-5 text-gray-400" />
+        ) : (
+          <ChevronRight className="h-5 w-5 text-gray-400" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+          {items.map((item) => (
+            <div key={`${item.member_addon_id}`} className="flex items-center justify-between p-3 hover:bg-gray-50">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {item.member_name || `Member #${item.member_id}`} — {item.addon_name}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {item.member_phone && <span className="mr-2">{item.member_phone}</span>}
+                  {item.is_expired ? (
+                    <span className="text-red-600 font-medium">
+                      Expired {item.end_date ? `on ${new Date(item.end_date).toLocaleDateString()}` : ''}
+                    </span>
+                  ) : (
+                    <span className="text-amber-600 font-medium">
+                      Expires in {item.days_left} day{item.days_left === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={() => onRenewClick(item)}
+                className="ml-3 flex-shrink-0 px-3 py-1.5 bg-orange-600 text-white text-xs font-medium rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-1"
+              >
+                <RotateCw className="h-3 w-3" />
+                Renew
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
 // MEMBER SEARCH INPUT FOR ASSIGNMENTS VIEW
 // ============================================================
 const MemberSearchInput = ({ onSelect, placeholder }) => {
@@ -809,14 +1066,17 @@ const AddOns = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showRenewModal, setShowRenewModal] = useState(false);
   const [editingAddon, setEditingAddon] = useState(null);
   const [members, setMembers] = useState([]);
   const [summary, setSummary] = useState(null);
   const [selectedMemberAddon, setSelectedMemberAddon] = useState(null);
+  const [renewMemberAddon, setRenewMemberAddon] = useState(null);
   const [memberAddons, setMemberAddons] = useState({});
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const [selectedMember, setSelectedMember] = useState(null);
   const [viewMode, setViewMode] = useState('catalog');
+  const [renewalsDue, setRenewalsDue] = useState(null);
 
   const formatCurrency = (amount) => {
     return `₹${Number(amount || 0).toLocaleString('en-IN')}`;
@@ -870,6 +1130,15 @@ const AddOns = () => {
       setMemberAddons(prev => ({ ...prev, [memberId]: response.data || [] }));
     } catch (error) {
       console.error('Error fetching member add-ons:', error);
+    }
+  };
+
+  const fetchRenewalsDue = async () => {
+    try {
+      const response = await api.get('/gym/addons/renewals/due?days_ahead=7');
+      setRenewalsDue(response.data || null);
+    } catch (error) {
+      console.error('Error fetching renewals due:', error);
     }
   };
 
@@ -950,10 +1219,54 @@ const AddOns = () => {
         fetchMemberAddons(selectedMemberId);
       }
       fetchSummary();
+      fetchRenewalsDue();
     } catch (error) {
       console.error('Error making payment:', error);
       toast.error(error.response?.data?.detail || 'Failed to make payment');
     }
+  };
+
+  const handleRenewAddon = async (data) => {
+    if (!renewMemberAddon) return;
+    try {
+      const response = await api.post(
+        `/gym/addons/members/${renewMemberAddon.member_id}/addons/${renewMemberAddon.id}/renew`,
+        data
+      );
+      toast.success(response.data?.message || 'Add-on renewed successfully!');
+      setShowRenewModal(false);
+      setRenewMemberAddon(null);
+      if (selectedMemberId) {
+        fetchMemberAddons(selectedMemberId);
+      }
+      fetchSummary();
+      fetchRenewalsDue();
+    } catch (error) {
+      console.error('Error renewing add-on:', error);
+      toast.error(error.response?.data?.detail || 'Failed to renew add-on');
+    }
+  };
+
+  // Open the renew modal for a given member-addon. Used both from the
+  // assignments table (member already selected) and from the notifications
+  // banner (may belong to a different member — switch context to them first).
+  const openRenewModal = (rawItem) => {
+    // Normalize: rows from the assignments table use `id`, rows from the
+    // renewals-due notification feed use `member_addon_id`.
+    const memberAddon = {
+      ...rawItem,
+      id: rawItem.id ?? rawItem.member_addon_id
+    };
+
+    if (memberAddon.member_id && memberAddon.member_id !== selectedMemberId) {
+      const member = members.find(m => m.id === memberAddon.member_id);
+      setViewMode('assignments');
+      setSelectedMemberId(memberAddon.member_id);
+      setSelectedMember(member || { id: memberAddon.member_id, full_name: memberAddon.member_name, phone: memberAddon.member_phone });
+      fetchMemberAddons(memberAddon.member_id);
+    }
+    setRenewMemberAddon(memberAddon);
+    setShowRenewModal(true);
   };
 
   useEffect(() => {
@@ -961,6 +1274,7 @@ const AddOns = () => {
     fetchCategories();
     fetchMembers();
     fetchSummary();
+    fetchRenewalsDue();
   }, []);
 
   useEffect(() => {
@@ -1054,6 +1368,12 @@ const AddOns = () => {
         </button>
       </div>
 
+      {/* Renewal Notifications */}
+      <RenewalNotificationsBanner
+        renewalsDue={renewalsDue}
+        onRenewClick={openRenewModal}
+      />
+
       {/* Actions Bar */}
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1092,6 +1412,7 @@ const AddOns = () => {
               onClick={() => {
                 fetchAddons();
                 fetchSummary();
+                fetchRenewalsDue();
                 if (selectedMemberId) fetchMemberAddons(selectedMemberId);
               }}
               className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex-shrink-0"
@@ -1341,28 +1662,55 @@ const AddOns = () => {
                         <div className="text-xs text-gray-500">
                           <div>Start: {new Date(ma.start_date).toLocaleDateString()}</div>
                           {ma.end_date && <div>End: {new Date(ma.end_date).toLocaleDateString()}</div>}
+                          {ma.status === 'active' && ma.end_date && ma.days_until_expiry !== undefined && ma.days_until_expiry !== null && (
+                            ma.days_until_expiry <= 7 ? (
+                              <div className={`mt-1 inline-flex items-center gap-1 font-medium ${ma.days_until_expiry < 0 ? 'text-red-600' : 'text-orange-600'}`}>
+                                <Bell className="h-3 w-3" />
+                                {ma.days_until_expiry < 0
+                                  ? 'Renewal overdue'
+                                  : ma.days_until_expiry === 0
+                                    ? 'Expires today'
+                                    : `Expires in ${ma.days_until_expiry}d`}
+                              </div>
+                            ) : null
+                          )}
+                          {ma.renewal_count > 0 && (
+                            <div className="text-gray-400 mt-1">Renewed {ma.renewal_count}x</div>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right text-sm font-medium">
-                        {ma.balance_due > 0 && ma.status === 'active' && (
-                          <button
-                            onClick={() => {
-                              setSelectedMemberAddon(ma);
-                              setShowPaymentModal(true);
-                            }}
-                            className="text-blue-600 hover:text-blue-900 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
-                            title="Make Payment"
-                          >
-                            <CreditCard className="h-4 w-4 inline mr-1" />
-                            Pay
-                          </button>
-                        )}
-                        {ma.balance_due === 0 && ma.status === 'active' && (
-                          <span className="text-xs text-green-600 px-2 py-1 rounded bg-green-50">
-                            <CheckCircle className="h-3 w-3 inline mr-1" />
-                            Paid
-                          </span>
-                        )}
+                        <div className="flex items-center justify-end gap-1">
+                          {ma.balance_due > 0 && ma.status === 'active' && (
+                            <button
+                              onClick={() => {
+                                setSelectedMemberAddon(ma);
+                                setShowPaymentModal(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-900 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                              title="Make Payment"
+                            >
+                              <CreditCard className="h-4 w-4 inline mr-1" />
+                              Pay
+                            </button>
+                          )}
+                          {ma.balance_due === 0 && ma.status === 'active' && (
+                            <span className="text-xs text-green-600 px-2 py-1 rounded bg-green-50">
+                              <CheckCircle className="h-3 w-3 inline mr-1" />
+                              Paid
+                            </span>
+                          )}
+                          {(ma.status === 'active' || ma.status === 'expired') && (
+                            <button
+                              onClick={() => openRenewModal(ma)}
+                              className="text-orange-600 hover:text-orange-900 px-2 py-1 rounded hover:bg-orange-50 transition-colors"
+                              title="Renew Add-On"
+                            >
+                              <RotateCw className="h-4 w-4 inline mr-1" />
+                              Renew
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -1403,6 +1751,15 @@ const AddOns = () => {
         onClose={() => { setShowPaymentModal(false); setSelectedMemberAddon(null); }}
         onPay={handlePayment}
         memberAddon={selectedMemberAddon}
+        loading={loading}
+      />
+
+      <RenewAddOnModal
+        isOpen={showRenewModal}
+        onClose={() => { setShowRenewModal(false); setRenewMemberAddon(null); }}
+        onRenew={handleRenewAddon}
+        memberAddon={renewMemberAddon}
+        addons={addons}
         loading={loading}
       />
     </div>
