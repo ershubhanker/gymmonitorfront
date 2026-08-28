@@ -87,7 +87,7 @@ const WhatsAppSignupTab = () => {
     }
   };
 
-  const fbLoginCallback = async (response) => {
+  const fbLoginCallback = (response) => {
     if (!response.authResponse) {
       setConnecting(false);
       return;
@@ -101,6 +101,13 @@ const WhatsAppSignupTab = () => {
       return;
     }
 
+    // Fire the async work separately - FB.login()'s SDK rejects an async
+    // function passed directly as its callback (throws
+    // "Expression is of type asyncfunction, not function").
+    completeWhatsAppConnection(code, waba_id, phone_number_id, business_id);
+  };
+
+  const completeWhatsAppConnection = async (code, waba_id, phone_number_id, business_id) => {
     try {
       const res = await api.post('/gym/whatsapp/embedded-signup/callback', {
         code,
@@ -176,7 +183,7 @@ const WhatsAppSignupTab = () => {
             <p className="text-sm text-green-700">{status.phone_number}</p>
           </div>
           <button
-            onClick={handleDisconnect}
+            onClick={() => handleDisconnect()}
             className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700 font-medium flex-shrink-0"
           >
             <Unplug className="h-4 w-4" /> Disconnect
