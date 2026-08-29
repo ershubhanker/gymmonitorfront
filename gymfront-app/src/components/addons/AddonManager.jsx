@@ -4,6 +4,7 @@
 // - Proper payment flow with payment history
 // - CRUD operations for add-ons
 // - Assignment with optional initial payment
+// - DISCOUNT SUPPORT
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -36,6 +37,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignTarget, setAssignTarget] = useState(null);
   const [assignAmount, setAssignAmount] = useState('');
+  const [assignDiscount, setAssignDiscount] = useState('');  // ✅ DISCOUNT
   const [assignMethod, setAssignMethod] = useState('cash');
   const [assigning, setAssigning] = useState(false);
 
@@ -54,8 +56,6 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
   const fetchAddons = useCallback(async () => {
     setLoading(true);
     try {
-      // ✅ Pass memberId so the backend attaches member_addon_id/amount_paid/balance_due/status
-      // This allows the UI to show "Pay Now" for already-assigned add-ons
       const response = await api.get('/gym/addons', {
         params: memberId ? { member_id: memberId } : {}
       });
@@ -157,6 +157,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
 
   // ===== ASSIGN ADD-ON TO MEMBER =====
   // ✅ Allows multiple assignments of the same add-on (no duplicate check)
+  // ✅ Supports discount
   
   const handleAssignAddon = (addon) => {
     if (!memberId) {
@@ -165,6 +166,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
     }
     setAssignTarget(addon);
     setAssignAmount(addon.price != null ? String(addon.price) : '');
+    setAssignDiscount('');  // ✅ Reset discount
     setAssignMethod('cash');
     setShowAssignModal(true);
   };
@@ -173,12 +175,26 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
     if (!assignTarget || !memberId) return;
 
     const amount = assignAmount === '' ? 0 : parseFloat(assignAmount);
+    const discount = assignDiscount === '' ? 0 : parseFloat(assignDiscount);
+    
+    // ✅ Validate discount
+    if (isNaN(discount) || discount < 0) {
+      toast.error('Please enter a valid discount');
+      return;
+    }
+    if (discount > assignTarget.price) {
+      toast.error(`Discount cannot exceed add-on price of ₹${assignTarget.price}`);
+      return;
+    }
+    
+    const effectivePrice = assignTarget.price - discount;
+    
     if (isNaN(amount) || amount < 0) {
       toast.error('Please enter a valid amount');
       return;
     }
-    if (amount > assignTarget.price) {
-      toast.error(`Amount cannot exceed the add-on price of ₹${assignTarget.price}`);
+    if (amount > effectivePrice) {
+      toast.error(`Amount cannot exceed effective price of ₹${effectivePrice}`);
       return;
     }
 
@@ -188,16 +204,18 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
         addon_id: assignTarget.id,
         start_date: new Date().toISOString().split('T')[0],
         amount_paid: amount,
+        discount_applied: discount,  // ✅ Include discount
         payment_method: assignMethod,
         notes: 'Assigned from Addon Manager'
       });
       toast.success(
-        amount > 0
-          ? `Addon "${assignTarget.name}" assigned and ₹${amount} payment recorded`
+        discount > 0
+          ? `Addon "${assignTarget.name}" assigned with ₹${discount} discount`
           : `Addon "${assignTarget.name}" assigned to member`
       );
       setShowAssignModal(false);
       setAssignTarget(null);
+      setAssignDiscount('');
       fetchAddons();
       if (onAddonAssigned) onAddonAssigned();
     } catch (error) {
@@ -211,7 +229,6 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
   // ===== MAKE PAYMENT ON ASSIGNED ADD-ON =====
 
   const handleOpenPaymentModal = async (addon) => {
-    // ✅ Must use member_addon_id (the assignment ID), not the catalog addon.id
     if (!addon.member_addon_id) {
       toast.error('This add-on has not been assigned to the member yet');
       return;
@@ -252,14 +269,11 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
       
       toast.success(response.data.message || 'Payment recorded successfully');
       
-      // Refresh addon data (fetches fresh member_addon_id/amount_paid/balance_due)
       fetchAddons();
       if (onAddonAssigned) onAddonAssigned();
       
-      // Refresh payments
       await fetchAddonPayments(selectedAddon.member_addon_id);
       
-      // Update selected addon balance
       setSelectedAddon(prev => ({
         ...prev,
         amount_paid: (prev.amount_paid || 0) + amount,
@@ -320,6 +334,9 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
       </span>
     );
   };
+
+  // Compute effective price and discount info
+  const effectivePrice = assignTarget ? assignTarget.price - (parseFloat(assignDiscount) || 0) : 0;
 
   if (!isOpen) return null;
 
@@ -389,6 +406,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {addons.map((addon) => {
                   const balanceDue = addon.balance_due || 0;
+                  const discountApplied = addon.discount_applied || 0;
                   const isAssigned = !!addon.member_addon_id;
                   
                   return (
@@ -454,9 +472,15 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
                           <div className="mt-3 pt-3 border-t border-gray-100">
                             {isAssigned ? (
                               <div className="space-y-2">
+                                {discountApplied > 0 && (
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-gray-500">Discount:</span>
+                                    <span className="font-medium text-green-600">-₹{discountApplied}</span>
+                                  </div>
+                                )}
                                 <div className="flex items-center justify-between text-xs">
                                   <span className="text-gray-500">Amount Paid:</span>
-                                  <span className="font-medium text-green-600">₹{addon.amount_paid || 0}</span>
+                                  <span className="font-medium text-blue-600">₹{addon.amount_paid || 0}</span>
                                 </div>
                                 <div className="flex items-center justify-between text-xs">
                                   <span className="text-gray-500">Balance Due:</span>
@@ -646,7 +670,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
         </div>
       )}
 
-      {/* ===== ASSIGN ADD-ON MODAL ===== */}
+      {/* ===== ASSIGN ADD-ON MODAL - UPDATED WITH DISCOUNT ===== */}
       {showAssignModal && assignTarget && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -662,6 +686,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
                 onClick={() => {
                   setShowAssignModal(false);
                   setAssignTarget(null);
+                  setAssignDiscount('');
                 }}
                 className="p-2 rounded-xl hover:bg-gray-100"
               >
@@ -675,6 +700,43 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
                 <span className="font-medium text-gray-900">₹{assignTarget.price}</span>
               </div>
 
+              {/* ✅ DISCOUNT FIELD */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Discount (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max={assignTarget.price}
+                  value={assignDiscount}
+                  onChange={(e) => setAssignDiscount(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="0"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Discount to apply for this member. Cannot exceed ₹{assignTarget.price}.
+                </p>
+              </div>
+
+              {/* ✅ Show effective price */}
+              {parseFloat(assignDiscount) > 0 && (
+                <div className="bg-green-50 rounded-xl p-4 border border-green-200 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Original Price:</span>
+                    <span className="font-medium text-gray-900">₹{assignTarget.price}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Discount:</span>
+                    <span className="font-medium text-green-600">-₹{assignDiscount}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold pt-2 border-t border-green-200">
+                    <span className="text-gray-700">Effective Price:</span>
+                    <span className="text-green-700">₹{effectivePrice}</span>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Amount Collected Now (₹)
@@ -682,14 +744,14 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
                 <input
                   type="number"
                   min="0"
-                  max={assignTarget.price}
+                  max={effectivePrice}
                   value={assignAmount}
                   onChange={(e) => setAssignAmount(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                   placeholder="0"
                 />
                 <p className="text-xs text-gray-400 mt-1">
-                  Leave as 0 to assign without collecting payment now — you can collect it later via "Pay Now".
+                  Max: ₹{effectivePrice} (effective price after discount)
                 </p>
               </div>
 
@@ -717,6 +779,7 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
                   onClick={() => {
                     setShowAssignModal(false);
                     setAssignTarget(null);
+                    setAssignDiscount('');
                   }}
                   className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
                 >
@@ -770,9 +833,15 @@ const AddonManager = ({ isOpen, onClose, onAddonAssigned, memberId }) => {
                   <span className="text-gray-500">Total Price:</span>
                   <span className="font-medium text-gray-900">₹{selectedAddon.price}</span>
                 </div>
+                {selectedAddon.discount_applied > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Discount:</span>
+                    <span className="font-medium text-green-600">-₹{selectedAddon.discount_applied}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Amount Paid:</span>
-                  <span className="font-medium text-green-600">₹{selectedAddon.amount_paid || 0}</span>
+                  <span className="font-medium text-blue-600">₹{selectedAddon.amount_paid || 0}</span>
                 </div>
                 <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-200">
                   <span className="text-gray-700">Balance Due:</span>
