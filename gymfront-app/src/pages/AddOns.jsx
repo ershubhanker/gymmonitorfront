@@ -1,4 +1,4 @@
-// src/pages/AddOns.jsx - Updated with Search Input for Member Selection
+// src/pages/AddOns.jsx - Updated with Discount Support
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -224,7 +224,7 @@ const AddOnFormModal = ({ isOpen, onClose, onSave, addon, loading }) => {
 };
 
 // ============================================================
-// ASSIGN ADD-ON MODAL
+// ASSIGN ADD-ON MODAL - UPDATED WITH DISCOUNT SUPPORT
 // ============================================================
 const AssignAddOnModal = ({ isOpen, onClose, onAssign, addons, loading }) => {
   const [formData, setFormData] = useState({
@@ -232,6 +232,7 @@ const AssignAddOnModal = ({ isOpen, onClose, onAssign, addons, loading }) => {
     addon_id: '',
     start_date: new Date().toISOString().split('T')[0],
     amount_paid: '0',
+    discount_applied: '0',  // ✅ DISCOUNT FIELD
     payment_method: 'cash',
     notes: ''
   });
@@ -245,7 +246,8 @@ const AssignAddOnModal = ({ isOpen, onClose, onAssign, addons, loading }) => {
     if (isOpen) {
       setFormData(prev => ({
         ...prev,
-        start_date: new Date().toISOString().split('T')[0]
+        start_date: new Date().toISOString().split('T')[0],
+        discount_applied: '0'
       }));
     }
   }, [isOpen]);
@@ -290,6 +292,11 @@ const AssignAddOnModal = ({ isOpen, onClose, onAssign, addons, loading }) => {
     setFormData(prev => ({ ...prev, member_search: '' }));
   };
 
+  // Get selected addon details
+  const selectedAddon = addons.find(a => a.id.toString() === formData.addon_id);
+  const discountAmount = parseFloat(formData.discount_applied) || 0;
+  const effectivePrice = selectedAddon ? Math.max(0, selectedAddon.price - discountAmount) : 0;
+
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
@@ -303,12 +310,26 @@ const AssignAddOnModal = ({ isOpen, onClose, onAssign, addons, loading }) => {
       toast.error('Please select an add-on');
       return;
     }
+    
+    // ✅ Validate discount
+    const discount = parseFloat(formData.discount_applied) || 0;
+    if (selectedAddon && discount > selectedAddon.price) {
+      toast.error(`Discount cannot exceed add-on price of ₹${selectedAddon.price}`);
+      return;
+    }
+
+    const amountPaid = parseFloat(formData.amount_paid) || 0;
+    if (amountPaid > effectivePrice) {
+      toast.error(`Amount paid cannot exceed effective price of ₹${effectivePrice}`);
+      return;
+    }
 
     onAssign({
       member_id: selectedMember.id,
       addon_id: parseInt(formData.addon_id),
       start_date: formData.start_date,
-      amount_paid: parseFloat(formData.amount_paid) || 0,
+      amount_paid: amountPaid,
+      discount_applied: discount,  // ✅ Include discount
       payment_method: formData.payment_method,
       notes: formData.notes
     });
@@ -322,8 +343,6 @@ const AssignAddOnModal = ({ isOpen, onClose, onAssign, addons, loading }) => {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
-
-  const selectedAddon = addons.find(a => a.id.toString() === formData.addon_id);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -448,82 +467,126 @@ const AssignAddOnModal = ({ isOpen, onClose, onAssign, addons, loading }) => {
           </div>
 
           {selectedAddon && (
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Price:</span>
-                <span className="font-semibold text-gray-900">₹{selectedAddon.price}</span>
+            <>
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Price:</span>
+                  <span className="font-semibold text-gray-900">₹{selectedAddon.price}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Type:</span>
+                  <span className="font-medium">
+                    {selectedAddon.is_recurring ? 'Recurring' : 'One-time'}
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Type:</span>
-                <span className="font-medium">
-                  {selectedAddon.is_recurring ? 'Recurring' : 'One-time'}
-                </span>
+
+              {/* ✅ DISCOUNT FIELD */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Discount (₹)
+                </label>
+                <input
+                  type="number"
+                  name="discount_applied"
+                  value={formData.discount_applied}
+                  onChange={handleChange}
+                  min="0"
+                  max={selectedAddon.price}
+                  step="1"
+                  placeholder="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Discount to apply for this member. Cannot exceed ₹{selectedAddon.price}.
+                </p>
               </div>
-            </div>
+
+              {/* ✅ Show effective price after discount */}
+              {discountAmount > 0 && (
+                <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Original Price:</span>
+                    <span className="font-medium text-gray-900">₹{selectedAddon.price}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Discount:</span>
+                    <span className="font-medium text-green-600">-₹{discountAmount}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold pt-2 border-t border-green-200">
+                    <span className="text-gray-700">Effective Price:</span>
+                    <span className="text-green-700">₹{effectivePrice}</span>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Amount Paid Now (₹)
+                </label>
+                <input
+                  type="number"
+                  name="amount_paid"
+                  value={formData.amount_paid}
+                  onChange={handleChange}
+                  min="0"
+                  max={effectivePrice}
+                  step="1"
+                  placeholder="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Max: ₹{effectivePrice} (effective price after discount)
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Method
+                </label>
+                <select
+                  name="payment_method"
+                  value={formData.payment_method}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+                >
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="online">Online</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Date *
+                </label>
+                <input
+                  type="date"
+                  name="start_date"
+                  value={formData.start_date}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  name="notes"
+                  value={formData.notes}
+                  onChange={handleChange}
+                  rows="2"
+                  placeholder="Additional notes..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none resize-none"
+                />
+              </div>
+            </>
           )}
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Start Date *
-            </label>
-            <input
-              type="date"
-              name="start_date"
-              value={formData.start_date}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Amount Paid (₹)
-            </label>
-            <input
-              type="number"
-              name="amount_paid"
-              value={formData.amount_paid}
-              onChange={handleChange}
-              min="0"
-              step="1"
-              placeholder="0"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-            />
-            <p className="text-xs text-gray-400 mt-1">Amount already paid for this add-on</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Payment Method
-            </label>
-            <select
-              name="payment_method"
-              value={formData.payment_method}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-            >
-              <option value="cash">Cash</option>
-              <option value="card">Card</option>
-              <option value="upi">UPI</option>
-              <option value="bank_transfer">Bank Transfer</option>
-              <option value="online">Online</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes
-            </label>
-            <textarea
-              name="notes"
-              value={formData.notes}
-              onChange={handleChange}
-              rows="2"
-              placeholder="Additional notes..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none resize-none"
-            />
-          </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t">
             <button
@@ -536,7 +599,7 @@ const AssignAddOnModal = ({ isOpen, onClose, onAssign, addons, loading }) => {
             </button>
             <button
               type="submit"
-              disabled={loading || !selectedMember}
+              disabled={loading || !selectedMember || !formData.addon_id}
               className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {loading ? (
@@ -617,6 +680,12 @@ const PaymentModal = ({ isOpen, onClose, onPay, memberAddon, loading }) => {
               <span className="text-gray-500">Total Price:</span>
               <span className="font-medium text-gray-900">₹{memberAddon.price}</span>
             </div>
+            {memberAddon.discount_applied > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Discount:</span>
+                <span className="font-medium text-green-600">-₹{memberAddon.discount_applied}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Amount Paid:</span>
               <span className="font-medium text-green-600">₹{memberAddon.amount_paid}</span>
@@ -701,7 +770,7 @@ const PaymentModal = ({ isOpen, onClose, onPay, memberAddon, loading }) => {
 };
 
 // ============================================================
-// RENEW ADD-ON MODAL
+// RENEW ADD-ON MODAL - UPDATED WITH DISCOUNT SUPPORT
 // ============================================================
 const RenewAddOnModal = ({ isOpen, onClose, onRenew, memberAddon, addons, loading }) => {
   const [months, setMonths] = useState(1);
@@ -709,11 +778,19 @@ const RenewAddOnModal = ({ isOpen, onClose, onRenew, memberAddon, addons, loadin
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [notes, setNotes] = useState('');
 
-  // Prefer the live catalog price (it may have changed since assignment);
-  // fall back to whatever price is stored on the assignment itself.
   const catalogAddon = addons.find(a => a.id === memberAddon?.addon_id);
   const perMonthPrice = catalogAddon?.price ?? memberAddon?.price ?? 0;
   const renewalCost = perMonthPrice * months;
+  
+  // Calculate discount percentage from original assignment
+  const discountPercentage = memberAddon?.price > 0 && memberAddon?.discount_applied > 0
+    ? (memberAddon.discount_applied / memberAddon.price) * 100
+    : 0;
+  
+  const discountOnRenewal = discountPercentage > 0 
+    ? Math.round((renewalCost * (discountPercentage / 100)) * 100) / 100
+    : 0;
+  const effectiveCost = renewalCost - discountOnRenewal;
 
   useEffect(() => {
     if (isOpen && memberAddon) {
@@ -733,8 +810,8 @@ const RenewAddOnModal = ({ isOpen, onClose, onRenew, memberAddon, addons, loadin
       return;
     }
     const amount = amountPaid === '' ? 0 : parseFloat(amountPaid);
-    if (amount < 0 || amount > renewalCost) {
-      toast.error(`Amount paid must be between 0 and ₹${renewalCost}`);
+    if (amount < 0 || amount > effectiveCost) {
+      toast.error(`Amount paid must be between 0 and ₹${effectiveCost}`);
       return;
     }
     onRenew({
@@ -799,10 +876,21 @@ const RenewAddOnModal = ({ isOpen, onClose, onRenew, memberAddon, addons, loadin
               <span className="text-gray-500">Price / month:</span>
               <span className="font-medium text-gray-900">₹{perMonthPrice}</span>
             </div>
+            {discountPercentage > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Discount ({discountPercentage.toFixed(0)}%):</span>
+                <span className="font-medium text-green-600">-₹{discountOnRenewal}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-200">
-              <span className="text-gray-700">Renewal Cost ({months || 0} mo):</span>
-              <span className="text-orange-600">₹{renewalCost}</span>
+              <span className="text-gray-700">Effective Cost ({months || 0} mo):</span>
+              <span className="text-orange-600">₹{effectiveCost}</span>
             </div>
+            {discountPercentage > 0 && (
+              <p className="text-xs text-green-600 mt-1">
+                💰 Same discount percentage ({discountPercentage.toFixed(0)}%) applied from original assignment
+              </p>
+            )}
           </div>
 
           <div>
@@ -814,9 +902,9 @@ const RenewAddOnModal = ({ isOpen, onClose, onRenew, memberAddon, addons, loadin
               value={amountPaid}
               onChange={(e) => setAmountPaid(e.target.value)}
               min="0"
-              max={renewalCost}
+              max={effectiveCost}
               step="1"
-              placeholder={`0 - ${renewalCost}`}
+              placeholder={`0 - ${effectiveCost}`}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
             />
             <p className="text-xs text-gray-400 mt-1">Leave as 0 to renew now and collect payment later.</p>
@@ -938,6 +1026,11 @@ const RenewalNotificationsBanner = ({ renewalsDue, onRenewClick, onDismiss }) =>
                   ) : (
                     <span className="text-amber-600 font-medium">
                       Expires in {item.days_left} day{item.days_left === 1 ? '' : 's'}
+                    </span>
+                  )}
+                  {item.discount_applied > 0 && (
+                    <span className="ml-2 text-green-600 font-medium">
+                      (₹{item.discount_applied} discount)
                     </span>
                   )}
                 </p>
@@ -1247,12 +1340,8 @@ const AddOns = () => {
     }
   };
 
-  // Open the renew modal for a given member-addon. Used both from the
-  // assignments table (member already selected) and from the notifications
-  // banner (may belong to a different member — switch context to them first).
+  // Open the renew modal for a given member-addon
   const openRenewModal = (rawItem) => {
-    // Normalize: rows from the assignments table use `id`, rows from the
-    // renewals-due notification feed use `member_addon_id`.
     const memberAddon = {
       ...rawItem,
       id: rawItem.id ?? rawItem.member_addon_id
@@ -1528,7 +1617,7 @@ const AddOns = () => {
         </div>
       )}
 
-      {/* Assignments View - Updated with Member Search */}
+      {/* Assignments View */}
       {viewMode === 'assignments' && selectedMemberId && selectedMember && (
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 border-b border-purple-200">
@@ -1573,18 +1662,23 @@ const AddOns = () => {
           {(() => {
             const memberAddonsList = memberAddons[selectedMemberId] || [];
             const totalPrice = memberAddonsList.reduce((sum, a) => sum + a.price, 0);
+            const totalDiscount = memberAddonsList.reduce((sum, a) => sum + (a.discount_applied || 0), 0);
             const totalPaid = memberAddonsList.reduce((sum, a) => sum + a.amount_paid, 0);
             const totalBalance = memberAddonsList.reduce((sum, a) => sum + a.balance_due, 0);
             
             return (
-              <div className="grid grid-cols-3 gap-3 p-4 bg-gray-50 border-b">
+              <div className="grid grid-cols-4 gap-3 p-4 bg-gray-50 border-b">
                 <div className="text-center">
                   <p className="text-xs text-gray-500">Total Price</p>
                   <p className="text-lg font-bold text-gray-900">{formatCurrency(totalPrice)}</p>
                 </div>
                 <div className="text-center">
+                  <p className="text-xs text-gray-500">Total Discount</p>
+                  <p className="text-lg font-bold text-green-600">{formatCurrency(totalDiscount)}</p>
+                </div>
+                <div className="text-center">
                   <p className="text-xs text-gray-500">Total Paid</p>
-                  <p className="text-lg font-bold text-green-600">{formatCurrency(totalPaid)}</p>
+                  <p className="text-lg font-bold text-blue-600">{formatCurrency(totalPaid)}</p>
                 </div>
                 <div className="text-center">
                   <p className="text-xs text-gray-500">Total Balance</p>
@@ -1603,6 +1697,7 @@ const AddOns = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Add-On</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -1613,7 +1708,7 @@ const AddOns = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {(memberAddons[selectedMemberId] || []).length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan="9" className="px-6 py-8 text-center text-gray-500">
                       <Package className="h-12 w-12 text-gray-300 mx-auto mb-2" />
                       No add-ons assigned to this member
                     </td>
@@ -1633,7 +1728,14 @@ const AddOns = () => {
                         <span className="text-sm font-semibold text-gray-900">{formatCurrency(ma.price)}</span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-sm text-green-600">{formatCurrency(ma.amount_paid)}</span>
+                        {ma.discount_applied > 0 ? (
+                          <span className="text-sm font-semibold text-green-600">-{formatCurrency(ma.discount_applied)}</span>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm text-blue-600">{formatCurrency(ma.amount_paid)}</span>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`text-sm font-semibold ${ma.balance_due > 0 ? 'text-orange-600' : 'text-green-600'}`}>
@@ -1687,10 +1789,10 @@ const AddOns = () => {
                                 setSelectedMemberAddon(ma);
                                 setShowPaymentModal(true);
                               }}
-                              className="text-blue-600 hover:text-blue-900 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                              className="text-blue-600 hover:text-blue-900 px-2 py-1 rounded hover:bg-blue-50 transition-colors text-xs"
                               title="Make Payment"
                             >
-                              <CreditCard className="h-4 w-4 inline mr-1" />
+                              <CreditCard className="h-3 w-3 inline mr-1" />
                               Pay
                             </button>
                           )}
@@ -1703,10 +1805,10 @@ const AddOns = () => {
                           {(ma.status === 'active' || ma.status === 'expired') && (
                             <button
                               onClick={() => openRenewModal(ma)}
-                              className="text-orange-600 hover:text-orange-900 px-2 py-1 rounded hover:bg-orange-50 transition-colors"
+                              className="text-orange-600 hover:text-orange-900 px-2 py-1 rounded hover:bg-orange-50 transition-colors text-xs"
                               title="Renew Add-On"
                             >
-                              <RotateCw className="h-4 w-4 inline mr-1" />
+                              <RotateCw className="h-3 w-3 inline mr-1" />
                               Renew
                             </button>
                           )}
