@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH GRANULAR PERMISSIONS & PT PAGE
+// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH WHATSAPP NOTIFICATIONS PAGE
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -43,6 +43,7 @@ import DietPlans from './DietPlans';
 import FollowUpPage from '../components/FollowUpPage';
 import AddOns from './AddOns';
 import PTPage from './PTPage';
+import WhatsAppNotifications from './WhatsAppNotifications';
 
 const AUTO_REFRESH_INTERVAL = 60000;
 
@@ -134,6 +135,13 @@ const Dashboard = () => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
+  // NOTE: previously this was populated only from localStorage.getItem('userRole')
+  // in a useEffect below. If that key was never set (or named differently) at
+  // login time, `userRole` stayed null forever and `isAdmin` was permanently
+  // false for gym owners, causing "Access Denied" on admin-only screens like
+  // WhatsApp Notifications. We now seed it directly from the auth context's
+  // `user.role`, which is always populated correctly, and keep localStorage
+  // only as a fallback for the (rare) case `user` hasn't loaded yet.
   const [userRole, setUserRole] = useState(null);
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [selectedMemberId, setSelectedMemberId] = useState(null);
@@ -156,7 +164,8 @@ const Dashboard = () => {
   
   // Can the user see the dashboard at all?
   const canViewDashboard = hasPermission('view_dashboard');
-  const isAdmin = userRole === 'gym_owner' || userRole === 'super_admin';
+  const effectiveRole = user?.role || userRole;
+  const isAdmin = effectiveRole === 'gym_owner' || effectiveRole === 'super_admin';
   
   // Card-level permissions (these determine which cards are shown)
   const canViewMemberStats = isAdmin || hasPermission('dashboard_view_member_stats') || hasPermission('view_members');
@@ -170,6 +179,7 @@ const Dashboard = () => {
   const canViewBirthdays = isAdmin || hasPermission('dashboard_view_birthdays');
   const canViewActivity = isAdmin || hasPermission('dashboard_view_activity');
   const canViewAlerts = isAdmin || hasPermission('dashboard_view_alerts');
+  
   // Navigation permissions
   const canViewMembers = isAdmin || hasPermission('view_members');
   const canViewPayments = isAdmin || hasPermission('view_payments');
@@ -180,6 +190,9 @@ const Dashboard = () => {
   const canViewAttendance = isAdmin || hasPermission('view_attendance');
   const canViewDevices = isAdmin || hasPermission('view_devices');
   const canViewLeads = isAdmin || hasPermission('view_leads');
+  
+  // WhatsApp permissions - gym owners always have access
+  const canViewWhatsApp = isAdmin || hasPermission('view_whatsapp') || hasPermission('manage_whatsapp');
 
   const canSeeDashboard = isAdmin || canViewDashboard || hasPermission('view_members') || hasPermission('view_payments') || hasPermission('view_attendance');
   const canSeeMembers = isAdmin || canViewMembers;
@@ -191,13 +204,21 @@ const Dashboard = () => {
   const canSeeAttendance = isAdmin || canViewAttendance;
   const canSeeDevices = isAdmin || canViewDevices;
   const canSeeLeads = isAdmin || canViewLeads;
+  const canSeeWhatsApp = isAdmin || canViewWhatsApp;
 
   useEffect(() => {
-    const storedRole = localStorage.getItem('userRole');
-    if (storedRole) {
-      setUserRole(storedRole);
+    if (user?.role) {
+      // Authoritative source: the logged-in user object from AuthContext.
+      setUserRole(user.role);
+      localStorage.setItem('userRole', user.role);
+    } else {
+      // Fallback only for the brief window before `user` has loaded.
+      const storedRole = localStorage.getItem('userRole');
+      if (storedRole) {
+        setUserRole(storedRole);
+      }
     }
-  }, []);
+  }, [user]);
 
   const [stats, setStats] = useState({
     totalMembers: 0,
@@ -255,7 +276,9 @@ const Dashboard = () => {
     hasPermission('view_staff') ||
     hasPermission('view_expenses') ||
     hasPermission('view_leads') ||
-    hasPermission('view_dashboard');
+    hasPermission('view_dashboard') ||
+    hasPermission('view_whatsapp') ||
+    hasPermission('manage_whatsapp');
 
   // ─── FETCH FOLLOWUPS COUNT ──────────────────────────────────────────────
   const fetchFollowupsCount = useCallback(async () => {
@@ -947,6 +970,17 @@ const Dashboard = () => {
       });
     }
     nav.push({ name: 'WhatsApp Logs', icon: MessageSquare, id: 'whatsapp-logs', section: 'reports' });
+    
+    // ✅ WhatsApp Notifications Page - Always show for gym owners and users with WhatsApp permissions
+    // For gym owners, this should always be visible
+    // if (canSeeWhatsApp) {
+      nav.push({ 
+        name: 'WhatsApp Notifications', 
+        icon: Send, 
+        id: 'whatsapp-notifications',
+        section: 'reports'
+      });
+    // }
     
     return nav;
   };
@@ -2434,6 +2468,7 @@ const Dashboard = () => {
           {activeTab === 'trainer-schedule' && <TrainerSchedule />}
           {activeTab === 'historical-invoices' && <HistoricalInvoices />}
           {activeTab === 'whatsapp-logs' && <WhatsAppLogs />}
+          {activeTab === 'whatsapp-notifications' && canSeeWhatsApp && <WhatsAppNotifications />}
           {activeTab === 'classes' && (
             <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
               <CalendarIcon className="h-16 w-16 text-blue-300 mx-auto mb-4" />
@@ -2455,6 +2490,14 @@ const Dashboard = () => {
               <Shield className="h-16 w-16 text-red-300 mx-auto mb-4" />
               <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
               <p className="text-gray-500 mt-2">You don't have permission to view this page.</p>
+            </div>
+          )}
+          
+          {activeTab === 'whatsapp-notifications' && !canSeeWhatsApp && (
+            <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+              <Shield className="h-16 w-16 text-red-300 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
+              <p className="text-gray-500 mt-2">You don't have permission to view WhatsApp notifications. This feature is only available for Gym Owners.</p>
             </div>
           )}
         </div>
