@@ -161,7 +161,9 @@ export const CacheProvider = ({ children }) => {
       CACHE_KEYS.MEMBER_PT_DATA,
       CACHE_KEYS.MEMBER_BALANCES,
       CACHE_KEYS.DASHBOARD_STATS,
+      CACHE_KEYS.DASHBOARD_STATS_OPTIMIZED,
       CACHE_KEYS.DASHBOARD_BALANCE_OVERVIEW,
+      CACHE_KEYS.DASHBOARD_REVENUE,
       CACHE_KEYS.PAYMENTS_LIST,
     ];
     patternsToClear.forEach(pattern => {
@@ -176,11 +178,15 @@ export const CacheProvider = ({ children }) => {
     dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: CACHE_KEYS.MEMBER_PT_DATA });
     dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: CACHE_KEYS.MEMBER_BALANCES });
     dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: CACHE_KEYS.DASHBOARD_STATS });
+    dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: CACHE_KEYS.DASHBOARD_STATS_OPTIMIZED });
+    dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: CACHE_KEYS.DASHBOARD_REVENUE });
   }, []);
 
   const invalidatePaymentsCache = useCallback(() => {
     dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: CACHE_KEYS.PAYMENTS_LIST });
     dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: CACHE_KEYS.DASHBOARD_STATS });
+    dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: CACHE_KEYS.DASHBOARD_STATS_OPTIMIZED });
+    dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: CACHE_KEYS.DASHBOARD_REVENUE });
   }, []);
 
   const value = useMemo(() => ({
@@ -193,6 +199,7 @@ export const CacheProvider = ({ children }) => {
     invalidateCache,
     invalidateMembersCache,
     invalidatePaymentsCache,
+    CACHE_KEYS, // ✅ Expose CACHE_KEYS through context
   }), [cache, setCache, getCache, clearCache, clearCachePattern, clearAllCache, invalidateCache, invalidateMembersCache, invalidatePaymentsCache]);
 
   return <CacheContext.Provider value={value}>{children}</CacheContext.Provider>;
@@ -207,7 +214,9 @@ export const useCache = () => {
   return context;
 };
 
-// Cache keys constants
+// ============================================================
+// ✅ CACHE KEYS - SINGLE SOURCE OF TRUTH (NO DUPLICATES)
+// ============================================================
 export const CACHE_KEYS = {
   // Staff
   STAFF_LIST: 'staff_list',
@@ -218,17 +227,53 @@ export const CACHE_KEYS = {
   MEMBER_STATS: 'member_stats',
   MEMBER_PT_DATA: 'member_pt_data',
   MEMBER_BALANCES: 'member_balances',
+  MEMBER_DETAIL: 'member_detail',
   
   // Payments
   PAYMENTS_LIST: 'payments_list',
+  PAYMENT_DETAIL: 'payment_detail',
   
   // Dashboard
   DASHBOARD_STATS: 'dashboard_stats',
+  DASHBOARD_STATS_OPTIMIZED: 'dashboard_stats_optimized',
   DASHBOARD_BALANCE_OVERVIEW: 'dashboard_balance_overview',
+  DASHBOARD_REVENUE: 'dashboard_revenue',
   
   // Other
   DEVICES_LIST: 'devices_list',
   LEADS_LIST: 'leads_list',
+  LEAD_DETAIL: 'lead_detail',
   PLANS_LIST: 'plans_list',
+  MEMBERSHIP_PLANS: 'membership_plans',
   EXPENSES_LIST: 'expenses_list',
+  EXPENSE_DETAIL: 'expense_detail',
+  
+  // Attendance
+  ATTENDANCE_LIST: 'attendance_list',
+  ATTENDANCE_TODAY: 'attendance_today',
+  
+  // Add-ons
+  ADDONS_LIST: 'addons_list',
+  MEMBER_ADDONS: 'member_addons',
+  
+  // PT (Personal Training)
+  PT_SESSIONS: 'pt_sessions',
+  PT_SESSION_DETAIL: 'pt_session_detail',
+  
+  // Diet Plans
+  DIET_PLANS: 'diet_plans',
+  MEMBER_DIET_PLANS: 'member_diet_plans',
+  
+  // WhatsApp
+  WHATSAPP_LOGS: 'whatsapp_logs',
+  WHATSAPP_STATS: 'whatsapp_stats',
+  
+  // Follow-ups
+  FOLLOWUPS_TODAY: 'followups_today',
+  
+  // Trainer Schedule
+  TRAINER_SCHEDULE: 'trainer_schedule',
+  
+  // Historical Invoices
+  HISTORICAL_INVOICES: 'historical_invoices',
 };

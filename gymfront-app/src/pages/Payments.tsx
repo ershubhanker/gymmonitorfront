@@ -410,15 +410,28 @@ const Payments = () => {
 
   // ===== SINGLE PAYMENT DELETE =====
   const handleSingleDelete = async (paymentId, paymentAmount, memberName) => {
-    if (!window.confirm(`Are you sure you want to delete the payment of ${formatCurrency(paymentAmount)} for ${memberName}?\n\nThis action cannot be undone and will update the member's balance.`)) {
+    if (!window.confirm(
+      `Are you sure you want to delete the payment of ${formatCurrency(paymentAmount)} for ${memberName}?\n\n` +
+      `This action cannot be undone and will update the member's balance.`
+    )) {
       return;
     }
-
+  
     setDeleting(true);
     try {
-      await api.delete(`/gym/payments/${paymentId}`);
-      toast.success(`Payment of ${formatCurrency(paymentAmount)} deleted successfully`);
-      await fetchPayments();
+      const response = await api.delete(`/gym/payments/${paymentId}`);
+      
+      if (response.data) {
+        toast.success(`Payment of ${formatCurrency(paymentAmount)} deleted successfully`);
+        
+        // ✅ Refresh the payments list
+        await fetchPayments();
+        
+        // ✅ Dispatch event to refresh dashboard (member data stays intact)
+        window.dispatchEvent(new CustomEvent('paymentDeleted', { 
+          detail: { paymentId, memberId: response.data.member_id }
+        }));
+      }
     } catch (error) {
       console.error('Error deleting payment:', error);
       toast.error(error.response?.data?.detail || 'Failed to delete payment');

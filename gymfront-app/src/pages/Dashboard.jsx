@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH HIDE/SHOW TOGGLE
+// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH FIXED REVENUE AND NET PROFIT
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -135,19 +135,11 @@ const Dashboard = () => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
-  // NEW: Toggle state for hiding/showing sensitive values
+  // Toggle state for hiding/showing sensitive values
   const [hideValues, setHideValues] = useState(() => {
-    // Load from localStorage if available
     const saved = localStorage.getItem('gymmonitor_hide_values');
     return saved ? JSON.parse(saved) : false;
   });
-  // NOTE: previously this was populated only from localStorage.getItem('userRole')
-  // in a useEffect below. If that key was never set (or named differently) at
-  // login time, `userRole` stayed null forever and `isAdmin` was permanently
-  // false for gym owners, causing "Access Denied" on admin-only screens like
-  // WhatsApp Notifications. We now seed it directly from the auth context's
-  // `user.role`, which is always populated correctly, and keep localStorage
-  // only as a fallback for the (rare) case `user` hasn't loaded yet.
   const [userRole, setUserRole] = useState(null);
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [selectedMemberId, setSelectedMemberId] = useState(null);
@@ -166,14 +158,10 @@ const Dashboard = () => {
   const userButtonRef = useRef(null);
 
   // ─── PERMISSION CHECKS FOR DASHBOARD CARDS ──────────────────────────────
-  // These determine which cards are visible on the dashboard
-  
-  // Can the user see the dashboard at all?
   const canViewDashboard = hasPermission('view_dashboard');
   const effectiveRole = user?.role || userRole;
   const isAdmin = effectiveRole === 'gym_owner' || effectiveRole === 'super_admin';
   
-  // Card-level permissions (these determine which cards are shown)
   const canViewMemberStats = isAdmin || hasPermission('dashboard_view_member_stats') || hasPermission('view_members');
   const canViewRevenueStats = isAdmin || hasPermission('dashboard_view_revenue_stats') || hasPermission('view_payments');
   const canViewExpenseStats = isAdmin || hasPermission('dashboard_view_expense_stats') || hasPermission('view_expenses');
@@ -186,7 +174,6 @@ const Dashboard = () => {
   const canViewActivity = isAdmin || hasPermission('dashboard_view_activity');
   const canViewAlerts = isAdmin || hasPermission('dashboard_view_alerts');
   
-  // Navigation permissions
   const canViewMembers = isAdmin || hasPermission('view_members');
   const canViewPayments = isAdmin || hasPermission('view_payments');
   const canViewMemberships = isAdmin || hasPermission('view_memberships');
@@ -197,7 +184,6 @@ const Dashboard = () => {
   const canViewDevices = isAdmin || hasPermission('view_devices');
   const canViewLeads = isAdmin || hasPermission('view_leads');
   
-  // WhatsApp permissions - gym owners always have access
   const canViewWhatsApp = isAdmin || hasPermission('view_whatsapp') || hasPermission('manage_whatsapp');
 
   const canSeeDashboard = isAdmin || canViewDashboard || hasPermission('view_members') || hasPermission('view_payments') || hasPermission('view_attendance');
@@ -214,11 +200,9 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (user?.role) {
-      // Authoritative source: the logged-in user object from AuthContext.
       setUserRole(user.role);
       localStorage.setItem('userRole', user.role);
     } else {
-      // Fallback only for the brief window before `user` has loaded.
       const storedRole = localStorage.getItem('userRole');
       if (storedRole) {
         setUserRole(storedRole);
@@ -273,8 +257,6 @@ const Dashboard = () => {
   const [membersWithBalanceList, setMembersWithBalanceList] = useState([]);
   const [recentLeads, setRecentLeads] = useState([]);
 
-  // ─── PERMISSION CHECK: Can user access the dashboard? ────────────────────
-  // If user has NO permissions at all, redirect to a simple page
   const hasAnyPermission = isAdmin || 
     hasPermission('view_members') || 
     hasPermission('view_payments') || 
@@ -302,7 +284,6 @@ const Dashboard = () => {
     }
   }, [canSeeLeads]);
 
-  // ─── FETCH WHATSAPP LOGS ────────────────────────────────────────────────
   const fetchWhatsAppLogs = useCallback(async (date) => {
     try {
       const response = await api.get(`/whatsapp/logs?limit=100&start_date=${date}T00:00:00&end_date=${date}T23:59:59`);
@@ -409,10 +390,8 @@ const Dashboard = () => {
   // ─── HELPER: Format masked value ────────────────────────────────────────
   const formatMaskedValue = (value, showValue) => {
     if (!showValue) {
-      // Return masked version based on value type
       if (typeof value === 'number') {
         if (value > 0) {
-          // For currency values: show ****
           return '****';
         }
         return 0;
@@ -427,8 +406,18 @@ const Dashboard = () => {
     if (!silent) setLoading(true);
     
     try {
-      const cachedStats = getCache(CACHE_KEYS.DASHBOARD_STATS);
-      if (cachedStats && !silent) {
+      // Check if cache needs invalidation due to payment deletion
+      const cacheInvalidated = sessionStorage.getItem('dashboard_cache_invalidated');
+      const forceRefresh = cacheInvalidated === 'true';
+      
+      if (forceRefresh) {
+        sessionStorage.removeItem('dashboard_cache_inválidated');
+        console.log('🔄 Force refresh - cache invalidated');
+      }
+      
+      const cachedStats = !forceRefresh ? getCache(CACHE_KEYS.DASHBOARD_STATS) : null;
+      
+      if (cachedStats && !silent && !forceRefresh) {
         console.log('📊 Using cached dashboard stats');
         setStats(prev => ({ ...prev, ...cachedStats }));
       }
@@ -581,35 +570,41 @@ const Dashboard = () => {
   
       const currentYear = new Date().getFullYear();
       
-      const totalRevenue = payments
-        .filter(p => {
-          const paymentDate = p.payment_date ? new Date(p.payment_date) : null;
-          return paymentDate && paymentDate.getFullYear() === currentYear;
-        })
-        .reduce((sum, p) => sum + (p.amount || 0), 0);
+      // ✅ FIX: Calculate total revenue from ALL payments (including addon and PT)
+      const allPayments = payments || [];
       
-      const monthlyRevenue = payments
-        .filter(p => {
-          if (!p.payment_date) return false;
-          const paymentDate = new Date(p.payment_date);
-          const today = new Date();
-          return paymentDate.getMonth() === today.getMonth() && 
-                 paymentDate.getFullYear() === today.getFullYear();
-        })
-        .reduce((sum, p) => sum + (p.amount || 0), 0);
+      // Filter payments for current year
+      const yearlyPayments = allPayments.filter(p => {
+        const paymentDate = p.payment_date ? new Date(p.payment_date) : null;
+        return paymentDate && paymentDate.getFullYear() === currentYear;
+      });
+      
+      const totalRevenue = yearlyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      
+      // ✅ FIX: Calculate monthly revenue from ALL payments (including addon and PT)
+      const now = new Date();
+      const monthlyPayments = allPayments.filter(p => {
+        if (!p.payment_date) return false;
+        const paymentDate = new Date(p.payment_date);
+        return paymentDate.getMonth() === now.getMonth() && 
+               paymentDate.getFullYear() === now.getFullYear();
+      });
+      
+      const monthlyRevenue = monthlyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
       
       const todayDate = new Date();
       const firstDayOfCurrentMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
       const firstDayOfLastMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
       const lastDayOfLastMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 0);
       
-      const lastMonthRevenue = payments
-        .filter(p => {
-          if (!p.payment_date) return false;
-          const paymentDate = new Date(p.payment_date);
-          return paymentDate >= firstDayOfLastMonth && paymentDate <= lastDayOfLastMonth;
-        })
-        .reduce((sum, p) => sum + (p.amount || 0), 0);
+      // ✅ FIX: Calculate last month revenue from ALL payments
+      const lastMonthPayments = allPayments.filter(p => {
+        if (!p.payment_date) return false;
+        const paymentDate = new Date(p.payment_date);
+        return paymentDate >= firstDayOfLastMonth && paymentDate <= lastDayOfLastMonth;
+      });
+      
+      const lastMonthRevenue = lastMonthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
       
       const revenueGrowth = lastMonthRevenue > 0 
         ? ((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue * 100)
@@ -814,6 +809,11 @@ const Dashboard = () => {
       upcomingBirthdays.members.sort((a, b) => a.daysUntil - b.daysUntil);
       upcomingBirthdays.staff.sort((a, b) => a.daysUntil - b.daysUntil);
   
+      // ✅ FIX: Calculate net profit and profit margin from monthly revenue and expenses
+      const monthlyExpenses = statsApiData.monthly_expenses || 0;
+      const netProfit = monthlyRevenue - monthlyExpenses;
+      const profitMargin = monthlyRevenue > 0 ? (netProfit / monthlyRevenue * 100) : 0;
+  
       const newStats = {
         totalMembers,
         activeMembers,
@@ -827,10 +827,10 @@ const Dashboard = () => {
         totalRevenue,
         revenueGrowth: parseFloat(revenueGrowth.toFixed(1)),
         totalExpenses: statsApiData.total_expenses || 0,
-        monthlyExpenses: statsApiData.monthly_expenses || 0,
+        monthlyExpenses: monthlyExpenses,
         expenseGrowth: statsApiData.expense_growth || 0,
-        netProfit: statsApiData.net_profit || 0,
-        profitMargin: statsApiData.profit_margin || 0,
+        netProfit: netProfit,
+        profitMargin: parseFloat(profitMargin.toFixed(1)),
         expenseByCategory: statsApiData.expense_by_category || {},
         totalBalanceDue: balanceOverview.total_balance_due || 0,
         membersWithBalance: balanceOverview.members_with_balance || 0,
@@ -869,11 +869,16 @@ const Dashboard = () => {
   }, [canSeeDashboard, canSeeMembers, canSeePayments, canSeeMemberships, canSeeStaff, canSeeBalances, canSeeLeads, getCache, setCache]);
 
   const refreshDashboard = useCallback(() => {
+    // Clear all dashboard-related cache
     clearCachePattern(CACHE_KEYS.DASHBOARD_STATS);
     clearCachePattern(CACHE_KEYS.DASHBOARD_BALANCE_OVERVIEW);
     clearCachePattern(CACHE_KEYS.PAYMENTS_LIST);
     clearCachePattern(CACHE_KEYS.MEMBER_BALANCES);
     invalidateCache();
+    
+    // Set flag to force fresh data fetch
+    sessionStorage.setItem('dashboard_cache_invalidated', 'true');
+    
     fetchDashboardData(false);
     fetchFollowupsCount();
   }, [clearCachePattern, invalidateCache, fetchDashboardData, fetchFollowupsCount]);
@@ -883,14 +888,18 @@ const Dashboard = () => {
       refreshDashboard();
     };
 
-    // ✅ Listen for every kind of member/payment/lead mutation so the
-    // Dashboard refreshes itself live, without the user needing to
-    // manually reload the page or switch tabs.
+    const handleDataChanged = (event) => {
+      console.log('🔄 Data changed event received:', event.detail);
+      refreshDashboard();
+    };
+
     window.addEventListener('memberAdded', handleDataChange);
     window.addEventListener('memberUpdated', handleDataChange);
     window.addEventListener('memberDeleted', handleDataChange);
     window.addEventListener('paymentAdded', handleDataChange);
     window.addEventListener('paymentUpdated', handleDataChange);
+    window.addEventListener('paymentDeleted', handleDataChange);
+    window.addEventListener('dataChanged', handleDataChanged);
     window.addEventListener('leadAdded', handleDataChange);
     window.addEventListener('leadUpdated', handleDataChange);
     
@@ -900,6 +909,8 @@ const Dashboard = () => {
       window.removeEventListener('memberDeleted', handleDataChange);
       window.removeEventListener('paymentAdded', handleDataChange);
       window.removeEventListener('paymentUpdated', handleDataChange);
+      window.removeEventListener('paymentDeleted', handleDataChange);
+      window.removeEventListener('dataChanged', handleDataChanged);
       window.removeEventListener('leadAdded', handleDataChange);
       window.removeEventListener('leadUpdated', handleDataChange);
     };
@@ -954,8 +965,6 @@ const Dashboard = () => {
     }
     nav.push({ name: 'Membership Plans', icon: Dumbbell, id: 'membership-plans', section: 'management' });
     nav.push({ name: 'Add-Ons', icon: Tag, id: 'addons', section: 'management' });
-    
-    // ✅ PT Page
     nav.push({ name: 'Personal Training', icon: Dumbbell, id: 'pt', section: 'management' });
     
     if (canSeeBalances) {
@@ -1001,17 +1010,12 @@ const Dashboard = () => {
       });
     }
     nav.push({ name: 'WhatsApp Logs', icon: MessageSquare, id: 'whatsapp-logs', section: 'reports' });
-    
-    // ✅ WhatsApp Notifications Page - Always show for gym owners and users with WhatsApp permissions
-    // For gym owners, this should always be visible
-    // if (canSeeWhatsApp) {
-      nav.push({ 
-        name: 'WhatsApp Notifications', 
-        icon: Send, 
-        id: 'whatsapp-notifications',
-        section: 'reports'
-      });
-    // }
+    nav.push({ 
+      name: 'WhatsApp Notifications', 
+      icon: Send, 
+      id: 'whatsapp-notifications',
+      section: 'reports'
+    });
     
     return nav;
   };
@@ -1132,11 +1136,11 @@ const Dashboard = () => {
   }
 
   // ============================================================
-  // RENDER DASHBOARD - With Granular Card Permissions
+  // RENDER DASHBOARD
   // ============================================================
   const renderDashboard = () => (
     <div className="space-y-6">
-      {/* Welcome Header - Always visible */}
+      {/* Welcome Header */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white shadow-xl">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -1149,7 +1153,7 @@ const Dashboard = () => {
             <p className="text-blue-100 mt-2 text-lg">Here's what's happening at your gym today.</p>
           </div>
           
-          {/* ─── HIDE/SHOW TOGGLE BUTTON ──────────────────────────────── */}
+          {/* Hide/Show Toggle Button */}
           <button
             onClick={toggleHideValues}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-300 font-medium ${
@@ -1179,7 +1183,6 @@ const Dashboard = () => {
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </div>
           
-          {/* Today's check-ins - only if user can view attendance */}
           {canSeeAttendance && (
             <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
               <Users className="h-4 w-4" />
@@ -1187,7 +1190,6 @@ const Dashboard = () => {
             </div>
           )}
           
-          {/* Monthly revenue - only if user can view payments */}
           {canSeePayments && (
             <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
               <TrendUp className="h-4 w-4" />
@@ -1195,7 +1197,6 @@ const Dashboard = () => {
             </div>
           )}
           
-          {/* Follow-ups - only if user can view leads */}
           {canSeeLeads && followupsCount > 0 && (
             <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2 animate-pulse">
               <Calendar className="h-4 w-4" />
@@ -1205,9 +1206,8 @@ const Dashboard = () => {
         </div>
       </div>
   
-      {/* ─── ROW 1: Key Stats Cards ────────────────────────────────────────── */}
+      {/* Row 1: Key Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Total Members Card - visible if user can view members */}
         {canViewMemberStats && (
           <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-blue-500">
             <div className="flex items-center justify-between mb-4">
@@ -1233,7 +1233,6 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* New Members Card - visible if user can view members */}
         {canViewMemberStats && (
           <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-green-500">
             <div className="flex items-center justify-between mb-4">
@@ -1259,7 +1258,6 @@ const Dashboard = () => {
           </div>
         )}
   
-        {/* Monthly Revenue Card - visible if user can view payments */}
         {canViewRevenueStats && (
           <div 
             className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-purple-500 cursor-pointer group"
@@ -1288,7 +1286,6 @@ const Dashboard = () => {
           </div>
         )}
   
-        {/* Total Revenue Card - visible if user can view payments */}
         {canViewRevenueStats && (
           <div 
             className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-orange-500 cursor-pointer group"
@@ -1320,7 +1317,7 @@ const Dashboard = () => {
         )}
       </div>
   
-      {/* ─── ROW 2: Balance Overview Cards ─────────────────────────────────── */}
+      {/* Row 2: Balance Overview Cards */}
       {canViewBalanceStats && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
@@ -1386,10 +1383,9 @@ const Dashboard = () => {
         </div>
       )}
   
-      {/* ─── ROW 3: Expense and Profit Cards ────────────────────────────────── */}
+      {/* Row 3: Expense and Profit Cards */}
       {canViewExpenseStats && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Monthly Expenses Card */}
           <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-red-500">
             <div className="flex items-center justify-between mb-4">
               <div className="bg-red-100 p-3 rounded-xl">
@@ -1508,9 +1504,8 @@ const Dashboard = () => {
         </div>
       )}
   
-      {/* ─── ROW 4: Member Demographics and Expiring Memberships ───────────── */}
+      {/* Row 4: Member Demographics and Expiring Memberships */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Member Demographics - visible if user can view members */}
         {canViewMemberStats && (
           <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-1 hover:shadow-xl transition-all">
             <div className="flex items-center justify-between mb-6">
@@ -1593,7 +1588,6 @@ const Dashboard = () => {
           </div>
         )}
   
-        {/* Expiring Memberships Card - visible if user can view members */}
         {canViewMemberStats && stats.expiringMembers.length > 0 && (
           <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
             <div className="flex items-center justify-between mb-6">
@@ -1708,9 +1702,8 @@ const Dashboard = () => {
         )}
       </div>
   
-      {/* ─── ROW 5: Members with Balance & Recent Leads ────────────────────── */}
+      {/* Row 5: Members with Balance & Recent Leads */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Members with Balance - visible if user can view balances */}
         {canViewBalanceStats && (
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all">
             <div className="bg-gradient-to-r from-red-500 to-orange-500 px-6 py-4">
@@ -1805,7 +1798,6 @@ const Dashboard = () => {
           </div>
         )}
   
-        {/* Recent Leads - visible if user can view leads */}
         {canViewLeadStats && (
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all">
             <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-4">
@@ -1916,7 +1908,7 @@ const Dashboard = () => {
         )}
       </div>
   
-      {/* ─── ROW 6: Follow-Up Card ──────────────────────────────────────────── */}
+      {/* Row 6: Follow-Up Card */}
       {canViewLeadStats && (
         <div className="grid grid-cols-1 gap-6">
           <FollowUpCard 
@@ -1935,7 +1927,7 @@ const Dashboard = () => {
         </div>
       )}
   
-      {/* ─── ROW 7: Birthday Notifications ──────────────────────────────────── */}
+      {/* Row 7: Birthday Notifications */}
       {(stats.upcomingBirthdays?.members?.length > 0 || stats.upcomingBirthdays?.staff?.length > 0) && (
         <div className="space-y-4">
           <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -1944,7 +1936,6 @@ const Dashboard = () => {
           </h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Member Birthdays - visible if user can view members */}
             {canViewMemberStats && stats.upcomingBirthdays?.members?.length > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all border-l-4 border-pink-500">
                 <div className="flex items-center justify-between mb-4">
@@ -1991,7 +1982,6 @@ const Dashboard = () => {
               </div>
             )}
             
-            {/* Staff Birthdays - visible if user can view staff */}
             {canViewStaffStats && stats.upcomingBirthdays?.staff?.length > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all border-l-4 border-purple-500">
                 <div className="flex items-center justify-between mb-4">
@@ -2045,9 +2035,8 @@ const Dashboard = () => {
         </div>
       )}
   
-      {/* ─── ROW 8: Recent Activities and Classes ───────────────────────────── */}
+      {/* Row 8: Recent Activities and Classes */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Activities - visible if user has any relevant permission */}
         {(canViewMemberStats || canViewRevenueStats) && (
           <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
             <div className="flex items-center justify-between mb-6">
@@ -2082,7 +2071,6 @@ const Dashboard = () => {
           </div>
         )}
   
-        {/* Today's Classes - visible if user can view attendance or memberships */}
         {(canSeeAttendance || canViewMemberStats) && (
           <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
             <div className="flex items-center justify-between mb-6">
@@ -2144,7 +2132,7 @@ const Dashboard = () => {
         )}
       </div>
   
-      {/* ─── ROW 9: Alerts Section ──────────────────────────────────────────── */}
+      {/* Row 9: Alerts Section */}
       {(stats.expiringThisMonth > 0 || stats.pendingPayments > 0 || stats.overdueCount > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {canViewBalanceStats && stats.overdueCount > 0 && (
@@ -2549,7 +2537,6 @@ const Dashboard = () => {
             </div>
           )}
 
-          {/* Access denied for tabs user doesn't have permission for */}
           {activeTab === 'members' && !canSeeMembers && (
             <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
               <Shield className="h-16 w-16 text-red-300 mx-auto mb-4" />
