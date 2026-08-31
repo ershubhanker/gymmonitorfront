@@ -1,12 +1,12 @@
-// src/pages/Members.jsx - Full Updated with Device Sync Integration & Resend Invoice WhatsApp
+// src/pages/Members.jsx - Full Updated with Responsive Table Layout
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   Search, Filter, Edit, Trash2, UserPlus, Download,
   ChevronLeft, ChevronRight, X, CheckCircle, XCircle,
   Clock, FileText, RefreshCw, Wifi, Loader2, WifiOff,
   FileSpreadsheet, Link, AlertTriangle, Smartphone, User,
-  ArrowLeft, Dumbbell, Send
+  ArrowLeft, Dumbbell, Send, MoreVertical, Eye
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
@@ -166,6 +166,62 @@ const DeleteConfirmationModal = ({
 };
 
 // ============================================================
+// ACTION DROPDOWN COMPONENT (for responsive actions)
+// ============================================================
+const ActionDropdown = ({ member, onAction }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const actions = [
+    { id: 'view', label: 'View Profile', icon: Eye, color: 'text-blue-600' },
+    { id: 'invoice', label: 'Download Invoice', icon: FileText, color: 'text-green-600' },
+    { id: 'whatsapp', label: 'Resend Invoice', icon: Send, color: 'text-blue-500' },
+    { id: 'sync', label: 'Sync to Device', icon: Wifi, color: 'text-purple-600' },
+    { id: 'edit', label: 'Edit Member', icon: Edit, color: 'text-blue-600' },
+    { id: 'delete', label: 'Delete Member', icon: Trash2, color: 'text-red-600' },
+  ];
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+        title="Actions"
+      >
+        <MoreVertical className="h-5 w-5 text-gray-500" />
+      </button>
+      {isOpen && (
+        <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+          {actions.map((action) => (
+            <button
+              key={action.id}
+              onClick={() => {
+                setIsOpen(false);
+                onAction(action.id, member);
+              }}
+              className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${action.color}`}
+            >
+              <action.icon className="h-4 w-4" />
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
 // MAIN MEMBERS COMPONENT
 // ============================================================
 const Members = ({ initialMemberId, onMemberSelect }) => {
@@ -173,7 +229,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   const { devices, syncMemberToDevice, removeMemberFromDevice, refreshAllData, attendanceApi } = useAttendance();
   const { getCache, setCache, clearCache, clearCachePattern, invalidateMembersCache, invalidateCache } = useCache();
   
-  // ✅ Add membershipPlans state
   const [membershipPlans, setMembershipPlans] = useState([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
   
@@ -203,17 +258,14 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   const [totalPages, setTotalPages] = useState(0);
   const [resendingInvoice, setResendingInvoice] = useState(null);
   
-  // PT Data
   const [ptData, setPtData] = useState({});
   const [loadingPt, setLoadingPt] = useState(false);
   
-  // Single member view
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const [singleMemberData, setSingleMemberData] = useState(null);
   const [showSingleMember, setShowSingleMember] = useState(false);
   const [loadingSingleMember, setLoadingSingleMember] = useState(false);
 
-  // Delete confirmation state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -393,9 +445,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     try {
       const cacheKey = `${CACHE_KEYS.MEMBERS_LIST}_${debouncedSearchTerm}_${filters.status}_${filters.gender}_${currentPage}`;
       
-      // ✅ When force=true (e.g. right after add/edit/delete), skip the cache
-      // entirely so we always hit the network for fresh data instead of
-      // risking a stale cached page.
       const cached = force ? null : getCache(cacheKey);
       if (cached) {
         console.log('📋 Using cached members data for key:', cacheKey);
@@ -696,6 +745,49 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   }, [debouncedSearchTerm, filters.status, filters.gender, currentPage, showSingleMember, singleMemberData]);
 
   // ============================================================
+  // HANDLE ACTION DROPDOWN
+  // ============================================================
+  const handleAction = (actionId, member) => {
+    switch(actionId) {
+      case 'view':
+        openProfileModal(member);
+        break;
+      case 'invoice':
+        handleDownloadInvoice(member);
+        break;
+      case 'whatsapp':
+        handleResendInvoiceWhatsApp(member);
+        break;
+      case 'sync':
+        const memberForSync = {
+          id: member.id,
+          full_name: member.fullName,
+          fullName: member.fullName,
+          phone: member.phone,
+          email: member.email || '',
+          device_user_id: member.deviceUserId || null,
+          deviceUserId: member.deviceUserId || null,
+          syncedToDevice: member.syncedToDevice || false,
+          membership: member.membership,
+          status: member.status,
+          joinDate: member.joinDate,
+          avatar: member.avatar,
+          raw: member.raw || member
+        };
+        openDeviceSyncModal(memberForSync);
+        break;
+      case 'edit':
+        openEditModal(member);
+        break;
+      case 'delete':
+        handleDeleteClick(member);
+        break;
+      default:
+        break;
+    }
+  };
+
+  // ============================================================
   // HANDLE RESEND INVOICE VIA WHATSAPP
   // ============================================================
   const handleResendInvoiceWhatsApp = async (member) => {
@@ -775,7 +867,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       
       refreshAllData();
 
-      // ✅ Notify other open views (Dashboard, etc.) so they refresh live.
       window.dispatchEvent(new CustomEvent('memberDeleted', { detail: { memberId: memberToDelete.id } }));
       
       setShowDeleteModal(false);
@@ -860,7 +951,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       invalidateMemberCache();
       clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
 
-      // ✅ Notify other open views (Dashboard, etc.) so they refresh live.
       window.dispatchEvent(new CustomEvent('memberDeleted', { detail: { memberIds: deletedIds } }));
 
       toast.success(`${deletedIds.length} members deleted successfully!`);
@@ -893,7 +983,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     let membershipCreated = false;
     
     try {
-      // Step 1: Create the member
       memberResponse = await api.post('/gym/members', memberFields);
       createdMember = memberResponse.data;
       console.log('✅ Member created:', createdMember);
@@ -908,7 +997,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   
     const memberId = createdMember.id;
   
-    // Step 2: Create membership with payment (if plan is selected)
     if (plan_id && membership_start_date && memberId) {
       try {
         const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
@@ -938,12 +1026,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         
         console.log('📤 Membership payload:', membershipPayload);
         
-        // ✅ This creates the membership AND the payment record
         const membershipResponse = await api.post('/gym/memberships', membershipPayload);
         membershipCreated = true;
         console.log('✅ Membership created with payment:', membershipResponse.data);
         
-        // ✅ Trigger payment added event to refresh Payments page
         window.dispatchEvent(new CustomEvent('paymentAdded'));
         window.dispatchEvent(new CustomEvent('paymentUpdated'));
         
@@ -955,7 +1041,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
     }
   
-    // Step 3: Create PT session (if applicable)
     if (pt_data && pt_data.trainer_id && !hasError) {
       try {
         const ptPayload = {
@@ -980,8 +1065,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
     }
   
-    // Step 4: Invalidate cache and refresh data (force = bypass cache so the
-    // new member shows up immediately, without needing a manual page refresh)
     invalidateMemberCache();
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
     
@@ -989,12 +1072,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     fetchStats();
     setIsModalOpen(false);
 
-    // ✅ Let other open views (e.g. Dashboard) know a member was added so
-    // they can refresh themselves live instead of waiting for their next
-    // poll interval or a manual page reload.
     window.dispatchEvent(new CustomEvent('memberAdded', { detail: { member: createdMember } }));
     
-    // Step 5: Show success message
     if (!hasError) {
       if (membershipCreated) {
         const paidAmount = amount_paid ? parseFloat(amount_paid) : 0;
@@ -1007,7 +1086,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         toast.success(`✅ ${createdMember.full_name} added successfully!`);
       }
       
-      // Step 6: Sync to device (smart sync) — background/best-effort only.
       const autoSyncDevice = devices.find(d => d.is_active);
       if (createdMember && createdMember.id && autoSyncDevice) {
         setTimeout(async () => {
@@ -1018,7 +1096,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         }, 1500);
       }
       
-      // Step 7: Ask to sync to device (fallback)
       const activeDevices = devices.filter(d => d.is_active);
       if (activeDevices.length > 0) {
         setTimeout(() => {
@@ -1113,7 +1190,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           toast.warning('⚠️ Membership renewed but no payment was recorded.');
         }
         
-        // ✅ After successful renewal, sync member to device
         const renewalSyncDevice = devices.find(d => d.is_active);
         if (memberId && renewalSyncDevice) {
           setTimeout(async () => {
@@ -1178,7 +1254,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     fetchStats();
     setIsModalOpen(false);
 
-    // ✅ Notify other open views (Dashboard, etc.) so they refresh live.
     window.dispatchEvent(new CustomEvent('memberUpdated', { detail: { memberId } }));
     
     if (!hasError) {
@@ -1540,7 +1615,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   // RENDER
   // ============================================================
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {/* Delete Confirmation Modal */}
       <DeleteConfirmationModal
         isOpen={showDeleteModal}
@@ -1554,46 +1629,46 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       />
 
       {/* Header Stats - Clickable Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-4 sm:mb-6">
         <div 
           onClick={handleFilterAll}
-          className={`bg-white rounded-xl shadow-sm p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
+          className={`bg-white rounded-xl shadow-sm p-4 sm:p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
             filters.status === 'all' && !showNewThisMonthOnly && !showSingleMember ? 'ring-2 ring-blue-500 ring-offset-2' : ''
           }`}
         >
-          <p className="text-sm text-gray-600">Total Members</p>
-          <p className="text-2xl font-bold text-gray-900">{showSingleMember ? 1 : stats.total}</p>
-          <p className="text-xs text-gray-400 mt-1">Click to show all</p>
+          <p className="text-xs sm:text-sm text-gray-600">Total Members</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900">{showSingleMember ? 1 : stats.total}</p>
+          <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Click to show all</p>
         </div>
         <div 
           onClick={handleFilterActive}
-          className={`bg-white rounded-xl shadow-sm p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
+          className={`bg-white rounded-xl shadow-sm p-4 sm:p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
             filters.status === 'active' && !showNewThisMonthOnly && !showSingleMember ? 'ring-2 ring-green-500 ring-offset-2' : ''
           }`}
         >
-          <p className="text-sm text-gray-600">Active Members</p>
-          <p className="text-2xl font-bold text-green-600">{showSingleMember ? (singleMemberData?.status === 'active' ? 1 : 0) : stats.active}</p>
-          <p className="text-xs text-gray-400 mt-1">Click to show active</p>
+          <p className="text-xs sm:text-sm text-gray-600">Active Members</p>
+          <p className="text-xl sm:text-2xl font-bold text-green-600">{showSingleMember ? (singleMemberData?.status === 'active' ? 1 : 0) : stats.active}</p>
+          <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Click to show active</p>
         </div>
         <div 
           onClick={handleFilterInactive}
-          className={`bg-white rounded-xl shadow-sm p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
+          className={`bg-white rounded-xl shadow-sm p-4 sm:p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
             filters.status === 'inactive' && !showNewThisMonthOnly && !showSingleMember ? 'ring-2 ring-red-500 ring-offset-2' : ''
           }`}
         >
-          <p className="text-sm text-gray-600">Inactive Members</p>
-          <p className="text-2xl font-bold text-gray-600">{showSingleMember ? (singleMemberData?.status === 'inactive' ? 1 : 0) : inactiveCount}</p>
-          <p className="text-xs text-gray-400 mt-1">Click to show inactive</p>
+          <p className="text-xs sm:text-sm text-gray-600">Inactive Members</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-600">{showSingleMember ? (singleMemberData?.status === 'inactive' ? 1 : 0) : inactiveCount}</p>
+          <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Click to show inactive</p>
         </div>
         <div 
           onClick={handleFilterNewThisMonth}
-          className={`bg-white rounded-xl shadow-sm p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
+          className={`bg-white rounded-xl shadow-sm p-4 sm:p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
             showNewThisMonthOnly && !showSingleMember ? 'ring-2 ring-blue-500 ring-offset-2' : ''
           }`}
         >
-          <p className="text-sm text-gray-600">New This Month</p>
-          <p className="text-2xl font-bold text-blue-600">{stats.newThisMonth}</p>
-          <p className="text-xs text-gray-400 mt-1">Click to show new members</p>
+          <p className="text-xs sm:text-sm text-gray-600">New This Month</p>
+          <p className="text-xl sm:text-2xl font-bold text-blue-600">{stats.newThisMonth}</p>
+          <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Click to show new</p>
         </div>
       </div>
 
@@ -1614,10 +1689,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       )}
 
       {/* Actions Bar */}
-      <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-xl shadow-sm p-3 sm:p-4 mb-4 sm:mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
           <div className="flex-1 flex items-center space-x-2">
-            <div className="relative flex-1 max-w-md">
+            <div className="relative flex-1 max-w-xs sm:max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
                 type="text"
@@ -1631,7 +1706,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   }
                 }}
                 disabled={showSingleMember}
-                className={`pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 ${
+                className={`pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm ${
                   showSingleMember ? 'bg-gray-100 cursor-not-allowed' : ''
                 }`}
               />
@@ -1639,11 +1714,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
             <button
               onClick={() => setShowFilters(!showFilters)}
               disabled={showSingleMember}
-              className={`p-2 border rounded-lg ${showFilters ? 'bg-blue-50 border-blue-300' : 'border-gray-300'} ${
+              className={`p-2 border rounded-lg flex-shrink-0 ${showFilters ? 'bg-blue-50 border-blue-300' : 'border-gray-300'} ${
                 showSingleMember ? 'opacity-50 cursor-not-allowed' : ''
               }`}
             >
-              <Filter className="h-5 w-5 text-gray-600" />
+              <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
             </button>
             <button
               onClick={() => {
@@ -1654,10 +1729,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   fetchMembers(true);
                 }
               }}
-              className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex-shrink-0"
               title={showSingleMember ? "Back to all members" : "Refresh Members"}
             >
-              {showSingleMember ? <ArrowLeft className="h-5 w-5 text-blue-600" /> : <RefreshCw className="h-5 w-5 text-gray-600" />}
+              {showSingleMember ? <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" /> : <RefreshCw className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />}
             </button>
             {(filters.status !== 'all' || showNewThisMonthOnly || searchTerm) && !showSingleMember && (
               <button
@@ -1668,67 +1743,70 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   setCurrentPage(1);
                   clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
                 }}
-                className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm flex items-center gap-1"
+                className="px-2 py-1.5 sm:px-3 sm:py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-xs sm:text-sm flex items-center gap-1 flex-shrink-0"
               >
                 <X className="h-3 w-3" />
-                Clear Filters
+                Clear
               </button>
             )}
           </div>
 
-          <div className="flex items-center space-x-2 flex-wrap gap-2">
+          <div className="flex items-center space-x-2 flex-wrap gap-1.5 sm:gap-2">
             {selectedMembers.length > 0 && !showSingleMember && (
               <>
                 <button 
                   onClick={handleBulkInvoice}
                   disabled={downloadingBulk}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                  className="px-2 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
                 >
                   {downloadingBulk ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
                   ) : (
-                    <FileText className="h-4 w-4" />
+                    <FileText className="h-3 w-3 sm:h-4 sm:w-4" />
                   )}
-                  Invoices ({selectedMembers.length})
+                  <span className="hidden xs:inline">Invoices</span>
+                  ({selectedMembers.length})
                 </button>
                 <button 
                   onClick={handleBulkDelete} 
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
+                  className="px-2 sm:px-4 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
                 >
-                  <Trash2 className="h-4 w-4" />
-                  Delete ({selectedMembers.length})
+                  <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden xs:inline">Delete</span>
+                  ({selectedMembers.length})
                 </button>
-                <button onClick={() => setSelectedMembers([])} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                  <X className="h-5 w-5" />
+                <button onClick={() => setSelectedMembers([])} className="p-1.5 sm:p-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                  <X className="h-3 w-3 sm:h-5 sm:w-5" />
                 </button>
               </>
             )}
-            <button onClick={handleExport} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center">
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
+            <button onClick={handleExport} className="px-2 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center text-xs sm:text-sm">
+              <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden xs:inline">Export</span>
             </button>
             <button
               onClick={() => setShowBulkImportModal(true)}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"
+              className="px-2 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center text-xs sm:text-sm"
             >
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Bulk Import
+              <FileSpreadsheet className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden xs:inline">Import</span>
             </button>
             <button
               onClick={() => { setSelectedMember(null); setIsModalOpen(true); }}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+              className="px-2 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center text-xs sm:text-sm"
             >
-              <UserPlus className="h-4 w-4 mr-2" />
-              Add Member
+              <UserPlus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden xs:inline">Add Member</span>
+              <span className="xs:hidden">Add</span>
             </button>
           </div>
         </div>
 
         {/* Filters */}
         {showFilters && !showSingleMember && (
-          <div className="mt-4 pt-4 border-t grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="mt-3 pt-3 border-t grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Status</label>
               <select 
                 value={filters.status} 
                 onChange={(e) => {
@@ -1737,7 +1815,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   setCurrentPage(1);
                   clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
                 }}
-                className="w-full border border-gray-300 rounded-lg p-2"
+                className="w-full border border-gray-300 rounded-lg p-1.5 sm:p-2 text-sm"
               >
                 <option value="all">All Status</option>
                 <option value="active">Active</option>
@@ -1745,7 +1823,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Gender</label>
               <select 
                 value={filters.gender} 
                 onChange={(e) => {
@@ -1753,7 +1831,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   setCurrentPage(1);
                   clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
                 }}
-                className="w-full border border-gray-300 rounded-lg p-2"
+                className="w-full border border-gray-300 rounded-lg p-1.5 sm:p-2 text-sm"
               >
                 <option value="all">All Genders</option>
                 <option value="male">Male</option>
@@ -1763,7 +1841,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
             </div>
             {showNewThisMonthOnly && (
               <div className="flex items-center">
-                <span className="inline-flex items-center px-3 py-2 rounded-lg bg-blue-100 text-blue-800 text-sm">
+                <span className="inline-flex items-center px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-blue-100 text-blue-800 text-xs sm:text-sm">
                   <span className="font-medium">Filter: New Members This Month</span>
                   <button
                     onClick={() => {
@@ -1771,7 +1849,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                       setCurrentPage(1);
                       clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
                     }}
-                    className="ml-2 text-blue-600 hover:text-blue-800"
+                    className="ml-1 sm:ml-2 text-blue-600 hover:text-blue-800"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -1783,24 +1861,24 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
 
         {/* Single Member Info Banner */}
         {showSingleMember && singleMemberData && (
-          <div className="mt-4 pt-4 border-t">
-            <div className="flex items-center gap-4 bg-blue-50 rounded-lg p-3">
+          <div className="mt-3 pt-3 border-t">
+            <div className="flex items-center gap-3 sm:gap-4 bg-blue-50 rounded-lg p-2 sm:p-3">
               <img 
                 src={singleMemberData.avatar} 
                 alt={singleMemberData.fullName}
-                className="h-12 w-12 rounded-full object-cover"
+                className="h-10 w-10 sm:h-12 sm:w-12 rounded-full object-cover"
                 onError={(e) => {
                   e.target.onerror = null;
                   e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(singleMemberData.fullName)}&background=0D9488&color=fff&size=128`;
                 }}
               />
-              <div>
-                <p className="font-semibold text-gray-900">{singleMemberData.fullName}</p>
-                <div className="flex items-center gap-3 text-sm text-gray-600">
-                  <span>{singleMemberData.phone}</span>
-                  <span>•</span>
-                  <span>{singleMemberData.email || 'No email'}</span>
-                  <span>•</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-gray-900 text-sm sm:text-base truncate">{singleMemberData.fullName}</p>
+                <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-600">
+                  <span className="truncate">{singleMemberData.phone}</span>
+                  <span className="hidden xs:inline">•</span>
+                  <span className="hidden xs:inline truncate">{singleMemberData.email || 'No email'}</span>
+                  <span className="hidden xs:inline">•</span>
                   <span>{getStatusBadge(singleMemberData.status)}</span>
                 </div>
               </div>
@@ -1809,13 +1887,13 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         )}
       </div>
 
-      {/* Members Table */}
+      {/* Members Table - Responsive */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left">
+                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left w-8 sm:w-12">
                   <input type="checkbox"
                     checked={!showSingleMember && selectedMembers.length === paginatedMembers.length && paginatedMembers.length > 0}
                     onChange={toggleSelectAll}
@@ -1823,20 +1901,19 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                     className={`rounded border-gray-300 text-blue-600 focus:ring-blue-500 ${showSingleMember ? 'opacity-50 cursor-not-allowed' : ''}`}
                   />
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Membership</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PT</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device Sync</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
+                <th className="hidden sm:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                <th className="hidden md:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Membership</th>
+                <th className="hidden lg:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="hidden xl:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PT</th>
+                <th className="hidden 2xl:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sync</th>
+                <th className="px-3 sm:px-6 py-2 sm:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-16 sm:w-20">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {loading || loadingSingleMember ? (
                 <tr>
-                  <td colSpan="9" className="px-6 py-4 text-center">
+                  <td colSpan="8" className="px-6 py-4 text-center">
                     <div className="flex justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
@@ -1844,7 +1921,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 </tr>
               ) : paginatedMembers.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan="8" className="px-6 py-4 text-center text-gray-500">
                     {showNewThisMonthOnly 
                       ? 'No new members joined this month' 
                       : showSingleMember 
@@ -1857,7 +1934,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   const ptInfo = ptData[member.id];
                   return (
                     <tr key={member.id} className={`hover:bg-gray-50 ${showSingleMember ? 'bg-blue-50/50' : ''}`}>
-                      <td className="px-6 py-4">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4">
                         <input type="checkbox"
                           checked={selectedMembers.includes(member.id)}
                           onChange={() => toggleSelectMember(member.id)}
@@ -1865,13 +1942,13 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                           className={`rounded border-gray-300 text-blue-600 focus:ring-blue-500 ${showSingleMember ? 'opacity-50 cursor-not-allowed' : ''}`}
                         />
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4">
                         <div 
                           className="flex items-center cursor-pointer hover:bg-gray-50 rounded-lg p-1 -m-1 transition-colors"
                           onClick={() => openProfileModal(member)}
                         >
                           <img 
-                            className="h-10 w-10 rounded-full object-cover flex-shrink-0" 
+                            className="h-8 w-8 sm:h-10 sm:w-10 rounded-full object-cover flex-shrink-0" 
                             src={member.avatar} 
                             alt={member.fullName}
                             onError={(e) => {
@@ -1879,167 +1956,144 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                               e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.fullName)}&background=0D9488&color=fff&size=128`;
                             }}
                           />
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors">
+                          <div className="ml-2 sm:ml-4 min-w-0">
+                            <div className="text-xs sm:text-sm font-medium text-gray-900 hover:text-blue-600 transition-colors truncate max-w-[80px] sm:max-w-[120px] lg:max-w-[180px]">
                               {member.fullName}
                               {showSingleMember && (
-                                <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                <span className="ml-1 sm:ml-2 text-[10px] sm:text-xs bg-blue-100 text-blue-700 px-1.5 sm:px-2 py-0.5 rounded-full">
                                   Selected
                                 </span>
                               )}
                             </div>
-                            <div className="text-sm text-gray-500">
+                            <div className="text-[10px] sm:text-xs text-gray-500 truncate">
                               Joined {new Date(member.joinDate).toLocaleDateString()}
                             </div>
+                            {/* Show phone on small screens */}
+                            <div className="sm:hidden text-[10px] text-gray-400 truncate">{member.phone}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900">{member.email || '—'}</div>
-                        <div className="text-sm text-gray-500">{member.phone}</div>
+                      <td className="hidden sm:table-cell px-3 sm:px-6 py-3 sm:py-4">
+                        <div className="text-xs sm:text-sm text-gray-900 truncate max-w-[120px]">{member.email || '—'}</div>
+                        <div className="text-xs text-gray-500">{member.phone}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{member.membership}</div>
-                        <div className="text-sm text-gray-500">
+                      <td className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4">
+                        <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[100px]">{member.membership}</div>
+                        <div className="text-[10px] sm:text-xs text-gray-500 truncate">
                           {member.membershipEndDate ? (
                             <span>
-                              Expires: {new Date(member.membershipEndDate).toLocaleDateString()}
+                              Exp: {new Date(member.membershipEndDate).toLocaleDateString()}
                             </span>
                           ) : (
-                            <span className="text-gray-400">No active membership</span>
+                            <span className="text-gray-400">No active</span>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="hidden lg:table-cell px-3 sm:px-6 py-3 sm:py-4">
                         {getStatusBadge(member.status)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="hidden xl:table-cell px-3 sm:px-6 py-3 sm:py-4">
                         {ptInfo ? (
-                          <div className="group relative">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 cursor-help">
-                              <Dumbbell className="h-3 w-3 mr-1" />
-                              Active
-                            </span>
-                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none min-w-[240px] text-center shadow-lg">
-                              <p className="font-semibold text-purple-300">PT Details</p>
-                              <p><strong>Trainer:</strong> {ptInfo.trainer_name}</p>
-                              <p><strong>Days:</strong> {ptInfo.session_days_display || '—'}</p>
-                              <p><strong>Time:</strong> {ptInfo.session_time || '—'}</p>
-                              <div className="border-t border-gray-700 my-1"></div>
-                              <p><strong>Total:</strong> ₹{ptInfo.total_amount?.toLocaleString() || 0}</p>
-                              <p><strong>Paid:</strong> ₹{ptInfo.amount_paid?.toLocaleString() || 0}</p>
-                              <p><strong>Balance:</strong> ₹{ptInfo.balance_due?.toLocaleString() || 0}</p>
-                              <p><strong>Status:</strong> <span className="capitalize">{ptInfo.status || 'Active'}</span></p>
-                            </div>
-                          </div>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                            <Dumbbell className="h-3 w-3 mr-1" />
+                            Active
+                          </span>
                         ) : (
                           <span className="text-xs text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="hidden 2xl:table-cell px-3 sm:px-6 py-3 sm:py-4">
                         {member.syncedToDevice ? (
-                          <div className="group relative">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 cursor-help">
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Synced
-                            </span>
-                            {member.deviceUserId && (
-                              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                                Device ID: {member.deviceUserId}
-                              </div>
-                            )}
-                          </div>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Synced
+                          </span>
                         ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
                             <XCircle className="h-3 w-3 mr-1" />
-                            Not Synced
+                            No
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {member.deviceUserId ? (
-                          <button
-                            onClick={() => copyDeviceIdToClipboard(member.deviceUserId)}
-                            className="group relative inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors cursor-pointer"
-                            title="Click to copy Device User ID"
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-right">
+                        <div className="flex items-center justify-end gap-0.5 sm:gap-1">
+                          {/* Quick action buttons (visible on larger screens) */}
+                          <button 
+                            onClick={() => handleDownloadInvoice(member)} 
+                            className="hidden sm:inline-flex p-1.5 text-green-600 hover:text-green-900 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Download Invoice PDF"
+                            disabled={downloadingInvoice === member.id}
                           >
-                            {member.deviceUserId.substring(0, 8)}...
-                            <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                              Click to copy full ID
-                            </span>
+                            {downloadingInvoice === member.id ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                            ) : (
+                              <FileText className="h-4 w-4" />
+                            )}
                           </button>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {/* Download Invoice PDF */}
-                        <button 
-                          onClick={() => handleDownloadInvoice(member)} 
-                          className="text-green-600 hover:text-green-900 mr-2 inline-flex items-center"
-                          title="Download Invoice PDF"
-                          disabled={downloadingInvoice === member.id}
-                        >
-                          {downloadingInvoice === member.id ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
-                          ) : (
-                            <FileText className="h-4 w-4" />
-                          )}
-                        </button>
-                        
-                        {/* Resend Invoice via WhatsApp */}
-                        <button 
-                          onClick={() => handleResendInvoiceWhatsApp(member)} 
-                          className={`mr-2 inline-flex items-center ${
-                            member.phone 
-                              ? 'text-blue-500 hover:text-blue-700' 
-                              : 'text-gray-300 cursor-not-allowed'
-                          }`}
-                          title={member.phone ? "Resend Invoice via WhatsApp" : "No phone number available"}
-                          disabled={!member.phone || resendingInvoice === member.id}
-                        >
-                          {resendingInvoice === member.id ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                          ) : (
-                            <Send className="h-4 w-4" />
-                          )}
-                        </button>
-                        
-                        {/* Sync to Attendance Device */}
-                        <button 
-                          onClick={() => {
-                            const memberForSync = {
-                              id: member.id,
-                              full_name: member.fullName,
-                              fullName: member.fullName,
-                              phone: member.phone,
-                              email: member.email || '',
-                              device_user_id: member.deviceUserId || null,
-                              deviceUserId: member.deviceUserId || null,
-                              syncedToDevice: member.syncedToDevice || false,
-                              membership: member.membership,
-                              status: member.status,
-                              joinDate: member.joinDate,
-                              avatar: member.avatar,
-                              raw: member.raw || member
-                            };
-                            openDeviceSyncModal(memberForSync);
-                          }} 
-                          className="text-purple-600 hover:text-purple-900 mr-2"
-                          title="Sync to Attendance Device"
-                        >
-                          <Wifi className="h-4 w-4" />
-                        </button>
-                        
-                        {/* Edit Member */}
-                        <button onClick={() => openEditModal(member)} className="text-blue-600 hover:text-blue-900 mr-2">
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        
-                        {/* Delete Member */}
-                        <button onClick={() => handleDeleteClick(member)} className="text-red-600 hover:text-red-900">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                          
+                          <button 
+                            onClick={() => handleResendInvoiceWhatsApp(member)} 
+                            className={`hidden sm:inline-flex p-1.5 rounded-lg transition-colors ${
+                              member.phone 
+                                ? 'text-blue-500 hover:text-blue-700 hover:bg-blue-50' 
+                                : 'text-gray-300 cursor-not-allowed'
+                            }`}
+                            title={member.phone ? "Resend Invoice via WhatsApp" : "No phone number available"}
+                            disabled={!member.phone || resendingInvoice === member.id}
+                          >
+                            {resendingInvoice === member.id ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                            ) : (
+                              <Send className="h-4 w-4" />
+                            )}
+                          </button>
+                          
+                          <button 
+                            onClick={() => {
+                              const memberForSync = {
+                                id: member.id,
+                                full_name: member.fullName,
+                                fullName: member.fullName,
+                                phone: member.phone,
+                                email: member.email || '',
+                                device_user_id: member.deviceUserId || null,
+                                deviceUserId: member.deviceUserId || null,
+                                syncedToDevice: member.syncedToDevice || false,
+                                membership: member.membership,
+                                status: member.status,
+                                joinDate: member.joinDate,
+                                avatar: member.avatar,
+                                raw: member.raw || member
+                              };
+                              openDeviceSyncModal(memberForSync);
+                            }} 
+                            className="hidden sm:inline-flex p-1.5 text-purple-600 hover:text-purple-900 hover:bg-purple-50 rounded-lg transition-colors"
+                            title="Sync to Attendance Device"
+                          >
+                            <Wifi className="h-4 w-4" />
+                          </button>
+                          
+                          <button 
+                            onClick={() => openEditModal(member)} 
+                            className="hidden sm:inline-flex p-1.5 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit Member"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          
+                          <button 
+                            onClick={() => handleDeleteClick(member)} 
+                            className="hidden sm:inline-flex p-1.5 text-red-600 hover:text-red-900 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete Member"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          
+                          {/* Dropdown menu for mobile/small screens */}
+                          <div className="sm:hidden">
+                            <ActionDropdown member={member} onAction={handleAction} />
+                          </div>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -2051,29 +2105,28 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
 
         {/* Pagination */}
         {displayTotalPages > 0 && !showSingleMember && (
-          <div className="px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-sm text-gray-700">
+          <div className="px-3 sm:px-6 py-3 sm:py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
+            <div className="text-xs sm:text-sm text-gray-700 text-center sm:text-left">
               Showing <span className="font-medium">{members.length > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0}</span> to{' '}
               <span className="font-medium">{members.length > 0 ? ((currentPage - 1) * itemsPerPage) + members.length : 0}</span> of{' '}
               <span className="font-medium">{totalMembersCount}</span> members
-              <span className="text-gray-400 ml-2">(showing {itemsPerPage} per page)</span>
             </div>
             <div className="flex items-center space-x-2">
               <button 
                 onClick={handlePrevPage}
                 disabled={currentPage === 1 || loading}
-                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="p-1.5 sm:p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="text-sm text-gray-700">
+              <span className="text-xs sm:text-sm text-gray-700">
                 Page <span className="font-medium">{currentPage}</span> of{' '}
                 <span className="font-medium">{displayTotalPages}</span>
               </span>
               <button 
                 onClick={handleNextPage}
                 disabled={currentPage === displayTotalPages || loading}
-                className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="p-1.5 sm:p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>

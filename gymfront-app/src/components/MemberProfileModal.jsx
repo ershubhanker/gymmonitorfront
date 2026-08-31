@@ -1,4 +1,4 @@
-// src/components/MemberProfileModal.jsx - WITH OPTIMIZED PT STATUS UPDATE
+// src/components/MemberProfileModal.jsx - WITH REMOVED SYNC BUTTON & SMALLER UI
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -170,7 +170,7 @@ const PtStatusBadge = ({ session }) => {
 };
 
 // ============================================================
-// PROFILE IMAGE EDITOR COMPONENT
+// PROFILE IMAGE EDITOR COMPONENT (Reduced size)
 // ============================================================
 const ProfileImageEditor = ({ 
   member, 
@@ -349,10 +349,10 @@ const ProfileImageEditor = ({
   const currentImageUrl = preview || profileImageUrl || thumbnailImageUrl;
 
   return (
-    <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl flex-shrink-0">
+    <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg flex-shrink-0">
       <div className="relative flex-shrink-0 group">
         <div 
-          className="h-20 w-20 rounded-full overflow-hidden border-4 border-white shadow-lg cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+          className="h-14 w-14 rounded-full overflow-hidden border-2 border-white shadow cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
           onClick={() => onImageZoom && onImageZoom()}
         >
           <img 
@@ -361,13 +361,13 @@ const ProfileImageEditor = ({
             className="h-full w-full object-cover"
             onError={(e) => {
               e.target.onerror = null;
-              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member?.full_name || 'User')}&background=0D9488&color=fff&size=256`;
+              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member?.full_name || 'User')}&background=0D9488&color=fff&size=128`;
             }}
           />
         </div>
         
         <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/30 transition-all duration-200 flex items-center justify-center pointer-events-none">
-          <Maximize2 className="h-5 w-5 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+          <Maximize2 className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
         </div>
         
         <input
@@ -381,15 +381,15 @@ const ProfileImageEditor = ({
       </div>
       
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-gray-900 text-sm truncate">{member?.full_name || 'Member'}</p>
-        <p className="text-xs text-gray-500">
+        <p className="font-medium text-gray-900 text-xs truncate">{member?.full_name || 'Member'}</p>
+        <p className="text-[10px] text-gray-500">
           {member?.profile_image ? '📸 Photo uploaded' : 'No photo uploaded'}
         </p>
-        <div className="flex flex-wrap gap-2 mt-1">
+        <div className="flex flex-wrap gap-1.5 mt-0.5">
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 disabled:opacity-50"
+            className="text-[10px] text-blue-600 hover:text-blue-800 font-medium flex items-center gap-0.5 disabled:opacity-50"
           >
             {uploading ? (
               <>
@@ -399,7 +399,7 @@ const ProfileImageEditor = ({
             ) : (
               <>
                 <Camera className="h-3 w-3" />
-                {member?.profile_image ? 'Change Photo' : 'Upload Photo'}
+                {member?.profile_image ? 'Change' : 'Upload'}
               </>
             )}
           </button>
@@ -407,23 +407,20 @@ const ProfileImageEditor = ({
             <button
               onClick={() => setShowDeleteConfirm(true)}
               disabled={deleting}
-              className="text-xs text-red-600 hover:text-red-800 font-medium flex items-center gap-1 disabled:opacity-50"
+              className="text-[10px] text-red-600 hover:text-red-800 font-medium flex items-center gap-0.5 disabled:opacity-50"
             >
               <Trash2 className="h-3 w-3" />
-              {deleting ? 'Removing...' : 'Remove Photo'}
+              {deleting ? 'Removing...' : 'Remove'}
             </button>
           )}
           <button
             onClick={() => onImageZoom && onImageZoom()}
-            className="text-xs text-gray-500 hover:text-gray-700 font-medium flex items-center gap-1"
+            className="text-[10px] text-gray-500 hover:text-gray-700 font-medium flex items-center gap-0.5"
           >
             <Maximize2 className="h-3 w-3" />
-            View Full Size
+            Zoom
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-0.5">
-          {uploading ? 'Uploading...' : 'Click image to zoom • JPEG, PNG, WebP up to 5MB'}
-        </p>
       </div>
 
       {/* Delete Confirmation Modal */}
@@ -476,7 +473,7 @@ const ProfileImageEditor = ({
 };
 
 // ============================================================
-// COMMENT CATEGORY BADGE COMPONENT
+// COMMENT CATEGORY BADGE COMPONENT (Reduced size)
 // ============================================================
 const CommentCategoryBadge = ({ category, size = 'sm' }) => {
   if (!category || !COMMENT_CATEGORIES[category]) {
@@ -486,28 +483,28 @@ const CommentCategoryBadge = ({ category, size = 'sm' }) => {
   const config = COMMENT_CATEGORIES[category];
   const Icon = config.icon;
   const sizeClasses = size === 'sm' 
-    ? 'text-xs px-2 py-0.5 gap-1' 
-    : 'text-sm px-3 py-1 gap-1.5';
+    ? 'text-[10px] px-1.5 py-0.5 gap-0.5' 
+    : 'text-xs px-2 py-1 gap-1';
   
   return (
     <span className={`inline-flex items-center rounded-full font-medium border ${config.color} ${sizeClasses}`}>
-      <Icon className={size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+      <Icon className={size === 'sm' ? 'h-2.5 w-2.5' : 'h-3 w-3'} />
       {config.label}
     </span>
   );
 };
 
 // ============================================================
-// CATEGORY FILTER COMPONENT
+// CATEGORY FILTER COMPONENT (Reduced size)
 // ============================================================
 const CategoryFilter = ({ selectedCategory, onSelect, countMap = {} }) => {
   const categories = Object.keys(COMMENT_CATEGORIES);
   
   return (
-    <div className="flex flex-wrap gap-1.5 mb-3">
+    <div className="flex flex-wrap gap-1 mb-2">
       <button
         onClick={() => onSelect(null)}
-        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+        className={`inline-flex items-center gap-0.5 px-2 py-1 rounded-full text-[10px] font-medium transition-all ${
           !selectedCategory 
             ? 'bg-gray-800 text-white' 
             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -515,7 +512,7 @@ const CategoryFilter = ({ selectedCategory, onSelect, countMap = {} }) => {
       >
         All
         {countMap.total > 0 && (
-          <span className="ml-0.5 text-xs opacity-70">({countMap.total})</span>
+          <span className="ml-0.5 text-[10px] opacity-70">({countMap.total})</span>
         )}
       </button>
       {categories.map((key) => {
@@ -528,16 +525,16 @@ const CategoryFilter = ({ selectedCategory, onSelect, countMap = {} }) => {
           <button
             key={key}
             onClick={() => onSelect(isSelected ? null : key)}
-            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+            className={`inline-flex items-center gap-0.5 px-2 py-1 rounded-full text-[10px] font-medium transition-all border ${
               isSelected
                 ? config.color.replace('bg-', 'bg-').replace('text-', 'text-').replace('border-', 'border-') + ' ring-2 ring-offset-1 ring-blue-400'
                 : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
             }`}
           >
-            <Icon className="h-3 w-3" />
+            <Icon className="h-2.5 w-2.5" />
             {config.label}
             {count > 0 && (
-              <span className="ml-0.5 text-xs opacity-70">({count})</span>
+              <span className="ml-0.5 text-[10px] opacity-70">({count})</span>
             )}
           </button>
         );
@@ -641,9 +638,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   // ===== CATEGORY DROPDOWN STATE =====
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-
-  // ===== DEVICE SYNC STATE =====
-  const [syncingToDevice, setSyncingToDevice] = useState(false);
 
   // ===== DEVICE ACCESS TOGGLE STATE =====
   const [togglingAccess, setTogglingAccess] = useState(false);
@@ -812,10 +806,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             newStatus = 'active';
           }
           
-          // If status should change, update it on backend using the correct endpoint
           if (newStatus && newStatus !== session.status) {
             try {
-              // ✅ CORRECT ENDPOINT: /gym/pt/personal-training/{session_id}/update-status
               const updatePromise = api.post(`/gym/pt/personal-training/${session.id}/update-status`, {
                 status: newStatus
               }).then(() => {
@@ -832,7 +824,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         }
       }
       
-      // Wait for all updates to complete
       await Promise.allSettled(updatePromises);
       
       setPtSessions(sessions);
@@ -923,7 +914,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setAddonPaymentAmount('');
       setAddonPaymentNotes('');
       
-      // ✅ These will now fetch the payment from the main Payments table
       await fetchMemberAddons();
       await fetchPayments();
       await fetchBalanceDetails();
@@ -960,39 +950,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       }
     }
     return [];
-  };
-
-  // ===== SYNC TO DEVICE =====
-  const SYNC_ACTION_MESSAGES = {
-    removed: (name) => `🔴 ${name} removed from device (inactive)`,
-    added: (name) => `🟢 ${name} synced to device (active)`,
-    already_removed: (name) => `✅ ${name} already removed from device`,
-  };
-
-  const handleSyncToDevice = async () => {
-    setSyncingToDevice(true);
-    try {
-      toast.loading('Syncing to device...', { id: 'sync-device' });
-      const response = await api.post(`/gym/members/${memberId}/sync-to-device`);
-      toast.dismiss('sync-device');
-
-      if (response.data.success) {
-        const buildMessage = SYNC_ACTION_MESSAGES[response.data.action] || ((name) => `✅ ${name} synced to device`);
-        toast.success(buildMessage(member.full_name));
-        await fetchMemberDetails();
-        if (onUpdate) onUpdate();
-      } else if (response.data.action === 'bridge_offline') {
-        toast.error('Device bridge is not reachable. Please ensure the bridge is running.');
-      } else {
-        toast.warning(response.data.message || 'Sync completed with warnings');
-      }
-    } catch (error) {
-      toast.dismiss('sync-device');
-      console.error('Sync error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to sync member to device');
-    } finally {
-      setSyncingToDevice(false);
-    }
   };
 
   // ===== TOGGLE DEVICE ACCESS =====
@@ -1600,17 +1557,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     return isActive ? 'active' : 'inactive';
   };
 
-  // ===== Device sync status for display =====
-  const getDeviceSyncDisplay = () => {
-    if (syncingToDevice) {
-      return { label: 'Syncing...', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: RefreshCw };
-    }
-    if (member?.device_user_id) {
-      return { label: 'Device Synced', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle };
-    }
-    return { label: 'Not Synced', color: 'bg-gray-100 text-gray-500 border-gray-200', icon: XCircle };
-  };
-
   // ===== Get device access status =====
   const getDeviceAccessStatus = () => {
     if (!member?.device_user_id) {
@@ -1679,8 +1625,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const hasActiveFreeze = !!activeFreeze;
   
   const memberStatus = getMemberStatus();
-  const deviceSyncDisplay = getDeviceSyncDisplay();
-  const DeviceSyncIcon = deviceSyncDisplay.icon;
   
   const accessStatus = getDeviceAccessStatus();
   const AccessStatusIcon = accessStatus.icon;
@@ -1689,8 +1633,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
         {/* Header with Profile Image Editor */}
-        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
-          <div className="flex items-center gap-4 flex-1 min-w-0">
+        <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between z-10">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
             <ProfileImageEditor 
               member={member}
               memberId={member.id}
@@ -1700,40 +1644,36 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               onImageZoom={() => setIsImageZoomed(true)}
             />
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl font-bold text-gray-900 truncate">{member.full_name}</h2>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-mono border border-gray-200 flex-shrink-0">
-                  <Hash className="h-3 w-3" />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h2 className="text-base font-bold text-gray-900 truncate">{member.full_name}</h2>
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-mono border border-gray-200 flex-shrink-0">
+                  <Hash className="h-2.5 w-2.5" />
                   {member.id}
                 </span>
                 {hasActiveFreeze && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium border border-blue-200 flex-shrink-0">
-                    <Snowflake className="h-3 w-3" />
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-medium border border-blue-200 flex-shrink-0">
+                    <Snowflake className="h-2.5 w-2.5" />
                     Frozen
                   </span>
                 )}
                 {member?.device_user_id && (
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${accessStatus.color} flex-shrink-0`}>
-                    {AccessStatusIcon && <AccessStatusIcon className="h-3 w-3" />}
+                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${accessStatus.color} flex-shrink-0`}>
+                    {AccessStatusIcon && <AccessStatusIcon className="h-2.5 w-2.5" />}
                     {accessStatus.label}
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                 {getStatusBadge(memberStatus)}
                 {currentMembership && (
-                  <span className="text-xs text-gray-500">
+                  <span className="text-[10px] text-gray-500">
                     Member since {formatDate(member.joined_date)}
                   </span>
                 )}
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${deviceSyncDisplay.color}`}>
-                  <DeviceSyncIcon className="h-3 w-3" />
-                  {deviceSyncDisplay.label}
-                </span>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0">
             <button
               onClick={() => {
                 fetchMemberDetails();
@@ -1746,13 +1686,13 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 fetchFreezeHistory();
                 fetchMemberAddons();
               }}
-              className="p-2 rounded-xl hover:bg-gray-100"
+              className="p-1.5 rounded-lg hover:bg-gray-100"
               title="Refresh"
             >
-              <RefreshCw className="h-5 w-5 text-gray-500" />
+              <RefreshCw className="h-4 w-4 text-gray-500" />
             </button>
-            <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100">
-              <X className="h-5 w-5 text-gray-500" />
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100">
+              <X className="h-4 w-4 text-gray-500" />
             </button>
           </div>
         </div>
@@ -1786,80 +1726,74 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
           </div>
         )}
 
-        <div className="p-6 space-y-6">
-          {/* Financial Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-100">
-              <p className="text-sm text-green-600 font-medium">Total Paid</p>
-              <p className="text-2xl font-bold text-green-700">{formatCurrency(totalPaid)}</p>
-              <p className="text-xs text-green-500 mt-1">Amount actually paid by member</p>
+        <div className="p-4 space-y-4">
+          {/* Financial Summary Cards - Smaller */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-3 border border-green-100">
+              <p className="text-[10px] text-green-600 font-medium">Total Paid</p>
+              <p className="text-lg font-bold text-green-700">{formatCurrency(totalPaid)}</p>
             </div>
-            <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-4 border border-orange-100">
-              <p className="text-sm text-orange-600 font-medium">Plan Amount</p>
-              <p className="text-2xl font-bold text-orange-700">{formatCurrency(totalPlanAmount)}</p>
-              <p className="text-xs text-orange-500 mt-1">Total amount member needs to pay</p>
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg p-3 border border-orange-100">
+              <p className="text-[10px] text-orange-600 font-medium">Plan Amount</p>
+              <p className="text-lg font-bold text-orange-700">{formatCurrency(totalPlanAmount)}</p>
             </div>
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
-              <p className="text-sm text-blue-600 font-medium">Balance Due</p>
-              <p className="text-2xl font-bold text-blue-700">{formatCurrency(balanceDue)}</p>
-              <p className="text-xs text-blue-500 mt-1">Remaining amount to be paid</p>
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-100">
+              <p className="text-[10px] text-blue-600 font-medium">Balance Due</p>
+              <p className="text-lg font-bold text-blue-700">{formatCurrency(balanceDue)}</p>
             </div>
-            <div className={`rounded-xl p-4 border ${hasActiveFreeze ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
-              <p className="text-sm text-gray-600 font-medium">Freeze Status</p>
+            <div className={`rounded-lg p-3 border ${hasActiveFreeze ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+              <p className="text-[10px] text-gray-600 font-medium">Freeze Status</p>
               {hasActiveFreeze ? (
                 <>
-                  <p className="text-lg font-bold text-blue-700 flex items-center gap-2">
-                    <Snowflake className="h-5 w-5" />
-                    Active Freeze
+                  <p className="text-sm font-bold text-blue-700 flex items-center gap-1">
+                    <Snowflake className="h-3.5 w-3.5" />
+                    Active
                   </p>
-                  <p className="text-xs text-blue-500 mt-1">
+                  <p className="text-[10px] text-blue-500">
                     {formatDate(activeFreeze.start_date)} - {formatDate(activeFreeze.end_date)}
-                  </p>
-                  <p className="text-xs text-blue-500">
-                    {activeFreeze.freeze_type === 'medical' ? '🏥 Medical' : '📅 Regular'}
                   </p>
                 </>
               ) : (
                 <>
-                  <p className="text-lg font-bold text-gray-500">Not Frozen</p>
-                  <p className="text-xs text-gray-400 mt-1">No active freeze</p>
+                  <p className="text-sm font-bold text-gray-500">Not Frozen</p>
+                  <p className="text-[10px] text-gray-400">No active freeze</p>
                 </>
               )}
             </div>
           </div>
 
-          {/* Discount Banner */}
+          {/* Discount Banner - Smaller */}
           {paymentSummary?.hasDiscount && paymentSummary && (
-            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
-                    <Percent className="h-5 w-5 text-purple-600" />
+            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-3 border border-purple-200">
+              <div className="flex items-center justify-between flex-wrap gap-1">
+                <div className="flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-full bg-purple-100 flex items-center justify-center">
+                    <Percent className="h-3.5 w-3.5 text-purple-600" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-purple-900">Discount Applied</p>
-                    <p className="text-xs text-purple-600">
-                      {formatCurrency(paymentSummary.discountApplied)} discount ({paymentSummary.discountPercentage}% off)
+                    <p className="text-[10px] font-semibold text-purple-900">Discount Applied</p>
+                    <p className="text-[10px] text-purple-600">
+                      {formatCurrency(paymentSummary.discountApplied)} ({paymentSummary.discountPercentage}% off)
                     </p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm text-gray-500 line-through">{formatCurrency(paymentSummary.planPrice)}</p>
-                  <p className="text-lg font-bold text-purple-700">{formatCurrency(paymentSummary.finalPrice)}</p>
+                  <p className="text-[10px] text-gray-500 line-through">{formatCurrency(paymentSummary.planPrice)}</p>
+                  <p className="text-sm font-bold text-purple-700">{formatCurrency(paymentSummary.finalPrice)}</p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Action Buttons Row */}
-          <div className="flex flex-wrap justify-end gap-2">
+          {/* Action Buttons Row - Smaller */}
+          <div className="flex flex-wrap justify-end gap-1.5">
             {currentMembership && !hasActiveFreeze && (
               <button
                 onClick={() => setShowFreezeModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-[10px] font-medium"
               >
-                <Snowflake className="h-4 w-4" />
-                Freeze Membership
+                <Snowflake className="h-3 w-3" />
+                Freeze
               </button>
             )}
 
@@ -1867,24 +1801,23 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               <button
                 onClick={handleToggleDeviceAccess}
                 disabled={togglingAccess}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-colors text-[10px] font-medium ${
                   member.is_device_active !== false
                     ? 'bg-red-600 hover:bg-red-700 text-white'
                     : 'bg-green-600 hover:bg-green-700 text-white'
                 } disabled:opacity-50`}
-                title={member.is_device_active !== false ? 'Block member from accessing the gate' : 'Allow member to access the gate'}
               >
                 {togglingAccess ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-3 w-3 animate-spin" />
                 ) : member.is_device_active !== false ? (
                   <>
-                    <Lock className="h-4 w-4" />
-                    Block Access
+                    <Lock className="h-3 w-3" />
+                    Block
                   </>
                 ) : (
                   <>
-                    <Unlock className="h-4 w-4" />
-                    Allow Access
+                    <Unlock className="h-3 w-3" />
+                    Allow
                   </>
                 )}
               </button>
@@ -1893,31 +1826,31 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             {!isEditing ? (
               <button
                 onClick={handleEditClick}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-[10px] font-medium"
               >
-                <Edit className="h-4 w-4" />
-                Edit Profile
+                <Edit className="h-3 w-3" />
+                Edit
               </button>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={handleEditCancel}
-                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-sm font-medium"
+                  className="flex items-center gap-1 px-2.5 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-[10px] font-medium"
                 >
-                  <XCircle className="h-4 w-4" />
+                  <XCircle className="h-3 w-3" />
                   Cancel
                 </button>
                 <button
                   onClick={handleEditSubmit}
                   disabled={savingEdit}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50"
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-[10px] font-medium disabled:opacity-50"
                 >
                   {savingEdit ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
-                    <Save className="h-4 w-4" />
+                    <Save className="h-3 w-3" />
                   )}
-                  {savingEdit ? 'Saving...' : 'Save Changes'}
+                  {savingEdit ? 'Saving...' : 'Save'}
                 </button>
               </div>
             )}
@@ -1925,47 +1858,36 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             {currentMembership && !isEditingPayment && (
               <button
                 onClick={handleEditPaymentClick}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-[10px] font-medium"
               >
-                <Pencil className="h-4 w-4" />
-                Edit Payment
+                <Pencil className="h-3 w-3" />
+                Payment
               </button>
             )}
 
             {currentMembership && !isEditingMembership && !isEditingPayment && !isEditing && (
               <button
                 onClick={handleEditMembershipClick}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-[10px] font-medium"
               >
-                <Calendar className="h-4 w-4" />
-                Edit Membership
-              </button>
-            )}
- 
-            {currentMembership && !isEditingMembership && !isEditingPayment && !isEditing && (
-              <button
-                onClick={handleSyncToDevice}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50"
-                disabled={syncingToDevice}
-              >
-                <Wifi className="h-4 w-4" />
-                {syncingToDevice ? 'Syncing...' : 'Sync to Device'}
+                <Calendar className="h-3 w-3" />
+                Membership
               </button>
             )}
           </div>
 
-          {/* Freeze Modal */}
+          {/* Freeze Modal - Smaller */}
           {showFreezeModal && (
             <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
               <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between p-5 border-b bg-gradient-to-r from-blue-50 to-purple-50 rounded-t-2xl">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                      <Snowflake className="h-5 w-5 text-blue-600" />
+                <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-blue-50 to-purple-50 rounded-t-2xl">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                      <Snowflake className="h-4 w-4 text-blue-600" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-gray-900">Freeze Membership</h3>
-                      <p className="text-sm text-gray-500">
+                      <h3 className="text-sm font-bold text-gray-900">Freeze Membership</h3>
+                      <p className="text-[10px] text-gray-500">
                         {member.full_name} • {member.membership || 'No Plan'}
                       </p>
                     </div>
@@ -1978,27 +1900,27 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       setFreezeNotes('');
                       setFreezeType('regular');
                     }}
-                    className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                    className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
                   >
-                    <X className="h-5 w-5 text-gray-500" />
+                    <X className="h-4 w-4 text-gray-500" />
                   </button>
                 </div>
 
-                <form onSubmit={handleFreezeSubmit} className="p-5 space-y-5">
-                  <div className="bg-gray-50 rounded-xl p-4 flex items-center gap-4">
+                <form onSubmit={handleFreezeSubmit} className="p-4 space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-3 flex items-center gap-3">
                     <img 
                       src={thumbnailImageUrl}
                       alt={member.full_name}
-                      className="h-14 w-14 rounded-full object-cover border-2 border-white shadow"
+                      className="h-10 w-10 rounded-full object-cover border-2 border-white shadow"
                       onError={(e) => {
                         e.target.onerror = null;
                         e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff&size=128`;
                       }}
                     />
                     <div>
-                      <p className="font-semibold text-gray-900">{member.full_name}</p>
-                      <p className="text-sm text-gray-500">{member.phone}</p>
-                      <p className="text-xs text-gray-400">
+                      <p className="font-semibold text-gray-900 text-sm">{member.full_name}</p>
+                      <p className="text-[10px] text-gray-500">{member.phone}</p>
+                      <p className="text-[10px] text-gray-400">
                         Membership: {currentMembership?.plan?.name || 'N/A'} • 
                         Expires: {currentMembership?.end_date ? formatDate(currentMembership.end_date) : 'N/A'}
                       </p>
@@ -2006,40 +1928,40 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-[10px] font-medium text-gray-700 mb-1.5">
                       Freeze Type
                     </label>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => setFreezeType('regular')}
-                        className={`p-3 rounded-xl border-2 text-center transition-all ${
+                        className={`p-2 rounded-lg border-2 text-center transition-all text-xs ${
                           freezeType === 'regular'
                             ? 'border-blue-500 bg-blue-50 text-blue-700'
                             : 'border-gray-200 hover:border-gray-300 text-gray-600'
                         }`}
                       >
-                        <Calendar className="h-5 w-5 mx-auto mb-1" />
-                        <span className="text-sm font-medium">Regular</span>
+                        <Calendar className="h-4 w-4 mx-auto mb-0.5" />
+                        <span className="text-[10px] font-medium">Regular</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setFreezeType('medical')}
-                        className={`p-3 rounded-xl border-2 text-center transition-all ${
+                        className={`p-2 rounded-lg border-2 text-center transition-all text-xs ${
                           freezeType === 'medical'
                             ? 'border-red-500 bg-red-50 text-red-700'
                             : 'border-gray-200 hover:border-gray-300 text-gray-600'
                         }`}
                       >
-                        <Heart className="h-5 w-5 mx-auto mb-1" />
-                        <span className="text-sm font-medium">Medical</span>
+                        <Heart className="h-4 w-4 mx-auto mb-0.5" />
+                        <span className="text-[10px] font-medium">Medical</span>
                       </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-[10px] font-medium text-gray-700 mb-1">
                         Start Date
                       </label>
                       <input
@@ -2047,12 +1969,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                         value={freezeStartDate}
                         onChange={(e) => setFreezeStartDate(e.target.value)}
                         min={new Date().toISOString().split('T')[0]}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-blue-500 focus:border-blue-500"
                         required
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-[10px] font-medium text-gray-700 mb-1">
                         End Date
                       </label>
                       <input
@@ -2060,40 +1982,37 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                         value={freezeEndDate}
                         onChange={(e) => setFreezeEndDate(e.target.value)}
                         min={freezeStartDate || new Date().toISOString().split('T')[0]}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-blue-500 focus:border-blue-500"
                         required
                       />
                     </div>
                   </div>
 
                   {freezeStartDate && freezeEndDate && new Date(freezeEndDate) > new Date(freezeStartDate) && (
-                    <div className="bg-blue-50 rounded-xl p-3 border border-blue-200">
-                      <div className="flex items-center gap-2 text-blue-700">
-                        <AlertTriangle className="h-4 w-4" />
-                        <span className="text-sm font-medium">
-                          Freeze Duration: {(new Date(freezeEndDate) - new Date(freezeStartDate)) / (1000 * 60 * 60 * 24)} days
+                    <div className="bg-blue-50 rounded-lg p-2 border border-blue-200">
+                      <div className="flex items-center gap-1.5 text-blue-700">
+                        <AlertTriangle className="h-3 w-3" />
+                        <span className="text-[10px] font-medium">
+                          Duration: {(new Date(freezeEndDate) - new Date(freezeStartDate)) / (1000 * 60 * 60 * 24)} days
                         </span>
                       </div>
-                      <p className="text-xs text-blue-600 mt-1">
-                        Membership will be extended by {(new Date(freezeEndDate) - new Date(freezeStartDate)) / (1000 * 60 * 60 * 24)} days
-                      </p>
                     </div>
                   )}
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-medium text-gray-700 mb-1">
                       Notes (Optional)
                     </label>
                     <textarea
                       value={freezeNotes}
                       onChange={(e) => setFreezeNotes(e.target.value)}
-                      placeholder="Reason for freeze or additional notes..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 resize-none"
+                      placeholder="Reason for freeze..."
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-blue-500 focus:border-blue-500 resize-none"
                       rows={2}
                     />
                   </div>
 
-                  <div className="flex items-center justify-end gap-3 pt-4 border-t">
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t">
                     <button
                       type="button"
                       onClick={() => {
@@ -2104,24 +2023,24 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                         setFreezeType('regular');
                       }}
                       disabled={freezing}
-                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-[10px] text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={freezing || !freezeStartDate || !freezeEndDate}
-                      className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                      className="px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 text-[10px] font-medium"
                     >
                       {freezing ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 className="h-3 w-3 animate-spin" />
                           Processing...
                         </>
                       ) : (
                         <>
-                          <Snowflake className="h-4 w-4" />
-                          Freeze Membership
+                          <Snowflake className="h-3 w-3" />
+                          Freeze
                         </>
                       )}
                     </button>
@@ -2131,40 +2050,40 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           )}
 
-          {/* Payment Edit Modal */}
+          {/* Payment Edit Modal - Smaller */}
           {isEditingPayment && currentMembership && (
-            <div className="bg-purple-50 border border-purple-200 rounded-xl p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-purple-900 flex items-center gap-2">
-                  <CreditCard className="h-5 w-5 text-purple-600" />
-                  Edit Payment Details
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-purple-900 text-xs flex items-center gap-1.5">
+                  <CreditCard className="h-4 w-4 text-purple-600" />
+                  Edit Payment
                 </h3>
                 <button
                   onClick={handlePaymentEditCancel}
                   className="text-purple-400 hover:text-purple-600 p-1"
                 >
-                  <X className="h-5 w-5" />
+                  <X className="h-4 w-4" />
                 </button>
               </div>
               
-              <form onSubmit={handlePaymentEditSubmit} className="space-y-4">
-                <div className="bg-white rounded-lg p-3 border border-purple-200">
-                  <div className="grid grid-cols-2 gap-2 text-sm">
+              <form onSubmit={handlePaymentEditSubmit} className="space-y-3">
+                <div className="bg-white rounded-lg p-2 border border-purple-200">
+                  <div className="grid grid-cols-2 gap-1 text-[10px]">
                     <div>
                       <span className="text-gray-500">Plan:</span>
-                      <span className="font-medium ml-2">{currentMembership.plan?.name}</span>
+                      <span className="font-medium ml-1">{currentMembership.plan?.name}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Plan Price:</span>
-                      <span className="font-medium ml-2">{formatCurrency(currentMembership.plan?.price || 0)}</span>
+                      <span className="text-gray-500">Price:</span>
+                      <span className="font-medium ml-1">{formatCurrency(currentMembership.plan?.price || 0)}</span>
                     </div>
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Discount Applied (₹)
+                    <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                      Discount (₹)
                     </label>
                     <input
                       type="number"
@@ -2173,13 +2092,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       step="1"
                       value={paymentEditData.discount_applied}
                       onChange={handlePaymentEditChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white"
                       placeholder="0"
                     />
-                    <p className="text-xs text-gray-400 mt-1">Enter discount amount in rupees</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
                       Amount Paid (₹)
                     </label>
                     <input
@@ -2189,31 +2107,30 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       step="1"
                       value={paymentEditData.amount_paid}
                       onChange={handlePaymentEditChange}
-                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white ${
+                      className={`w-full px-2 py-1.5 border rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white ${
                         paymentError ? 'border-red-500 ring-2 ring-red-100' : 'border-gray-300'
                       }`}
                       placeholder="0"
                     />
-                    <p className="text-xs text-gray-400 mt-1">Enter amount paid in rupees</p>
                     {paymentError && (
-                      <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
+                      <p className="text-[10px] text-red-500 mt-0.5 flex items-center gap-0.5">
+                        <AlertCircle className="h-2.5 w-2.5" />
                         {paymentError}
                       </p>
                     )}
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
                       Payment Method
                     </label>
                     <select
                       name="payment_method"
                       value={paymentEditData.payment_method}
                       onChange={handlePaymentEditChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white"
                     >
                       <option value="cash">Cash</option>
                       <option value="card">Card</option>
@@ -2223,7 +2140,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
                       Notes
                     </label>
                     <input
@@ -2231,7 +2148,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       name="notes"
                       value={paymentEditData.notes}
                       onChange={handlePaymentEditChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white"
                       placeholder="Payment notes"
                     />
                   </div>
@@ -2246,9 +2163,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   const discountPercent = planPrice > 0 && discount > 0 ? Math.round((discount / planPrice) * 100) : 0;
                   
                   return (
-                    <div className="bg-white rounded-lg p-3 border border-gray-200">
-                      <p className="text-xs font-semibold text-gray-600 mb-2">Payment Summary</p>
-                      <div className="space-y-1 text-sm">
+                    <div className="bg-white rounded-lg p-2 border border-gray-200">
+                      <p className="text-[10px] font-semibold text-gray-600 mb-1">Payment Summary</p>
+                      <div className="space-y-0.5 text-[10px]">
                         <div className="flex justify-between">
                           <span className="text-gray-500">Plan Price:</span>
                           <span className="font-medium">{formatCurrency(planPrice)}</span>
@@ -2259,16 +2176,16 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                             <span className="font-medium text-red-600">- {formatCurrency(discount)}</span>
                           </div>
                         )}
-                        <div className="flex justify-between pt-1 border-t border-gray-200">
+                        <div className="flex justify-between pt-0.5 border-t border-gray-200">
                           <span className="text-gray-600 font-medium">Final Price:</span>
                           <span className="font-medium text-green-600">{formatCurrency(finalPrice)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Amount Paid:</span>
+                          <span className="text-gray-500">Paid:</span>
                           <span className="font-medium text-blue-600">{formatCurrency(paid)}</span>
                         </div>
-                        <div className="flex justify-between pt-1 border-t border-gray-200">
-                          <span className="text-gray-700 font-semibold">Balance Due:</span>
+                        <div className="flex justify-between pt-0.5 border-t border-gray-200">
+                          <span className="text-gray-700 font-semibold">Balance:</span>
                           <span className={`font-bold ${balance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
                             {formatCurrency(balance)}
                           </span>
@@ -2278,77 +2195,77 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   );
                 })()}
                 
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="flex justify-end gap-2 pt-1">
                   <button
                     type="button"
                     onClick={handlePaymentEditCancel}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-[10px] text-gray-700 hover:bg-gray-50 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={savingPayment || !!paymentError}
-                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-[10px] font-medium disabled:opacity-50"
                   >
                     {savingPayment ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
-                      <Save className="h-4 w-4" />
+                      <Save className="h-3 w-3" />
                     )}
-                    {savingPayment ? 'Saving...' : 'Update Payment'}
+                    {savingPayment ? 'Saving...' : 'Update'}
                   </button>
                 </div>
               </form>
             </div>
           )}
 
-          {/* Membership Edit Modal */}
+          {/* Membership Edit Modal - Smaller */}
           {isEditingMembership && currentMembership && (
-            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-indigo-900 flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-indigo-600" />
-                  Edit Membership Details
+            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-indigo-900 text-xs flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4 text-indigo-600" />
+                  Edit Membership
                 </h3>
                 <button
                   onClick={handleMembershipEditCancel}
                   className="text-indigo-400 hover:text-indigo-600 p-1"
                 >
-                  <X className="h-5 w-5" />
+                  <X className="h-4 w-4" />
                 </button>
               </div>
               
-              <form onSubmit={handleMembershipEditSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <form onSubmit={handleMembershipEditSubmit} className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
                       Plan *
                     </label>
                     <select
                       name="plan_id"
                       value={membershipEditData.plan_id}
                       onChange={handleMembershipEditChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                       disabled={loadingPlans}
                     >
                       <option value="">Select a plan</option>
                       {plans.map((plan) => (
                         <option key={plan.id} value={plan.id.toString()}>
-                          {plan.name} - {formatCurrency(plan.price)} ({plan.duration_days} days)
+                          {plan.name} - {formatCurrency(plan.price)} ({plan.duration_days}d)
                         </option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
                       Status
                     </label>
                     <select
                       name="status"
                       value={membershipEditData.status}
                       onChange={handleMembershipEditChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                     >
                       {['active', 'inactive', 'expired', 'pending'].map((option) => (
                         <option key={option} value={option}>
@@ -2358,7 +2275,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
                       Start Date *
                     </label>
                     <input
@@ -2366,11 +2283,11 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       name="start_date"
                       value={membershipEditData.start_date}
                       onChange={handleMembershipEditChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
                       End Date *
                     </label>
                     <input
@@ -2378,30 +2295,30 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       name="end_date"
                       value={membershipEditData.end_date}
                       onChange={handleMembershipEditChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                     />
                   </div>
                 </div>
 
                 {membershipEditData.plan_id && (
-                  <div className="bg-white rounded-lg p-3 border border-indigo-200">
-                    <p className="text-xs font-semibold text-gray-600 mb-2">Selected Plan Details</p>
+                  <div className="bg-white rounded-lg p-2 border border-indigo-200">
+                    <p className="text-[10px] font-semibold text-gray-600 mb-1">Plan Details</p>
                     {(() => {
                       const selectedPlan = plans.find(p => p.id.toString() === membershipEditData.plan_id);
-                      if (!selectedPlan) return <p className="text-sm text-gray-400">Plan not found</p>;
+                      if (!selectedPlan) return <p className="text-xs text-gray-400">Plan not found</p>;
                       return (
-                        <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div className="grid grid-cols-3 gap-2 text-[10px]">
                           <div>
                             <span className="text-gray-500">Name:</span>
-                            <span className="font-medium ml-2">{selectedPlan.name}</span>
+                            <span className="font-medium ml-1">{selectedPlan.name}</span>
                           </div>
                           <div>
                             <span className="text-gray-500">Price:</span>
-                            <span className="font-medium ml-2 text-green-600">{formatCurrency(selectedPlan.price)}</span>
+                            <span className="font-medium ml-1 text-green-600">{formatCurrency(selectedPlan.price)}</span>
                           </div>
                           <div>
                             <span className="text-gray-500">Duration:</span>
-                            <span className="font-medium ml-2">{selectedPlan.duration_days} days</span>
+                            <span className="font-medium ml-1">{selectedPlan.duration_days}d</span>
                           </div>
                         </div>
                       );
@@ -2409,62 +2326,62 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   </div>
                 )}
 
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                  <p className="text-xs text-yellow-700">
-                    <AlertCircle className="h-3 w-3 inline mr-1" />
-                    Ensure the end date is after the start date. The membership duration will be calculated based on these dates.
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2">
+                  <p className="text-[10px] text-yellow-700">
+                    <AlertCircle className="h-2.5 w-2.5 inline mr-0.5" />
+                    Ensure end date is after start date.
                   </p>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="flex justify-end gap-2 pt-1">
                   <button
                     type="button"
                     onClick={handleMembershipEditCancel}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-[10px] text-gray-700 hover:bg-gray-50 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={savingMembership}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-[10px] font-medium disabled:opacity-50"
                   >
                     {savingMembership ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
-                      <Save className="h-4 w-4" />
+                      <Save className="h-3 w-3" />
                     )}
-                    {savingMembership ? 'Saving...' : 'Update Membership'}
+                    {savingMembership ? 'Saving...' : 'Update'}
                   </button>
                 </div>
               </form>
             </div>
           )}
 
-          {/* Freeze History Section */}
-          <div className="border-t border-gray-100 pt-6">
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Snowflake className="h-5 w-5 text-blue-600" />
+          {/* Freeze History Section - Smaller */}
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="font-semibold text-gray-900 text-xs mb-2 flex items-center gap-1.5">
+              <Snowflake className="h-4 w-4 text-blue-600" />
               Freeze History
             </h3>
             
             {loadingFreezes ? (
-              <div className="text-center py-4">
-                <Loader2 className="h-6 w-6 animate-spin text-gray-400 mx-auto" />
+              <div className="text-center py-3">
+                <Loader2 className="h-5 w-5 animate-spin text-gray-400 mx-auto" />
               </div>
             ) : freezeHistory.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {freezeHistory.map((freeze) => (
-                  <div key={freeze.id} className={`rounded-xl p-4 border ${
+                  <div key={freeze.id} className={`rounded-lg p-3 border ${
                     freeze.status === 'active' 
                       ? 'bg-blue-50 border-blue-200' 
                       : freeze.status === 'cancelled'
                       ? 'bg-red-50 border-red-200'
                       : 'bg-gray-50 border-gray-200'
                   }`}>
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    <div className="flex items-start justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${
                           freeze.freeze_type === 'medical' 
                             ? 'bg-red-100 text-red-700' 
                             : 'bg-blue-100 text-blue-700'
@@ -2472,50 +2389,50 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                           {freeze.freeze_type === 'medical' ? '🏥 Medical' : '📅 Regular'}
                         </span>
                         {getFreezeStatusBadge(freeze.status)}
-                        <span className="text-xs text-gray-400">
-                          {freeze.freeze_days} days
+                        <span className="text-[10px] text-gray-400">
+                          {freeze.freeze_days}d
                         </span>
                       </div>
                       {freeze.status === 'active' && (
                         <button
                           onClick={() => handleCancelFreeze(freeze.id)}
                           disabled={cancellingFreeze === freeze.id}
-                          className="text-red-500 hover:text-red-700 text-xs font-medium flex items-center gap-1"
+                          className="text-red-500 hover:text-red-700 text-[10px] font-medium flex items-center gap-0.5"
                         >
                           {cancellingFreeze === freeze.id ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
                           ) : (
                             <XCircle className="h-3 w-3" />
                           )}
-                          Cancel Freeze
+                          Cancel
                         </button>
                       )}
                     </div>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-1 text-[10px]">
                       <div>
                         <span className="text-gray-500">Start:</span>
-                        <span className="ml-2 font-medium text-gray-900">{formatDate(freeze.start_date)}</span>
+                        <span className="ml-1 font-medium text-gray-900">{formatDate(freeze.start_date)}</span>
                       </div>
                       <div>
                         <span className="text-gray-500">End:</span>
-                        <span className="ml-2 font-medium text-gray-900">{formatDate(freeze.end_date)}</span>
+                        <span className="ml-1 font-medium text-gray-900">{formatDate(freeze.end_date)}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500">Original End:</span>
-                        <span className="ml-2 font-medium text-gray-900">{formatDate(freeze.original_end_date)}</span>
+                        <span className="text-gray-500">Original:</span>
+                        <span className="ml-1 font-medium text-gray-900">{formatDate(freeze.original_end_date)}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500">New End:</span>
-                        <span className="ml-2 font-medium text-blue-600">{formatDate(freeze.new_end_date)}</span>
+                        <span className="text-gray-500">New:</span>
+                        <span className="ml-1 font-medium text-blue-600">{formatDate(freeze.new_end_date)}</span>
                       </div>
                     </div>
                     
                     {freeze.notes && (
-                      <p className="text-xs text-gray-500 mt-2">{freeze.notes}</p>
+                      <p className="text-[10px] text-gray-500 mt-1">{freeze.notes}</p>
                     )}
                     
-                    <div className="text-xs text-gray-400 mt-2">
+                    <div className="text-[10px] text-gray-400 mt-1">
                       Created: {formatDateTime(freeze.created_at)}
                       {freeze.created_by_name && ` by ${freeze.created_by_name}`}
                     </div>
@@ -2523,74 +2440,70 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-6">
-                <div className="text-gray-300 mb-2">
-                  <Snowflake className="h-10 w-10 mx-auto" />
-                </div>
-                <p className="text-sm text-gray-400">No freeze history</p>
-                <p className="text-xs text-gray-300 mt-1">Freezes will appear here once applied</p>
+              <div className="text-center py-4">
+                <p className="text-xs text-gray-400">No freeze history</p>
               </div>
             )}
           </div>
 
-          {/* Member Information Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Member Information Grid - Smaller text */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Personal Info */}
-            <div className="bg-gray-50 rounded-xl p-4">
-              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <User className="h-4 w-4" />
-                Personal Information
-                {isEditing && <span className="text-xs text-blue-600 ml-2">(Editing)</span>}
+            <div className="bg-gray-50 rounded-lg p-3">
+              <h3 className="font-semibold text-gray-900 text-xs mb-2 flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5" />
+                Personal Info
+                {isEditing && <span className="text-[10px] text-blue-600 ml-1">(Editing)</span>}
               </h3>
               {isEditing ? (
-                <form className="space-y-3">
+                <form className="space-y-2">
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Full Name *</label>
+                    <label className="text-[10px] font-medium text-gray-600">Full Name *</label>
                     <input
                       type="text"
                       name="full_name"
                       value={editFormData.full_name}
                       onChange={handleEditChange}
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Phone *</label>
+                    <label className="text-[10px] font-medium text-gray-600">Phone *</label>
                     <input
                       type="tel"
                       name="phone"
                       value={editFormData.phone}
                       onChange={handleEditChange}
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Email</label>
+                    <label className="text-[10px] font-medium text-gray-600">Email</label>
                     <input
                       type="email"
                       name="email"
                       value={editFormData.email}
                       onChange={handleEditChange}
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Date of Birth</label>
+                    <label className="text-[10px] font-medium text-gray-600">DOB</label>
                     <input
                       type="date"
                       name="date_of_birth"
                       value={editFormData.date_of_birth}
                       onChange={handleEditChange}
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Gender</label>
+                    <label className="text-[10px] font-medium text-gray-600">Gender</label>
                     <select
                       name="gender"
                       value={editFormData.gender}
                       onChange={handleEditChange}
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                       <option value="male">Male</option>
                       <option value="female">Female</option>
@@ -2599,24 +2512,24 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Address</label>
+                    <label className="text-[10px] font-medium text-gray-600">Address</label>
                     <textarea
                       name="address"
                       value={editFormData.address}
                       onChange={handleEditChange}
-                      rows="2"
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                      rows="1"
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                     />
                   </div>
                 </form>
               ) : (
-                <div className="space-y-2 text-sm">
+                <div className="space-y-1 text-[11px]">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Full Name:</span>
+                    <span className="text-gray-500">Name:</span>
                     <span className="font-medium text-gray-900">{member.full_name}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Member ID:</span>
+                    <span className="text-gray-500">ID:</span>
                     <span className="font-medium text-gray-900 font-mono">#{member.id}</span>
                   </div>
                   <div className="flex justify-between">
@@ -2626,52 +2539,52 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   {member.email && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">Email:</span>
-                      <span className="font-medium text-gray-900">{member.email}</span>
+                      <span className="font-medium text-gray-900 truncate max-w-[120px]">{member.email}</span>
                     </div>
                   )}
                   {member.date_of_birth && (
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Date of Birth:</span>
+                      <span className="text-gray-500">DOB:</span>
                       <span className="font-medium text-gray-900">{formatDate(member.date_of_birth)}</span>
                     </div>
                   )}
                   {member.gender && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">Gender:</span>
-                      <span className="font-medium text-gray-900">{member.gender}</span>
+                      <span className="font-medium text-gray-900 capitalize">{member.gender}</span>
                     </div>
                   )}
                   {member.address && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">Address:</span>
-                      <span className="font-medium text-gray-900">{member.address}</span>
+                      <span className="font-medium text-gray-900 truncate max-w-[120px]">{member.address}</span>
                     </div>
                   )}
                 </div>
               )}
             </div>
 
-            {/* Current Membership */}
-            <div className="bg-gray-50 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                  <Award className="h-4 w-4" />
+            {/* Current Membership - Smaller */}
+            <div className="bg-gray-50 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-gray-900 text-xs flex items-center gap-1.5">
+                  <Award className="h-3.5 w-3.5" />
                   Current Membership
                 </h3>
-                {isEditingMembership && <span className="text-xs text-indigo-600">(Editing)</span>}
+                {isEditingMembership && <span className="text-[10px] text-indigo-600">(Editing)</span>}
               </div>
               {currentMembership ? (
-                <div className="space-y-2 text-sm">
+                <div className="space-y-1 text-[11px]">
                   <div className="flex justify-between">
                     <span className="text-gray-500">Plan:</span>
                     <span className="font-medium text-gray-900">{currentMembership.plan?.name || 'N/A'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Start Date:</span>
+                    <span className="text-gray-500">Start:</span>
                     <span className="font-medium text-gray-900">{formatDate(currentMembership.start_date)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">End Date:</span>
+                    <span className="text-gray-500">End:</span>
                     <span className="font-medium text-gray-900">{formatDate(currentMembership.end_date)}</span>
                   </div>
                   <div className="flex justify-between">
@@ -2679,24 +2592,24 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     {getStatusBadge(currentMembership.status)}
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Payment Status:</span>
+                    <span className="text-gray-500">Payment:</span>
                     {getPaymentStatusBadge(currentMembership.payment_status)}
                   </div>
                   
                   {paymentSummary && paymentSummary.discountApplied > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Discount Applied:</span>
-                      <span className="font-medium text-red-600">- {formatCurrency(paymentSummary.discountApplied)} ({paymentSummary.discountPercentage}%)</span>
+                      <span className="text-gray-500">Discount:</span>
+                      <span className="font-medium text-red-600">- {formatCurrency(paymentSummary.discountApplied)}</span>
                     </div>
                   )}
                   
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Amount Paid:</span>
+                    <span className="text-gray-500">Paid:</span>
                     <span className="font-medium text-green-600">{formatCurrency(currentMembership.amount_paid || 0)}</span>
                   </div>
                   {paymentSummary && paymentSummary.balanceDue > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Balance Due:</span>
+                      <span className="text-gray-500">Balance:</span>
                       <span className="font-medium text-orange-600">{formatCurrency(paymentSummary.balanceDue)}</span>
                     </div>
                   )}
@@ -2706,76 +2619,44 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       <span className="font-medium text-blue-600">{formatDate(currentMembership.next_payment_date)}</span>
                     </div>
                   )}
-                  
-                  {paymentSummary && (
-                    <div className="mt-3 pt-3 border-t border-gray-200">
-                      <p className="text-xs text-gray-400 mb-1">Payment Summary</p>
-                      <div className="space-y-0.5 text-xs">
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Plan Price:</span>
-                          <span className="text-gray-600">{formatCurrency(paymentSummary.planPrice)}</span>
-                        </div>
-                        {paymentSummary.discountApplied > 0 && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-400">Discount ({paymentSummary.discountPercentage}%):</span>
-                            <span className="text-red-500">- {formatCurrency(paymentSummary.discountApplied)}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between font-medium">
-                          <span className="text-gray-500">Final Price:</span>
-                          <span className="text-gray-800">{formatCurrency(paymentSummary.finalPrice)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Paid:</span>
-                          <span className="text-green-600">{formatCurrency(paymentSummary.amountPaid)}</span>
-                        </div>
-                        <div className="flex justify-between font-semibold">
-                          <span className="text-gray-600">Balance:</span>
-                          <span className={paymentSummary.balanceDue > 0 ? 'text-orange-600' : 'text-green-600'}>
-                            {formatCurrency(paymentSummary.balanceDue)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500 text-center py-4">No active membership</p>
+                <p className="text-xs text-gray-500 text-center py-2">No active membership</p>
               )}
             </div>
 
-            {/* Emergency Contact */}
-            <div className="bg-gray-50 rounded-xl p-4">
-              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
+            {/* Emergency Contact - Smaller */}
+            <div className="bg-gray-50 rounded-lg p-3">
+              <h3 className="font-semibold text-gray-900 text-xs mb-2 flex items-center gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5" />
                 Emergency Contact
-                {isEditing && <span className="text-xs text-blue-600 ml-2">(Editing)</span>}
+                {isEditing && <span className="text-[10px] text-blue-600 ml-1">(Editing)</span>}
               </h3>
               {isEditing ? (
-                <form className="space-y-3">
+                <form className="space-y-2">
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Contact Name</label>
+                    <label className="text-[10px] font-medium text-gray-600">Contact Name</label>
                     <input
                       type="text"
                       name="emergency_contact_name"
                       value={editFormData.emergency_contact_name}
                       onChange={handleEditChange}
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Contact Phone</label>
+                    <label className="text-[10px] font-medium text-gray-600">Contact Phone</label>
                     <input
                       type="tel"
                       name="emergency_contact_phone"
                       value={editFormData.emergency_contact_phone}
                       onChange={handleEditChange}
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
                 </form>
               ) : (
-                <div className="space-y-2 text-sm">
+                <div className="space-y-1 text-[11px]">
                   {member.emergency_contact_name && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">Name:</span>
@@ -2789,164 +2670,96 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     </div>
                   )}
                   {!member.emergency_contact_name && !member.emergency_contact_phone && (
-                    <p className="text-sm text-gray-400 text-center py-2">No emergency contact set</p>
+                    <p className="text-xs text-gray-400 text-center py-1">No emergency contact</p>
                   )}
                 </div>
               )}
             </div>
 
-            {/* Medical Info */}
-            <div className="bg-gray-50 rounded-xl p-4">
-              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <Activity className="h-4 w-4" />
-                Medical Information
-                {isEditing && <span className="text-xs text-blue-600 ml-2">(Editing)</span>}
+            {/* Medical Info - Smaller */}
+            <div className="bg-gray-50 rounded-lg p-3">
+              <h3 className="font-semibold text-gray-900 text-xs mb-2 flex items-center gap-1.5">
+                <Activity className="h-3.5 w-3.5" />
+                Medical Info
+                {isEditing && <span className="text-[10px] text-blue-600 ml-1">(Editing)</span>}
               </h3>
               {isEditing ? (
-                <form className="space-y-3">
+                <form className="space-y-2">
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Medical Conditions</label>
+                    <label className="text-[10px] font-medium text-gray-600">Medical Conditions</label>
                     <textarea
                       name="medical_conditions"
                       value={editFormData.medical_conditions}
                       onChange={handleEditChange}
-                      rows="2"
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                      placeholder="e.g. Diabetes, Hypertension"
+                      rows="1"
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                      placeholder="e.g. Diabetes"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Allergies</label>
+                    <label className="text-[10px] font-medium text-gray-600">Allergies</label>
                     <textarea
                       name="allergies"
                       value={editFormData.allergies}
                       onChange={handleEditChange}
-                      rows="2"
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                      placeholder="e.g. Peanuts, Latex"
+                      rows="1"
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                      placeholder="e.g. Peanuts"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Current Medications</label>
+                    <label className="text-[10px] font-medium text-gray-600">Medications</label>
                     <textarea
                       name="medications"
                       value={editFormData.medications}
                       onChange={handleEditChange}
-                      rows="2"
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                      placeholder="List any regular medications"
+                      rows="1"
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                      placeholder="List medications"
                     />
                   </div>
                 </form>
               ) : (
-                <div className="space-y-2 text-sm">
+                <div className="space-y-1 text-[11px]">
                   {member.medical_conditions && (
                     <div>
-                      <span className="text-gray-500 block">Medical Conditions:</span>
-                      <p className="text-gray-900 mt-1">{member.medical_conditions}</p>
+                      <span className="text-gray-500 block">Conditions:</span>
+                      <p className="text-gray-900 mt-0.5">{member.medical_conditions}</p>
                     </div>
                   )}
                   {member.allergies && (
                     <div>
                       <span className="text-gray-500 block">Allergies:</span>
-                      <p className="text-gray-900 mt-1">{member.allergies}</p>
+                      <p className="text-gray-900 mt-0.5">{member.allergies}</p>
                     </div>
                   )}
                   {member.medications && (
                     <div>
                       <span className="text-gray-500 block">Medications:</span>
-                      <p className="text-gray-900 mt-1">{member.medications}</p>
+                      <p className="text-gray-900 mt-0.5">{member.medications}</p>
                     </div>
                   )}
                   {!member.medical_conditions && !member.allergies && !member.medications && (
-                    <p className="text-sm text-gray-400 text-center py-2">No medical information recorded</p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* ID Proof */}
-            <div className="bg-gray-50 rounded-xl p-4">
-              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                ID Proof
-                {isEditing && <span className="text-xs text-blue-600 ml-2">(Editing)</span>}
-              </h3>
-              {isEditing ? (
-                <form className="space-y-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-600">ID Proof Type</label>
-                    <select
-                      name="id_proof_type"
-                      value={editFormData.id_proof_type}
-                      onChange={handleEditChange}
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    >
-                      {[
-                        { value: 'aadhar', label: 'Aadhar Card' },
-                        { value: 'pan', label: 'PAN Card' },
-                        { value: 'dl', label: 'Driving License' },
-                        { value: 'passport', label: 'Passport' },
-                        { value: 'voter', label: 'Voter ID' },
-                      ].map(option => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600">ID Proof Number</label>
-                    <input
-                      type="text"
-                      name="id_proof_number"
-                      value={editFormData.id_proof_number}
-                      onChange={handleEditChange}
-                      className="w-full mt-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
-                </form>
-              ) : (
-                <div className="space-y-2 text-sm">
-                  {member.id_proof_type && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Type:</span>
-                      <span className="font-medium text-gray-900">
-                        {[
-                          { value: 'aadhar', label: 'Aadhar Card' },
-                          { value: 'pan', label: 'PAN Card' },
-                          { value: 'dl', label: 'Driving License' },
-                          { value: 'passport', label: 'Passport' },
-                          { value: 'voter', label: 'Voter ID' },
-                        ].find(o => o.value === member.id_proof_type)?.label || member.id_proof_type}
-                      </span>
-                    </div>
-                  )}
-                  {member.id_proof_number && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Number:</span>
-                      <span className="font-medium text-gray-900">{member.id_proof_number}</span>
-                    </div>
-                  )}
-                  {!member.id_proof_type && !member.id_proof_number && (
-                    <p className="text-sm text-gray-400 text-center py-2">No ID proof recorded</p>
+                    <p className="text-xs text-gray-400 text-center py-1">No medical info</p>
                   )}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Personal Training Section - UPDATED with PT Status */}
-          <div className="border-t border-gray-100 pt-6">
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Dumbbell className="h-5 w-5 text-purple-600" />
+          {/* Personal Training Section - Smaller */}
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="font-semibold text-gray-900 text-xs mb-2 flex items-center gap-1.5">
+              <Dumbbell className="h-4 w-4 text-purple-600" />
               Personal Training
             </h3>
             
             {loadingPt ? (
-              <div className="text-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
+              <div className="text-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400 mx-auto" />
               </div>
             ) : ptSessions.length > 0 ? (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {ptSessions.map((session) => {
                   const daysArray = parseSessionDays(session.session_days);
                   const daysDisplay = daysArray.length > 0 
@@ -2954,95 +2767,80 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     : '—';
                   const ptStatus = getPtStatus(session);
                   const remainingDays = getPtRemainingDays(session);
-                  const IconMap = {
-                    active: CheckCircle,
-                    upcoming: Clock,
-                    expired: XCircle,
-                    completed: CheckCircle,
-                    cancelled: XCircle,
-                    inactive: XCircle
-                  };
-                  const StatusIcon = IconMap[ptStatus.status] || Clock;
                   
                   return (
-                    <div key={session.id} className={`border rounded-xl p-4 ${
+                    <div key={session.id} className={`border rounded-lg p-3 ${
                       ptStatus.status === 'active' ? 'bg-green-50 border-green-200' :
                       ptStatus.status === 'upcoming' ? 'bg-purple-50 border-purple-200' :
-                      ptStatus.status === 'expired' ? 'bg-gray-50 border-gray-200' :
-                      'bg-purple-50 border-purple-200'
+                      'bg-gray-50 border-gray-200'
                     }`}>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Dumbbell className={`h-5 w-5 ${
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <Dumbbell className={`h-4 w-4 ${
                             ptStatus.status === 'active' ? 'text-green-600' :
                             ptStatus.status === 'upcoming' ? 'text-purple-600' :
                             'text-gray-400'
                           }`} />
-                          <span className="font-semibold text-gray-900">
-                            Trainer: {session.trainer_name || 'Unknown Trainer'}
+                          <span className="font-semibold text-gray-900 text-xs">
+                            Trainer: {session.trainer_name || 'Unknown'}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           <PtStatusBadge session={session} />
                           {ptStatus.status === 'active' && remainingDays !== null && remainingDays > 0 && (
-                            <span className="text-xs text-green-600 font-medium">
-                              {remainingDays} day{remainingDays !== 1 ? 's' : ''} remaining
-                            </span>
-                          )}
-                          {ptStatus.status === 'expired' && (
-                            <span className="text-xs text-gray-500">
-                              Ended {new Date(session.end_date).toLocaleDateString()}
+                            <span className="text-[10px] text-green-600 font-medium">
+                              {remainingDays}d left
                             </span>
                           )}
                         </div>
                       </div>
                       
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px]">
                         <div>
-                          <span className="text-gray-500">Start Date:</span>
-                          <span className="ml-2 font-medium text-gray-900">{formatDate(session.start_date)}</span>
+                          <span className="text-gray-500">Start:</span>
+                          <span className="ml-1 font-medium text-gray-900">{formatDate(session.start_date)}</span>
                         </div>
                         <div>
-                          <span className="text-gray-500">End Date:</span>
-                          <span className="ml-2 font-medium text-gray-900">{formatDate(session.end_date)}</span>
+                          <span className="text-gray-500">End:</span>
+                          <span className="ml-1 font-medium text-gray-900">{formatDate(session.end_date)}</span>
                         </div>
                         <div>
                           <span className="text-gray-500">Time:</span>
-                          <span className="ml-2 font-medium text-gray-900">{session.session_time || '—'}</span>
+                          <span className="ml-1 font-medium text-gray-900">{session.session_time || '—'}</span>
                         </div>
                         <div>
                           <span className="text-gray-500">Days:</span>
-                          <span className="ml-2 font-medium text-gray-900">{daysDisplay}</span>
+                          <span className="ml-1 font-medium text-gray-900">{daysDisplay}</span>
                         </div>
                       </div>
                       
-                      <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 pt-3 border-t border-gray-200">
+                      <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 pt-2 border-t border-gray-200">
                         <div>
-                          <span className="text-gray-500 text-xs">Total Amount:</span>
-                          <p className="font-semibold text-purple-700">{formatCurrency(session.total_amount || 0)}</p>
+                          <span className="text-gray-500 text-[10px]">Total:</span>
+                          <p className="font-semibold text-purple-700 text-xs">{formatCurrency(session.total_amount || 0)}</p>
                         </div>
                         <div>
-                          <span className="text-gray-500 text-xs">Amount Paid:</span>
-                          <p className="font-semibold text-green-600">{formatCurrency(session.amount_paid || 0)}</p>
+                          <span className="text-gray-500 text-[10px]">Paid:</span>
+                          <p className="font-semibold text-green-600 text-xs">{formatCurrency(session.amount_paid || 0)}</p>
                         </div>
                         <div>
-                          <span className="text-gray-500 text-xs">Balance Due:</span>
-                          <p className={`font-semibold ${(session.balance_due || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                          <span className="text-gray-500 text-[10px]">Balance:</span>
+                          <p className={`font-semibold text-xs ${(session.balance_due || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
                             {formatCurrency(session.balance_due || 0)}
                           </p>
                         </div>
                         <div>
-                          <span className="text-gray-500 text-xs">Status:</span>
-                          <p className={`font-medium ${ptStatus.status === 'active' ? 'text-green-600' : ptStatus.status === 'expired' ? 'text-gray-500' : 'text-gray-900'} capitalize`}>
+                          <span className="text-gray-500 text-[10px]">Status:</span>
+                          <p className={`font-medium text-[10px] ${ptStatus.status === 'active' ? 'text-green-600' : ptStatus.status === 'expired' ? 'text-gray-500' : 'text-gray-900'} capitalize`}>
                             {ptStatus.label}
                           </p>
                         </div>
                       </div>
                       
                       {session.notes && (
-                        <div className="mt-3 pt-3 border-t border-gray-200">
-                          <span className="text-gray-500 text-sm">Notes:</span>
-                          <p className="text-sm text-gray-700 mt-1">{session.notes}</p>
+                        <div className="mt-2 pt-2 border-t border-gray-200">
+                          <span className="text-gray-500 text-[10px]">Notes:</span>
+                          <p className="text-xs text-gray-700 mt-0.5">{session.notes}</p>
                         </div>
                       )}
                     </div>
@@ -3050,185 +2848,171 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 })}
               </div>
             ) : (
-              <div className="text-center py-8">
-                <div className="text-gray-300 mb-2">
-                  <Dumbbell className="h-12 w-12 mx-auto" />
-                </div>
-                <p className="text-sm text-gray-400">No personal training sessions</p>
-                <p className="text-xs text-gray-300 mt-1">PT sessions will appear here once assigned</p>
+              <div className="text-center py-4">
+                <p className="text-xs text-gray-400">No personal training sessions</p>
               </div>
             )}
           </div>
 
-          {/* ===== ADD-ONS SECTION ===== */}
-          <div className="border-t border-gray-100 pt-6">
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Tag className="h-5 w-5 text-purple-600" />
+          {/* Add-Ons Section - Smaller */}
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="font-semibold text-gray-900 text-xs mb-2 flex items-center gap-1.5">
+              <Tag className="h-4 w-4 text-purple-600" />
               Add-Ons
             </h3>
             
             {loadingAddons ? (
-              <div className="text-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
+              <div className="text-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400 mx-auto" />
               </div>
             ) : memberAddons.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {memberAddons.map((addon) => (
-                  <div key={addon.id} className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Tag className="h-5 w-5 text-purple-600" />
-                        <span className="font-semibold text-gray-900">{addon.addon_name}</span>
+                  <div key={addon.id} className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <Tag className="h-4 w-4 text-purple-600" />
+                        <span className="font-semibold text-gray-900 text-xs">{addon.addon_name}</span>
                       </div>
                       {getAddonStatusBadge(addon.status)}
                     </div>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px]">
                       <div>
                         <span className="text-gray-500">Category:</span>
-                        <span className="ml-2 font-medium text-gray-900 capitalize">{addon.addon_category}</span>
+                        <span className="ml-1 font-medium text-gray-900 capitalize">{addon.addon_category}</span>
                       </div>
                       <div>
                         <span className="text-gray-500">Price:</span>
-                        <span className="ml-2 font-medium text-purple-700">{formatCurrency(addon.price)}</span>
+                        <span className="ml-1 font-medium text-purple-700">{formatCurrency(addon.price)}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500">Start Date:</span>
-                        <span className="ml-2 font-medium text-gray-900">{formatDate(addon.start_date)}</span>
+                        <span className="text-gray-500">Start:</span>
+                        <span className="ml-1 font-medium text-gray-900">{formatDate(addon.start_date)}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500">End Date:</span>
-                        <span className="ml-2 font-medium text-gray-900">{addon.end_date ? formatDate(addon.end_date) : '—'}</span>
+                        <span className="text-gray-500">End:</span>
+                        <span className="ml-1 font-medium text-gray-900">{addon.end_date ? formatDate(addon.end_date) : '—'}</span>
                       </div>
                     </div>
                     
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-purple-200">
+                    <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 pt-2 border-t border-purple-200">
                       <div>
-                        <span className="text-gray-500 text-xs">Amount Paid:</span>
-                        <p className="font-semibold text-green-600">{formatCurrency(addon.amount_paid || 0)}</p>
+                        <span className="text-gray-500 text-[10px]">Paid:</span>
+                        <p className="font-semibold text-green-600 text-xs">{formatCurrency(addon.amount_paid || 0)}</p>
                       </div>
                       <div>
-                        <span className="text-gray-500 text-xs">Balance Due:</span>
-                        <p className={`font-semibold ${(addon.balance_due || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                        <span className="text-gray-500 text-[10px]">Balance:</span>
+                        <p className={`font-semibold text-xs ${(addon.balance_due || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
                           {formatCurrency(addon.balance_due || 0)}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => handlePayAddon(addon)}
                           disabled={addon.balance_due <= 0}
-                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium ${
+                          className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-medium ${
                             addon.balance_due > 0
                               ? 'bg-purple-600 text-white hover:bg-purple-700'
                               : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                           }`}
                         >
-                          <CreditCard className="h-3.5 w-3.5" />
-                          Pay Now
+                          <CreditCard className="h-3 w-3" />
+                          Pay
                         </button>
                       </div>
                     </div>
                     
                     {addon.notes && (
-                      <div className="mt-3 pt-3 border-t border-purple-200">
-                        <span className="text-gray-500 text-sm">Notes:</span>
-                        <p className="text-sm text-gray-700 mt-1">{addon.notes}</p>
+                      <div className="mt-2 pt-2 border-t border-purple-200">
+                        <span className="text-gray-500 text-[10px]">Notes:</span>
+                        <p className="text-xs text-gray-700 mt-0.5">{addon.notes}</p>
                       </div>
                     )}
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8">
-                <div className="text-gray-300 mb-2">
-                  <Tag className="h-12 w-12 mx-auto" />
-                </div>
-                <p className="text-sm text-gray-400">No add-ons assigned</p>
-                <p className="text-xs text-gray-300 mt-1">Add-ons will appear here once assigned</p>
+              <div className="text-center py-4">
+                <p className="text-xs text-gray-400">No add-ons assigned</p>
               </div>
             )}
           </div>
 
-          {/* Payment History */}
-          <div className="border-t border-gray-100 pt-6">
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
+          {/* Payment History - Smaller */}
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="font-semibold text-gray-900 text-xs mb-2 flex items-center gap-1.5">
+              <CreditCard className="h-4 w-4" />
               Payment History
             </h3>
             {loadingPayments ? (
-              <div className="text-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
+              <div className="text-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400 mx-auto" />
               </div>
             ) : payments.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-[10px]">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="text-left px-4 py-2">Date</th>
-                      <th className="text-left px-4 py-2">Amount</th>
-                      <th className="text-left px-4 py-2">Method</th>
-                      <th className="text-left px-4 py-2">Status</th>
-                      <th className="text-left px-4 py-2">Transaction ID</th>
+                      <th className="text-left px-2 py-1.5">Date</th>
+                      <th className="text-left px-2 py-1.5">Amount</th>
+                      <th className="text-left px-2 py-1.5">Method</th>
+                      <th className="text-left px-2 py-1.5">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {payments.map((payment) => (
                       <tr key={payment.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2">{formatDate(payment.payment_date)}</td>
-                        <td className="px-4 py-2 font-medium text-green-600">{formatCurrency(payment.amount)}</td>
-                        <td className="px-4 py-2 capitalize">{payment.payment_method}</td>
-                        <td className="px-4 py-2">{getPaymentStatusBadge(payment.status)}</td>
-                        <td className="px-4 py-2 text-xs text-gray-500">{payment.transaction_id || '—'}</td>
+                        <td className="px-2 py-1.5">{formatDate(payment.payment_date)}</td>
+                        <td className="px-2 py-1.5 font-medium text-green-600">{formatCurrency(payment.amount)}</td>
+                        <td className="px-2 py-1.5 capitalize">{payment.payment_method}</td>
+                        <td className="px-2 py-1.5">{getPaymentStatusBadge(payment.status)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                <div className="mt-4 p-3 bg-gray-50 rounded-lg flex justify-between">
-                  <span className="font-medium text-gray-600">Total Paid:</span>
-                  <span className="font-bold text-green-600">{formatCurrency(totalPaid)}</span>
+                <div className="mt-2 p-2 bg-gray-50 rounded-lg flex justify-between">
+                  <span className="font-medium text-gray-600 text-[10px]">Total Paid:</span>
+                  <span className="font-bold text-green-600 text-xs">{formatCurrency(totalPaid)}</span>
                 </div>
               </div>
             ) : (
-              <div className="text-center py-8">
-                <div className="text-gray-300 mb-2">
-                  <CreditCard className="h-12 w-12 mx-auto" />
-                </div>
-                <p className="text-sm text-gray-400">No payment records found</p>
-                <p className="text-xs text-gray-300 mt-1">Payments will appear here once recorded</p>
+              <div className="text-center py-4">
+                <p className="text-xs text-gray-400">No payment records</p>
               </div>
             )}
           </div>
 
-          {/* Membership History */}
+          {/* Membership History - Smaller */}
           {membershipHistory.length > 1 && (
-            <div className="border-t border-gray-100 pt-6">
-              <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <History className="h-5 w-5" />
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="font-semibold text-gray-900 text-xs mb-2 flex items-center gap-1.5">
+                <History className="h-4 w-4" />
                 Membership History
               </h3>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {membershipHistory.map((membership) => (
-                  <div key={membership.id} className="bg-gray-50 rounded-xl p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-gray-900">{membership.plan?.name || 'Unknown Plan'}</span>
+                  <div key={membership.id} className="bg-gray-50 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-semibold text-gray-900 text-xs">{membership.plan?.name || 'Unknown'}</span>
                       {getStatusBadge(membership.status)}
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="grid grid-cols-2 gap-1 text-[10px]">
                       <div>
                         <span className="text-gray-500">Start:</span>
-                        <span className="ml-2 text-gray-900">{formatDate(membership.start_date)}</span>
+                        <span className="ml-1 text-gray-900">{formatDate(membership.start_date)}</span>
                       </div>
                       <div>
                         <span className="text-gray-500">End:</span>
-                        <span className="ml-2 text-gray-900">{formatDate(membership.end_date)}</span>
+                        <span className="ml-1 text-gray-900">{formatDate(membership.end_date)}</span>
                       </div>
                       <div>
                         <span className="text-gray-500">Paid:</span>
-                        <span className="ml-2 text-green-600">{formatCurrency(membership.amount_paid || 0)}</span>
+                        <span className="ml-1 text-green-600">{formatCurrency(membership.amount_paid || 0)}</span>
                       </div>
                       <div>
                         <span className="text-gray-500">Balance:</span>
-                        <span className="ml-2 text-orange-600">{formatCurrency(membership.balance_due || 0)}</span>
+                        <span className="ml-1 text-orange-600">{formatCurrency(membership.balance_due || 0)}</span>
                       </div>
                     </div>
                   </div>
@@ -3237,59 +3021,59 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           )}
 
-          {/* Attendance History */}
-          <div className="border-t border-gray-100 pt-6">
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <CalendarIcon className="h-5 w-5" />
+          {/* Attendance History - Smaller */}
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="font-semibold text-gray-900 text-xs mb-2 flex items-center gap-1.5">
+              <CalendarIcon className="h-4 w-4" />
               Recent Attendance
             </h3>
             {loadingAttendance ? (
-              <div className="text-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
+              <div className="text-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400 mx-auto" />
               </div>
             ) : attendanceHistory.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-[10px]">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="text-left px-4 py-2">Date</th>
-                      <th className="text-left px-4 py-2">Check In</th>
-                      <th className="text-left px-4 py-2">Check Out</th>
+                      <th className="text-left px-2 py-1.5">Date</th>
+                      <th className="text-left px-2 py-1.5">Check In</th>
+                      <th className="text-left px-2 py-1.5">Check Out</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {attendanceHistory.map((attendance) => (
+                    {attendanceHistory.slice(0, 10).map((attendance) => (
                       <tr key={attendance.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2">{formatDate(attendance.check_in_time)}</td>
-                        <td className="px-4 py-2">{formatDateTime(attendance.check_in_time)}</td>
-                        <td className="px-4 py-2">{attendance.check_out_time ? formatDateTime(attendance.check_out_time) : '—'}</td>
+                        <td className="px-2 py-1.5">{formatDate(attendance.check_in_time)}</td>
+                        <td className="px-2 py-1.5">{formatDateTime(attendance.check_in_time)}</td>
+                        <td className="px-2 py-1.5">{attendance.check_out_time ? formatDateTime(attendance.check_out_time) : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-gray-500 text-center py-4">No attendance records found</p>
+              <p className="text-xs text-gray-400 text-center py-2">No attendance records</p>
             )}
           </div>
 
-          {/* Comments Section with Categories */}
-          <div className="border-t border-gray-100 pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                <MessageCircle className="h-5 w-5" />
-                Comments & Communication History
-                <span className="text-xs font-normal text-gray-400 ml-2">
-                  ({comments.length} comments)
+          {/* Comments Section - Smaller */}
+          <div className="border-t border-gray-100 pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold text-gray-900 text-xs flex items-center gap-1.5">
+                <MessageCircle className="h-4 w-4" />
+                Comments
+                <span className="text-[10px] font-normal text-gray-400 ml-1">
+                  ({comments.length})
                 </span>
               </h3>
               {commentFilter && (
                 <button
                   onClick={() => setCommentFilter(null)}
-                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                  className="text-[10px] text-blue-600 hover:text-blue-700 flex items-center gap-0.5"
                 >
-                  <X className="h-3 w-3" />
-                  Clear Filter
+                  <X className="h-2.5 w-2.5" />
+                  Clear
                 </button>
               )}
             </div>
@@ -3300,43 +3084,43 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               countMap={commentCounts}
             />
 
-            <div className="flex flex-col gap-3 mb-6">
-              <div className="flex gap-3">
+            <div className="flex flex-col gap-2 mb-4">
+              <div className="flex gap-2">
                 <textarea
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Add a comment about this member..."
-                  rows={3}
-                  className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                  placeholder="Add a comment..."
+                  rows={2}
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
                 />
                 <button
                   onClick={handleAddComment}
                   disabled={submitting || !newComment.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 h-fit flex items-center gap-2"
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 h-fit flex items-center gap-1.5 text-[10px] font-medium"
                 >
-                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                   Send
                 </button>
               </div>
               
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-gray-500">Tag as:</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-medium text-gray-500">Tag:</span>
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all ${
                       COMMENT_CATEGORIES[selectedCategory]?.color || 'bg-gray-100 text-gray-700 border-gray-200'
                     }`}
                   >
                     {selectedCategory && COMMENT_CATEGORIES[selectedCategory]?.icon && (
                       <CommentCategoryBadge category={selectedCategory} size="sm" />
                     )}
-                    <ChevronDown className="h-3 w-3" />
+                    <ChevronDown className="h-2.5 w-2.5" />
                   </button>
                   
                   {showCategoryDropdown && (
-                    <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 min-w-[160px] py-1">
+                    <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[140px] py-1">
                       {Object.entries(COMMENT_CATEGORIES).map(([key, config]) => {
                         const Icon = config.icon;
                         const isSelected = selectedCategory === key;
@@ -3348,15 +3132,15 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                               setSelectedCategory(key);
                               setShowCategoryDropdown(false);
                             }}
-                            className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
+                            className={`w-full text-left px-2.5 py-1.5 text-[10px] transition-colors flex items-center gap-1.5 ${
                               isSelected ? 'bg-gray-100' : 'hover:bg-gray-50'
                             }`}
                           >
-                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${config.color}`}>
-                              <Icon className="h-3 w-3" />
+                            <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${config.color}`}>
+                              <Icon className="h-2.5 w-2.5" />
                               {config.label}
                             </span>
-                            {isSelected && <CheckCircle className="h-3 w-3 text-blue-500 ml-auto" />}
+                            {isSelected && <CheckCircle className="h-2.5 w-2.5 text-blue-500 ml-auto" />}
                           </button>
                         );
                       })}
@@ -3367,21 +3151,21 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   <button
                     type="button"
                     onClick={() => setSelectedCategory('general')}
-                    className="text-xs text-gray-400 hover:text-gray-600"
+                    className="text-[10px] text-gray-400 hover:text-gray-600"
                   >
-                    <X className="h-3 w-3" />
+                    <X className="h-2.5 w-2.5" />
                   </button>
                 )}
-                <span className="text-xs text-gray-400 ml-2">
-                  Category: <span className="font-medium">{COMMENT_CATEGORIES[selectedCategory]?.label || 'General'}</span>
+                <span className="text-[10px] text-gray-400 ml-1">
+                  <span className="font-medium">{COMMENT_CATEGORIES[selectedCategory]?.label || 'General'}</span>
                 </span>
               </div>
             </div>
 
-            <div className="space-y-4 max-h-[400px] overflow-y-auto">
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
               {loadingComments ? (
-                <div className="text-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
+                <div className="text-center py-4">
+                  <Loader2 className="h-6 w-6 animate-spin text-gray-400 mx-auto" />
                 </div>
               ) : filteredComments.length > 0 ? (
                 filteredComments.map((comment) => {
@@ -3391,52 +3175,52 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   const Icon = config.icon;
                   
                   return (
-                    <div key={comment.id} className="bg-gray-50 rounded-xl p-4 group">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                    <div key={comment.id} className="bg-gray-50 rounded-lg p-2.5 group">
+                      <div className="flex items-start justify-between mb-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <div className="h-6 w-6 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
                             {comment.user_name?.charAt(0).toUpperCase() || 'U'}
                           </div>
                           <div>
-                            <p className="text-sm font-semibold text-gray-900">{comment.user_name || 'Unknown User'}</p>
-                            <p className="text-xs text-gray-400">{formatDateTime(comment.created_at)}</p>
+                            <p className="text-[10px] font-semibold text-gray-900">{comment.user_name || 'Unknown'}</p>
+                            <p className="text-[10px] text-gray-400">{formatDateTime(comment.created_at)}</p>
                           </div>
                           <CommentCategoryBadge category={category} size="sm" />
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400 capitalize">{comment.user_role?.replace('_', ' ')}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-gray-400 capitalize">{comment.user_role?.replace('_', ' ')}</span>
                           <button
                             onClick={() => handleDeleteComment(comment.id)}
                             disabled={deletingComment === comment.id}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-red-100 text-red-500 disabled:opacity-50"
-                            title="Delete comment"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-red-100 text-red-500 disabled:opacity-50"
+                            title="Delete"
                           >
                             {deletingComment === comment.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
+                              <Loader2 className="h-2.5 w-2.5 animate-spin" />
                             ) : (
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="h-2.5 w-2.5" />
                             )}
                           </button>
                         </div>
                       </div>
-                      <p className="text-sm text-gray-700 ml-10">{cleanComment}</p>
+                      <p className="text-[11px] text-gray-700 ml-7">{cleanComment}</p>
                     </div>
                   );
                 })
               ) : (
-                <div className="text-center py-8 text-gray-400">
-                  <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">
+                <div className="text-center py-4 text-gray-400">
+                  <MessageCircle className="h-8 w-8 mx-auto mb-1 opacity-50" />
+                  <p className="text-xs">
                     {commentFilter 
-                      ? `No comments in "${COMMENT_CATEGORIES[commentFilter]?.label}" category` 
-                      : 'No comments yet. Add the first comment!'}
+                      ? `No comments in "${COMMENT_CATEGORIES[commentFilter]?.label}"` 
+                      : 'No comments yet'}
                   </p>
                   {commentFilter && (
                     <button
                       onClick={() => setCommentFilter(null)}
-                      className="text-xs text-blue-500 hover:text-blue-700 mt-2"
+                      className="text-[10px] text-blue-500 hover:text-blue-700 mt-1"
                     >
-                      Show all comments
+                      Show all
                     </button>
                   )}
                 </div>
@@ -3445,28 +3229,28 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-50 border-t border-gray-100 px-6 py-4 flex justify-end gap-3 rounded-b-2xl">
+        {/* Footer - Smaller */}
+        <div className="sticky bottom-0 bg-gray-50 border-t border-gray-100 px-4 py-3 flex justify-end gap-2 rounded-b-2xl">
           <button
             onClick={onClose}
-            className="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100"
+            className="px-3 py-1.5 border border-gray-200 rounded-lg text-[10px] font-medium text-gray-600 hover:bg-gray-100"
           >
             Close
           </button>
         </div>
 
-        {/* Addon Payment Modal */}
+        {/* Addon Payment Modal - Smaller */}
         {showAddonPaymentModal && selectedAddonForPayment && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-              <div className="flex items-center justify-between p-5 border-b bg-gradient-to-r from-purple-50 to-pink-50 rounded-t-2xl">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
-                    <Tag className="h-5 w-5 text-purple-600" />
+              <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-purple-50 to-pink-50 rounded-t-2xl">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
+                    <Tag className="h-4 w-4 text-purple-600" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900">Pay for Add-On</h3>
-                    <p className="text-sm text-gray-500">{selectedAddonForPayment.addon_name}</p>
+                    <h3 className="text-sm font-bold text-gray-900">Pay for Add-On</h3>
+                    <p className="text-[10px] text-gray-500">{selectedAddonForPayment.addon_name}</p>
                   </div>
                 </div>
                 <button
@@ -3474,30 +3258,30 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     setShowAddonPaymentModal(false);
                     setSelectedAddonForPayment(null);
                   }}
-                  className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
                 >
-                  <X className="h-5 w-5 text-gray-500" />
+                  <X className="h-4 w-4 text-gray-500" />
                 </button>
               </div>
 
-              <form onSubmit={handleAddonPaymentSubmit} className="p-5 space-y-4">
-                <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-                  <div className="flex justify-between text-sm">
+              <form onSubmit={handleAddonPaymentSubmit} className="p-4 space-y-4">
+                <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-[10px]">
+                  <div className="flex justify-between">
                     <span className="text-gray-500">Price:</span>
                     <span className="font-medium text-gray-900">{formatCurrency(selectedAddonForPayment.price)}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Amount Paid:</span>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Paid:</span>
                     <span className="font-medium text-green-600">{formatCurrency(selectedAddonForPayment.amount_paid || 0)}</span>
                   </div>
-                  <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-200">
-                    <span className="text-gray-700">Balance Due:</span>
+                  <div className="flex justify-between font-bold pt-1 border-t border-gray-200">
+                    <span className="text-gray-700">Balance:</span>
                     <span className="text-orange-600">{formatCurrency(selectedAddonForPayment.balance_due)}</span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-medium text-gray-700 mb-1">
                     Payment Amount (₹)
                   </label>
                   <input
@@ -3506,23 +3290,23 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     max={selectedAddonForPayment.balance_due}
                     value={addonPaymentAmount}
                     onChange={(e) => setAddonPaymentAmount(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none"
                     placeholder="Enter amount"
                     required
                   />
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-[10px] text-gray-400 mt-0.5">
                     Max: {formatCurrency(selectedAddonForPayment.balance_due)}
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-medium text-gray-700 mb-1">
                     Payment Method
                   </label>
                   <select
                     value={addonPaymentMethod}
                     onChange={(e) => setAddonPaymentMethod(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none"
                   >
                     <option value="cash">Cash</option>
                     <option value="card">Card</option>
@@ -3533,19 +3317,19 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-medium text-gray-700 mb-1">
                     Notes (Optional)
                   </label>
                   <input
                     type="text"
                     value={addonPaymentNotes}
                     onChange={(e) => setAddonPaymentNotes(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none"
                     placeholder="Payment notes"
                   />
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-4 border-t">
+                <div className="flex items-center justify-end gap-2 pt-3 border-t">
                   <button
                     type="button"
                     onClick={() => {
@@ -3553,24 +3337,24 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       setSelectedAddonForPayment(null);
                     }}
                     disabled={payingAddon}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-[10px] text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={payingAddon || !addonPaymentAmount || parseFloat(addonPaymentAmount) <= 0}
-                    className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                    className="px-4 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 text-[10px] font-medium"
                   >
                     {payingAddon ? (
                       <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Loader2 className="h-3 w-3 animate-spin" />
                         Processing...
                       </>
                     ) : (
                       <>
-                        <CreditCard className="h-4 w-4" />
-                        Make Payment
+                        <CreditCard className="h-3 w-3" />
+                        Pay
                       </>
                     )}
                   </button>
