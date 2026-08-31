@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH WHATSAPP NOTIFICATIONS PAGE
+// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH HIDE/SHOW TOGGLE
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,7 +12,7 @@ import {
   Briefcase, Wallet, ChevronLeft, ChevronRight, Wifi, Phone,
   Mail as MailIcon, Clock, AlertTriangle, Eye, Shield, RefreshCw,
   MessageSquare, Send, Download, Filter, FileText, Utensils,
-  Tag, CalendarRange, Clock as ClockIcon2
+  Tag, CalendarRange, Clock as ClockIcon2, EyeOff
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCache, CACHE_KEYS } from '../context/CacheContext';
@@ -135,6 +135,12 @@ const Dashboard = () => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
+  // NEW: Toggle state for hiding/showing sensitive values
+  const [hideValues, setHideValues] = useState(() => {
+    // Load from localStorage if available
+    const saved = localStorage.getItem('gymmonitor_hide_values');
+    return saved ? JSON.parse(saved) : false;
+  });
   // NOTE: previously this was populated only from localStorage.getItem('userRole')
   // in a useEffect below. If that key was never set (or named differently) at
   // login time, `userRole` stayed null forever and `isAdmin` was permanently
@@ -389,6 +395,31 @@ const Dashboard = () => {
       }
       return { data: null, success: false };
     }
+  };
+
+  // ─── TOGGLE HIDE/SHOW VALUES ─────────────────────────────────────────────
+  const toggleHideValues = useCallback(() => {
+    setHideValues(prev => {
+      const newValue = !prev;
+      localStorage.setItem('gymmonitor_hide_values', JSON.stringify(newValue));
+      return newValue;
+    });
+  }, []);
+
+  // ─── HELPER: Format masked value ────────────────────────────────────────
+  const formatMaskedValue = (value, showValue) => {
+    if (!showValue) {
+      // Return masked version based on value type
+      if (typeof value === 'number') {
+        if (value > 0) {
+          // For currency values: show ****
+          return '****';
+        }
+        return 0;
+      }
+      return '****';
+    }
+    return value;
   };
 
   // ─── FETCH DASHBOARD DATA ───────────────────────────────────────────────
@@ -1013,6 +1044,21 @@ const Dashboard = () => {
     return `${currencySymbol} ${formatted}`;
   };
 
+  // ─── FORMAT WITH HIDE/SHOW ──────────────────────────────────────────────
+  const formatCurrencyMasked = (amount) => {
+    if (hideValues && amount > 0) {
+      return '****';
+    }
+    return formatCurrency(amount);
+  };
+
+  const formatNumberMasked = (number) => {
+    if (hideValues && number > 0) {
+      return '****';
+    }
+    return number?.toLocaleString() || 0;
+  };
+
   const getActivityColor = (type) => {
     const colors = {
       checkin: 'bg-green-100 text-green-600',
@@ -1092,9 +1138,9 @@ const Dashboard = () => {
     <div className="space-y-6">
       {/* Welcome Header - Always visible */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white shadow-xl">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
+            <h1 className="text-3xl font-bold flex items-center gap-2 flex-wrap">
               Welcome back, {user?.full_name || 'Admin'}! 👋
               <span className="bg-yellow-400 text-yellow-900 text-xs px-3 py-1 rounded-full font-semibold ml-2">
                 {user?.role === 'gym_owner' ? 'GYM OWNER' : user?.role?.toUpperCase()}
@@ -1102,10 +1148,29 @@ const Dashboard = () => {
             </h1>
             <p className="text-blue-100 mt-2 text-lg">Here's what's happening at your gym today.</p>
           </div>
-          <div className="flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-lg rounded-xl border border-white/20 text-sm text-white/80">
-            <span className="h-2 w-2 bg-green-400 rounded-full animate-pulse"></span>
-            Live · auto-updates every minute
-          </div>
+          
+          {/* ─── HIDE/SHOW TOGGLE BUTTON ──────────────────────────────── */}
+          <button
+            onClick={toggleHideValues}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-300 font-medium ${
+              hideValues 
+                ? 'bg-amber-500/30 text-amber-100 border border-amber-400/50 hover:bg-amber-500/40' 
+                : 'bg-white/20 text-white border border-white/20 hover:bg-white/30'
+            }`}
+            title={hideValues ? 'Show values' : 'Hide values'}
+          >
+            {hideValues ? (
+              <>
+                <Eye className="h-5 w-5" />
+                <span className="hidden sm:inline">Show Values</span>
+              </>
+            ) : (
+              <>
+                <EyeOff className="h-5 w-5" />
+                <span className="hidden sm:inline">Hide Values</span>
+              </>
+            )}
+          </button>
         </div>
         
         <div className="flex flex-wrap gap-3 mt-6">
@@ -1118,7 +1183,7 @@ const Dashboard = () => {
           {canSeeAttendance && (
             <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
               <Users className="h-4 w-4" />
-              {stats.todayCheckins} check-ins today
+              {formatNumberMasked(stats.todayCheckins)} check-ins today
             </div>
           )}
           
@@ -1126,7 +1191,7 @@ const Dashboard = () => {
           {canSeePayments && (
             <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
               <TrendUp className="h-4 w-4" />
-              {stats.monthlyRevenue > 0 ? formatCurrency(stats.monthlyRevenue) : 'No revenue yet'} this month
+              {stats.monthlyRevenue > 0 ? formatCurrencyMasked(stats.monthlyRevenue) : 'No revenue yet'} this month
             </div>
           )}
           
@@ -1154,15 +1219,15 @@ const Dashboard = () => {
               </span>
             </div>
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Members</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{stats.totalMembers?.toLocaleString() || 0}</p>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatNumberMasked(stats.totalMembers)}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
               <span className="text-green-600 flex items-center text-sm">
                 <UserCheck className="h-4 w-4 mr-1" />
-                {stats.activeMembers || 0} active
+                {formatNumberMasked(stats.activeMembers)} active
               </span>
               <span className="text-gray-500 flex items-center text-sm">
                 <UserMinus className="h-4 w-4 mr-1" />
-                {stats.inactiveMembers || 0} inactive
+                {formatNumberMasked(stats.inactiveMembers)} inactive
               </span>
             </div>
           </div>
@@ -1176,11 +1241,11 @@ const Dashboard = () => {
                 <UserPlus className="h-6 w-6 text-green-600" />
               </div>
               <span className="text-sm font-medium text-green-600 bg-green-100 px-3 py-1 rounded-full">
-                +{stats.newMembersThisMonth || 0} new
+                +{formatNumberMasked(stats.newMembersThisMonth)} new
               </span>
             </div>
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">New Members</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{stats.newMembersThisMonth || 0}</p>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatNumberMasked(stats.newMembersThisMonth)}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
               <span className="text-gray-600 flex items-center text-sm">
                 <Calendar className="h-4 w-4 mr-1" />
@@ -1188,7 +1253,7 @@ const Dashboard = () => {
               </span>
               <span className="text-blue-600 font-medium text-sm flex items-center">
                 <Flame className="h-4 w-4 mr-1" />
-                {stats.expiringThisMonth || 0} expiring
+                {formatNumberMasked(stats.expiringThisMonth)} expiring
               </span>
             </div>
           </div>
@@ -1211,7 +1276,7 @@ const Dashboard = () => {
               </span>
             </div>
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Revenue</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrency(stats.monthlyRevenue || 0)}</p>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.monthlyRevenue)}</p>
             <p className="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100 flex items-center">
               {stats.revenueGrowth >= 0 ? (
                 <TrendingUp className="h-4 w-4 mr-1 text-green-500" />
@@ -1234,21 +1299,21 @@ const Dashboard = () => {
                 <CreditCard className="h-6 w-6 text-orange-600" />
               </div>
               <span className="text-sm font-medium text-orange-600 bg-orange-100 px-3 py-1 rounded-full">
-                {stats.pendingPayments || 0} pending
+                {formatNumberMasked(stats.pendingPayments)} pending
               </span>
             </div>
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Revenue</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrency(stats.totalRevenue || 0)}</p>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.totalRevenue)}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
               {canSeeAttendance && (
                 <span className="text-gray-600 flex items-center text-sm">
                   <Activity className="h-4 w-4 mr-1" />
-                  {stats.todayCheckins || 0} check-ins
+                  {formatNumberMasked(stats.todayCheckins)} check-ins
                 </span>
               )}
               <span className="text-orange-600 font-medium text-sm flex items-center">
                 <ClockIcon className="h-4 w-4 mr-1" />
-                {stats.expiringSoon || 0} expiring
+                {formatNumberMasked(stats.expiringSoon)} expiring
               </span>
             </div>
           </div>
@@ -1262,14 +1327,14 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-sm font-medium">Total Balance Due</p>
-                <p className="text-3xl font-bold text-white mt-1">{formatCurrency(stats.totalBalanceDue)}</p>
+                <p className="text-3xl font-bold text-white mt-1">{formatCurrencyMasked(stats.totalBalanceDue)}</p>
               </div>
               <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
                 <Wallet className="h-8 w-8 text-white" />
               </div>
             </div>
             <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
-              <span>{stats.membersWithBalance} members have dues</span>
+              <span>{formatNumberMasked(stats.membersWithBalance)} members have dues</span>
             </div>
           </div>
   
@@ -1277,7 +1342,7 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-sm font-medium">Members with Balance</p>
-                <p className="text-3xl font-bold text-white mt-1">{stats.membersWithBalance}</p>
+                <p className="text-3xl font-bold text-white mt-1">{formatNumberMasked(stats.membersWithBalance)}</p>
               </div>
               <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
                 <Users className="h-8 w-8 text-white" />
@@ -1293,7 +1358,7 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-sm font-medium">Overdue Payments</p>
-                <p className="text-3xl font-bold text-white mt-1">{stats.overdueCount}</p>
+                <p className="text-3xl font-bold text-white mt-1">{formatNumberMasked(stats.overdueCount)}</p>
               </div>
               <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
                 <AlertCircle className="h-8 w-8 text-white" />
@@ -1308,7 +1373,7 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-sm font-medium">Upcoming Payments</p>
-                <p className="text-3xl font-bold text-white mt-1">{stats.upcomingPayments}</p>
+                <p className="text-3xl font-bold text-white mt-1">{formatNumberMasked(stats.upcomingPayments)}</p>
               </div>
               <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
                 <Calendar className="h-8 w-8 text-white" />
@@ -1337,7 +1402,7 @@ const Dashboard = () => {
               </span>
             </div>
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Expenses</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrency(stats.monthlyExpenses || 0)}</p>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.monthlyExpenses)}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
               <span className="text-gray-600 flex items-center text-sm">
                 <Calendar className="h-4 w-4 mr-1" />
@@ -1345,7 +1410,7 @@ const Dashboard = () => {
               </span>
               <span className="text-red-600 font-medium text-sm flex items-center">
                 <TrendingDown className="h-4 w-4 mr-1" />
-                Total: {formatCurrency(stats.totalExpenses || 0)}
+                Total: {formatCurrencyMasked(stats.totalExpenses)}
               </span>
             </div>
           </div>
@@ -1363,14 +1428,14 @@ const Dashboard = () => {
                 </span>
               </div>
               <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Net Profit</h3>
-              <p className="text-4xl font-bold text-emerald-600 mt-1">{formatCurrency(stats.netProfit || 0)}</p>
+              <p className="text-4xl font-bold text-emerald-600 mt-1">{formatCurrencyMasked(stats.netProfit)}</p>
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
                 <span className="text-gray-600 flex items-center text-sm">
-                  Revenue: {formatCurrency(stats.monthlyRevenue || 0)}
+                  Revenue: {formatCurrencyMasked(stats.monthlyRevenue)}
                 </span>
                 <span className="text-emerald-600 font-medium text-sm flex items-center">
                   <CheckCircle className="h-4 w-4 mr-1" />
-                  Profit: {stats.profitMargin || 0}%
+                  Profit: {hideValues ? '**' : stats.profitMargin || 0}%
                 </span>
               </div>
             </div>
@@ -1393,7 +1458,7 @@ const Dashboard = () => {
               <span className="text-gray-600 flex items-center text-sm">
                 <Wallet className="h-4 w-4 mr-1" />
                 {Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0]?.[1] 
-                  ? formatCurrency(Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0][1]) 
+                  ? formatCurrencyMasked(Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0][1]) 
                   : '₹0'}
               </span>
               <button 
@@ -1419,22 +1484,22 @@ const Dashboard = () => {
               <div className="mt-3 space-y-2">
                 <div className="flex justify-between text-sm text-white">
                   <span>Profit</span>
-                  <span className="font-semibold">{stats.profitMargin || 0}%</span>
+                  <span className="font-semibold">{hideValues ? '**' : stats.profitMargin || 0}%</span>
                 </div>
                 <div className="w-full bg-white/30 rounded-full h-2 overflow-hidden">
                   <div 
                     className="bg-green-400 rounded-full h-2 transition-all duration-500" 
-                    style={{ width: `${Math.min(Math.max(stats.profitMargin || 0, 0), 100)}%` }}
+                    style={{ width: `${hideValues ? 50 : Math.min(Math.max(stats.profitMargin || 0, 0), 100)}%` }}
                   />
                 </div>
                 <div className="flex justify-between text-sm text-white/80 mt-2">
                   <span className="flex items-center gap-1">
                     <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                    Revenue: {formatCurrency(stats.monthlyRevenue || 0)}
+                    Revenue: {formatCurrencyMasked(stats.monthlyRevenue)}
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="w-2 h-2 bg-red-400 rounded-full"></span>
-                    Expenses: {formatCurrency(stats.monthlyExpenses || 0)}
+                    Expenses: {formatCurrencyMasked(stats.monthlyExpenses)}
                   </span>
                 </div>
               </div>
@@ -1456,7 +1521,7 @@ const Dashboard = () => {
                 Member Demographics
               </h3>
               <span className="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full">
-                {stats.totalMembers} total
+                {formatNumberMasked(stats.totalMembers)} total
               </span>
             </div>
             
@@ -1464,7 +1529,7 @@ const Dashboard = () => {
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-gray-600 font-medium">Male</span>
-                  <span className="font-semibold text-blue-600">{stats.membersByGender?.male || 0}</span>
+                  <span className="font-semibold text-blue-600">{formatNumberMasked(stats.membersByGender?.male)}</span>
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
                   <div 
@@ -1477,7 +1542,7 @@ const Dashboard = () => {
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-gray-600 font-medium">Female</span>
-                  <span className="font-semibold text-pink-600">{stats.membersByGender?.female || 0}</span>
+                  <span className="font-semibold text-pink-600">{formatNumberMasked(stats.membersByGender?.female)}</span>
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
                   <div 
@@ -1490,7 +1555,7 @@ const Dashboard = () => {
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-gray-600 font-medium">Other</span>
-                  <span className="font-semibold text-purple-600">{stats.membersByGender?.other || 0}</span>
+                  <span className="font-semibold text-purple-600">{formatNumberMasked(stats.membersByGender?.other)}</span>
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
                   <div 
@@ -1515,7 +1580,7 @@ const Dashboard = () => {
                     <span className="text-sm text-gray-700 font-medium truncate max-w-[150px]">{plan}</span>
                     <div className="flex items-center gap-2">
                       <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-semibold">
-                        {count} members
+                        {formatNumberMasked(count)} members
                       </span>
                     </div>
                   </div>
@@ -1665,7 +1730,7 @@ const Dashboard = () => {
                 </button>
               </div>
               <p className="text-white/80 text-sm mt-1">
-                {stats.membersWithBalance} members have outstanding balance • Total: {formatCurrency(stats.totalBalanceDue)}
+                {formatNumberMasked(stats.membersWithBalance)} members have outstanding balance • Total: {formatCurrencyMasked(stats.totalBalanceDue)}
               </p>
             </div>
             
@@ -1685,7 +1750,7 @@ const Dashboard = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <p className="font-semibold text-gray-900 truncate">{member.name}</p>
-                          <span className="text-lg font-bold text-red-600">{formatCurrency(member.balanceDue)}</span>
+                          <span className="text-lg font-bold text-red-600">{formatCurrencyMasked(member.balanceDue)}</span>
                         </div>
                         <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                           <span className="flex items-center gap-1">
@@ -1733,7 +1798,7 @@ const Dashboard = () => {
               <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Total Outstanding:</span>
-                  <span className="font-bold text-red-600">{formatCurrency(stats.totalBalanceDue)}</span>
+                  <span className="font-bold text-red-600">{formatCurrencyMasked(stats.totalBalanceDue)}</span>
                 </div>
               </div>
             )}
@@ -2090,7 +2155,7 @@ const Dashboard = () => {
                 </div>
                 <div className="flex-1">
                   <h4 className="font-bold text-lg mb-1">Overdue Payments</h4>
-                  <p className="text-white/90 mb-3">{stats.overdueCount} members have overdue payments</p>
+                  <p className="text-white/90 mb-3">{formatNumberMasked(stats.overdueCount)} members have overdue payments</p>
                   <button 
                     onClick={() => setActiveTab('balance')}
                     className="bg-white text-red-600 px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
@@ -2110,7 +2175,7 @@ const Dashboard = () => {
                 </div>
                 <div className="flex-1">
                   <h4 className="font-bold text-lg mb-1">Expiring Memberships</h4>
-                  <p className="text-white/90 mb-3">{stats.expiringSoon} memberships expire within 7 days</p>
+                  <p className="text-white/90 mb-3">{formatNumberMasked(stats.expiringSoon)} memberships expire within 7 days</p>
                   <button 
                     onClick={() => setActiveTab('members')}
                     className="bg-white text-orange-600 px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
