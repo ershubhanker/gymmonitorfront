@@ -1,6 +1,7 @@
-// src/components/attendance/DeviceSyncModal.jsx
+// src/components/attendance/DeviceSyncModal.jsx - COMPLETE WITH ZK SUPPORT
+
 import React, { useState, useEffect } from 'react';
-import { X, Wifi, CheckCircle, XCircle, Loader2, WifiOff, Search, User, UserPlus, Link, AlertCircle } from 'lucide-react';
+import { X, Wifi, CheckCircle, XCircle, Loader2, WifiOff, Search, User, UserPlus, Link, AlertCircle, Zap } from 'lucide-react';
 import { useAttendance } from '../../context/AttendanceContext';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -18,7 +19,6 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
   const [loadingDeviceUsers, setLoadingDeviceUsers] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Debug logging for member data
   useEffect(() => {
     if (isOpen) {
       console.log('🔍 DeviceSyncModal opened with member:', member);
@@ -39,7 +39,6 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
 
   useEffect(() => {
     if (!isOpen) {
-      // Reset state when modal closes
       setSelectedDevice(null);
       setSyncing(false);
       setSyncSuccess(false);
@@ -52,7 +51,6 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
     }
   }, [isOpen]);
 
-  // When device is selected, fetch device users
   useEffect(() => {
     if (selectedDevice && isOpen) {
       fetchDeviceUsers(selectedDevice.id);
@@ -66,11 +64,9 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
   const fetchDeviceUsers = async (deviceId) => {
     setLoadingDeviceUsers(true);
     try {
-      // Get sync preview which includes members and matching suggestions
       const response = await api.get(`/attendance/devices/${deviceId}/sync-preview`);
       setDeviceUsers(response.data.members || []);
       
-      // Find matching members for the current member
       if (member) {
         const memberName = member.full_name || member.fullName || '';
         const memberPhone = member.phone || '';
@@ -105,7 +101,6 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
     }
   };
 
-  // ===== NEW: Trigger immediate sync on device =====
   const triggerImmediateSync = async (deviceSerial) => {
     try {
       if (!deviceSerial) {
@@ -125,20 +120,17 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
   };
 
   const handleSync = async () => {
-    // Validation: Check if device is selected
     if (!selectedDevice) {
       toast.error('Please select a device');
       return;
     }
 
-    // CRITICAL FIX: Check if member exists and has required data
     if (!member) {
       toast.error('Member data is missing. Please try again.');
       setSyncing(false);
       return;
     }
 
-    // Log the member data for debugging
     console.log('🔄 Syncing member:', {
       id: member.id,
       full_name: member.full_name || member.fullName,
@@ -148,15 +140,11 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
 
     setSyncing(true);
     try {
-      // Get the phone number - handle both full_name and fullName
       const memberName = member.full_name || member.fullName || 'Unknown Member';
       const memberPhone = member.phone || '';
       const memberId = member.id || member.member_id;
-      
-      // Use phone number as device_user_id with proper null check
       const deviceUserId = memberPhone.replace(/\D/g, '');
       
-      // Validate phone number
       if (!deviceUserId || deviceUserId.length < 10) {
         toast.error('Invalid phone number for device sync. Please ensure member has a valid 10-digit phone number.');
         setSyncing(false);
@@ -165,52 +153,57 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
 
       console.log(`📤 Syncing member "${memberName}" (ID: ${memberId}) to device "${selectedDevice.device_name}" with device ID: ${deviceUserId}`);
 
-      // First check if user already exists on device
-      const checkResult = await checkUserExistsOnDevice(
-        selectedDevice.id,
-        memberId,
-        memberName
+      const response = await api.post(
+        `/attendance/devices/${selectedDevice.id}/sync-member`,
+        {
+          id: memberId,
+          full_name: memberName,
+          phone: memberPhone,
+          device_user_id: deviceUserId,
+          email: member.email || ''
+        }
       );
 
-      if (checkResult.exists && checkResult.device_user_id) {
-        toast.success(`User already exists on device with ID: ${checkResult.device_user_id}`);
-        if (onSyncComplete) {
-          onSyncComplete(checkResult.device_user_id, memberId);
-        }
-        setSyncSuccess(true);
-        setAssignedDeviceId(checkResult.device_user_id);
-        setSyncing(false);
-        
-        // ===== FIX: Trigger immediate sync =====
-        if (selectedDevice.device_serial) {
-          await triggerImmediateSync(selectedDevice.device_serial);
-        }
-        
-        return;
-      }
-
-      // Sync using phone number as User ID
-      const syncPayload = {
-        id: memberId,
-        full_name: memberName,
-        phone: memberPhone,
-        device_user_id: deviceUserId,
-        email: member.email || ''
-      };
-      
-      console.log('📦 Sync payload:', syncPayload);
-      
-      const result = await syncMemberToDevice(selectedDevice.id, syncPayload);
-      
-      if (result.success) {
+      if (response.data.success) {
         setSyncSuccess(true);
         setAssignedDeviceId(deviceUserId);
-        toast.success(`✅ Member "${memberName}" synced to ${selectedDevice.device_name} with ID: ${deviceUserId}`);
-
-        // ===== FIX: Trigger immediate sync on the device =====
-        const deviceSerial = result.device_serial || selectedDevice.device_serial;
-        if (deviceSerial) {
-          await triggerImmediateSync(deviceSerial);
+        
+        if (response.data.direct) {
+          if (response.data.method === 'zk') {
+            toast.success(`✅ Member "${memberName}" synced directly via ZK to ${selectedDevice.device_name} with ID: ${deviceUserId}`);
+          } else {
+            toast.success(`✅ Member "${memberName}" synced directly to ${selectedDevice.device_name} with ID: ${deviceUserId}`);
+          }
+        } else {
+          toast.success(`✅ Member "${memberName}" queued for sync to ${selectedDevice.device_name} with ID: ${deviceUserId}`);
+          toast.custom(
+            (t) => (
+              <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-blue-50 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5`}>
+                <div className="flex-1 w-0 p-4">
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0 pt-0.5">
+                      <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Zap className="h-5 w-5 text-blue-600" />
+                      </div>
+                    </div>
+                    <div className="ml-3 flex-1">
+                      <p className="text-sm font-medium text-gray-900">📱 Device Sync Queued</p>
+                      <p className="mt-1 text-sm text-gray-500">Device will sync within a few seconds.</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex border-l border-blue-200">
+                  <button
+                    onClick={() => toast.dismiss(t.id)}
+                    className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-blue-600 hover:text-blue-500 focus:outline-none"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ),
+            { duration: 4000 }
+          );
         }
 
         if (onSyncComplete) {
@@ -225,7 +218,7 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
           refreshAllData();
         }, 500);
       } else {
-        toast.error(result.error || 'Failed to sync member');
+        toast.error(response.data.message || 'Failed to sync member');
       }
     } catch (error) {
       console.error('❌ Sync error:', error);
@@ -244,7 +237,6 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
 
     setSyncing(true);
     try {
-      // Sync to the selected existing member
       const response = await api.post(`/attendance/devices/${selectedDevice.id}/sync-user-to-device`, null, {
         params: { member_id: existingMember.id }
       });
@@ -254,7 +246,6 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
         setAssignedDeviceId(response.data.device_user_id);
         toast.success(`Linked to existing member: ${existingMember.full_name}`);
         
-        // ===== FIX: Trigger immediate sync =====
         if (selectedDevice.device_serial) {
           await triggerImmediateSync(selectedDevice.device_serial);
         }
@@ -280,7 +271,6 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
   };
 
   const handleCreateNew = async () => {
-    // Sync as new member
     await handleSync();
   };
 
@@ -293,14 +283,12 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
     toast.success('Device User ID copied to clipboard!');
   };
 
-  // Filter matching members by search term
   const filteredMatches = matchingMembers.filter(m => 
     m.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (m.phone && m.phone.includes(searchTerm)) ||
     (m.email && m.email?.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  // Get member name for display
   const displayName = member?.full_name || member?.fullName || 'Member';
   const displayPhone = member?.phone || 'No phone number';
 
@@ -321,7 +309,6 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
 
         <div className="p-4">
           {syncSuccess ? (
-            // Success state with Device ID display
             <div className="text-center py-6">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <CheckCircle className="h-8 w-8 text-green-600" />
@@ -353,7 +340,6 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
               </button>
             </div>
           ) : showMatchView && matchingMembers.length > 0 ? (
-            // Match View - Show potential duplicates
             <div>
               <div className="flex items-start gap-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
                 <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
@@ -437,7 +423,6 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
               </div>
             </div>
           ) : (
-            // Normal Device Selection
             <>
               {onlineDevices.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
@@ -453,6 +438,12 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
                     </p>
                     <p className="text-xs text-gray-400">Phone: {displayPhone}</p>
                     <p className="text-xs text-gray-400">ID: {member?.id || 'Unknown'}</p>
+                    {selectedDevice?.connection_type === 'server' && (
+                      <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                        <Zap className="h-3 w-3" />
+                        Server Mode - Direct ZK Connection
+                      </p>
+                    )}
                   </div>
 
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -476,8 +467,13 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
                             {device.location && (
                               <p className="text-xs text-gray-400 mt-1">{device.location}</p>
                             )}
-                            {/* Show device serial for debugging */}
                             <p className="text-xs text-gray-400 mt-1">Serial: {device.device_serial}</p>
+                            {device.connection_type === 'server' && (
+                              <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                                <Zap className="h-3 w-3" />
+                                Server Mode
+                              </p>
+                            )}
                           </div>
                           {device.is_online ? (
                             <Wifi className="h-4 w-4 text-green-500" />

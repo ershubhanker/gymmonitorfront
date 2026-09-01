@@ -1,4 +1,4 @@
-// src/pages/Members.jsx - Full Updated with Responsive Table Layout
+// src/pages/Members.jsx - Fixed Export Functionality (Exports All Members)
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
@@ -273,6 +273,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   const [showBulkLinkModal, setShowBulkLinkModal] = useState(false);
   const [linkingMembers, setLinkingMembers] = useState(false);
 
+  const [exporting, setExporting] = useState(false);
   const itemsPerPage = 50;
 
   const [gymDetails, setGymDetails] = useState({
@@ -1281,14 +1282,31 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ============================================================
-  // EXPORT MEMBERS
+  // ✅ FIXED: EXPORT ALL MEMBERS (NOT JUST CURRENT PAGE)
   // ============================================================
   const handleExport = async () => {
+    setExporting(true);
+    const toastId = toast.loading('Fetching all members for export...');
+    
     try {
+      // Fetch ALL members (not just current page)
+      const allMembersResponse = await api.get('/gym/members?limit=10000');
+      const allMembers = allMembersResponse.data || [];
+      
+      toast.loading(`Exporting ${allMembers.length} members...`, { id: toastId });
+      
+      // Fetch balances for all members
       const balancesResponse = await api.get('/gym/members/balances');
       const balancesMap = new Map();
       balancesResponse.data.forEach(balance => {
         balancesMap.set(balance.member_id, balance);
+      });
+      
+      // Fetch PT data for all members
+      const ptDataResponse = await api.get('/gym/members/pt-data');
+      const ptMap = {};
+      ptDataResponse.data.forEach(pt => {
+        ptMap[pt.member_id] = pt;
       });
 
       const csvRows = [
@@ -1302,22 +1320,41 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         ]
       ];
 
-      for (const member of members) {
+      for (const member of allMembers) {
         const balance = balancesMap.get(member.id);
-        const ptInfo = ptData[member.id];
+        const ptInfo = ptMap[member.id];
+        
+        // Get member name and details (handle both response formats)
+        const fullName = member.full_name || member.fullName || 'Unknown';
+        const email = member.email || '';
+        const phone = member.phone || '';
+        const gender = member.gender || 'Not specified';
+        const membership = member.membership || member.current_membership?.plan?.name || 'No Plan';
+        const status = member.status || member.is_active ? 'active' : 'inactive';
+        const joinDate = member.join_date || member.joined_date || '';
+        const payments = member.payments || member.payment_count || 0;
+        const deviceUserId = member.device_user_id || member.deviceUserId || '';
+        const syncedToDevice = member.synced_to_device || member.syncedToDevice || false;
         
         csvRows.push([
-          member.id, member.fullName, member.email, member.phone,
-          member.gender || 'Not specified', member.membership, member.status,
-          member.joinDate, member.payments,
+          member.id || '',
+          fullName,
+          email,
+          phone,
+          gender,
+          membership,
+          status,
+          joinDate,
+          payments,
           balance ? balance.total_amount : '0',
           balance ? balance.amount_paid : '0',
           balance ? balance.balance_due : '0',
           balance ? balance.payment_status : 'N/A',
           balance?.next_payment_date ? new Date(balance.next_payment_date).toLocaleDateString() : '',
           balance?.last_payment_date ? new Date(balance.last_payment_date).toLocaleDateString() : '',
-          member.deviceUserId || '', member.syncedToDevice ? 'Yes' : 'No',
-          ptInfo ? `Yes (Trainer: ${ptInfo.trainer_name})` : 'No',
+          deviceUserId,
+          syncedToDevice ? 'Yes' : 'No',
+          ptInfo ? `Yes (Trainer: ${ptInfo.trainer_name || 'N/A'})` : 'No',
           ptInfo ? ptInfo.total_amount || 0 : '',
           ptInfo ? ptInfo.amount_paid || 0 : '',
           ptInfo ? ptInfo.balance_due || 0 : ''
@@ -1342,10 +1379,15 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       a.click();
       window.URL.revokeObjectURL(url);
       
-      toast.success(`Exported ${members.length} members with balance information`);
+      toast.dismiss(toastId);
+      toast.success(`✅ Exported ${allMembers.length} members with balance information!`);
+      
     } catch (error) {
+      toast.dismiss(toastId);
       console.error('Export error:', error);
-      toast.error('Failed to export members with balance data');
+      toast.error(error.response?.data?.detail || 'Failed to export members with balance data');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -1780,9 +1822,18 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 </button>
               </>
             )}
-            <button onClick={handleExport} className="px-2 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center text-xs sm:text-sm">
-              <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              <span className="hidden xs:inline">Export</span>
+            <button 
+              onClick={handleExport} 
+              disabled={exporting}
+              className="px-2 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center text-xs sm:text-sm disabled:opacity-50"
+            >
+              {exporting ? (
+                <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 animate-spin" />
+              ) : (
+                <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              )}
+              <span className="hidden xs:inline">Export All</span>
+              {exporting && 'Exporting...'}
             </button>
             <button
               onClick={() => setShowBulkImportModal(true)}
@@ -2017,7 +2068,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                       </td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-right">
                         <div className="flex items-center justify-end gap-0.5 sm:gap-1">
-                          {/* Quick action buttons (visible on larger screens) */}
                           <button 
                             onClick={() => handleDownloadInvoice(member)} 
                             className="hidden sm:inline-flex p-1.5 text-green-600 hover:text-green-900 hover:bg-green-50 rounded-lg transition-colors"
@@ -2089,7 +2139,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                             <Trash2 className="h-4 w-4" />
                           </button>
                           
-                          {/* Dropdown menu for mobile/small screens */}
                           <div className="sm:hidden">
                             <ActionDropdown member={member} onAction={handleAction} />
                           </div>

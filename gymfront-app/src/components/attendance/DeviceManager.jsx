@@ -1,9 +1,11 @@
-// src/components/attendance/DeviceManager.jsx
+// src/components/attendance/DeviceManager.jsx - COMPLETE WITH ZK TESTING
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Trash2, Wifi, WifiOff, Copy, RefreshCw, 
   Eye, EyeOff, Edit, Check, X, AlertCircle, Loader2,
-  DoorOpen, Lock, Unlock
+  DoorOpen, Lock, Unlock, Server, Laptop, HelpCircle,
+  Zap
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -16,35 +18,35 @@ const DeviceManager = () => {
   const [showApiKey, setShowApiKey] = useState(null);
   const [testingDevice, setTestingDevice] = useState(null);
   
-  // Online status tracking with polling
   const [onlineStatuses, setOnlineStatuses] = useState({});
   const [pollingInterval, setPollingInterval] = useState(null);
   const [statusLoading, setStatusLoading] = useState({});
   
-  // Door control states
   const [unlockingDevice, setUnlockingDevice] = useState(null);
   const [doorStatuses, setDoorStatuses] = useState({});
+  
+  const [connectionType, setConnectionType] = useState('bridge');
   
   const [formData, setFormData] = useState({
     device_name: '',
     device_ip: '',
     device_port: 4370,
     device_serial: '',
-    location: ''
+    location: '',
+    connection_type: 'bridge',
+    server_port: 8080,
   });
   const [formErrors, setFormErrors] = useState({});
+  const [zkTesting, setZkTesting] = useState({});
 
-  // Fetch devices on load
   const fetchDevices = async () => {
     setLoading(true);
     try {
       const response = await api.get('/attendance/devices');
       setDevices(response.data);
       
-      // After devices load, poll their status
       if (response.data.length > 0) {
         await pollDeviceStatus(response.data);
-        // Fetch door status for each device
         await fetchDoorStatuses(response.data);
       }
     } catch (error) {
@@ -59,14 +61,11 @@ const DeviceManager = () => {
     fetchDevices();
   }, []);
 
-  // Polling setup
   useEffect(() => {
     if (devices.length > 0) {
-      // Initial poll after devices load
       pollDeviceStatus(devices);
       fetchDoorStatuses(devices);
       
-      // Set up polling every 15 seconds
       const interval = setInterval(() => {
         pollDeviceStatus(devices);
         fetchDoorStatuses(devices);
@@ -80,7 +79,6 @@ const DeviceManager = () => {
     }
   }, [devices.length]);
 
-  // Clean up on unmount
   useEffect(() => {
     return () => {
       if (pollingInterval) {
@@ -89,7 +87,6 @@ const DeviceManager = () => {
     };
   }, [pollingInterval]);
 
-  // Poll device status
   const pollDeviceStatus = async (deviceList = devices) => {
     if (deviceList.length === 0) return;
     
@@ -100,7 +97,6 @@ const DeviceManager = () => {
           const response = await api.get(`/attendance/devices/${device.id}/status`);
           statuses[device.id] = response.data.is_online;
         } catch (error) {
-          // If we can't get status, keep existing status
           console.warn(`Failed to get status for device ${device.id}:`, error);
         }
       }
@@ -110,7 +106,6 @@ const DeviceManager = () => {
     }
   };
 
-  // Fetch door status for all devices
   const fetchDoorStatuses = async (deviceList = devices) => {
     if (deviceList.length === 0) return;
     
@@ -129,7 +124,6 @@ const DeviceManager = () => {
             }));
           }
         } catch (error) {
-          // If endpoint doesn't exist, set default status
           setDoorStatuses(prev => ({
             ...prev,
             [device.id]: {
@@ -145,17 +139,13 @@ const DeviceManager = () => {
     }
   };
 
-  // Check if device is online
   const isDeviceOnline = (device) => {
-    // First check if we have a cached status from polling
     if (onlineStatuses[device.id] !== undefined) {
       return onlineStatuses[device.id];
     }
     
-    // Fallback to device.is_online from database
     if (!device.is_online) return false;
     
-    // If last_seen is more than 60 seconds ago, consider offline
     if (device.last_seen) {
       const lastSeen = new Date(device.last_seen);
       const now = new Date();
@@ -168,14 +158,12 @@ const DeviceManager = () => {
     return true;
   };
 
-  // Validate form
   const validateForm = () => {
     const errors = {};
     if (!formData.device_name.trim()) errors.device_name = 'Device name is required';
     if (!formData.device_ip.trim()) errors.device_ip = 'Device IP is required';
     if (!formData.device_serial.trim()) errors.device_serial = 'Device serial is required';
     
-    // Validate IP format
     const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
     if (formData.device_ip && !ipPattern.test(formData.device_ip)) {
       errors.device_ip = 'Invalid IP address format';
@@ -185,17 +173,122 @@ const DeviceManager = () => {
     return Object.keys(errors).length === 0;
   };
 
-  // Register new device
-  const handleRegister = async (e) => {
+  // ===== ZK CONNECTION TEST =====
+  const handleZKTest = async (device) => {
+    if (device.connection_type !== 'server') {
+      toast.info('This device is not in server mode. ZK test requires server mode.');
+      return;
+    }
+
+    setZkTesting(prev => ({ ...prev, [device.id]: true }));
+    const toastId = toast.loading(`Testing ZK connection to ${device.device_name}...`);
+    
+    try {
+      const response = await api.post(`/attendance/devices/${device.id}/test-zk`);
+      
+      toast.dismiss(toastId);
+      
+      if (response.data.success) {
+        toast.success(
+          <div className="p-2">
+            <p className="font-bold text-green-800 mb-1">✅ ZK Connection Successful!</p>
+            <p className="text-sm text-gray-600">Device: {response.data.device_name}</p>
+            <p className="text-xs text-gray-500">IP: {response.data.device_ip}:{response.data.device_port}</p>
+            <p className="text-xs text-gray-500">Users on device: {response.data.user_count}</p>
+            {response.data.device_time && (
+              <p className="text-xs text-gray-500">Device Time: {new Date(response.data.device_time).toLocaleString()}</p>
+            )}
+          </div>,
+          { duration: 8000 }
+        );
+      } else {
+        toast.error(
+          <div className="p-2">
+            <p className="font-bold text-red-800 mb-1">❌ ZK Connection Failed</p>
+            <p className="text-sm text-gray-600">{response.data.message}</p>
+            <p className="text-xs text-gray-500 mt-2">Make sure the device is powered on and reachable.</p>
+          </div>,
+          { duration: 8000 }
+        );
+      }
+    } catch (error) {
+      toast.dismiss(toastId);
+      console.error('ZK test error:', error);
+      toast.error(`ZK test failed: ${error.response?.data?.detail || error.message}`);
+    } finally {
+      setZkTesting(prev => ({ ...prev, [device.id]: false }));
+    }
+  };
+
+  const handleRegisterServerDevice = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
     
     setLoading(true);
     try {
-      const response = await api.post('/attendance/devices/register', formData);
-      toast.success('Device registered successfully!');
+      const response = await api.post('/attendance/devices/register-server', {
+        ...formData,
+        connection_type: 'server'
+      });
       
-      // Show API key in a special toast
+      toast.success('Device registered with server-based connection!');
+      toast.custom(
+        (t) => (
+          <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-blue-50 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5`}>
+            <div className="flex-1 w-0 p-4">
+              <div className="flex items-start">
+                <div className="flex-shrink-0 pt-0.5">
+                  <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                    <Server className="h-5 w-5 text-blue-600" />
+                  </div>
+                </div>
+                <div className="ml-3 flex-1">
+                  <p className="text-sm font-medium text-gray-900">📡 Server Connection</p>
+                  <p className="mt-1 text-sm text-gray-500">Device will communicate directly with:</p>
+                  <code className="text-xs bg-gray-100 p-1 rounded block mt-1 font-mono">
+                    {window.location.hostname}:{formData.server_port}
+                  </code>
+                  <p className="text-xs text-gray-500 mt-2">Configure your device with this address.</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex border-l border-blue-200">
+              <button
+                onClick={() => toast.dismiss(t.id)}
+                className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-blue-600 hover:text-blue-500 focus:outline-none"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        ),
+        { duration: 8000 }
+      );
+      
+      resetForm();
+      setShowModal(false);
+      fetchDevices();
+    } catch (error) {
+      console.error('Registration error:', error);
+      toast.error(error.response?.data?.detail || 'Registration failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegisterBridgeDevice = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+    
+    setLoading(true);
+    try {
+      const response = await api.post('/attendance/devices/register', {
+        ...formData,
+        connection_type: 'bridge'
+      });
+      
+      toast.success('Device registered with bridge-based connection!');
+      
       toast.success(
         <div className="p-2">
           <p className="font-bold text-green-800 mb-2">🔑 API Key Generated!</p>
@@ -218,7 +311,14 @@ const DeviceManager = () => {
     }
   };
 
-  // Update device
+  const handleRegister = async (e) => {
+    if (connectionType === 'server') {
+      await handleRegisterServerDevice(e);
+    } else {
+      await handleRegisterBridgeDevice(e);
+    }
+  };
+
   const handleUpdate = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -239,7 +339,6 @@ const DeviceManager = () => {
     }
   };
 
-  // Delete device
   const handleDelete = async (deviceId, deviceName) => {
     if (!window.confirm(`Delete device "${deviceName}"? This action cannot be undone.`)) return;
     
@@ -256,7 +355,6 @@ const DeviceManager = () => {
     }
   };
 
-  // Regenerate API key
   const handleRegenerateKey = async (deviceId, deviceName) => {
     if (!window.confirm(`⚠️ WARNING: Regenerating API key for "${deviceName}" will immediately invalidate the old key. The bridge will stop working until you update the configuration. Continue?`)) {
       return;
@@ -284,130 +382,55 @@ const DeviceManager = () => {
     }
   };
 
-  // Test device connection with real-time status
   const handleTestConnection = async (device) => {
     const toastId = toast.loading(`Checking ${device.device_name}...`);
     setTestingDevice(device.id);
     setStatusLoading(prev => ({ ...prev, [device.id]: true }));
     
     try {
-      // Step 1: Try to get status via the dedicated endpoint
-      try {
-        const statusResponse = await api.get(`/attendance/devices/${device.id}/status`);
-        const isOnline = statusResponse.data.is_online;
-        const lastSeenSeconds = statusResponse.data.last_seen_seconds_ago;
-        
-        toast.dismiss(toastId);
-        setStatusLoading(prev => ({ ...prev, [device.id]: false }));
-        
-        // Update local status
-        setOnlineStatuses(prev => ({ ...prev, [device.id]: isOnline }));
-        
-        if (isOnline) {
-          toast.success(
-            <div className="p-2">
-              <p className="font-bold text-green-800 mb-1">✅ {device.device_name} is Online!</p>
-              <p className="text-sm text-gray-600">Device is connected and active.</p>
-              {lastSeenSeconds !== null && lastSeenSeconds !== undefined && (
-                <p className="text-xs text-gray-500 mt-1">Last seen: {lastSeenSeconds} seconds ago</p>
-              )}
-              <p className="text-xs text-gray-500 mt-1">IP: {device.device_ip}:{device.device_port}</p>
-            </div>,
-            { duration: 5000 }
-          );
-          setTestingDevice(null);
-          return;
-        } else {
-          toast.warning(
-            <div className="p-2">
-              <p className="font-bold text-orange-800 mb-1">⚠️ {device.device_name} is Offline</p>
-              <p className="text-sm text-gray-600">Device is not responding.</p>
-              {lastSeenSeconds !== null && lastSeenSeconds !== undefined && (
-                <p className="text-xs text-gray-500 mt-1">Last seen: {lastSeenSeconds} seconds ago</p>
-              )}
-              <p className="text-xs text-gray-500 mt-2">Troubleshooting tips:</p>
-              <ul className="text-xs text-gray-500 list-disc list-inside">
-                <li>Is the device powered on?</li>
-                <li>Is the bridge application running?</li>
-                <li>Check the IP address on device screen</li>
-                <li>Ensure device is on same network</li>
-              </ul>
-            </div>,
-            { duration: 8000 }
-          );
-          setTestingDevice(null);
-          return;
-        }
-      } catch (statusError) {
-        // Step 2: Fallback to test-via-bridge
-        console.log('Status endpoint failed, falling back to test-via-bridge:', statusError);
-      }
-      
-      // Fallback: Check via bridge
-      const response = await api.post('/attendance/devices/test-via-bridge', {
-        device_ip: device.device_ip,
-        device_port: device.device_port,
-        device_serial: device.device_serial
-      });
+      const statusResponse = await api.get(`/attendance/devices/${device.id}/status`);
+      const isOnline = statusResponse.data.is_online;
+      const lastSeenSeconds = statusResponse.data.last_seen_seconds_ago;
       
       toast.dismiss(toastId);
       setStatusLoading(prev => ({ ...prev, [device.id]: false }));
       
-      if (response.data.success) {
-        if (response.data.via_bridge) {
-          const info = response.data.device_info || {};
-          const isOnline = info.is_online || false;
-          
-          // Update local status
-          setOnlineStatuses(prev => ({ ...prev, [device.id]: isOnline }));
-          
-          if (isOnline) {
-            toast.success(
-              <div className="p-2">
-                <p className="font-bold text-green-800 mb-1">✅ {device.device_name} is Online!</p>
-                <p className="text-sm text-gray-600">{response.data.message}</p>
-                <div className="mt-2 text-xs text-gray-500 space-y-1">
-                  <p>🔌 Device: {info.device_name}</p>
-                  <p>📟 Serial: {info.device_serial}</p>
-                  {info.last_seen && (
-                    <p>🕐 Last seen: {new Date(info.last_seen).toLocaleString()}</p>
-                  )}
-                </div>
-              </div>,
-              { duration: 5000 }
-            );
-          } else {
-            toast.warning(
-              <div className="p-2">
-                <p className="font-bold text-orange-800 mb-1">⚠️ {device.device_name} is Offline</p>
-                <p className="text-sm text-gray-600">Device is not responding.</p>
-                <p className="text-xs text-gray-500 mt-2">Make sure the bridge is running and device is connected.</p>
-              </div>,
-              { duration: 5000 }
-            );
-          }
-        } else {
-          toast.info(
-            <div className="p-2">
-              <p className="font-bold text-blue-800 mb-1">ℹ️ Device Not Registered</p>
-              <p className="text-sm text-gray-600">{response.data.message}</p>
-              <p className="text-xs text-gray-500 mt-2">Click "Register" to add this device to your system.</p>
-            </div>,
-            { duration: 5000 }
-          );
-        }
+      setOnlineStatuses(prev => ({ ...prev, [device.id]: isOnline }));
+      
+      if (isOnline) {
+        const connectionLabel = device.connection_type === 'server' ? '🌐 Server' : '🔗 Bridge';
+        toast.success(
+          <div className="p-2">
+            <p className="font-bold text-green-800 mb-1">✅ {device.device_name} is Online!</p>
+            <p className="text-sm text-gray-600">Connection: {connectionLabel}</p>
+            {lastSeenSeconds !== null && lastSeenSeconds !== undefined && (
+              <p className="text-xs text-gray-500 mt-1">Last seen: {lastSeenSeconds} seconds ago</p>
+            )}
+            <p className="text-xs text-gray-500 mt-1">IP: {device.device_ip}:{device.device_port}</p>
+          </div>,
+          { duration: 5000 }
+        );
+      } else {
+        toast.warning(
+          <div className="p-2">
+            <p className="font-bold text-orange-800 mb-1">⚠️ {device.device_name} is Offline</p>
+            <p className="text-sm text-gray-600">Device is not responding.</p>
+            {lastSeenSeconds !== null && lastSeenSeconds !== undefined && (
+              <p className="text-xs text-gray-500 mt-1">Last seen: {lastSeenSeconds} seconds ago</p>
+            )}
+          </div>,
+          { duration: 5000 }
+        );
       }
     } catch (error) {
       toast.dismiss(toastId);
       setStatusLoading(prev => ({ ...prev, [device.id]: false }));
       console.error('Test connection error:', error);
       
-      const errorMsg = error.response?.data?.detail || error.message || 'Failed to test connection';
       toast.error(
         <div className="p-2">
           <p className="font-bold text-red-800 mb-1">❌ Connection Error</p>
-          <p className="text-sm text-gray-600">{errorMsg}</p>
-          <p className="text-xs text-gray-500 mt-2">Make sure the bridge is running and device is powered on.</p>
+          <p className="text-sm text-gray-600">{error.response?.data?.detail || error.message}</p>
         </div>
       );
     } finally {
@@ -415,9 +438,7 @@ const DeviceManager = () => {
     }
   };
 
-  // ===== DOOR CONTROL FUNCTIONS =====
   const handleUnlockDoor = async (device) => {
-    // Show confirmation dialog
     if (!window.confirm(`Unlock the door for ${device.device_name}?`)) {
       return;
     }
@@ -442,7 +463,6 @@ const DeviceManager = () => {
           { duration: 5000 }
         );
         
-        // Update door status
         setDoorStatuses(prev => ({
           ...prev,
           [device.id]: { 
@@ -452,7 +472,6 @@ const DeviceManager = () => {
           }
         }));
         
-        // Reset door status after duration + 1 second
         setTimeout(() => {
           setDoorStatuses(prev => ({
             ...prev,
@@ -470,8 +489,7 @@ const DeviceManager = () => {
     } catch (error) {
       toast.dismiss(toastId);
       console.error('Unlock door error:', error);
-      const errorMsg = error.response?.data?.detail || 'Failed to unlock door';
-      toast.error(errorMsg);
+      toast.error(error.response?.data?.detail || 'Failed to unlock door');
     } finally {
       setUnlockingDevice(null);
     }
@@ -489,26 +507,26 @@ const DeviceManager = () => {
     return status.status === 'unlocked' ? 'text-green-600' : 'text-gray-500';
   };
 
-  // Copy to clipboard
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    toast.success('API Key copied to clipboard');
+    toast.success('Copied to clipboard');
   };
 
-  // Reset form
   const resetForm = () => {
     setFormData({
       device_name: '',
       device_ip: '',
       device_port: 4370,
       device_serial: '',
-      location: ''
+      location: '',
+      connection_type: 'bridge',
+      server_port: 8080,
     });
     setFormErrors({});
     setEditingDevice(null);
+    setConnectionType('bridge');
   };
 
-  // Open edit modal
   const openEditModal = (device) => {
     setEditingDevice(device);
     setFormData({
@@ -516,12 +534,14 @@ const DeviceManager = () => {
       device_ip: device.device_ip,
       device_port: device.device_port,
       device_serial: device.device_serial,
-      location: device.location || ''
+      location: device.location || '',
+      connection_type: device.connection_type || 'bridge',
+      server_port: device.server_port || 8080,
     });
+    setConnectionType(device.connection_type || 'bridge');
     setShowModal(true);
   };
 
-  // Force refresh status
   const handleRefreshStatus = async () => {
     toast.loading('Refreshing device status...', { id: 'status-refresh' });
     await pollDeviceStatus(devices);
@@ -530,13 +550,21 @@ const DeviceManager = () => {
     toast.success('Device status updated!');
   };
 
+  const getConnectionTypeLabel = (type) => {
+    if (type === 'server') {
+      return { label: '🌐 Server', color: 'bg-blue-100 text-blue-700' };
+    }
+    return { label: '🔗 Bridge', color: 'bg-purple-100 text-purple-700' };
+  };
+
+  const isZkTesting = (deviceId) => zkTesting[deviceId] || false;
+
   return (
     <div className="p-6">
-      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Attendance Devices</h1>
-          <p className="text-sm text-gray-500 mt-1">Register and manage your ESSL K30 Pro devices</p>
+          <p className="text-sm text-gray-500 mt-1">Register and manage your biometric devices</p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -559,7 +587,23 @@ const DeviceManager = () => {
         </div>
       </div>
 
-      {/* Devices List */}
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 mb-6 border border-blue-200">
+        <div className="flex items-start gap-3">
+          <HelpCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-blue-800">Two Connection Options Available</p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              <span className="font-medium">🔗 Bridge Mode:</span> Install the Attendance Bridge on a local PC. 
+              The bridge communicates with your device and syncs to the cloud.
+            </p>
+            <p className="text-xs text-blue-700">
+              <span className="font-medium">🌐 Server Mode:</span> Configure your device to communicate directly 
+              with our server. No local installation required. Works with supported devices.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {loading && devices.length === 0 ? (
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
@@ -590,6 +634,8 @@ const DeviceManager = () => {
             const isTesting = testingDevice === device.id;
             const isStatusLoading = statusLoading[device.id] || false;
             const isUnlocking = unlockingDevice === device.id;
+            const connType = getConnectionTypeLabel(device.connection_type);
+            const isZkTestRunning = isZkTesting(device.id);
             
             return (
               <div key={device.id} className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden hover:shadow-lg transition-all duration-300">
@@ -599,7 +645,10 @@ const DeviceManager = () => {
                       <h3 className="text-lg font-semibold text-gray-900">{device.device_name}</h3>
                       <p className="text-sm text-gray-500">{device.location || 'No location set'}</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col items-end gap-1">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${connType.color}`}>
+                        {connType.label}
+                      </span>
                       {isOnline ? (
                         <span className="flex items-center gap-1 text-green-600 text-sm bg-green-50 px-2 py-1 rounded-full animate-pulse">
                           <Wifi className="h-3 w-3" />
@@ -624,7 +673,13 @@ const DeviceManager = () => {
                       <span className="text-gray-800 font-mono text-xs">{device.device_serial}</span>
                     </div>
                     
-                    {/* Door Status */}
+                    {device.connection_type === 'server' && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Server Port:</span>
+                        <span className="text-gray-800 font-mono">{device.server_port || 8080}</span>
+                      </div>
+                    )}
+                    
                     <div className="flex justify-between items-center border-t border-gray-100 pt-2 mt-2">
                       <span className="text-gray-500">Door Status:</span>
                       <span className={`font-medium flex items-center gap-1 ${getDoorStatusColor(device.id)}`}>
@@ -637,38 +692,39 @@ const DeviceManager = () => {
                       </span>
                     </div>
                     
-                    {/* API Key Section */}
-                    <div className="bg-gray-50 rounded-lg p-3 mt-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold text-gray-600 uppercase">API Key</span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => setShowApiKey(showApiKey === device.id ? null : device.id)}
-                            className="text-gray-400 hover:text-gray-600 p-1"
-                            title="Show/Hide API Key"
-                          >
-                            {showApiKey === device.id ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                          </button>
-                          <button
-                            onClick={() => copyToClipboard(device.api_key)}
-                            className="text-blue-500 hover:text-blue-600 p-1"
-                            title="Copy API Key"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleRegenerateKey(device.id, device.device_name)}
-                            className="text-yellow-500 hover:text-yellow-600 p-1"
-                            title="Regenerate API Key"
-                          >
-                            <RefreshCw className="h-3.5 w-3.5" />
-                          </button>
+                    {device.connection_type !== 'server' && (
+                      <div className="bg-gray-50 rounded-lg p-3 mt-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-semibold text-gray-600 uppercase">API Key</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setShowApiKey(showApiKey === device.id ? null : device.id)}
+                              className="text-gray-400 hover:text-gray-600 p-1"
+                              title="Show/Hide API Key"
+                            >
+                              {showApiKey === device.id ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </button>
+                            <button
+                              onClick={() => copyToClipboard(device.api_key)}
+                              className="text-blue-500 hover:text-blue-600 p-1"
+                              title="Copy API Key"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleRegenerateKey(device.id, device.device_name)}
+                              className="text-yellow-500 hover:text-yellow-600 p-1"
+                              title="Regenerate API Key"
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </div>
+                        <code className="text-xs font-mono break-all bg-white p-1.5 rounded block">
+                          {showApiKey === device.id ? device.api_key : device.api_key.substring(0, 30) + '...'}
+                        </code>
                       </div>
-                      <code className="text-xs font-mono break-all bg-white p-1.5 rounded block">
-                        {showApiKey === device.id ? device.api_key : device.api_key.substring(0, 30) + '...'}
-                      </code>
-                    </div>
+                    )}
                   </div>
 
                   <div className="flex gap-2 pt-4 border-t flex-wrap">
@@ -689,7 +745,6 @@ const DeviceManager = () => {
                       {isTesting || isStatusLoading ? 'Checking...' : 'Test'}
                     </button>
                     
-                    {/* Door Unlock Button */}
                     <button
                       onClick={() => handleUnlockDoor(device)}
                       disabled={isUnlocking || !isOnline}
@@ -707,6 +762,23 @@ const DeviceManager = () => {
                       )}
                       {isUnlocking ? 'Unlocking...' : 'Unlock Door'}
                     </button>
+
+                    {device.connection_type === 'server' && (
+                      <button
+                        onClick={() => handleZKTest(device)}
+                        disabled={isZkTestRunning}
+                        className={`flex-1 px-3 py-2 rounded-lg transition-colors text-sm ${
+                          isZkTestRunning ? 'opacity-50 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                        }`}
+                      >
+                        {isZkTestRunning ? (
+                          <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
+                        ) : (
+                          <Zap className="h-4 w-4 inline mr-1" />
+                        )}
+                        {isZkTestRunning ? 'Testing ZK...' : 'Test ZK'}
+                      </button>
+                    )}
                     
                     <button
                       onClick={() => openEditModal(device)}
@@ -729,7 +801,6 @@ const DeviceManager = () => {
         </div>
       )}
 
-      {/* Register/Edit Device Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -826,6 +897,66 @@ const DeviceManager = () => {
                   </p>
                 )}
               </div>
+
+              {!editingDevice && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Connection Type <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConnectionType('bridge');
+                        setFormData(prev => ({ ...prev, connection_type: 'bridge' }));
+                      }}
+                      className={`p-3 rounded-lg border-2 text-center transition-all ${
+                        connectionType === 'bridge'
+                          ? 'border-purple-500 bg-purple-50 text-purple-700'
+                          : 'border-gray-200 hover:border-purple-300 text-gray-600'
+                      }`}
+                    >
+                      <Laptop className="h-5 w-5 mx-auto mb-1" />
+                      <span className="text-xs font-medium">🔗 Bridge</span>
+                      <p className="text-[10px] text-gray-400 mt-0.5">Local PC required</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConnectionType('server');
+                        setFormData(prev => ({ ...prev, connection_type: 'server' }));
+                      }}
+                      className={`p-3 rounded-lg border-2 text-center transition-all ${
+                        connectionType === 'server'
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-gray-200 hover:border-blue-300 text-gray-600'
+                      }`}
+                    >
+                      <Server className="h-5 w-5 mx-auto mb-1" />
+                      <span className="text-xs font-medium">🌐 Server</span>
+                      <p className="text-[10px] text-gray-400 mt-0.5">Direct connection</p>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {connectionType === 'server' && !editingDevice && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Server Port
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.server_port}
+                    onChange={(e) => setFormData({ ...formData, server_port: parseInt(e.target.value) || 8080 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="8080"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Port on which the server will listen for device connections.
+                  </p>
+                </div>
+              )}
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Location (Optional)</label>
@@ -838,15 +969,35 @@ const DeviceManager = () => {
                 />
               </div>
               
-              {!editingDevice && (
+              {!editingDevice && connectionType === 'bridge' && (
                 <div className="bg-blue-50 rounded-lg p-3">
                   <div className="flex items-start gap-2">
                     <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
                     <div>
-                      <p className="text-xs text-blue-800 font-medium">Important Note</p>
+                      <p className="text-xs text-blue-800 font-medium">Bridge Mode</p>
                       <p className="text-xs text-blue-700">
                         After registration, a unique API key will be generated. 
                         Save this key - you'll need it to configure the bridge application.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!editingDevice && connectionType === 'server' && (
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
+                    <div>
+                      <p className="text-xs text-blue-800 font-medium">Server Mode</p>
+                      <p className="text-xs text-blue-700">
+                        Configure your device to point to:
+                      </p>
+                      <code className="text-xs bg-white p-1 rounded block mt-1 font-mono">
+                        {window.location.hostname}:{formData.server_port}
+                      </code>
+                      <p className="text-xs text-blue-700 mt-1">
+                        No local installation required. The server will handle all communication.
                       </p>
                     </div>
                   </div>
