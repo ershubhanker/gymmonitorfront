@@ -646,6 +646,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // FETCH FUNCTIONS
   // ============================================================
   const fetchMemberDetails = useCallback(async () => {
+    if (!memberId || memberId === 'undefined') return;
     try {
       setLoading(true);
       const response = await api.get(`/gym/members/${memberId}`);
@@ -714,6 +715,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   }, []);
 
   const fetchComments = useCallback(async () => {
+    if (!memberId || memberId === 'undefined') return;
     try {
       setLoadingComments(true);
       const response = await api.get(`/gym/members/${memberId}/comments`);
@@ -727,6 +729,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   }, [memberId]);
 
   const fetchPayments = useCallback(async () => {
+    if (!memberId || memberId === 'undefined') return;
     try {
       setLoadingPayments(true);
       const response = await api.get(`/gym/payments?limit=100`);
@@ -741,6 +744,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   }, [memberId]);
 
   const fetchBalanceDetails = useCallback(async () => {
+    if (!memberId || memberId === 'undefined') return;
     try {
       setLoadingBalance(true);
       const response = await api.get(`/gym/members/${memberId}/balance`);
@@ -754,6 +758,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   }, [memberId]);
 
   const fetchMembershipHistory = useCallback(async () => {
+    if (!memberId || memberId === 'undefined') return;
     try {
       const response = await api.get(`/gym/members/${memberId}`);
       const memberData = response.data;
@@ -765,6 +770,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   }, [memberId]);
 
   const fetchAttendanceHistory = useCallback(async () => {
+    if (!memberId || memberId === 'undefined') return;
     try {
       setLoadingAttendance(true);
       const response = await api.get(`/attendance/members/${memberId}/history`);
@@ -779,6 +785,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   // ===== FETCH PT SESSIONS WITH STATUS UPDATE =====
   const fetchPtSessions = useCallback(async () => {
+    if (!memberId || memberId === 'undefined') return;
     try {
       setLoadingPt(true);
       const response = await api.get(`/gym/members/${memberId}/personal-training`);
@@ -836,10 +843,14 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   }, [memberId]);
 
   const fetchFreezeHistory = useCallback(async () => {
+    if (!memberId || memberId === 'undefined') return;
     try {
       setLoadingFreezes(true);
       const response = await api.get(`/gym/members/${memberId}/freezes`);
       setFreezeHistory(response.data || []);
+    } catch (error) {
+      console.error('Error fetching freeze history:', error);
+      setFreezeHistory([]);
     } finally {
       setLoadingFreezes(false);
     }
@@ -847,6 +858,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   // ===== ADD-ONS FUNCTIONS =====
   const fetchMemberAddons = useCallback(async () => {
+    if (!memberId || memberId === 'undefined') return;
     try {
       setLoadingAddons(true);
       const response = await api.get(`/gym/members/${memberId}/addons`);
@@ -1290,6 +1302,31 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     }
   };
 
+  // ===== AUTO-CALCULATE END DATE WHEN PLAN OR START DATE CHANGES =====
+  useEffect(() => {
+    // Only calculate if we have a plan selected and a start date
+    if (membershipEditData.plan_id && membershipEditData.start_date) {
+      const selectedPlan = plans.find(p => p.id.toString() === membershipEditData.plan_id);
+      if (selectedPlan && selectedPlan.duration_days) {
+        const startDate = new Date(membershipEditData.start_date);
+        // Add duration_days to start date
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + selectedPlan.duration_days);
+        
+        // Format as YYYY-MM-DD
+        const endDateStr = endDate.toISOString().split('T')[0];
+        
+        // Only update if different from current end date
+        if (endDateStr !== membershipEditData.end_date) {
+          setMembershipEditData(prev => ({
+            ...prev,
+            end_date: endDateStr
+          }));
+        }
+      }
+    }
+  }, [membershipEditData.plan_id, membershipEditData.start_date, plans]);
+
   const handleMembershipEditChange = (e) => {
     const { name, value } = e.target;
     setMembershipEditData(prev => ({ ...prev, [name]: value }));
@@ -1340,10 +1377,29 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   
       toast.success('Membership details updated successfully!');
       setIsEditingMembership(false);
-      await fetchMemberDetails();
-      await fetchMembershipHistory();
-      await fetchBalanceDetails();
-      if (onUpdate) onUpdate();
+      
+      // ✅ Refresh all data
+      await Promise.all([
+        fetchMemberDetails(),
+        fetchMembershipHistory(),
+        fetchBalanceDetails(),
+        fetchPayments(),
+      ]);
+      
+      // ✅ CRITICAL: Refresh dashboard data if the parent component has a refresh function
+      if (onUpdate) {
+        onUpdate();
+      }
+      
+      // ✅ Force refresh the dashboard stats
+      try {
+        // If the dashboard is open, it will refresh on next render
+        // We can also trigger a global event
+        window.dispatchEvent(new CustomEvent('refreshDashboard'));
+        console.log('📊 Dashboard refresh triggered');
+      } catch (refreshError) {
+        console.warn('Could not trigger dashboard refresh:', refreshError);
+      }
       
     } catch (error) {
       console.error('Error updating membership:', error);
@@ -1353,6 +1409,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setSavingMembership(false);
     }
   };
+
 
   const handleMembershipEditCancel = () => {
     setIsEditingMembership(false);
@@ -1574,6 +1631,24 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // EFFECTS
   // ============================================================
   useEffect(() => {
+    // Guard: don't fire any member-scoped API calls until we actually have
+    // a valid memberId. Without this, the modal can mount briefly with
+    // memberId=undefined (e.g. before the parent's state settles) and every
+    // request below resolves to a URL like /gym/members/undefined/... which
+    // the backend rejects with a 422 int_parsing error.
+    const isValidMemberId =
+      memberId !== null &&
+      memberId !== undefined &&
+      memberId !== 'undefined' &&
+      memberId !== '' &&
+      !Number.isNaN(Number(memberId));
+
+    if (!isValidMemberId) {
+      console.warn('MemberProfileModal: skipped fetch, invalid memberId:', memberId);
+      setLoading(false);
+      return;
+    }
+
     const fetchAll = async () => {
       await Promise.all([
         fetchMemberDetails(),
@@ -1590,6 +1665,24 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     };
     fetchAll();
   }, [memberId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // If we never had a valid memberId, don't render a broken modal shell —
+  // close it and let the parent handle it (e.g. re-open once it has an id).
+  useEffect(() => {
+    const isValidMemberId =
+      memberId !== null &&
+      memberId !== undefined &&
+      memberId !== 'undefined' &&
+      memberId !== '' &&
+      !Number.isNaN(Number(memberId));
+
+    if (!isValidMemberId) {
+      toast.error('No member selected');
+      onClose();
+    }
+    // Only run this check once per mount / memberId change, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memberId]);
 
   if (loading) {
     return (
@@ -1817,8 +1910,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 ) : (
                   <>
                     <Unlock className="h-3 w-3" />
-                    Allow
-                  </>
+                    Allow                  </>
                 )}
               </button>
             )}
@@ -2220,7 +2312,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             </div>
           )}
 
-          {/* Membership Edit Modal - Smaller */}
+          {/* Membership Edit Modal - Smaller WITH AUTO-CALCULATE END DATE */}
           {isEditingMembership && currentMembership && (
             <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
               <div className="flex items-center justify-between mb-3">
@@ -2297,9 +2389,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       onChange={handleMembershipEditChange}
                       className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                     />
+                    {/* ✅ Show auto-calc info */}
+                    {membershipEditData.plan_id && membershipEditData.start_date && (
+                      <p className="text-[10px] text-indigo-600 mt-0.5 flex items-center gap-0.5">
+                        <Clock className="h-2.5 w-2.5" />
+                        Auto-calculated from plan duration
+                      </p>
+                    )}
                   </div>
                 </div>
 
+                {/* ✅ Show selected plan details with duration */}
                 {membershipEditData.plan_id && (
                   <div className="bg-white rounded-lg p-2 border border-indigo-200">
                     <p className="text-[10px] font-semibold text-gray-600 mb-1">Plan Details</p>
@@ -2327,9 +2427,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 )}
 
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2">
-                  <p className="text-[10px] text-yellow-700">
-                    <AlertCircle className="h-2.5 w-2.5 inline mr-0.5" />
-                    Ensure end date is after start date.
+                  <p className="text-[10px] text-yellow-700 flex items-center gap-0.5">
+                    <AlertCircle className="h-2.5 w-2.5" />
+                    End date is automatically calculated based on the selected plan's duration.
                   </p>
                 </div>
 

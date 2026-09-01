@@ -1,4 +1,4 @@
-// src/pages/Members.jsx - Fixed Export Functionality (Exports All Members)
+// src/pages/Members.jsx - Complete updated with Invoice Actions (Edit/Delete/Regenerate)
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
@@ -166,6 +166,346 @@ const DeleteConfirmationModal = ({
 };
 
 // ============================================================
+// INVOICE ACTION MODAL COMPONENT
+// ============================================================
+const InvoiceActionModal = ({ isOpen, onClose, member, onAction }) => {
+  const [loading, setLoading] = useState(false);
+  const [selectedAction, setSelectedAction] = useState('regenerate');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [discountAmount, setDiscountAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [sendWhatsapp, setSendWhatsapp] = useState(false);
+  const [paymentDate, setPaymentDate] = useState('');
+  const [notes, setNotes] = useState('');
+
+  if (!isOpen || !member) return null;
+
+  const membershipId = member.activeMembership?.id || member.membershipId;
+  const hasMembership = membershipId || member.membership?.id;
+
+  const handleSubmit = async () => {
+    if (!hasMembership) {
+      toast.error('No active membership found for this member');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const data = {
+        membership_id: membershipId,
+        regenerate: true,
+        send_whatsapp: sendWhatsapp
+      };
+
+      if (paymentAmount && paymentAmount !== '') {
+        data.amount_paid = parseFloat(paymentAmount);
+      }
+      if (discountAmount && discountAmount !== '') {
+        data.discount_applied = parseFloat(discountAmount);
+      }
+      if (paymentMethod) {
+        data.payment_method = paymentMethod;
+      }
+      if (paymentDate) {
+        data.payment_date = paymentDate;
+      }
+      if (notes) {
+        data.notes = notes;
+      }
+
+      await onAction('regenerate', member, data);
+      onClose();
+    } catch (error) {
+      console.error('Error regenerating invoice:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!hasMembership) {
+      toast.error('No active membership found for this member');
+      return;
+    }
+
+    if (!window.confirm(
+      `Are you sure you want to delete the invoice for ${member.fullName}?\n\n` +
+      `This will also delete all associated payments and cannot be undone.`
+    )) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await onAction('delete', member);
+      onClose();
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!hasMembership) {
+      toast.error('No active membership found for this member');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await onAction('resend', member);
+      onClose();
+    } catch (error) {
+      console.error('Error resending invoice:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Invoice Actions</h3>
+            <p className="text-sm text-gray-500 truncate max-w-[200px]">{member.fullName}</p>
+            {hasMembership ? (
+              <p className="text-xs text-green-600">Active Membership: #{membershipId}</p>
+            ) : (
+              <p className="text-xs text-amber-600">No active membership</p>
+            )}
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Action Type</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => setSelectedAction('regenerate')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  selectedAction === 'regenerate'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Regenerate
+              </button>
+              <button
+                onClick={() => setSelectedAction('resend')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  selectedAction === 'resend'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Resend
+              </button>
+              <button
+                onClick={() => setSelectedAction('delete')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  selectedAction === 'delete'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+
+          {selectedAction === 'regenerate' && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Payment Amount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    placeholder="Enter amount"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Discount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    value={discountAmount}
+                    onChange={(e) => setDiscountAmount(e.target.value)}
+                    placeholder="Enter discount"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                >
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank">Bank Transfer</option>
+                  <option value="online">Online</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Date
+                </label>
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add notes about this correction..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none h-16"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={sendWhatsapp}
+                  onChange={(e) => setSendWhatsapp(e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label className="text-sm text-gray-700">
+                  Send invoice via WhatsApp after regeneration
+                </label>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs text-blue-700">
+                  💡 This will regenerate the invoice with the updated details.
+                  The old invoice will be replaced.
+                </p>
+              </div>
+            </>
+          )}
+
+          {selectedAction === 'resend' && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <p className="text-sm text-green-800">
+                📨 This will resend the existing invoice via WhatsApp to {member.fullName}.
+                No changes will be made to the invoice data.
+              </p>
+            </div>
+          )}
+
+          {selectedAction === 'delete' && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-sm text-red-800 font-medium">
+                ⚠️ Delete Invoice
+              </p>
+              <p className="text-sm text-red-700 mt-1">
+                This will permanently delete the invoice and all associated payments.
+                The membership will be reset with zero balance.
+              </p>
+              <p className="text-xs text-red-600 mt-2">
+                This action cannot be undone.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-xl">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          {selectedAction === 'regenerate' && (
+            <button
+              onClick={handleSubmit}
+              disabled={loading || !hasMembership}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2 text-sm"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4" />
+                  Regenerate Invoice
+                </>
+              )}
+            </button>
+          )}
+          {selectedAction === 'resend' && (
+            <button
+              onClick={handleResend}
+              disabled={loading || !hasMembership}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2 text-sm"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4" />
+                  Resend Invoice
+                </>
+              )}
+            </button>
+          )}
+          {selectedAction === 'delete' && (
+            <button
+              onClick={handleDelete}
+              disabled={loading || !hasMembership}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2 text-sm"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  Delete Invoice
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
 // ACTION DROPDOWN COMPONENT (for responsive actions)
 // ============================================================
 const ActionDropdown = ({ member, onAction }) => {
@@ -186,6 +526,7 @@ const ActionDropdown = ({ member, onAction }) => {
     { id: 'view', label: 'View Profile', icon: Eye, color: 'text-blue-600' },
     { id: 'invoice', label: 'Download Invoice', icon: FileText, color: 'text-green-600' },
     { id: 'whatsapp', label: 'Resend Invoice', icon: Send, color: 'text-blue-500' },
+    { id: 'invoice_action', label: 'Invoice Actions', icon: FileText, color: 'text-amber-600' },
     { id: 'sync', label: 'Sync to Device', icon: Wifi, color: 'text-purple-600' },
     { id: 'edit', label: 'Edit Member', icon: Edit, color: 'text-blue-600' },
     { id: 'delete', label: 'Delete Member', icon: Trash2, color: 'text-red-600' },
@@ -201,7 +542,7 @@ const ActionDropdown = ({ member, onAction }) => {
         <MoreVertical className="h-5 w-5 text-gray-500" />
       </button>
       {isOpen && (
-        <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+        <div className="absolute right-0 mt-1 w-52 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
           {actions.map((action) => (
             <button
               key={action.id}
@@ -283,6 +624,12 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     email: '',
     currency_symbol: '₹',
   });
+
+  // ============================================================
+  // INVOICE ACTION STATE
+  // ============================================================
+  const [showInvoiceActionModal, setShowInvoiceActionModal] = useState(false);
+  const [selectedInvoiceMember, setSelectedInvoiceMember] = useState(null);
 
   // ============================================================
   // CACHE INVALIDATION HELPER
@@ -374,6 +721,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         gender: member.gender || 'male',
         joinDate: member.joined_date,
         membership: member.current_membership?.plan?.name || 'No Plan',
+        membershipId: member.current_membership?.id || null,
         membershipEndDate: member.current_membership?.end_date || null,
         membershipStatus: member.current_membership?.status || null,
         status: member.is_active ? 'active' : 'inactive',
@@ -489,6 +837,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           gender: item.gender || 'male',
           joinDate: item.join_date,
           membership: item.membership?.plan_name || 'No Plan',
+          membershipId: item.membership?.id || null,
           membershipEndDate: item.membership?.end_date || null,
           membershipStatus: item.membership?.status || null,
           status: item.status || 'inactive',
@@ -507,6 +856,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
             profile_image: item.profile_image,
           },
           activeMembership: item.membership ? {
+            id: item.membership.id,
             plan: { name: item.membership.plan_name },
             end_date: item.membership.end_date,
             status: item.membership.status,
@@ -644,6 +994,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           gender: member.gender || 'male',
           joinDate: member.joined_date,
           membership: activeMembership?.plan?.name || 'No Plan',
+          membershipId: activeMembership?.id || null,
           membershipEndDate: activeMembership?.end_date || null,
           membershipStatus: activeMembership?.status || null,
           status: member.is_active ? 'active' : 'inactive',
@@ -746,6 +1097,68 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   }, [debouncedSearchTerm, filters.status, filters.gender, currentPage, showSingleMember, singleMemberData]);
 
   // ============================================================
+  // HANDLE INVOICE ACTIONS (Regenerate, Delete, Resend)
+  // ============================================================
+  const handleInvoiceAction = async (action, member, data) => {
+    const membershipId = member.activeMembership?.id || member.membershipId || member.membership?.id;
+    const memberId = member.id;
+
+    if (!membershipId) {
+      toast.error('No active membership found for this member');
+      return;
+    }
+
+    try {
+      if (action === 'regenerate') {
+        const response = await api.put(
+          `/gym/members/${memberId}/memberships/${membershipId}/invoice`,
+          data
+        );
+        
+        if (response.data.success) {
+          toast.success(response.data.message || 'Invoice regenerated successfully!');
+          if (response.data.changes_made && response.data.changes_made.length > 0) {
+            console.log('Changes made:', response.data.changes_made.join(', '));
+          }
+          // Refresh data
+          await fetchMembers(true);
+          await fetchStats();
+          invalidateMemberCache();
+        } else {
+          toast.error(response.data.error || 'Failed to regenerate invoice');
+        }
+      } else if (action === 'delete') {
+        const response = await api.delete(
+          `/gym/members/${memberId}/memberships/${membershipId}/invoice`
+        );
+        
+        if (response.data.success) {
+          toast.success(response.data.message || 'Invoice deleted successfully!');
+          // Refresh data
+          await fetchMembers(true);
+          await fetchStats();
+          invalidateMemberCache();
+        } else {
+          toast.error(response.data.error || 'Failed to delete invoice');
+        }
+      } else if (action === 'resend') {
+        const response = await api.post(
+          `/gym/members/${memberId}/memberships/${membershipId}/invoice/resend`
+        );
+        
+        if (response.data.success) {
+          toast.success(response.data.message || 'Invoice resent successfully!');
+        } else {
+          toast.error(response.data.error || 'Failed to resend invoice');
+        }
+      }
+    } catch (error) {
+      console.error('Invoice action error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to perform invoice action');
+    }
+  };
+
+  // ============================================================
   // HANDLE ACTION DROPDOWN
   // ============================================================
   const handleAction = (actionId, member) => {
@@ -758,6 +1171,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         break;
       case 'whatsapp':
         handleResendInvoiceWhatsApp(member);
+        break;
+      case 'invoice_action':
+        setSelectedInvoiceMember(member);
+        setShowInvoiceActionModal(true);
         break;
       case 'sync':
         const memberForSync = {
@@ -1479,8 +1896,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     if (targetId) {
       setMembers(prevMembers => {
         const updatedMembers = prevMembers.map(m =>
-          m.id === targetId
-            ? {
+          m.id === targetId            ? {
                 ...m,
                 deviceUserId: String(deviceUserId || targetId),
                 syncedToDevice: true,
@@ -1595,6 +2011,12 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   const openProfileModal = (member) => {
+
+    if (!member || !member.id) {
+      toast.error('Invalid member data');
+      return;
+    }
+    
     setSelectedMemberForProfile(member);
     setShowProfileModal(true);
   };
@@ -1668,6 +2090,17 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         onConfirm={handleConfirmDelete}
         member={memberToDelete}
         loading={deleting}
+      />
+
+      {/* Invoice Action Modal */}
+      <InvoiceActionModal
+        isOpen={showInvoiceActionModal}
+        onClose={() => {
+          setShowInvoiceActionModal(false);
+          setSelectedInvoiceMember(null);
+        }}
+        member={selectedInvoiceMember}
+        onAction={handleInvoiceAction}
       />
 
       {/* Header Stats - Clickable Cards */}
@@ -1958,7 +2391,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 <th className="hidden lg:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="hidden xl:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PT</th>
                 <th className="hidden 2xl:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sync</th>
-                <th className="px-3 sm:px-6 py-2 sm:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-16 sm:w-20">Actions</th>
+                <th className="px-3 sm:px-6 py-2 sm:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20 sm:w-28">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -2096,6 +2529,17 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                             ) : (
                               <Send className="h-4 w-4" />
                             )}
+                          </button>
+                          
+                          <button 
+                            onClick={() => {
+                              setSelectedInvoiceMember(member);
+                              setShowInvoiceActionModal(true);
+                            }}
+                            className="hidden sm:inline-flex p-1.5 text-amber-600 hover:text-amber-900 hover:bg-amber-50 rounded-lg transition-colors"
+                            title="Invoice Actions (Edit/Delete/Regenerate)"
+                          >
+                            <FileText className="h-4 w-4" />
                           </button>
                           
                           <button 

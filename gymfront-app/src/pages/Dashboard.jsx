@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH FIXED REVENUE AND NET PROFIT
+// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH REFUND HANDLING
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -135,7 +135,6 @@ const Dashboard = () => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
-  // Toggle state for hiding/showing sensitive values
   const [hideValues, setHideValues] = useState(() => {
     const saved = localStorage.getItem('gymmonitor_hide_values');
     return saved ? JSON.parse(saved) : false;
@@ -210,6 +209,20 @@ const Dashboard = () => {
     }
   }, [user]);
 
+
+
+  useEffect(() => {
+    const handleRefresh = () => {
+        fetchDashboardStats();
+    };
+    
+    window.addEventListener('refreshDashboard', handleRefresh);
+    
+    return () => {
+        window.removeEventListener('refreshDashboard', handleRefresh);
+    };
+}, []);
+
   const [stats, setStats] = useState({
     totalMembers: 0,
     activeMembers: 0,
@@ -249,7 +262,11 @@ const Dashboard = () => {
     upcomingBirthdays: {
       members: [],
       staff: []
-    }
+    },
+    // ✅ New fields for refund tracking
+    totalRefunds: 0,
+    refundCount: 0,
+    netRevenue: 0,
   });
 
   const [recentActivities, setRecentActivities] = useState([]);
@@ -401,23 +418,46 @@ const Dashboard = () => {
     return value;
   };
 
+  // ─── CURRENCY FORMATTING ──────────────────────────────────────────────
+  const currencySymbol = user?.currency_symbol || '₹';
+
+  const formatCurrency = (amount) => {
+    if (!amount && amount !== 0) return `${currencySymbol} 0`;
+    const formatted = new Intl.NumberFormat('en-IN', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(Math.abs(amount));
+    
+    // If amount is negative, show as (₹ X) - refund
+    if (amount < 0) {
+      return `(${currencySymbol} ${formatted})`;
+    }
+    return `${currencySymbol} ${formatted}`;
+  };
+
+  // ─── FORMAT WITH HIDE/SHOW ──────────────────────────────────────────────
+  const formatCurrencyMasked = (amount) => {
+    if (hideValues && amount > 0) {
+      return '****';
+    }
+    return formatCurrency(amount);
+  };
+
+  const formatNumberMasked = (number) => {
+    if (hideValues && number > 0) {
+      return '****';
+    }
+    return number?.toLocaleString() || 0;
+  };
+
   // ─── FETCH DASHBOARD DATA ───────────────────────────────────────────────
   const fetchDashboardData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     
     try {
-      // Check if cache needs invalidation due to payment deletion
-      const cacheInvalidated = sessionStorage.getItem('dashboard_cache_invalidated');
-      const forceRefresh = cacheInvalidated === 'true';
+      const cachedStats = !silent ? getCache(CACHE_KEYS.DASHBOARD_STATS) : null;
       
-      if (forceRefresh) {
-        sessionStorage.removeItem('dashboard_cache_inválidated');
-        console.log('🔄 Force refresh - cache invalidated');
-      }
-      
-      const cachedStats = !forceRefresh ? getCache(CACHE_KEYS.DASHBOARD_STATS) : null;
-      
-      if (cachedStats && !silent && !forceRefresh) {
+      if (cachedStats && !silent) {
         console.log('📊 Using cached dashboard stats');
         setStats(prev => ({ ...prev, ...cachedStats }));
       }
@@ -475,7 +515,7 @@ const Dashboard = () => {
       }
   
       if (canSeePayments) {
-        promises.push(fetchSilently('/gym/payments?limit=100'));
+        promises.push(fetchSilently('/gym/payments?limit=10000'));
         endpointMap.payments = promises.length - 1;
       }
   
@@ -570,7 +610,7 @@ const Dashboard = () => {
   
       const currentYear = new Date().getFullYear();
       
-      // ✅ FIX: Calculate total revenue from ALL payments (including addon and PT)
+      // ✅ Calculate total revenue from ALL payments (including refunds as negative)
       const allPayments = payments || [];
       
       // Filter payments for current year
@@ -579,9 +619,10 @@ const Dashboard = () => {
         return paymentDate && paymentDate.getFullYear() === currentYear;
       });
       
+      // ✅ Total revenue = sum of all payments (refunds are negative)
       const totalRevenue = yearlyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
       
-      // ✅ FIX: Calculate monthly revenue from ALL payments (including addon and PT)
+      // ✅ Calculate monthly revenue from ALL payments (including refunds)
       const now = new Date();
       const monthlyPayments = allPayments.filter(p => {
         if (!p.payment_date) return false;
@@ -590,25 +631,34 @@ const Dashboard = () => {
                paymentDate.getFullYear() === now.getFullYear();
       });
       
+      // ✅ Monthly revenue = sum of all payments in the month (refunds are negative)
       const monthlyRevenue = monthlyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
       
       const todayDate = new Date();
-      const firstDayOfCurrentMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
       const firstDayOfLastMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
       const lastDayOfLastMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 0);
       
-      // ✅ FIX: Calculate last month revenue from ALL payments
+      // ✅ Calculate last month revenue (including refunds)
       const lastMonthPayments = allPayments.filter(p => {
         if (!p.payment_date) return false;
         const paymentDate = new Date(p.payment_date);
         return paymentDate >= firstDayOfLastMonth && paymentDate <= lastDayOfLastMonth;
       });
       
+      // ✅ Last month revenue = sum of all payments (refunds are negative)
       const lastMonthRevenue = lastMonthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
       
       const revenueGrowth = lastMonthRevenue > 0 
         ? ((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue * 100)
         : monthlyRevenue > 0 ? 100 : 0;
+      
+      // ✅ Calculate refunds
+      const refundPayments = allPayments.filter(p => p.amount < 0 || (p.notes && p.notes.includes('REFUND')));
+      const totalRefunds = refundPayments.reduce((sum, p) => sum + Math.abs(p.amount || 0), 0);
+      const refundCount = refundPayments.length;
+      
+      // ✅ Net revenue = total revenue - refunds
+      const netRevenue = totalRevenue - totalRefunds;
   
       const pendingPayments = memberships.filter(m => 
         m.payment_status === 'pending' || m.payment_status === 'PENDING'
@@ -668,12 +718,14 @@ const Dashboard = () => {
         .slice(0, 5)
         .map(p => {
           const member = members.find(m => m.id === p.member_id);
+          const isRefund = p.amount < 0 || (p.notes && p.notes.includes('REFUND'));
           return {
             id: p.id,
             memberName: member?.full_name || 'Unknown',
             amount: p.amount,
             date: new Date(p.payment_date).toLocaleDateString('en-IN'),
-            method: p.payment_method
+            method: p.payment_method,
+            isRefund: isRefund
           };
         });
   
@@ -708,12 +760,13 @@ const Dashboard = () => {
       if (canSeePayments) {
         payments.slice(0, 3).forEach(p => {
           const member = members.find(m => m.id === p.member_id);
+          const isRefund = p.amount < 0 || (p.notes && p.notes.includes('REFUND'));
           activities.push({
             id: `payment-${p.id}`,
             member: member?.full_name || 'Unknown',
-            action: `Made a payment of ${formatCurrency(p.amount)}`,
+            action: isRefund ? `Received refund of ${formatCurrency(Math.abs(p.amount))}` : `Made a payment of ${formatCurrency(p.amount)}`,
             time: new Date(p.payment_date).toLocaleString('en-IN', { hour: 'numeric', minute: 'numeric', hour12: true }),
-            type: 'payment',
+            type: isRefund ? 'refund' : 'payment',
             avatar: member?.full_name?.charAt(0) || 'U'
           });
         });
@@ -809,7 +862,7 @@ const Dashboard = () => {
       upcomingBirthdays.members.sort((a, b) => a.daysUntil - b.daysUntil);
       upcomingBirthdays.staff.sort((a, b) => a.daysUntil - b.daysUntil);
   
-      // ✅ FIX: Calculate net profit and profit margin from monthly revenue and expenses
+      // ✅ Calculate net profit and profit margin from monthly revenue and expenses
       const monthlyExpenses = statsApiData.monthly_expenses || 0;
       const netProfit = monthlyRevenue - monthlyExpenses;
       const profitMargin = monthlyRevenue > 0 ? (netProfit / monthlyRevenue * 100) : 0;
@@ -846,7 +899,11 @@ const Dashboard = () => {
         recentPayments,
         membershipDistribution,
         expiringMembers,
-        upcomingBirthdays
+        upcomingBirthdays,
+        // ✅ New fields
+        totalRefunds,
+        refundCount,
+        netRevenue
       };
   
       setStats(newStats);
@@ -869,14 +926,12 @@ const Dashboard = () => {
   }, [canSeeDashboard, canSeeMembers, canSeePayments, canSeeMemberships, canSeeStaff, canSeeBalances, canSeeLeads, getCache, setCache]);
 
   const refreshDashboard = useCallback(() => {
-    // Clear all dashboard-related cache
     clearCachePattern(CACHE_KEYS.DASHBOARD_STATS);
     clearCachePattern(CACHE_KEYS.DASHBOARD_BALANCE_OVERVIEW);
     clearCachePattern(CACHE_KEYS.PAYMENTS_LIST);
     clearCachePattern(CACHE_KEYS.MEMBER_BALANCES);
     invalidateCache();
     
-    // Set flag to force fresh data fetch
     sessionStorage.setItem('dashboard_cache_invalidated', 'true');
     
     fetchDashboardData(false);
@@ -1038,37 +1093,13 @@ const Dashboard = () => {
     other: 'Other'
   };
 
-  const currencySymbol = user?.currency_symbol || '₹';
-
-  const formatCurrency = (amount) => {
-    const formatted = new Intl.NumberFormat('en-IN', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-    return `${currencySymbol} ${formatted}`;
-  };
-
-  // ─── FORMAT WITH HIDE/SHOW ──────────────────────────────────────────────
-  const formatCurrencyMasked = (amount) => {
-    if (hideValues && amount > 0) {
-      return '****';
-    }
-    return formatCurrency(amount);
-  };
-
-  const formatNumberMasked = (number) => {
-    if (hideValues && number > 0) {
-      return '****';
-    }
-    return number?.toLocaleString() || 0;
-  };
-
   const getActivityColor = (type) => {
     const colors = {
       checkin: 'bg-green-100 text-green-600',
       renewal: 'bg-blue-100 text-blue-600',
       booking: 'bg-purple-100 text-purple-600',
       payment: 'bg-emerald-100 text-emerald-600',
+      refund: 'bg-red-100 text-red-600',
       signup: 'bg-indigo-100 text-indigo-600',
       info: 'bg-gray-100 text-gray-600'
     };
@@ -1135,9 +1166,26 @@ const Dashboard = () => {
     );
   }
 
-  // ============================================================
-  // RENDER DASHBOARD
-  // ============================================================
+  // ─── LOADING STATE ────────────────────────────────────────────────────────
+  if (loading && !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="relative">
+            <div className="h-24 w-24 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 animate-pulse mx-auto mb-4 flex items-center justify-center">
+              <Dumbbell className="h-12 w-12 text-white" />
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader className="h-8 w-8 text-white animate-spin" />
+            </div>
+          </div>
+          <p className="text-gray-600 font-medium">Loading your fitness empire...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── RENDER DASHBOARD ─────────────────────────────────────────────────────
   const renderDashboard = () => (
     <div className="space-y-6">
       {/* Welcome Header */}
@@ -1273,8 +1321,8 @@ const Dashboard = () => {
                 {stats.revenueGrowth >= 0 ? '↑' : '↓'} {Math.abs(stats.revenueGrowth || 0)}%
               </span>
             </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Revenue</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.monthlyRevenue)}</p>
+            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Net Revenue</h3>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.netRevenue)}</p>
             <p className="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100 flex items-center">
               {stats.revenueGrowth >= 0 ? (
                 <TrendingUp className="h-4 w-4 mr-1 text-green-500" />
@@ -1299,7 +1347,7 @@ const Dashboard = () => {
                 {formatNumberMasked(stats.pendingPayments)} pending
               </span>
             </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Revenue</h3>
+            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Gross Revenue</h3>
             <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.totalRevenue)}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
               {canSeeAttendance && (
@@ -1316,8 +1364,60 @@ const Dashboard = () => {
           </div>
         )}
       </div>
+
+      {/* Row 1.5: Refund Stats Card */}
+      {canViewRevenueStats && stats.totalRefunds > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/80 text-sm font-medium">Total Refunds</p>
+                <p className="text-3xl font-bold text-white mt-1">{formatCurrencyMasked(stats.totalRefunds)}</p>
+              </div>
+              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
+                <TrendingDown className="h-8 w-8 text-white" />
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+              <span>{stats.refundCount} refund{stats.refundCount !== 1 ? 's' : ''} issued</span>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-emerald-500 to-green-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/80 text-sm font-medium">Net Revenue</p>
+                <p className="text-3xl font-bold text-white mt-1">{formatCurrencyMasked(stats.netRevenue)}</p>
+              </div>
+              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
+                <TrendingUp className="h-8 w-8 text-white" />
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+              <span>After refunds</span>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/80 text-sm font-medium">Refund Rate</p>
+                <p className="text-3xl font-bold text-white mt-1">
+                  {stats.totalRevenue > 0 ? ((stats.totalRefunds / stats.totalRevenue) * 100).toFixed(1) : 0}%
+                </p>
+              </div>
+              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
+                <BarChart3 className="h-8 w-8 text-white" />
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+              <span>Of gross revenue</span>
+            </div>
+          </div>
+        </div>
+      )}
   
-      {/* Row 2: Balance Overview Cards */}
+      {/* Balance Overview Cards */}
       {canViewBalanceStats && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
@@ -2179,25 +2279,6 @@ const Dashboard = () => {
     </div>
   );
 
-  // ─── LOADING STATE ────────────────────────────────────────────────────────
-  if (loading && !user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="relative">
-            <div className="h-24 w-24 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 animate-pulse mx-auto mb-4 flex items-center justify-center">
-              <Dumbbell className="h-12 w-12 text-white" />
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Loader className="h-8 w-8 text-white animate-spin" />
-            </div>
-          </div>
-          <p className="text-gray-600 font-medium">Loading your fitness empire...</p>
-        </div>
-      </div>
-    );
-  }
-
   // ─── MAIN RENDER ─────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
@@ -2218,7 +2299,7 @@ const Dashboard = () => {
         <Menu className="h-5 w-5" />
       </button>
 
-      {/* ─── SIDEBAR ────────────────────────────────────────────────────────── */}
+      {/* Sidebar */}
       <aside className={`
         fixed top-0 left-0 z-40 h-screen bg-gradient-to-b from-blue-900 to-purple-900 
         transition-all duration-300 shadow-xl flex flex-col
@@ -2522,36 +2603,6 @@ const Dashboard = () => {
           {activeTab === 'historical-invoices' && <HistoricalInvoices />}
           {activeTab === 'whatsapp-logs' && <WhatsAppLogs />}
           {activeTab === 'whatsapp-notifications' && canSeeWhatsApp && <WhatsAppNotifications />}
-          {activeTab === 'classes' && (
-            <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-              <CalendarIcon className="h-16 w-16 text-blue-300 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-900">Classes Management</h2>
-              <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
-            </div>
-          )}
-          {activeTab === 'settings' && (
-            <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-              <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
-              <p className="text-gray-500 mt-2">This feature is coming soon! 🚀</p>
-            </div>
-          )}
-
-          {activeTab === 'members' && !canSeeMembers && (
-            <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-              <Shield className="h-16 w-16 text-red-300 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
-              <p className="text-gray-500 mt-2">You don't have permission to view this page.</p>
-            </div>
-          )}
-          
-          {activeTab === 'whatsapp-notifications' && !canSeeWhatsApp && (
-            <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-              <Shield className="h-16 w-16 text-red-300 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
-              <p className="text-gray-500 mt-2">You don't have permission to view WhatsApp notifications. This feature is only available for Gym Owners.</p>
-            </div>
-          )}
         </div>
 
         {/* Footer */}
