@@ -1,4 +1,5 @@
 // src/pages/Dashboard.jsx - COMPLETE UPDATED WITH REFUND HANDLING
+// Modified: Total Members and New Members are always visible (not hidden)
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -164,7 +165,6 @@ const Dashboard = () => {
   const canViewMemberStats = isAdmin || hasPermission('dashboard_view_member_stats') || hasPermission('view_members');
   const canViewRevenueStats = isAdmin || hasPermission('dashboard_view_revenue_stats') || hasPermission('view_payments');
   const canViewExpenseStats = isAdmin || hasPermission('dashboard_view_expense_stats') || hasPermission('view_expenses');
-  const canViewAttendanceStats = isAdmin || hasPermission('dashboard_view_attendance_stats') || hasPermission('view_attendance');
   const canViewBalanceStats = isAdmin || hasPermission('dashboard_view_balance_stats') || hasPermission('view_balances');
   const canViewLeadStats = isAdmin || hasPermission('dashboard_view_lead_stats') || hasPermission('view_leads');
   const canViewStaffStats = isAdmin || hasPermission('dashboard_view_staff_stats') || hasPermission('view_staff');
@@ -263,7 +263,6 @@ const Dashboard = () => {
       members: [],
       staff: []
     },
-    // ✅ New fields for refund tracking
     totalRefunds: 0,
     refundCount: 0,
     netRevenue: 0,
@@ -404,18 +403,26 @@ const Dashboard = () => {
     });
   }, []);
 
-  // ─── HELPER: Format masked value ────────────────────────────────────────
-  const formatMaskedValue = (value, showValue) => {
-    if (!showValue) {
-      if (typeof value === 'number') {
-        if (value > 0) {
-          return '****';
-        }
-        return 0;
-      }
-      return '****';
+  // ─── HELPER: Check if value should be hidden ────────────────────────────
+  // ALWAYS SHOW: totalMembers, newMembersThisMonth, activeMembers, inactiveMembers
+  const shouldHideValue = (value, key) => {
+    // List of keys that should ALWAYS be visible (never hidden)
+    const alwaysVisibleKeys = [
+      'totalMembers', 
+      'newMembersThisMonth', 
+      'activeMembers', 
+      'inactiveMembers',
+      'membersWithBalance',
+      'membersByGender'
+    ];
+    
+    // If the key is in the always-visible list, return false (don't hide)
+    if (alwaysVisibleKeys.some(k => key && key.includes(k))) {
+      return false;
     }
-    return value;
+    
+    // Otherwise, respect the hideValues setting
+    return hideValues && value > 0;
   };
 
   // ─── CURRENCY FORMATTING ──────────────────────────────────────────────
@@ -428,7 +435,6 @@ const Dashboard = () => {
       maximumFractionDigits: 0,
     }).format(Math.abs(amount));
     
-    // If amount is negative, show as (₹ X) - refund
     if (amount < 0) {
       return `(${currencySymbol} ${formatted})`;
     }
@@ -436,15 +442,15 @@ const Dashboard = () => {
   };
 
   // ─── FORMAT WITH HIDE/SHOW ──────────────────────────────────────────────
-  const formatCurrencyMasked = (amount) => {
-    if (hideValues && amount > 0) {
+  const formatCurrencyMasked = (amount, key = '') => {
+    if (shouldHideValue(amount, key)) {
       return '****';
     }
     return formatCurrency(amount);
   };
 
-  const formatNumberMasked = (number) => {
-    if (hideValues && number > 0) {
+  const formatNumberMasked = (number, key = '') => {
+    if (shouldHideValue(number, key)) {
       return '****';
     }
     return number?.toLocaleString() || 0;
@@ -471,7 +477,6 @@ const Dashboard = () => {
       let balanceMembersData = { data: [] };
       let leadsData = { data: [] };
   
-      // Fetch stats if user has any permission to see stats
       if (canSeeDashboard) {
         try {
           const statsResult = await fetchMemberStatsOptimized();
@@ -610,19 +615,15 @@ const Dashboard = () => {
   
       const currentYear = new Date().getFullYear();
       
-      // ✅ Calculate total revenue from ALL payments (including refunds as negative)
       const allPayments = payments || [];
       
-      // Filter payments for current year
       const yearlyPayments = allPayments.filter(p => {
         const paymentDate = p.payment_date ? new Date(p.payment_date) : null;
         return paymentDate && paymentDate.getFullYear() === currentYear;
       });
       
-      // ✅ Total revenue = sum of all payments (refunds are negative)
       const totalRevenue = yearlyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
       
-      // ✅ Calculate monthly revenue from ALL payments (including refunds)
       const now = new Date();
       const monthlyPayments = allPayments.filter(p => {
         if (!p.payment_date) return false;
@@ -631,33 +632,28 @@ const Dashboard = () => {
                paymentDate.getFullYear() === now.getFullYear();
       });
       
-      // ✅ Monthly revenue = sum of all payments in the month (refunds are negative)
       const monthlyRevenue = monthlyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
       
       const todayDate = new Date();
       const firstDayOfLastMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
       const lastDayOfLastMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 0);
       
-      // ✅ Calculate last month revenue (including refunds)
       const lastMonthPayments = allPayments.filter(p => {
         if (!p.payment_date) return false;
         const paymentDate = new Date(p.payment_date);
         return paymentDate >= firstDayOfLastMonth && paymentDate <= lastDayOfLastMonth;
       });
       
-      // ✅ Last month revenue = sum of all payments (refunds are negative)
       const lastMonthRevenue = lastMonthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
       
       const revenueGrowth = lastMonthRevenue > 0 
         ? ((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue * 100)
         : monthlyRevenue > 0 ? 100 : 0;
       
-      // ✅ Calculate refunds
       const refundPayments = allPayments.filter(p => p.amount < 0 || (p.notes && p.notes.includes('REFUND')));
       const totalRefunds = refundPayments.reduce((sum, p) => sum + Math.abs(p.amount || 0), 0);
       const refundCount = refundPayments.length;
       
-      // ✅ Net revenue = total revenue - refunds
       const netRevenue = totalRevenue - totalRefunds;
   
       const pendingPayments = memberships.filter(m => 
@@ -862,7 +858,6 @@ const Dashboard = () => {
       upcomingBirthdays.members.sort((a, b) => a.daysUntil - b.daysUntil);
       upcomingBirthdays.staff.sort((a, b) => a.daysUntil - b.daysUntil);
   
-      // ✅ Calculate net profit and profit margin from monthly revenue and expenses
       const monthlyExpenses = statsApiData.monthly_expenses || 0;
       const netProfit = monthlyRevenue - monthlyExpenses;
       const profitMargin = monthlyRevenue > 0 ? (netProfit / monthlyRevenue * 100) : 0;
@@ -900,7 +895,6 @@ const Dashboard = () => {
         membershipDistribution,
         expiringMembers,
         upcomingBirthdays,
-        // ✅ New fields
         totalRefunds,
         refundCount,
         netRevenue
@@ -1234,14 +1228,14 @@ const Dashboard = () => {
           {canSeeAttendance && (
             <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
               <Users className="h-4 w-4" />
-              {formatNumberMasked(stats.todayCheckins)} check-ins today
+              {formatNumberMasked(stats.todayCheckins, 'todayCheckins')} check-ins today
             </div>
           )}
           
           {canSeePayments && (
             <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
               <TrendUp className="h-4 w-4" />
-              {stats.monthlyRevenue > 0 ? formatCurrencyMasked(stats.monthlyRevenue) : 'No revenue yet'} this month
+              {stats.monthlyRevenue > 0 ? formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue') : 'No revenue yet'} this month
             </div>
           )}
           
@@ -1254,7 +1248,7 @@ const Dashboard = () => {
         </div>
       </div>
   
-      {/* Row 1: Key Stats Cards */}
+      {/* Row 1: Key Stats Cards - Total Members ALWAYS visible */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {canViewMemberStats && (
           <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-blue-500">
@@ -1267,15 +1261,16 @@ const Dashboard = () => {
               </span>
             </div>
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Members</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatNumberMasked(stats.totalMembers)}</p>
+            {/* Total Members - ALWAYS visible (never hidden) */}
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatNumberMasked(stats.totalMembers, 'totalMembers')}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
               <span className="text-green-600 flex items-center text-sm">
                 <UserCheck className="h-4 w-4 mr-1" />
-                {formatNumberMasked(stats.activeMembers)} active
+                {formatNumberMasked(stats.activeMembers, 'activeMembers')} active
               </span>
               <span className="text-gray-500 flex items-center text-sm">
                 <UserMinus className="h-4 w-4 mr-1" />
-                {formatNumberMasked(stats.inactiveMembers)} inactive
+                {formatNumberMasked(stats.inactiveMembers, 'inactiveMembers')} inactive
               </span>
             </div>
           </div>
@@ -1288,11 +1283,12 @@ const Dashboard = () => {
                 <UserPlus className="h-6 w-6 text-green-600" />
               </div>
               <span className="text-sm font-medium text-green-600 bg-green-100 px-3 py-1 rounded-full">
-                +{formatNumberMasked(stats.newMembersThisMonth)} new
+                +{formatNumberMasked(stats.newMembersThisMonth, 'newMembersThisMonth')} new
               </span>
             </div>
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">New Members</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatNumberMasked(stats.newMembersThisMonth)}</p>
+            {/* New Members - ALWAYS visible (never hidden) */}
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatNumberMasked(stats.newMembersThisMonth, 'newMembersThisMonth')}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
               <span className="text-gray-600 flex items-center text-sm">
                 <Calendar className="h-4 w-4 mr-1" />
@@ -1300,7 +1296,7 @@ const Dashboard = () => {
               </span>
               <span className="text-blue-600 font-medium text-sm flex items-center">
                 <Flame className="h-4 w-4 mr-1" />
-                {formatNumberMasked(stats.expiringThisMonth)} expiring
+                {formatNumberMasked(stats.expiringThisMonth, 'expiringThisMonth')} expiring
               </span>
             </div>
           </div>
@@ -1322,7 +1318,7 @@ const Dashboard = () => {
               </span>
             </div>
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Net Revenue</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.netRevenue)}</p>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.netRevenue, 'netRevenue')}</p>
             <p className="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100 flex items-center">
               {stats.revenueGrowth >= 0 ? (
                 <TrendingUp className="h-4 w-4 mr-1 text-green-500" />
@@ -1344,35 +1340,35 @@ const Dashboard = () => {
                 <CreditCard className="h-6 w-6 text-orange-600" />
               </div>
               <span className="text-sm font-medium text-orange-600 bg-orange-100 px-3 py-1 rounded-full">
-                {formatNumberMasked(stats.pendingPayments)} pending
+                {formatNumberMasked(stats.pendingPayments, 'pendingPayments')} pending
               </span>
             </div>
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Gross Revenue</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.totalRevenue)}</p>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.totalRevenue, 'totalRevenue')}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
               {canSeeAttendance && (
                 <span className="text-gray-600 flex items-center text-sm">
                   <Activity className="h-4 w-4 mr-1" />
-                  {formatNumberMasked(stats.todayCheckins)} check-ins
+                  {formatNumberMasked(stats.todayCheckins, 'todayCheckins')} check-ins
                 </span>
               )}
               <span className="text-orange-600 font-medium text-sm flex items-center">
                 <ClockIcon className="h-4 w-4 mr-1" />
-                {formatNumberMasked(stats.expiringSoon)} expiring
+                {formatNumberMasked(stats.expiringSoon, 'expiringSoon')} expiring
               </span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Row 1.5: Refund Stats Card */}
+      {/* Row 1.5: Refund Stats Cards */}
       {canViewRevenueStats && stats.totalRefunds > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-sm font-medium">Total Refunds</p>
-                <p className="text-3xl font-bold text-white mt-1">{formatCurrencyMasked(stats.totalRefunds)}</p>
+                <p className="text-3xl font-bold text-white mt-1">{formatCurrencyMasked(stats.totalRefunds, 'totalRefunds')}</p>
               </div>
               <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
                 <TrendingDown className="h-8 w-8 text-white" />
@@ -1387,7 +1383,7 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-sm font-medium">Net Revenue</p>
-                <p className="text-3xl font-bold text-white mt-1">{formatCurrencyMasked(stats.netRevenue)}</p>
+                <p className="text-3xl font-bold text-white mt-1">{formatCurrencyMasked(stats.netRevenue, 'netRevenue')}</p>
               </div>
               <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
                 <TrendingUp className="h-8 w-8 text-white" />
@@ -1424,14 +1420,14 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-sm font-medium">Total Balance Due</p>
-                <p className="text-3xl font-bold text-white mt-1">{formatCurrencyMasked(stats.totalBalanceDue)}</p>
+                <p className="text-3xl font-bold text-white mt-1">{formatCurrencyMasked(stats.totalBalanceDue, 'totalBalanceDue')}</p>
               </div>
               <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
                 <Wallet className="h-8 w-8 text-white" />
               </div>
             </div>
             <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
-              <span>{formatNumberMasked(stats.membersWithBalance)} members have dues</span>
+              <span>{formatNumberMasked(stats.membersWithBalance, 'membersWithBalance')} members have dues</span>
             </div>
           </div>
   
@@ -1439,7 +1435,8 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-sm font-medium">Members with Balance</p>
-                <p className="text-3xl font-bold text-white mt-1">{formatNumberMasked(stats.membersWithBalance)}</p>
+                {/* membersWithBalance - ALWAYS visible */}
+                <p className="text-3xl font-bold text-white mt-1">{formatNumberMasked(stats.membersWithBalance, 'membersWithBalance')}</p>
               </div>
               <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
                 <Users className="h-8 w-8 text-white" />
@@ -1455,7 +1452,7 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-sm font-medium">Overdue Payments</p>
-                <p className="text-3xl font-bold text-white mt-1">{formatNumberMasked(stats.overdueCount)}</p>
+                <p className="text-3xl font-bold text-white mt-1">{formatNumberMasked(stats.overdueCount, 'overdueCount')}</p>
               </div>
               <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
                 <AlertCircle className="h-8 w-8 text-white" />
@@ -1470,7 +1467,7 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-sm font-medium">Upcoming Payments</p>
-                <p className="text-3xl font-bold text-white mt-1">{formatNumberMasked(stats.upcomingPayments)}</p>
+                <p className="text-3xl font-bold text-white mt-1">{formatNumberMasked(stats.upcomingPayments, 'upcomingPayments')}</p>
               </div>
               <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
                 <Calendar className="h-8 w-8 text-white" />
@@ -1498,7 +1495,7 @@ const Dashboard = () => {
               </span>
             </div>
             <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Expenses</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.monthlyExpenses)}</p>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.monthlyExpenses, 'monthlyExpenses')}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
               <span className="text-gray-600 flex items-center text-sm">
                 <Calendar className="h-4 w-4 mr-1" />
@@ -1506,7 +1503,7 @@ const Dashboard = () => {
               </span>
               <span className="text-red-600 font-medium text-sm flex items-center">
                 <TrendingDown className="h-4 w-4 mr-1" />
-                Total: {formatCurrencyMasked(stats.totalExpenses)}
+                Total: {formatCurrencyMasked(stats.totalExpenses, 'totalExpenses')}
               </span>
             </div>
           </div>
@@ -1524,10 +1521,10 @@ const Dashboard = () => {
                 </span>
               </div>
               <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Net Profit</h3>
-              <p className="text-4xl font-bold text-emerald-600 mt-1">{formatCurrencyMasked(stats.netProfit)}</p>
+              <p className="text-4xl font-bold text-emerald-600 mt-1">{formatCurrencyMasked(stats.netProfit, 'netProfit')}</p>
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
                 <span className="text-gray-600 flex items-center text-sm">
-                  Revenue: {formatCurrencyMasked(stats.monthlyRevenue)}
+                  Revenue: {formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue')}
                 </span>
                 <span className="text-emerald-600 font-medium text-sm flex items-center">
                   <CheckCircle className="h-4 w-4 mr-1" />
@@ -1554,7 +1551,7 @@ const Dashboard = () => {
               <span className="text-gray-600 flex items-center text-sm">
                 <Wallet className="h-4 w-4 mr-1" />
                 {Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0]?.[1] 
-                  ? formatCurrencyMasked(Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0][1]) 
+                  ? formatCurrencyMasked(Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0][1], 'expenseTop') 
                   : '₹0'}
               </span>
               <button 
@@ -1591,11 +1588,11 @@ const Dashboard = () => {
                 <div className="flex justify-between text-sm text-white/80 mt-2">
                   <span className="flex items-center gap-1">
                     <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                    Revenue: {formatCurrencyMasked(stats.monthlyRevenue)}
+                    Revenue: {formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue')}
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="w-2 h-2 bg-red-400 rounded-full"></span>
-                    Expenses: {formatCurrencyMasked(stats.monthlyExpenses)}
+                    Expenses: {formatCurrencyMasked(stats.monthlyExpenses, 'monthlyExpenses')}
                   </span>
                 </div>
               </div>
@@ -1616,7 +1613,7 @@ const Dashboard = () => {
                 Member Demographics
               </h3>
               <span className="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full">
-                {formatNumberMasked(stats.totalMembers)} total
+                {formatNumberMasked(stats.totalMembers, 'totalMembers')} total
               </span>
             </div>
             
@@ -1624,7 +1621,7 @@ const Dashboard = () => {
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-gray-600 font-medium">Male</span>
-                  <span className="font-semibold text-blue-600">{formatNumberMasked(stats.membersByGender?.male)}</span>
+                  <span className="font-semibold text-blue-600">{formatNumberMasked(stats.membersByGender?.male, 'membersByGender')}</span>
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
                   <div 
@@ -1637,7 +1634,7 @@ const Dashboard = () => {
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-gray-600 font-medium">Female</span>
-                  <span className="font-semibold text-pink-600">{formatNumberMasked(stats.membersByGender?.female)}</span>
+                  <span className="font-semibold text-pink-600">{formatNumberMasked(stats.membersByGender?.female, 'membersByGender')}</span>
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
                   <div 
@@ -1650,7 +1647,7 @@ const Dashboard = () => {
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-gray-600 font-medium">Other</span>
-                  <span className="font-semibold text-purple-600">{formatNumberMasked(stats.membersByGender?.other)}</span>
+                  <span className="font-semibold text-purple-600">{formatNumberMasked(stats.membersByGender?.other, 'membersByGender')}</span>
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
                   <div 
@@ -1823,7 +1820,7 @@ const Dashboard = () => {
                 </button>
               </div>
               <p className="text-white/80 text-sm mt-1">
-                {formatNumberMasked(stats.membersWithBalance)} members have outstanding balance • Total: {formatCurrencyMasked(stats.totalBalanceDue)}
+                {formatNumberMasked(stats.membersWithBalance, 'membersWithBalance')} members have outstanding balance • Total: {formatCurrencyMasked(stats.totalBalanceDue, 'totalBalanceDue')}
               </p>
             </div>
             
@@ -1843,7 +1840,7 @@ const Dashboard = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <p className="font-semibold text-gray-900 truncate">{member.name}</p>
-                          <span className="text-lg font-bold text-red-600">{formatCurrencyMasked(member.balanceDue)}</span>
+                          <span className="text-lg font-bold text-red-600">{formatCurrencyMasked(member.balanceDue, 'balanceDue')}</span>
                         </div>
                         <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                           <span className="flex items-center gap-1">
@@ -1891,7 +1888,7 @@ const Dashboard = () => {
               <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Total Outstanding:</span>
-                  <span className="font-bold text-red-600">{formatCurrencyMasked(stats.totalBalanceDue)}</span>
+                  <span className="font-bold text-red-600">{formatCurrencyMasked(stats.totalBalanceDue, 'totalBalanceDue')}</span>
                 </div>
               </div>
             )}
@@ -2243,7 +2240,7 @@ const Dashboard = () => {
                 </div>
                 <div className="flex-1">
                   <h4 className="font-bold text-lg mb-1">Overdue Payments</h4>
-                  <p className="text-white/90 mb-3">{formatNumberMasked(stats.overdueCount)} members have overdue payments</p>
+                  <p className="text-white/90 mb-3">{formatNumberMasked(stats.overdueCount, 'overdueCount')} members have overdue payments</p>
                   <button 
                     onClick={() => setActiveTab('balance')}
                     className="bg-white text-red-600 px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
@@ -2263,7 +2260,7 @@ const Dashboard = () => {
                 </div>
                 <div className="flex-1">
                   <h4 className="font-bold text-lg mb-1">Expiring Memberships</h4>
-                  <p className="text-white/90 mb-3">{formatNumberMasked(stats.expiringSoon)} memberships expire within 7 days</p>
+                  <p className="text-white/90 mb-3">{formatNumberMasked(stats.expiringSoon, 'expiringSoon')} memberships expire within 7 days</p>
                   <button 
                     onClick={() => setActiveTab('members')}
                     className="bg-white text-orange-600 px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"

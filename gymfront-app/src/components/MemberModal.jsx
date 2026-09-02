@@ -1,11 +1,11 @@
-// MemberModal.jsx - Updated with Payment Date and Proper Renewal Logic
+// MemberModal.jsx - Updated with proper plan change handling for upgrades/downgrades
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, User, Phone, Heart, FileText, Camera, Plus, CheckCircle,
   Calendar, CreditCard, AlertCircle, ChevronRight, Loader2, RefreshCw,
   ChevronUp, ChevronDown, Upload, Trash2, Edit, CalendarDays, Dumbbell,
-  Tag, Video, Image
+  Tag, Video, Image, DollarSign, ArrowUp, ArrowDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
@@ -1639,6 +1639,165 @@ const AddonSelectionSection = ({
   );
 };
 
+// ─── PLAN CHANGE PREVIEW COMPONENT ───────────────────────────────────────────
+const PlanChangePreview = ({ 
+  currentPlan, 
+  newPlan, 
+  changeDate,
+  onConfirm,
+  onCancel,
+  loading 
+}) => {
+  const [previewData, setPreviewData] = useState(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  
+  useEffect(() => {
+    if (currentPlan && newPlan && changeDate) {
+      fetchPreview();
+    }
+  }, [currentPlan, newPlan, changeDate]);
+
+  const fetchPreview = async () => {
+    setLoadingPreview(true);
+    try {
+      const response = await api.post(`/gym/members/${currentPlan.member_id}/change-plan/preview`, {
+        new_plan_id: newPlan.id,
+        change_date: changeDate,
+      });
+      setPreviewData(response.data);
+    } catch (error) {
+      console.error('Error fetching plan change preview:', error);
+      toast.error('Failed to calculate plan change');
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  if (loadingPreview) {
+    return (
+      <div className="p-4 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto" />
+        <p className="text-sm text-gray-500 mt-2">Calculating plan change...</p>
+      </div>
+    );
+  }
+
+  if (!previewData) return null;
+
+  const isUpgrade = previewData.is_upgrade;
+  const isDowngrade = previewData.is_downgrade;
+  const refundAmount = previewData.refund_amount || 0;
+  const netRefund = previewData.net_refund || 0;
+  const newPlanCost = previewData.new_plan_cost || 0;
+
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="font-semibold text-gray-800 text-sm">Plan Change Summary</h4>
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+          isUpgrade ? 'bg-orange-100 text-orange-700' :
+          isDowngrade ? 'bg-green-100 text-green-700' :
+          'bg-gray-100 text-gray-600'
+        }`}>
+          {isUpgrade ? 'Upgrade' : isDowngrade ? 'Downgrade' : 'Same Plan'}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <span className="text-gray-500">Current Plan:</span>
+          <p className="font-medium text-gray-900">{previewData.old_plan_name}</p>
+          <p className="text-gray-400">₹{previewData.old_plan_price}</p>
+        </div>
+        <div>
+          <span className="text-gray-500">New Plan:</span>
+          <p className="font-medium text-gray-900">{previewData.new_plan_name}</p>
+          <p className="text-gray-400">₹{previewData.new_plan_price}</p>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-200 pt-2">
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div>
+            <span className="text-gray-500">Used Days:</span>
+            <p className="font-medium text-gray-900">{previewData.used_days}</p>
+          </div>
+          <div>
+            <span className="text-gray-500">Unused Days:</span>
+            <p className="font-medium text-gray-900">{previewData.unused_days}</p>
+          </div>
+          <div>
+            <span className="text-gray-500">Daily Rate:</span>
+            <p className="font-medium text-gray-900">₹{previewData.daily_rate?.toFixed(2)}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg p-3 border border-gray-200">
+        {isDowngrade && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">Refund from unused days:</span>
+              <span className="font-medium text-green-600">₹{refundAmount.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">New plan cost (prorated):</span>
+              <span className="font-medium text-orange-600">- ₹{newPlanCost.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm font-bold pt-1 border-t border-gray-200">
+              <span className="text-gray-700">Net Refund:</span>
+              <span className="text-green-600">₹{netRefund.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+
+        {isUpgrade && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">Refund from unused days:</span>
+              <span className="font-medium text-green-600">₹{refundAmount.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">New plan cost (prorated):</span>
+              <span className="font-medium text-orange-600">- ₹{newPlanCost.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm font-bold pt-1 border-t border-gray-200">
+              <span className="text-gray-700">Additional Payment:</span>
+              <span className="text-orange-600">₹{Math.abs(netRefund).toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+
+        {!isUpgrade && !isDowngrade && (
+          <p className="text-xs text-gray-500 text-center">No financial impact - same plan price</p>
+        )}
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => onConfirm(previewData)}
+          disabled={loading}
+          className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            'Confirm Change'
+          )}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ─── Membership Selector ────────────────────────────────────────────────────
 const MembershipSelector = ({ 
   formData, 
@@ -1655,9 +1814,18 @@ const MembershipSelector = ({
   handleAmountChange,
   amountError,
   setAmountError,
+  isEdit,
+  memberId,
+  selectedPlanForChange,
+  setSelectedPlanForChange,
+  showPlanChangePreview,
+  setShowPlanChangePreview,
 }) => {
   const [editingPlan, setEditingPlan] = useState(null);
   const [deletingPlanId, setDeletingPlanId] = useState(null);
+  const [changingPlan, setChangingPlan] = useState(false);
+  const [changeDate, setChangeDate] = useState(new Date().toISOString().split('T')[0]);
+  const [previewData, setPreviewData] = useState(null);
   const selectedPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
   
   const calculatePriceWithDiscount = () => {
@@ -1677,22 +1845,83 @@ const MembershipSelector = ({
     return paid > 0 && paid < finalPrice;
   };
 
+  // ─── HANDLE PLAN CHANGE ──────────────────────────────────────────────────────
+  const handlePlanChange = async (newPlanId) => {
+    if (!isEdit || !memberId) {
+      // For new members, just select the plan normally
+      setFormData(prev => ({ ...prev, plan_id: newPlanId }));
+      return;
+    }
+
+    // For existing members, show the plan change preview
+    const newPlan = membershipPlans.find(p => String(p.id) === String(newPlanId));
+    const currentPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
+    
+    if (!newPlan || !currentPlan || String(newPlan.id) === String(currentPlan.id)) {
+      setFormData(prev => ({ ...prev, plan_id: newPlanId }));
+      return;
+    }
+
+    setSelectedPlanForChange(newPlan);
+    setShowPlanChangePreview(true);
+  };
+
+  // ─── CONFIRM PLAN CHANGE ──────────────────────────────────────────────────────
+  const confirmPlanChange = async (preview) => {
+    setChangingPlan(true);
+    try {
+      const response = await api.post(`/gym/members/${memberId}/change-plan`, {
+        new_plan_id: selectedPlanForChange.id,
+        change_date: changeDate,
+        refund_type: 'prorated_refund',
+        payment_method: formData.payment_method || 'cash',
+      });
+
+      if (response.data.success) {
+        toast.success(`Plan changed successfully! ${response.data.message}`);
+        
+        // Update form data with new plan
+        setFormData(prev => ({
+          ...prev,
+          plan_id: String(selectedPlanForChange.id),
+          amount_paid: String(response.data.balance_after_refund || 0),
+        }));
+        
+        setShowPlanChangePreview(false);
+        setSelectedPlanForChange(null);
+        setPreviewData(null);
+        await onRefreshPlans();
+        
+        // Dispatch event to refresh dashboard
+        window.dispatchEvent(new CustomEvent('paymentUpdated'));
+      }
+    } catch (error) {
+      console.error('Error changing plan:', error);
+      toast.error(error.response?.data?.detail || 'Failed to change plan');
+    } finally {
+      setChangingPlan(false);
+    }
+  };
+
   const handlePlanSelect = (e) => {
     const planId = e.target.value;
-    setFormData(prev => ({ ...prev, plan_id: planId }));
-    setAmountError(null);
-    
-    if (!userManuallyChangedAmount) {
-      const plan = membershipPlans.find(p => String(p.id) === String(planId));
-      if (plan) {
-        const price = plan.discounted_price || plan.price;
-        // ✅ Set amount_paid to full price when plan is selected
-        setFormData(prev => ({ 
-          ...prev, 
-          amount_paid: String(price),
-          custom_due_date: ''
-        }));
-        setAmountError(null);
+    if (isEdit && memberId) {
+      handlePlanChange(planId);
+    } else {
+      setFormData(prev => ({ ...prev, plan_id: planId }));
+      setAmountError(null);
+      
+      if (!userManuallyChangedAmount) {
+        const plan = membershipPlans.find(p => String(p.id) === String(planId));
+        if (plan) {
+          const price = plan.discounted_price || plan.price;
+          setFormData(prev => ({ 
+            ...prev, 
+            amount_paid: String(price),
+            custom_due_date: ''
+          }));
+          setAmountError(null);
+        }
       }
     }
   };
@@ -1784,6 +2013,60 @@ const MembershipSelector = ({
 
   return (
     <div className="space-y-4">
+      {/* Plan Change Preview Modal */}
+      {showPlanChangePreview && selectedPlanForChange && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <RefreshCw className="h-5 w-5 text-blue-600" />
+                Change Plan
+              </h3>
+              <button
+                onClick={() => {
+                  setShowPlanChangePreview(false);
+                  setSelectedPlanForChange(null);
+                  setFormData(prev => ({ ...prev, plan_id: formData.plan_id }));
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Change Date
+                </label>
+                <input
+                  type="date"
+                  value={changeDate}
+                  onChange={(e) => setChangeDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  The date when the plan change takes effect
+                </p>
+              </div>
+
+              <PlanChangePreview
+                currentPlan={{ ...selectedPlan, member_id: memberId }}
+                newPlan={selectedPlanForChange}
+                changeDate={changeDate}
+                onConfirm={confirmPlanChange}
+                onCancel={() => {
+                  setShowPlanChangePreview(false);
+                  setSelectedPlanForChange(null);
+                  setFormData(prev => ({ ...prev, plan_id: formData.plan_id }));
+                }}
+                loading={changingPlan}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {membershipPlans.length === 0 && !shouldShowPlanCreator && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
           <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
@@ -1801,7 +2084,9 @@ const MembershipSelector = ({
       {membershipPlans.length > 0 && !shouldShowPlanCreator && (
         <div>
           <div className="flex justify-between items-center mb-3">
-            <p className="text-sm text-gray-500">Select a plan:</p>
+            <p className="text-sm text-gray-500">
+              {isEdit ? 'Select new plan (change will be prorated):' : 'Select a plan:'}
+            </p>
             <button
               type="button"
               onClick={onRefreshPlans}
@@ -1815,6 +2100,7 @@ const MembershipSelector = ({
               const price = plan.discounted_price || plan.price;
               const isSelected = String(formData.plan_id) === String(plan.id);
               const isDeleting = deletingPlanId === plan.id;
+              const isCurrentPlan = isEdit && String(formData.plan_id) === String(plan.id);
               
               return (
                 <div key={plan.id}
@@ -1835,6 +2121,11 @@ const MembershipSelector = ({
                       {!plan.is_active && (
                         <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
                           Inactive
+                        </span>
+                      )}
+                      {isCurrentPlan && isEdit && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                          Current
                         </span>
                       )}
                       <div className="flex items-center gap-1 ml-auto">
@@ -2229,6 +2520,10 @@ const MemberModal = ({ isOpen, onClose,
   const [amountError, setAmountError] = useState(null);
   const [trainers, setTrainers] = useState([]);
   const [loadingTrainers, setLoadingTrainers] = useState(false);
+  
+  // Plan change states
+  const [selectedPlanForChange, setSelectedPlanForChange] = useState(null);
+  const [showPlanChangePreview, setShowPlanChangePreview] = useState(false);
 
   // ===== ADD-ONS STATE =====
   const [showAddonManager, setShowAddonManager] = useState(false);
@@ -2323,6 +2618,8 @@ const MemberModal = ({ isOpen, onClose,
     setSelectedAddons([]);
     setAddonTotal(0);
     setAddonsPaid(true);
+    setShowPlanChangePreview(false);
+    setSelectedPlanForChange(null);
 
     const isLeadConversion = isFromLead || (member && member.id === null);
     const rawData = member?.raw || prefillData || {};
@@ -2345,11 +2642,11 @@ const MemberModal = ({ isOpen, onClose,
         medications: member.medications || '',
         id_proof_type: member.id_proof_type || 'aadhar',
         id_proof_number: member.id_proof_number || '',
-        plan_id: '', 
-        membership_start_date: today, 
+        plan_id: member.current_membership?.plan_id?.toString() || '', 
+        membership_start_date: member.current_membership?.start_date || today, 
         payment_method: 'cash', 
-        amount_paid: '',
-        discount_applied: '',
+        amount_paid: member.current_membership?.amount_paid?.toString() || '',
+        discount_applied: member.current_membership?.discount_applied?.toString() || '',
         renew_membership: false,
         custom_due_date: '',
         payment_date: today,
@@ -2689,27 +2986,17 @@ const MemberModal = ({ isOpen, onClose,
           }
         }
 
-        // ✅ Send the WhatsApp invoice LAST, only after the member, membership,
-        // PT session, and add-ons have all been created. Sending it earlier
-        // (e.g. right after membership creation) meant the invoice was
-        // generated before add-ons existed in the database, so it always
-        // showed up without them. This single explicit call replaces the
-        // automatic send that used to happen inside membership creation.
+        // Send invoice via WhatsApp
         if (formData.plan_id) {
           try {
             const invoiceResponse = await api.post(`/gym/members/${savedMember.id}/send-invoice`);
             if (invoiceResponse?.data?.success) {
               toast.success('Invoice sent via WhatsApp!');
             } else {
-              // WhatsApp didn't go through (e.g. number not on WhatsApp, provider
-              // timeout). This is NOT a server error — the member was saved fine,
-              // and the attempt is already recorded in the WhatsApp logs, so we
-              // just give a soft heads-up instead of an alarming error toast.
               console.warn('WhatsApp invoice not sent:', invoiceResponse?.data?.message);
               toast('Member added. WhatsApp invoice could not be sent — check WhatsApp logs for details.', { icon: '⚠️' });
             }
           } catch (invoiceError) {
-            // Only genuine network/auth/unexpected failures land here now.
             console.error('Error sending invoice:', invoiceError);
             toast('Member added, but the invoice request failed. Check WhatsApp logs for details.', { icon: '⚠️' });
           }
@@ -2996,6 +3283,12 @@ const MemberModal = ({ isOpen, onClose,
                         handleAmountChange={handleAmountChange}
                         amountError={amountError}
                         setAmountError={setAmountError}
+                        isEdit={isEdit}
+                        memberId={member?.id}
+                        selectedPlanForChange={selectedPlanForChange}
+                        setSelectedPlanForChange={setSelectedPlanForChange}
+                        showPlanChangePreview={showPlanChangePreview}
+                        setShowPlanChangePreview={setShowPlanChangePreview}
                       />
 
                       {/* ✅ Payment Date Picker - Show for renewal and new members */}

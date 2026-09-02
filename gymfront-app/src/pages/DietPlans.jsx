@@ -1,5 +1,5 @@
 // src/pages/DietPlans.jsx - Complete Diet Plans and Body Measurements Page
-// Updated with member search functionality
+// Updated with PDF download functionality
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -42,11 +42,15 @@ import {
   Phone,
   Mail,
   ChevronLeft,
-  ChevronRight as ChevronRightIcon
+  ChevronRight as ChevronRightIcon,
+  Printer,
+  File as FileIcon
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 const DietPlans = () => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -57,6 +61,7 @@ const DietPlans = () => {
   const [showMemberDropdown, setShowMemberDropdown] = useState(false);
   const searchInputRef = useRef(null);
   const dropdownRef = useRef(null);
+  const pdfContentRef = useRef(null);
   
   // Diet Plans
   const [dietPlans, setDietPlans] = useState([]);
@@ -137,6 +142,9 @@ const DietPlans = () => {
     notes: '',
     photos: []
   });
+
+  // PDF Download states
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   // Click outside handler for dropdown
   useEffect(() => {
@@ -357,7 +365,6 @@ const DietPlans = () => {
     }
   };
   
-
   // Send diet chart via WhatsApp
   const sendDietChart = async (memberId, assignmentId, memberName) => {
     if (!confirm(`Send diet chart to ${memberName} via WhatsApp?`)) return;
@@ -523,6 +530,199 @@ const DietPlans = () => {
     }));
   };
 
+  // ==================== PDF DOWNLOAD FUNCTIONS ====================
+  
+  // Generate and download PDF for a diet plan
+  const downloadDietPlanPDF = async (plan) => {
+    setPdfLoading(true);
+    try {
+      // Get full plan details with meal plan parsed
+      const fullPlan = {
+        ...plan,
+        meal_plan: typeof plan.meal_plan === 'string' ? JSON.parse(plan.meal_plan) : plan.meal_plan
+      };
+      
+      // Create a temporary div to render the PDF content
+      const container = document.createElement('div');
+      container.style.position = 'fixed';
+      container.style.left = '-9999px';
+      container.style.top = '0';
+      container.style.width = '794px'; // A4 width in pixels
+      container.style.padding = '40px';
+      container.style.backgroundColor = '#ffffff';
+      container.style.fontFamily = 'Arial, sans-serif';
+      container.style.color = '#1a1a2e';
+      
+      // Build the HTML content for PDF
+      container.innerHTML = buildDietPlanPDFHTML(fullPlan);
+      document.body.appendChild(container);
+      
+      // Wait for images to load
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Capture as canvas
+      const canvas = await html2canvas(container, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        width: 794,
+        height: container.scrollHeight,
+        windowHeight: container.scrollHeight
+      });
+      
+      // Create PDF
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgData = canvas.toDataURL('image/png');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      let heightLeft = pdfHeight;
+      let position = 0;
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      
+      // Add first page
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+      heightLeft -= pageHeight;
+      
+      // Add additional pages if content overflows
+      while (heightLeft > 0) {
+        position = heightLeft - pdfHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pageHeight;
+      }
+      
+      // Save PDF
+      pdf.save(`${fullPlan.name.replace(/\s+/g, '_')}_Diet_Plan.pdf`);
+      
+      // Clean up
+      document.body.removeChild(container);
+      toast.success('PDF downloaded successfully!');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('Failed to generate PDF. Please try again.');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  // Build PDF HTML content
+  const buildDietPlanPDFHTML = (plan) => {
+    const mealPlan = plan.meal_plan || {};
+    const today = new Date().toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    
+    // Check if there are any meal sections with content
+    const hasMealContent = Object.values(mealPlan).some(val => val && val.trim());
+    
+    // Build meal sections HTML
+    const mealSections = [];
+    const mealIcons = {
+      breakfast: '🌅',
+      lunch: '🌞',
+      snack: '🍎',
+      dinner: '🌙',
+      hydration: '💧',
+      supplements: '💊',
+      notes: '📝'
+    };
+    const mealLabels = {
+      breakfast: 'Breakfast',
+      lunch: 'Lunch',
+      snack: 'Snack',
+      dinner: 'Dinner',
+      hydration: 'Hydration',
+      supplements: 'Supplements',
+      notes: 'Notes'
+    };
+    
+    Object.keys(mealPlan).forEach(key => {
+      if (mealPlan[key] && mealPlan[key].trim()) {
+        mealSections.push(`
+          <div style="margin-bottom: 12px; padding: 10px 12px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid ${key === 'breakfast' ? '#f59e0b' : key === 'lunch' ? '#f97316' : key === 'snack' ? '#ef4444' : key === 'dinner' ? '#6366f1' : key === 'hydration' ? '#3b82f6' : key === 'supplements' ? '#8b5cf6' : '#6b7280'};">
+            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #1a1a2e;">
+              ${mealIcons[key] || ''} ${mealLabels[key] || key.charAt(0).toUpperCase() + key.slice(1)}
+            </div>
+            <div style="font-size: 13px; color: #4b5563; line-height: 1.6; white-space: pre-wrap;">
+              ${mealPlan[key]}
+            </div>
+          </div>
+        `);
+      }
+    });
+    
+    // Build macros HTML
+    const macros = [];
+    if (plan.calories) macros.push(`Calories: ${plan.calories} kcal`);
+    if (plan.protein) macros.push(`Protein: ${plan.protein}g`);
+    if (plan.carbs) macros.push(`Carbs: ${plan.carbs}g`);
+    if (plan.fats) macros.push(`Fats: ${plan.fats}g`);
+    
+    const macrosHTML = macros.length > 0 ? `
+      <div style="display: flex; gap: 15px; flex-wrap: wrap; margin: 15px 0; padding: 12px 16px; background: #eef2ff; border-radius: 8px;">
+        ${macros.map(macro => `
+          <span style="font-size: 13px; font-weight: 500; color: #4338ca;">
+            📊 ${macro}
+          </span>
+        `).join('')}
+      </div>
+    ` : '';
+    
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+          body { font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; }
+        </style>
+      </head>
+      <body>
+        <!-- Header with Gym Branding -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #4338ca; padding-bottom: 15px; margin-bottom: 20px;">
+          <div>
+            <h1 style="font-size: 24px; font-weight: 700; color: #1a1a2e; margin: 0;">
+              🥗 ${plan.name}
+            </h1>
+            ${plan.description ? `<p style="font-size: 14px; color: #6b7280; margin: 4px 0 0 0;">${plan.description}</p>` : ''}
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 12px; color: #9ca3af;">Generated on</div>
+            <div style="font-size: 14px; font-weight: 600; color: #1a1a2e;">${today}</div>
+          </div>
+        </div>
+        
+        <!-- Macros -->
+        ${macrosHTML}
+        
+        <!-- Meal Plan -->
+        ${hasMealContent ? `
+          <div style="margin: 15px 0 5px 0;">
+            <h2 style="font-size: 16px; font-weight: 600; color: #1a1a2e; margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px;">
+              📋 Meal Plan
+            </h2>
+            ${mealSections.join('')}
+          </div>
+        ` : `
+          <div style="text-align: center; padding: 30px; color: #9ca3af;">
+            No meal sections have been added to this plan yet.
+          </div>
+        `}
+        
+        <!-- Footer -->
+        <div style="margin-top: 30px; padding-top: 15px; border-top: 2px solid #e5e7eb; text-align: center; font-size: 12px; color: #9ca3af;">
+          <p style="margin: 0;">This is a system-generated diet plan. For any modifications, please contact your fitness trainer.</p>
+          <p style="margin: 4px 0 0 0;">© ${new Date().getFullYear()} Gym Management System</p>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
   // Render member dropdown
   const renderMemberDropdown = () => {
     if (!showMemberDropdown) return null;
@@ -605,7 +805,7 @@ const DietPlans = () => {
     );
   };
 
-  // Render diet plan card
+  // Render diet plan card with PDF download button
   const renderDietPlanCard = (plan) => {
     const mealPlan = typeof plan.meal_plan === 'string' ? JSON.parse(plan.meal_plan) : plan.meal_plan;
     const mealCount = Object.values(mealPlan).filter(v => v && v.trim()).length;
@@ -620,6 +820,14 @@ const DietPlans = () => {
             )}
           </div>
           <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+            <button
+              onClick={() => downloadDietPlanPDF(plan)}
+              disabled={pdfLoading}
+              className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+              title="Download as PDF"
+            >
+              <FileIcon className="h-4 w-4" />
+            </button>
             <button
               onClick={() => editPlan(plan)}
               className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -658,6 +866,20 @@ const DietPlans = () => {
               <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Fats: {plan.fats}g</span>
             )}
           </div>
+          
+          {/* Download button at bottom of card for better visibility */}
+          <button
+            onClick={() => downloadDietPlanPDF(plan)}
+            disabled={pdfLoading}
+            className="w-full mt-2 py-1.5 text-sm bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors flex items-center justify-center gap-2"
+          >
+            {pdfLoading ? (
+              <Loader className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileIcon className="h-4 w-4" />
+            )}
+            Download PDF
+          </button>
         </div>
       </div>
     );
@@ -863,7 +1085,7 @@ const DietPlans = () => {
       )}
       
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <button
           onClick={() => {
             setEditingPlan(null);
@@ -908,6 +1130,26 @@ const DietPlans = () => {
             </div>
           </div>
         </button>
+
+        <button
+          onClick={() => {
+            if (dietPlans.length > 0) {
+              // Show a dropdown or modal to select which plan to download
+              toast.info('Click the PDF icon on any diet plan card to download it');
+            } else {
+              toast.error('No diet plans available to download');
+            }
+          }}
+          className="bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl p-4 hover:shadow-lg transition-all transform hover:-translate-y-0.5"
+        >
+          <div className="flex items-center gap-3">
+            <FileIcon className="h-6 w-6" />
+            <div className="text-left">
+              <p className="font-semibold">Download PDF</p>
+              <p className="text-sm text-emerald-100">Export diet plans</p>
+            </div>
+          </div>
+        </button>
       </div>
     </div>
   );
@@ -926,17 +1168,32 @@ const DietPlans = () => {
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
-        <button
-          onClick={() => {
-            setEditingPlan(null);
-            resetPlanForm();
-            setShowDietPlanModal(true);
-          }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 whitespace-nowrap"
-        >
-          <Plus className="h-4 w-4" />
-          New Diet Plan
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              if (dietPlans.length === 0) {
+                toast.error('No diet plans available to download');
+                return;
+              }
+              toast.info('Click the PDF button on any diet plan card to download it');
+            }}
+            className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-2 whitespace-nowrap"
+          >
+            <FileIcon className="h-4 w-4" />
+            Export All PDFs
+          </button>
+          <button
+            onClick={() => {
+              setEditingPlan(null);
+              resetPlanForm();
+              setShowDietPlanModal(true);
+            }}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 whitespace-nowrap"
+          >
+            <Plus className="h-4 w-4" />
+            New Diet Plan
+          </button>
+        </div>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1317,7 +1574,7 @@ const DietPlans = () => {
   );
 
   // Assign Diet Plan Modal
-const renderAssignModal = () => (
+  const renderAssignModal = () => (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -1325,7 +1582,7 @@ const renderAssignModal = () => (
           <button
             onClick={() => {
               setShowAssignModal(false);
-              setSearchTerm(''); // Reset search term when closing
+              setSearchTerm('');
             }}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
@@ -1339,13 +1596,12 @@ const renderAssignModal = () => (
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
-                ref={searchInputRef} // Add this ref
+                ref={searchInputRef}
                 type="text"
                 placeholder="Search by name, phone, email or ID..."
-                value={searchTerm} // Bind to searchTerm state
+                value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
-                  // Clear member selection if search term changes
                   if (assignmentForm.member_id) {
                     setAssignmentForm({ ...assignmentForm, member_id: '' });
                   }
@@ -1376,7 +1632,7 @@ const renderAssignModal = () => (
                 </div>
               )}
             </div>
-            {renderMemberDropdown()} {/* This will show the dropdown */}
+            {renderMemberDropdown()}
           </div>
           
           <div>
