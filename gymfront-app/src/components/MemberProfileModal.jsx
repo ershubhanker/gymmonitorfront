@@ -605,6 +605,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     amount_paid: '',
     discount_applied: '',
     payment_method: 'cash',
+    payment_date: '',
     notes: '',
   });
   const [savingPayment, setSavingPayment] = useState(false);
@@ -1190,6 +1191,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   };
 
   // ===== PAYMENT EDIT FUNCTIONS =====
+  const toDateInputValue = (value) => {
+    if (!value) return '';
+    try {
+      const d = new Date(value);
+      if (isNaN(d.getTime())) return '';
+      return d.toISOString().split('T')[0];
+    } catch {
+      return '';
+    }
+  };
+
   const handleEditPaymentClick = () => {
     if (member?.current_membership) {
       const amountPaid = member.current_membership.amount_paid || 0;
@@ -1199,6 +1211,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         amount_paid: amountPaid.toString(),
         discount_applied: discountApplied.toString(),
         payment_method: 'cash',
+        payment_date: toDateInputValue(member.current_membership.last_payment_date) ||
+          new Date().toISOString().split('T')[0],
         notes: member.current_membership.notes || '',
       });
       setPaymentError(null);
@@ -1236,6 +1250,15 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setPaymentError(`Discount cannot exceed plan price of ${formatCurrency(planPrice)}`);
       return false;
     }
+    if (!paymentEditData.payment_date) {
+      setPaymentError('Please select a payment date');
+      return false;
+    }
+    const today = new Date().toISOString().split('T')[0];
+    if (paymentEditData.payment_date > today) {
+      setPaymentError('Payment date cannot be in the future');
+      return false;
+    }
     return true;
   };
 
@@ -1262,6 +1285,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         discount_applied: discountApplied,
         notes: paymentEditData.notes || '',
         payment_method: paymentEditData.payment_method || 'cash',
+        payment_date: paymentEditData.payment_date || undefined,
       };
       
       await api.put(`/gym/memberships/${membershipId}/payment`, payload);
@@ -1373,9 +1397,22 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         status: membershipEditData.status,
       };
       
-      await api.put(`/gym/memberships/${membershipId}`, payload);
-  
-      toast.success('Membership details updated successfully!');
+      const response = await api.put(`/gym/memberships/${membershipId}`, payload);
+      const planChange = response?.data?.plan_change;
+
+      if (planChange && planChange.refund_amount > 0) {
+        toast.success(
+          `Plan downgraded to ${planChange.new_plan_name}. Refunded ${formatCurrency(planChange.refund_amount)} — paid amount adjusted to ${formatCurrency(planChange.new_plan_price)}.`,
+          { duration: 6000 }
+        );
+      } else if (planChange && planChange.extra_due > 0) {
+        toast.success(
+          `Plan upgraded to ${planChange.new_plan_name}. ${formatCurrency(planChange.extra_due)} remaining to collect (balance due updated).`,
+          { duration: 6000 }
+        );
+      } else {
+        toast.success('Membership details updated successfully!');
+      }
       setIsEditingMembership(false);
       
       // ✅ Refresh all data
@@ -2231,6 +2268,22 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       <option value="online">Online</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                      Payment Date
+                    </label>
+                    <input
+                      type="date"
+                      name="payment_date"
+                      value={paymentEditData.payment_date}
+                      onChange={handlePaymentEditChange}
+                      max={new Date().toISOString().split('T')[0]}
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
                       Notes
