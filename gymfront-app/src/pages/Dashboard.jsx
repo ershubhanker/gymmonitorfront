@@ -1317,8 +1317,8 @@ const Dashboard = () => {
                 {stats.revenueGrowth >= 0 ? '↑' : '↓'} {Math.abs(stats.revenueGrowth || 0)}%
               </span>
             </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Net Revenue</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.netRevenue, 'netRevenue')}</p>
+            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Revenue</h3>
+            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue')}</p>
             <p className="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100 flex items-center">
               {stats.revenueGrowth >= 0 ? (
                 <TrendingUp className="h-4 w-4 mr-1 text-green-500" />
@@ -1343,15 +1343,13 @@ const Dashboard = () => {
                 {formatNumberMasked(stats.pendingPayments, 'pendingPayments')} pending
               </span>
             </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Gross Revenue</h3>
+            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Yearly Revenue</h3>
             <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.totalRevenue, 'totalRevenue')}</p>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-              {canSeeAttendance && (
-                <span className="text-gray-600 flex items-center text-sm">
-                  <Activity className="h-4 w-4 mr-1" />
-                  {formatNumberMasked(stats.todayCheckins, 'todayCheckins')} check-ins
-                </span>
-              )}
+              <span className="text-gray-600 flex items-center text-sm">
+                <CalendarIcon className="h-4 w-4 mr-1" />
+                {new Date().getFullYear()}
+              </span>
               <span className="text-orange-600 font-medium text-sm flex items-center">
                 <ClockIcon className="h-4 w-4 mr-1" />
                 {formatNumberMasked(stats.expiringSoon, 'expiringSoon')} expiring
