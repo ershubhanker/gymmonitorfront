@@ -7,8 +7,22 @@ import {
   DoorOpen, Lock, Unlock, Server, Laptop, HelpCircle,
   Zap
 } from 'lucide-react';
-import api from '../../services/api';
+import api, { API_BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
+
+// The physical device must be told to connect to the BACKEND, never the
+// frontend's own domain. window.location.hostname is wrong here — on
+// production the frontend runs on gymmonitor.in while the backend/TCP
+// listener runs on api.gymmonitor.in. Derive the backend host from the
+// same API_BASE_URL the rest of the app already uses to talk to the API.
+const getBackendHost = () => {
+  try {
+    return new URL(API_BASE_URL).hostname;
+  } catch (e) {
+    console.warn('Could not parse API_BASE_URL, falling back to window.location.hostname', e);
+    return window.location.hostname;
+  }
+};
 
 const DeviceManager = () => {
   const [devices, setDevices] = useState([]);
@@ -246,7 +260,7 @@ const DeviceManager = () => {
                   <p className="text-sm font-medium text-gray-900">📡 Server Connection</p>
                   <p className="mt-1 text-sm text-gray-500">Device will communicate directly with:</p>
                   <code className="text-xs bg-gray-100 p-1 rounded block mt-1 font-mono">
-                    {window.location.hostname}:{formData.server_port}
+                    {response.data.server_address || `${getBackendHost()}:${formData.server_port}`}
                   </code>
                   <p className="text-xs text-gray-500 mt-2">Configure your device with this address.</p>
                 </div>
@@ -411,7 +425,7 @@ const DeviceManager = () => {
           { duration: 5000 }
         );
       } else {
-        toast.warning(
+        toast.custom(
           <div className="p-2">
             <p className="font-bold text-orange-800 mb-1">⚠️ {device.device_name} is Offline</p>
             <p className="text-sm text-gray-600">Device is not responding.</p>
@@ -994,7 +1008,7 @@ const DeviceManager = () => {
                         Configure your device to point to:
                       </p>
                       <code className="text-xs bg-white p-1 rounded block mt-1 font-mono">
-                        {window.location.hostname}:{formData.server_port}
+                        {getBackendHost()}:{formData.server_port}
                       </code>
                       <p className="text-xs text-blue-700 mt-1">
                         No local installation required. The server will handle all communication.
