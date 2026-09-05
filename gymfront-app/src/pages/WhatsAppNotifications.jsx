@@ -172,11 +172,15 @@ const WhatsAppNotifications = () => {
       });
       
       if (response.data) {
-        toast.success(`Successfully sent to ${response.data.sent_count} members`);
+        toast.success(
+          `Queued ${response.data.total} notifications — they're sending in the background. Check the logs in a moment for delivery status.`,
+          { duration: 6000 }
+        );
         setBulkMessage('');
-        // Refresh logs
+        // Logs fill in as the background job sends each message, so give it
+        // a few seconds before refreshing rather than checking immediately.
         if (showLogs) {
-          fetchLogs();
+          setTimeout(() => fetchLogs(), 5000);
         }
       }
     } catch (error) {
