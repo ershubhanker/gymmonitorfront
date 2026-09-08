@@ -1721,6 +1721,113 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memberId]);
 
+  // ===== CALCULATE CURRENT TOTAL PAID (Only current membership, addons, and PT) =====
+  const calculateCurrentTotalPaid = useCallback(() => {
+    let total = 0;
+    
+    // 1. Current membership amount paid
+    if (member?.current_membership?.amount_paid) {
+      total += parseFloat(member.current_membership.amount_paid) || 0;
+    }
+    
+    // 2. Active add-ons amount paid
+    if (memberAddons && memberAddons.length > 0) {
+      memberAddons.forEach(addon => {
+        // Only include addons that are active or have payments
+        if (addon.status !== 'cancelled' && addon.amount_paid) {
+          total += parseFloat(addon.amount_paid) || 0;
+        }
+      });
+    }
+    
+    // 3. Active PT sessions amount paid
+    if (ptSessions && ptSessions.length > 0) {
+      ptSessions.forEach(session => {
+        // Only include active or upcoming sessions
+        const status = getPtStatus(session);
+        if (status.status !== 'cancelled' && status.status !== 'expired' && status.status !== 'completed') {
+          if (session.amount_paid) {
+            total += parseFloat(session.amount_paid) || 0;
+          }
+        }
+      });
+    }
+    
+    return total;
+  }, [member, memberAddons, ptSessions]);
+
+  // ===== CALCULATE CURRENT PLAN AMOUNT =====
+  const calculateCurrentPlanAmount = useCallback(() => {
+    let total = 0;
+    
+    // 1. Current membership plan price
+    if (member?.current_membership?.plan?.price) {
+      total += parseFloat(member.current_membership.plan.price) || 0;
+    }
+    
+    // 2. Active add-ons price
+    if (memberAddons && memberAddons.length > 0) {
+      memberAddons.forEach(addon => {
+        if (addon.status !== 'cancelled' && addon.price) {
+          total += parseFloat(addon.price) || 0;
+        }
+      });
+    }
+    
+    // 3. Active PT sessions total amount
+    if (ptSessions && ptSessions.length > 0) {
+      ptSessions.forEach(session => {
+        const status = getPtStatus(session);
+        if (status.status !== 'cancelled' && status.status !== 'expired' && status.status !== 'completed') {
+          if (session.total_amount) {
+            total += parseFloat(session.total_amount) || 0;
+          }
+        }
+      });
+    }
+    
+    return total;
+  }, [member, memberAddons, ptSessions]);
+
+  // ===== CALCULATE CURRENT BALANCE DUE =====
+  const calculateCurrentBalanceDue = useCallback(() => {
+    let totalBalance = 0;
+    
+    // 1. Current membership balance due
+    if (member?.current_membership) {
+      const membership = member.current_membership;
+      const planPrice = membership.plan?.price || 0;
+      const discountApplied = membership.discount_applied || 0;
+      const amountPaid = membership.amount_paid || 0;
+      const finalPrice = Math.max(0, planPrice - discountApplied);
+      const balanceDue = Math.max(0, finalPrice - amountPaid);
+      totalBalance += balanceDue;
+    }
+    
+    // 2. Active add-ons balance due
+    if (memberAddons && memberAddons.length > 0) {
+      memberAddons.forEach(addon => {
+        if (addon.status !== 'cancelled' && addon.balance_due) {
+          totalBalance += parseFloat(addon.balance_due) || 0;
+        }
+      });
+    }
+    
+    // 3. Active PT sessions balance due
+    if (ptSessions && ptSessions.length > 0) {
+      ptSessions.forEach(session => {
+        const status = getPtStatus(session);
+        if (status.status !== 'cancelled' && status.status !== 'expired' && status.status !== 'completed') {
+          if (session.balance_due) {
+            totalBalance += parseFloat(session.balance_due) || 0;
+          }
+        }
+      });
+    }
+    
+    return totalBalance;
+  }, [member, memberAddons, ptSessions]);
+
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -1737,16 +1844,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const currentMembership = member.current_membership;
   const paymentSummary = getPaymentSummary();
   
-  const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  
-  let balanceDue = 0;
-  if (balanceDetails?.balance_due !== undefined) {
-    balanceDue = balanceDetails.balance_due;
-  } else if (currentMembership?.balance_due !== undefined) {
-    balanceDue = currentMembership.balance_due;
-  }
-  
-  const totalPlanAmount = balanceDetails?.total_amount || currentMembership?.plan?.price || 0;
+  // ✅ FIXED: Calculate totals only from current items
+  const totalPaid = calculateCurrentTotalPaid();
+  const totalPlanAmount = calculateCurrentPlanAmount();
+  const balanceDue = calculateCurrentBalanceDue();
 
   const profileImageUrl = getImageUrl(member.profile_image, member.full_name);
   const thumbnailImageUrl = getThumbnailUrl(member.profile_image, member.full_name);
@@ -1862,14 +1963,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-3 border border-green-100">
               <p className="text-[10px] text-green-600 font-medium">Total Paid</p>
               <p className="text-lg font-bold text-green-700">{formatCurrency(totalPaid)}</p>
+              <p className="text-[9px] text-green-500/70">Current membership + Addons + PT</p>
             </div>
             <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg p-3 border border-orange-100">
               <p className="text-[10px] text-orange-600 font-medium">Plan Amount</p>
               <p className="text-lg font-bold text-orange-700">{formatCurrency(totalPlanAmount)}</p>
+              <p className="text-[9px] text-orange-500/70">Current membership + Addons + PT</p>
             </div>
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-100">
               <p className="text-[10px] text-blue-600 font-medium">Balance Due</p>
               <p className="text-lg font-bold text-blue-700">{formatCurrency(balanceDue)}</p>
+              <p className="text-[9px] text-blue-500/70">Current membership + Addons + PT</p>
             </div>
             <div className={`rounded-lg p-3 border ${hasActiveFreeze ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
               <p className="text-[10px] text-gray-600 font-medium">Freeze Status</p>
@@ -1947,7 +2051,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 ) : (
                   <>
                     <Unlock className="h-3 w-3" />
-                    Allow                  </>
+                    Allow
+                  </>
                 )}
               </button>
             )}
@@ -3125,8 +3230,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   </tbody>
                 </table>
                 <div className="mt-2 p-2 bg-gray-50 rounded-lg flex justify-between">
-                  <span className="font-medium text-gray-600 text-[10px]">Total Paid:</span>
-                  <span className="font-bold text-green-600 text-xs">{formatCurrency(totalPaid)}</span>
+                  <span className="font-medium text-gray-600 text-[10px]">Total Paid (All Time):</span>
+                  <span className="font-bold text-green-600 text-xs">{formatCurrency(payments.reduce((sum, p) => sum + (p.amount || 0), 0))}</span>
                 </div>
               </div>
             ) : (

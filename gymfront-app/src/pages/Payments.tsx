@@ -1,4 +1,4 @@
-// src/pages/Payments.tsx - Complete updated with proper refresh and renewal payment display
+// src/pages/Payments.tsx - Complete updated with refund handling and proper revenue calculation
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
@@ -24,11 +24,13 @@ import {
   Tag, 
   Dumbbell,
   ChevronLeft,
-  ChevronRight, Clock, XCircle, RefreshCw
+  ChevronRight, Clock, XCircle, RefreshCw, TrendingDown
 } from 'lucide-react';
+
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+
 
 const Payments = () => {
   const { user } = useAuth();
@@ -67,9 +69,12 @@ const Payments = () => {
     totalBalancePayments: 0,
     totalAddonPayments: 0,
     addonPaymentCount: 0,
-    // ✅ New fields for renewal tracking
     renewalPayments: 0,
-    renewalCount: 0
+    renewalCount: 0,
+    // ✅ NEW: Refund tracking
+    totalRefunds: 0,
+    refundCount: 0,
+    netRevenue: 0,
   });
 
   const currencySymbol = user?.currency_symbol || '₹';
@@ -128,11 +133,31 @@ const Payments = () => {
       
       let paymentsData = Array.isArray(response.data) ? response.data : [];
       
-      // ✅ Process payments to detect types
+      // ✅ Process payments to detect types and refunds
       paymentsData = paymentsData.map(payment => {
         let paymentType = 'membership';
         let addonName = null;
         let isRenewal = false;
+        let isRefund = false;
+        
+        // ✅ Check if this is a refund (negative amount or REFUND in notes/transaction_id)
+        const amount = Number(payment.amount) || 0;
+        if (amount < 0) {
+          isRefund = true;
+        }
+        if (payment.notes && (
+          payment.notes.includes('REFUND') || 
+          payment.notes.includes('Refund') ||
+          payment.notes.includes('refund')
+        )) {
+          isRefund = true;
+        }
+        if (payment.transaction_id && (
+          payment.transaction_id.startsWith('REF-') ||
+          payment.transaction_id.includes('REFUND')
+        )) {
+          isRefund = true;
+        }
         
         // Check if it's a renewal payment
         if (payment.notes && (
@@ -163,7 +188,6 @@ const Payments = () => {
         }
         // Check for membership payments (default)
         else {
-          // Check if it has a membership_id and not marked as other types
           if (payment.membership_id) {
             paymentType = 'membership';
           }
@@ -171,6 +195,7 @@ const Payments = () => {
         
         return {
           ...payment,
+          amount: amount,
           member_name: payment.member?.full_name || payment.member_name || 'Unknown Member',
           member_phone: payment.member?.phone || '',
           member_email: payment.member?.email || '',
@@ -182,12 +207,12 @@ const Payments = () => {
           payment_type: paymentType,
           addon_name: addonName,
           is_renewal: isRenewal,
-          // Ensure amount is a number
-          amount: Number(payment.amount) || 0
+          is_refund: isRefund,
         };
       });
       
       console.log('✅ Processed payments:', paymentsData.length);
+      console.log('💰 Refunds found:', paymentsData.filter(p => p.is_refund).length);
       setPayments(paymentsData);
     } catch (error) {
       console.error('❌ Error fetching payments:', error);
@@ -231,57 +256,76 @@ const Payments = () => {
       if (paymentTypeFilter !== 'all' && filtered.length > 0) {
         filtered = filtered.filter(payment => {
           if (paymentTypeFilter === 'membership') {
-            return payment.payment_type === 'membership';
+            return payment.payment_type === 'membership' && !payment.is_refund;
           } else if (paymentTypeFilter === 'pt') {
-            return payment.payment_type === 'pt';
+            return payment.payment_type === 'pt' && !payment.is_refund;
           } else if (paymentTypeFilter === 'addon') {
-            return payment.payment_type === 'addon';
+            return payment.payment_type === 'addon' && !payment.is_refund;
           } else if (paymentTypeFilter === 'renewal') {
-            return payment.is_renewal === true;
+            return payment.is_renewal === true && !payment.is_refund;
+          } else if (paymentTypeFilter === 'refunds') {
+            return payment.is_refund === true;
           }
           return true;
         });
       }
 
-      // ✅ Calculate summary
-      const totalRevenue = filtered.reduce((sum, p) => sum + (p.amount || 0), 0);
-      const totalCount = filtered.length;
-      const averagePayment = totalCount > 0 ? totalRevenue / totalCount : 0;
+      // ============================================================
+      // ✅ CALCULATE SUMMARY WITH REFUNDS PROPERLY HANDLED
+      // ============================================================
       
-      const cashPayments = filtered
+      // Separate positive and negative payments
+      const positivePayments = filtered.filter(p => p.amount > 0 && !p.is_refund);
+      const refundPayments = filtered.filter(p => p.amount < 0 || p.is_refund);
+      
+      // Total revenue = sum of all positive amounts
+      const totalRevenue = positivePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      
+      // Total refunds = sum of absolute values of refund payments
+      const totalRefunds = refundPayments.reduce((sum, p) => sum + Math.abs(p.amount || 0), 0);
+      const refundCount = refundPayments.length;
+      
+      // Net revenue = totalRevenue - totalRefunds
+      const netRevenue = totalRevenue - totalRefunds;
+      
+      const totalCount = filtered.length;
+      const averagePayment = totalCount > 0 ? netRevenue / positivePayments.length : 0;
+      
+      // Payment method breakdown (only positive payments)
+      const cashPayments = positivePayments
         .filter(p => p.payment_method?.toLowerCase() === 'cash')
         .reduce((sum, p) => sum + (p.amount || 0), 0);
       
-      const cardPayments = filtered
+      const cardPayments = positivePayments
         .filter(p => p.payment_method?.toLowerCase() === 'card')
         .reduce((sum, p) => sum + (p.amount || 0), 0);
       
-      const upiPayments = filtered
+      const upiPayments = positivePayments
         .filter(p => p.payment_method?.toLowerCase() === 'upi')
         .reduce((sum, p) => sum + (p.amount || 0), 0);
       
-      const otherPayments = filtered
+      const otherPayments = positivePayments
         .filter(p => !['cash', 'card', 'upi'].includes(p.payment_method?.toLowerCase()))
         .reduce((sum, p) => sum + (p.amount || 0), 0);
 
-      const totalGST = filtered.reduce((sum, p) => sum + (p.gst_amount || 0), 0);
+      const totalGST = positivePayments.reduce((sum, p) => sum + (p.gst_amount || 0), 0);
       
-      const totalBalancePayments = filtered
+      const totalBalancePayments = positivePayments
         .filter(p => p.is_balance_payment === true)
         .reduce((sum, p) => sum + (p.amount || 0), 0);
 
-      const addonPayments = filtered
+      const addonPayments = positivePayments
         .filter(p => p.payment_type === 'addon')
         .reduce((sum, p) => sum + (p.amount || 0), 0);
-      const addonPaymentCount = filtered.filter(p => p.payment_type === 'addon').length;
+      const addonPaymentCount = positivePayments.filter(p => p.payment_type === 'addon').length;
 
       // ✅ Calculate renewal payments
-      const renewalPayments = filtered
+      const renewalPayments = positivePayments
         .filter(p => p.is_renewal === true)
         .reduce((sum, p) => sum + (p.amount || 0), 0);
-      const renewalCount = filtered.filter(p => p.is_renewal === true).length;
+      const renewalCount = positivePayments.filter(p => p.is_renewal === true).length;
 
-      // ✅ Calculate growth
+      // ✅ Calculate growth based on net revenue
       let growth = 0;
       if (payments.length > 0 && startDate && endDate) {
         const daysDiff = Math.max(1, Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)));
@@ -290,35 +334,52 @@ const Payments = () => {
         const previousPeriodEnd = new Date(startDate);
         previousPeriodEnd.setDate(previousPeriodEnd.getDate() - 1);
         
-        const previousRevenue = payments
+        const previousPositive = payments
           .filter(p => {
             const paymentDate = p.payment_date?.split('T')[0];
             return paymentDate && 
                    paymentDate >= previousPeriodStart.toISOString().split('T')[0] && 
-                   paymentDate <= previousPeriodEnd.toISOString().split('T')[0];
+                   paymentDate <= previousPeriodEnd.toISOString().split('T')[0] &&
+                   p.amount > 0 &&
+                   !p.is_refund;
           })
           .reduce((sum, p) => sum + (p.amount || 0), 0);
         
-        growth = previousRevenue > 0 
-          ? ((totalRevenue - previousRevenue) / previousRevenue * 100)
-          : totalRevenue > 0 ? 100 : 0;
+        const previousRefunds = payments
+          .filter(p => {
+            const paymentDate = p.payment_date?.split('T')[0];
+            return paymentDate && 
+                   paymentDate >= previousPeriodStart.toISOString().split('T')[0] && 
+                   paymentDate <= previousPeriodEnd.toISOString().split('T')[0] &&
+                   (p.amount < 0 || p.is_refund);
+          })
+          .reduce((sum, p) => sum + Math.abs(p.amount || 0), 0);
+        
+        const previousNetRevenue = previousPositive - previousRefunds;
+        
+        growth = previousNetRevenue > 0 
+          ? ((netRevenue - previousNetRevenue) / previousNetRevenue * 100)
+          : netRevenue > 0 ? 100 : 0;
       }
 
       setSummary({
         totalRevenue,
         totalCount,
-        averagePayment,
+        averagePayment: averagePayment || 0,
         cashPayments,
         cardPayments,
         upiPayments,
         otherPayments,
-        growth,
+        growth: parseFloat(growth.toFixed(1)),
         totalGST,
         totalBalancePayments,
         totalAddonPayments: addonPayments,
         addonPaymentCount,
         renewalPayments,
-        renewalCount
+        renewalCount,
+        totalRefunds,
+        refundCount,
+        netRevenue,
       });
 
       // ✅ Sort by date (newest first)
@@ -341,7 +402,12 @@ const Payments = () => {
     const formatted = new Intl.NumberFormat('en-IN', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(Math.abs(amount));
+    
+    // ✅ Show negative amounts with parentheses for refunds
+    if (amount < 0) {
+      return `(${currencySymbol} ${formatted})`;
+    }
     return `${currencySymbol} ${formatted}`;
   };
 
@@ -410,8 +476,11 @@ const Payments = () => {
 
   // ===== SINGLE PAYMENT DELETE =====
   const handleSingleDelete = async (paymentId, paymentAmount, memberName) => {
+    const isRefund = paymentAmount < 0;
+    const amountDisplay = isRefund ? `refund of ${formatCurrency(Math.abs(paymentAmount))}` : `payment of ${formatCurrency(paymentAmount)}`;
+    
     if (!window.confirm(
-      `Are you sure you want to delete the payment of ${formatCurrency(paymentAmount)} for ${memberName}?\n\n` +
+      `Are you sure you want to delete the ${amountDisplay} for ${memberName}?\n\n` +
       `This action cannot be undone and will update the member's balance.`
     )) {
       return;
@@ -422,12 +491,12 @@ const Payments = () => {
       const response = await api.delete(`/gym/payments/${paymentId}`);
       
       if (response.data) {
-        toast.success(`Payment of ${formatCurrency(paymentAmount)} deleted successfully`);
+        toast.success(`${isRefund ? 'Refund' : 'Payment'} of ${formatCurrency(Math.abs(paymentAmount))} deleted successfully`);
         
         // ✅ Refresh the payments list
         await fetchPayments();
         
-        // ✅ Dispatch event to refresh dashboard (member data stays intact)
+        // ✅ Dispatch event to refresh dashboard
         window.dispatchEvent(new CustomEvent('paymentDeleted', { 
           detail: { paymentId, memberId: response.data.member_id }
         }));
@@ -468,6 +537,9 @@ const Payments = () => {
 
   // ===== GET PAYMENT TYPE BADGE =====
   const getPaymentTypeBadge = (payment) => {
+    if (payment.is_refund) {
+      return { label: 'Refund', color: 'bg-red-100 text-red-700' };
+    }
     if (payment.is_renewal) {
       return { label: 'Renewal', color: 'bg-purple-100 text-purple-700' };
     }
@@ -488,7 +560,8 @@ const Payments = () => {
       card: '💳',
       upi: '📱',
       bank: '🏦',
-      online: '🌐'
+      online: '🌐',
+      credit: '💳'
     };
     return icons[method?.toLowerCase()] || '💵';
   };
@@ -524,17 +597,18 @@ const Payments = () => {
       const endDateFormatted = endDate ? new Date(endDate).toLocaleDateString('en-IN') : 'N/A';
       const exportDate = new Date().toLocaleString('en-IN');
       
-      const totalAmount = summary.totalRevenue;
+      const totalRevenue = summary.totalRevenue;
+      const totalRefunds = summary.totalRefunds;
+      const netRevenue = summary.netRevenue;
       const totalTransactions = filteredPayments.length;
-      const averageAmount = totalAmount / totalTransactions;
       
       const halfRate = gstRate / 2;
       const taxableAmount = summary.totalGST > 0
-        ? totalAmount - summary.totalGST
-        : totalAmount / (1 + gstRate / 100);
+        ? totalRevenue - summary.totalGST
+        : totalRevenue / (1 + gstRate / 100);
       const gstCollected = summary.totalGST > 0
         ? summary.totalGST
-        : totalAmount - taxableAmount;
+        : totalRevenue - taxableAmount;
       const cgstAmount = gstCollected / 2;
       const sgstAmount = gstCollected / 2;
       
@@ -551,9 +625,11 @@ const Payments = () => {
       csvRows.push([`"Date Range:","${startDateFormatted} to ${endDateFormatted}"`]);
       csvRows.push(['']);
       csvRows.push(['"Financial Summary:"']);
-      csvRows.push([`"Total Revenue:","${formatCurrency(totalAmount)}"`]);
+      csvRows.push([`"Total Revenue:","${formatCurrency(totalRevenue)}"`]);
+      csvRows.push([`"Total Refunds:","${formatCurrency(totalRefunds)}"`]);
+      csvRows.push([`"Net Revenue:","${formatCurrency(netRevenue)}"`]);
       csvRows.push([`"Total Transactions:","${totalTransactions}"`]);
-      csvRows.push([`"Average Payment:","${formatCurrency(averageAmount)}"`]);
+      csvRows.push([`"Refund Count:","${summary.refundCount}"`]);
       csvRows.push(['']);
       csvRows.push(['"GST Summary:"']);
       csvRows.push([`"GST Rate:","${gstRate}% (CGST ${gstRate/2}% + SGST ${gstRate/2}%)"`]);
@@ -564,7 +640,7 @@ const Payments = () => {
       csvRows.push(['']);
       csvRows.push(['"Balance Payment Summary:"']);
       csvRows.push([`"Total Balance Payments:","${formatCurrency(summary.totalBalancePayments)}"`]);
-      csvRows.push([`"Balance Payment Count:","${filteredPayments.filter(p => p.is_balance_payment).length}"`]);
+      csvRows.push([`"Balance Payment Count:","${filteredPayments.filter(p => p.is_balance_payment && p.amount > 0).length}"`]);
       csvRows.push(['']);
       csvRows.push(['"Add-On Payment Summary:"']);
       csvRows.push([`"Total Add-On Payments:","${formatCurrency(summary.totalAddonPayments)}"`]);
@@ -574,17 +650,21 @@ const Payments = () => {
       csvRows.push([`"Total Renewal Payments:","${formatCurrency(summary.renewalPayments)}"`]);
       csvRows.push([`"Renewal Payment Count:","${summary.renewalCount}"`]);
       csvRows.push(['']);
+      csvRows.push(['"Refund Summary:"']);
+      csvRows.push([`"Total Refunds:","${formatCurrency(summary.totalRefunds)}"`]);
+      csvRows.push([`"Refund Count:","${summary.refundCount}"`]);
+      csvRows.push(['']);
       
       csvRows.push(['"Payment Method Breakdown"']);
       csvRows.push(['"Method","Amount","Count","Percentage"']);
       const methodBreakdown = [
-        { method: 'Cash', amount: summary.cashPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'cash').length },
-        { method: 'Card', amount: summary.cardPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'card').length },
-        { method: 'UPI', amount: summary.upiPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'upi').length },
-        { method: 'Other', amount: summary.otherPayments, count: filteredPayments.filter(p => !['cash', 'card', 'upi'].includes(p.payment_method?.toLowerCase())).length }
+        { method: 'Cash', amount: summary.cashPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'cash' && p.amount > 0).length },
+        { method: 'Card', amount: summary.cardPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'card' && p.amount > 0).length },
+        { method: 'UPI', amount: summary.upiPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'upi' && p.amount > 0).length },
+        { method: 'Other', amount: summary.otherPayments, count: filteredPayments.filter(p => !['cash', 'card', 'upi'].includes(p.payment_method?.toLowerCase()) && p.amount > 0).length }
       ];
       methodBreakdown.forEach(item => {
-        const percentage = totalAmount > 0 ? (item.amount / totalAmount * 100).toFixed(2) : '0';
+        const percentage = totalRevenue > 0 ? (item.amount / totalRevenue * 100).toFixed(2) : '0';
         csvRows.push([`"${item.method}"`, `"${formatCurrency(item.amount)}"`, item.count, `"${percentage}%"`]);
       });
       csvRows.push(['']);
@@ -606,6 +686,7 @@ const Payments = () => {
         `"SGST (${gstRate/2}%)"`,
         '"Is Balance Payment"',
         '"Is Renewal"',
+        '"Is Refund"',
         '"Payment Type"',
         '"Notes"'
       ]);
@@ -615,9 +696,12 @@ const Payments = () => {
         const dateStr = paymentDate ? paymentDate.toLocaleDateString('en-IN') : 'N/A';
         const timeStr = paymentDate ? paymentDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'N/A';
         
-        const typeLabel = payment.is_renewal ? 'Renewal' : 
+        const typeLabel = payment.is_refund ? 'REFUND' : 
+          payment.is_renewal ? 'Renewal' : 
           payment.payment_type === 'addon' ? 'Add-On' : 
           payment.payment_type === 'pt' ? 'PT' : 'Membership';
+        
+        const amountDisplay = payment.amount < 0 ? `(${formatCurrency(Math.abs(payment.amount))})` : formatCurrency(payment.amount);
         
         csvRows.push([
           `"${dateStr}"`,
@@ -635,6 +719,7 @@ const Payments = () => {
           `"${((payment.gst_amount || 0) / 2).toFixed(2)}"`,
           `"${payment.is_balance_payment ? 'Yes' : 'No'}"`,
           `"${payment.is_renewal ? 'Yes' : 'No'}"`,
+          `"${payment.is_refund ? 'Yes' : 'No'}"`,
           `"${typeLabel}"`,
           `"${(payment.notes || '').replace(/"/g, '""')}"`
         ]);
@@ -643,7 +728,9 @@ const Payments = () => {
       csvRows.push(['']);
       csvRows.push(['"Final Summary"']);
       csvRows.push([`"Total Records:","${filteredPayments.length}"`]);
-      csvRows.push([`"Total Amount:","${formatCurrency(totalAmount)}"`]);
+      csvRows.push([`"Total Revenue:","${formatCurrency(totalRevenue)}"`]);
+      csvRows.push([`"Total Refunds:","${formatCurrency(totalRefunds)}"`]);
+      csvRows.push([`"Net Revenue:","${formatCurrency(netRevenue)}"`]);
       csvRows.push([`"Total GST (${gstRate}%):","${formatCurrency(gstCollected)}"`]);
       csvRows.push([`"Total Balance Payments:","${formatCurrency(summary.totalBalancePayments)}"`]);
       csvRows.push([`"Total Add-On Payments:","${formatCurrency(summary.totalAddonPayments)}"`]);
@@ -668,7 +755,7 @@ const Payments = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
-      toast.success(`Exported ${filteredPayments.length} transactions with GST details!`);
+      toast.success(`Exported ${filteredPayments.length} transactions with GST and refund details!`);
     } catch (err) {
       console.error('Error exporting:', err);
       toast.error('Failed to export data');
@@ -689,7 +776,6 @@ const Payments = () => {
           Select the applicable GST rate for your gym. Currently: <span className="font-semibold text-purple-700">{gstRate}%</span>
         </p>
         <div className="space-y-3">
-          {/* ✅ Add 0% GST option */}
           {[0, 5, 18].map((rate) => (
             <button
               key={rate}
@@ -818,6 +904,7 @@ const Payments = () => {
     const selectedCount = selectedPayments.size;
     const selectedData = filteredPayments.filter(p => selectedPayments.has(p.id));
     const totalAmount = selectedData.reduce((sum, p) => sum + p.amount, 0);
+    const isRefund = totalAmount < 0;
 
     return (
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={() => setShowDeleteConfirm(false)}>
@@ -842,12 +929,12 @@ const Payments = () => {
             <p className="text-sm text-red-800 mb-2">⚠️ This action will:</p>
             <ul className="text-sm text-red-700 space-y-1 ml-4">
               <li>• Permanently remove these payment records</li>
-              <li>• Update member balances (add back the deleted amounts)</li>
+              <li>• Update member balances (reverse the amounts)</li>
               <li>• Cannot be undone</li>
             </ul>
             <div className="mt-3 pt-3 border-t border-red-200">
               <p className="text-sm font-semibold text-red-800">
-                Total amount to reverse: {formatCurrency(totalAmount)}
+                Total amount to reverse: {isRefund ? formatCurrency(totalAmount) : formatCurrency(totalAmount)}
               </p>
             </div>
           </div>
@@ -882,9 +969,10 @@ const Payments = () => {
     );
   };
 
-  // ===== RENDER SUMMARY CARDS =====
+  // ===== RENDER SUMMARY CARDS WITH REFUNDS =====
   const renderSummaryCards = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {/* ✅ Total Revenue Card */}
       <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
         <div className="flex items-center justify-between mb-2">
           <Wallet className="h-6 w-6 opacity-80" />
@@ -899,6 +987,37 @@ const Payments = () => {
         <p className="text-xs opacity-70 mt-1">{summary.totalCount} transactions</p>
       </div>
 
+      {/* ✅ Net Revenue Card (Revenue - Refunds) */}
+      <div className="bg-gradient-to-r from-emerald-500 to-green-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+        <div className="flex items-center justify-between mb-2">
+          <TrendingUp className="h-6 w-6 opacity-80" />
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/20">
+            Net
+          </span>
+        </div>
+        <p className="text-xs opacity-80 mb-0.5">Net Revenue</p>
+        <p className="text-xl font-bold">{formatCurrency(summary.netRevenue)}</p>
+        <p className="text-xs opacity-70 mt-1">
+          {summary.refundCount} refund{summary.refundCount !== 1 ? 's' : ''} deducted
+        </p>
+      </div>
+
+      {/* ✅ Total Refunds Card */}
+      <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+        <div className="flex items-center justify-between mb-2">
+          <TrendingDown className="h-6 w-6 opacity-80" />
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/20">
+            {summary.refundCount} refunds
+          </span>
+        </div>
+        <p className="text-xs opacity-80 mb-0.5">Total Refunds</p>
+        <p className="text-xl font-bold">{formatCurrency(summary.totalRefunds)}</p>
+        <p className="text-xs opacity-70 mt-1">
+          {summary.totalCount > 0 ? ((summary.totalRefunds / (summary.totalRevenue + summary.totalRefunds)) * 100).toFixed(1) : 0}% of gross
+        </p>
+      </div>
+
+      {/* ✅ GST Card */}
       <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
         <div className="flex items-center justify-between mb-2">
           <Building className="h-6 w-6 opacity-80" />
@@ -906,42 +1025,6 @@ const Payments = () => {
         <p className="text-xs opacity-80 mb-0.5">GST Collected</p>
         <p className="text-xl font-bold">{formatCurrency(summary.totalGST)}</p>
         <p className="text-xs opacity-70 mt-1">CGST + SGST</p>
-      </div>
-
-      <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
-        <div className="flex items-center justify-between mb-2">
-          <DollarSign className="h-6 w-6 opacity-80" />
-        </div>
-        <p className="text-xs opacity-80 mb-0.5">Balance Payments</p>
-        <p className="text-xl font-bold">{formatCurrency(summary.totalBalancePayments)}</p>
-        <p className="text-xs opacity-70 mt-1">
-          {filteredPayments.filter(p => p.is_balance_payment).length} transactions
-        </p>
-      </div>
-
-      <div className="bg-gradient-to-r from-purple-500 to-pink-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
-        <div className="flex items-center justify-between mb-2">
-          <Tag className="h-6 w-6 opacity-80" />
-        </div>
-        <p className="text-xs opacity-80 mb-0.5">Add-On Payments</p>
-        <p className="text-xl font-bold">{formatCurrency(summary.totalAddonPayments)}</p>
-        <p className="text-xs opacity-70 mt-1">
-          {summary.addonPaymentCount} transactions
-        </p>
-      </div>
-
-      <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
-        <div className="flex items-center justify-between mb-2">
-          <RefreshCw className="h-6 w-6 opacity-80" />
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/20">
-            {summary.renewalCount} renewals
-          </span>
-        </div>
-        <p className="text-xs opacity-80 mb-0.5">Renewal Payments</p>
-        <p className="text-xl font-bold">{formatCurrency(summary.renewalPayments)}</p>
-        <p className="text-xs opacity-70 mt-1">
-          {summary.renewalCount} renewal transactions
-        </p>
       </div>
     </div>
   );
@@ -1253,6 +1336,16 @@ const Payments = () => {
             >
               Renewals
             </button>
+            <button
+              onClick={() => setPaymentTypeFilter('refunds')}
+              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                paymentTypeFilter === 'refunds'
+                  ? 'bg-red-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Refunds
+            </button>
           </div>
           
           {(searchTerm || selectedMethod !== 'all' || paymentTypeFilter !== 'all') && (
@@ -1308,8 +1401,10 @@ const Payments = () => {
               ) : (
                 currentPayments.map((payment) => {
                   const typeInfo = getPaymentTypeBadge(payment);
+                  const isRefund = payment.is_refund || payment.amount < 0;
+                  
                   return (
-                    <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={payment.id} className={`hover:bg-gray-50 transition-colors ${isRefund ? 'bg-red-50/30' : ''}`}>
                       {selectionMode && (
                         <td className="px-4 py-4">
                           <input
@@ -1328,7 +1423,9 @@ const Payments = () => {
                       </td>
                       <td className="px-6 py-4">
                         <div>
-                          <p className="font-medium text-gray-900">{payment.member_name}</p>
+                          <p className={`font-medium ${isRefund ? 'text-red-600' : 'text-gray-900'}`}>
+                            {payment.member_name}
+                          </p>
                           <p className="text-xs text-gray-500">{payment.member_phone}</p>
                           {payment.member_email && (
                             <p className="text-xs text-gray-400">{payment.member_email}</p>
@@ -1336,15 +1433,22 @@ const Payments = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <p className="text-sm font-semibold text-green-600">{formatCurrency(payment.amount)}</p>
-                        {payment.gst_amount > 0 && (
+                        <p className={`text-sm font-semibold ${isRefund ? 'text-red-600' : 'text-green-600'}`}>
+                          {formatCurrency(payment.amount)}
+                        </p>
+                        {payment.gst_amount > 0 && !isRefund && (
                           <p className="text-xs text-purple-500">GST: {formatCurrency(payment.gst_amount)}</p>
+                        )}
+                        {isRefund && (
+                          <p className="text-xs text-red-400">Refund</p>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <span className="text-lg">{getPaymentMethodIcon(payment.payment_method)}</span>
-                          <span className="text-sm text-gray-700 capitalize">{payment.payment_method || 'N/A'}</span>
+                          <span className={`text-sm ${isRefund ? 'text-red-500' : 'text-gray-700'} capitalize`}>
+                            {payment.payment_method || 'N/A'}
+                          </span>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -1354,7 +1458,7 @@ const Payments = () => {
                         {payment.addon_name && (
                           <span className="text-xs text-gray-400 block mt-0.5">({payment.addon_name})</span>
                         )}
-                        {payment.is_balance_payment && (
+                        {payment.is_balance_payment && !isRefund && (
                           <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full block mt-0.5">Balance</span>
                         )}
                       </td>
@@ -1365,7 +1469,7 @@ const Payments = () => {
                         <button
                           onClick={() => handleSingleDelete(payment.id, payment.amount, payment.member_name)}
                           disabled={deleting}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                          className={`p-2 ${isRefund ? 'text-red-500 hover:bg-red-50' : 'text-red-500 hover:bg-red-50'} rounded-lg transition-colors disabled:opacity-50`}
                           title="Delete payment"
                         >
                           <Trash2 className="h-4 w-4" />

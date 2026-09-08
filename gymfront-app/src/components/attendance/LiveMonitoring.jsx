@@ -928,14 +928,14 @@ const LiveMonitoring = () => {
         
         <div className="flex-1"></div>
         
-        <button 
+        {/* <button 
           onClick={() => setShowDateFilter(!showDateFilter)} 
           className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${dateFilter ? (activeTab === 'members' ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white') : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
         >
           <Calendar className="h-4 w-4" />
           {dateFilter ? `Date: ${formatDateDisplay(dateFilter)}` : 'Filter by Date'}
           {dateFilter && <X className="h-3 w-3 cursor-pointer hover:text-white" onClick={(e) => { e.stopPropagation(); setDateFilter(''); }} />}
-        </button>
+        </button> */}
       </div>
 
       {/* Date Filter Panel */}
