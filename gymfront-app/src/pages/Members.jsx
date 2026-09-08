@@ -1,4 +1,4 @@
-// src/pages/Members.jsx - Complete updated with Invoice Actions (Edit/Delete/Regenerate)
+// src/pages/Members.jsx - Complete updated with Plan Filter (FIXED)
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
@@ -6,7 +6,8 @@ import {
   ChevronLeft, ChevronRight, X, CheckCircle, XCircle,
   Clock, FileText, RefreshCw, Wifi, Loader2, WifiOff,
   FileSpreadsheet, Link, AlertTriangle, Smartphone, User,
-  ArrowLeft, Dumbbell, Send, MoreVertical, Eye
+  ArrowLeft, Dumbbell, Send, MoreVertical, Eye, Layers,
+  ChevronDown
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
@@ -37,15 +38,135 @@ function useDebounce(value, delay) {
 }
 
 // ============================================================
-// DELETE CONFIRMATION MODAL COMPONENT
+// PLAN FILTER COMPONENT
 // ============================================================
-const DeleteConfirmationModal = ({ 
-  isOpen, 
-  onClose, 
-  onConfirm, 
-  member, 
-  loading 
+const PlanFilter = ({ 
+  plans, 
+  selectedPlanId, 
+  onSelectPlan, 
+  loading,
+  totalActiveMembers 
 }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedPlan = plans.find(p => p.id === selectedPlanId);
+
+  const getPlanDisplayName = (plan) => {
+    if (!plan) return 'All Plans';
+    return plan.name;
+  };
+
+  const getPlanBadgeColor = (plan) => {
+    if (!plan) return 'bg-blue-100 text-blue-800';
+    const colors = [
+      'bg-purple-100 text-purple-800',
+      'bg-green-100 text-green-800',
+      'bg-orange-100 text-orange-800',
+      'bg-pink-100 text-pink-800',
+      'bg-indigo-100 text-indigo-800',
+      'bg-teal-100 text-teal-800',
+      'bg-red-100 text-red-800',
+      'bg-yellow-100 text-yellow-800'
+    ];
+    const index = (plan.id || 0) % colors.length;
+    return colors[index];
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center gap-2 px-3 py-2 border rounded-lg hover:bg-gray-50 transition-colors text-sm ${
+          selectedPlanId ? 'border-blue-400 bg-blue-50' : 'border-gray-300'
+        }`}
+        disabled={loading}
+      >
+        <Layers className="h-4 w-4 text-gray-500" />
+        <span className="font-medium text-gray-700 max-w-[120px] truncate">
+          {loading ? 'Loading...' : getPlanDisplayName(selectedPlan)}
+        </span>
+        {selectedPlanId && selectedPlan && (
+          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-medium ${getPlanBadgeColor(selectedPlan)}`}>
+            {selectedPlan.member_count || 0}
+          </span>
+        )}
+        <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 mt-1 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 max-h-80 overflow-y-auto">
+          <button
+            onClick={() => {
+              onSelectPlan(null);
+              setIsOpen(false);
+            }}
+            className={`w-full flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
+              !selectedPlanId ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+            }`}
+          >
+            <span>All Plans</span>
+            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+              {totalActiveMembers || 0}
+            </span>
+          </button>
+
+          {plans.length === 0 ? (
+            <div className="px-4 py-3 text-sm text-gray-500 text-center">
+              No plans available
+            </div>
+          ) : (
+            plans.map((plan) => (
+              <button
+                key={plan.id}
+                onClick={() => {
+                  onSelectPlan(plan.id);
+                  setIsOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
+                  selectedPlanId === plan.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                    selectedPlanId === plan.id ? 'bg-blue-500' : 'bg-gray-300'
+                  }`} />
+                  <span className="truncate">{plan.name}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${getPlanBadgeColor(plan)}`}>
+                    {plan.member_count || 0}
+                  </span>
+                  {plan.percentage !== undefined && plan.percentage > 0 && (
+                    <span className="text-xs text-gray-400">
+                      {plan.percentage}%
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// DELETE CONFIRMATION MODAL COMPONENT (keep existing)
+// ============================================================
+const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, member, loading }) => {
+  // ... keep existing implementation - same as before
   if (!isOpen || !member) return null;
 
   const hasDeviceSync = member.syncedToDevice || member.deviceUserId;
@@ -166,9 +287,10 @@ const DeleteConfirmationModal = ({
 };
 
 // ============================================================
-// INVOICE ACTION MODAL COMPONENT
+// INVOICE ACTION MODAL COMPONENT (keep existing)
 // ============================================================
 const InvoiceActionModal = ({ isOpen, onClose, member, onAction }) => {
+  // ... keep existing implementation
   const [loading, setLoading] = useState(false);
   const [selectedAction, setSelectedAction] = useState('regenerate');
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -506,9 +628,10 @@ const InvoiceActionModal = ({ isOpen, onClose, member, onAction }) => {
 };
 
 // ============================================================
-// ACTION DROPDOWN COMPONENT (for responsive actions)
+// ACTION DROPDOWN COMPONENT (keep existing)
 // ============================================================
 const ActionDropdown = ({ member, onAction }) => {
+  // ... keep existing implementation
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -570,8 +693,17 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   const { devices, syncMemberToDevice, removeMemberFromDevice, refreshAllData, attendanceApi } = useAttendance();
   const { getCache, setCache, clearCache, clearCachePattern, invalidateMembersCache, invalidateCache } = useCache();
   
+  // ============================================================
+  // STATE
+  // ============================================================
   const [membershipPlans, setMembershipPlans] = useState([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
+  
+  // PLAN FILTER STATE
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
+  const [planStats, setPlanStats] = useState([]);
+  const [totalActiveMembers, setTotalActiveMembers] = useState(0);
+  const [loadingPlanStats, setLoadingPlanStats] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
@@ -625,14 +757,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     currency_symbol: '₹',
   });
 
-  // ============================================================
-  // INVOICE ACTION STATE
-  // ============================================================
   const [showInvoiceActionModal, setShowInvoiceActionModal] = useState(false);
   const [selectedInvoiceMember, setSelectedInvoiceMember] = useState(null);
 
   // ============================================================
-  // CACHE INVALIDATION HELPER
+  // CACHE INVALIDATION
   // ============================================================
   const invalidateMemberCache = useCallback(() => {
     invalidateMembersCache();
@@ -642,8 +771,38 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     clearCachePattern(CACHE_KEYS.MEMBER_BALANCES);
     clearCachePattern(CACHE_KEYS.MEMBER_PT_DATA);
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
     invalidateCache();
   }, [invalidateMembersCache, clearCachePattern, invalidateCache]);
+
+  // ============================================================
+  // FETCH PLAN STATS
+  // ============================================================
+  const fetchPlanStats = useCallback(async () => {
+    setLoadingPlanStats(true);
+    try {
+      const cacheKey = 'member_plan_stats';
+      const cached = getCache(cacheKey);
+      if (cached) {
+        setPlanStats(cached.plans || []);
+        setTotalActiveMembers(cached.total_active_members || 0);
+        setLoadingPlanStats(false);
+        return;
+      }
+
+      const response = await api.get('/gym/members/plan-stats');
+      const data = response.data;
+      setPlanStats(data.plans || []);
+      setTotalActiveMembers(data.total_active_members || 0);
+      setCache(cacheKey, data, 3 * 60 * 1000);
+    } catch (error) {
+      console.error('Error fetching plan stats:', error);
+      setPlanStats([]);
+      setTotalActiveMembers(0);
+    } finally {
+      setLoadingPlanStats(false);
+    }
+  }, [getCache, setCache]);
 
   // ============================================================
   // FETCH MEMBERSHIP PLANS
@@ -662,7 +821,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   }, []);
 
   // ============================================================
-  // FETCH PT DATA WITH CACHING
+  // FETCH PT DATA
   // ============================================================
   const fetchPTData = useCallback(async () => {
     setLoadingPt(true);
@@ -755,37 +914,43 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   }, []);
 
   // ============================================================
-  // HANDLE BACK TO ALL MEMBERS
+  // FETCH STATS OPTIMIZED
   // ============================================================
-  const handleBackToAllMembers = () => {
-    setShowSingleMember(false);
-    setSelectedMemberId(null);
-    setSingleMemberData(null);
-    if (onMemberSelect) {
-      onMemberSelect(null);
+  const fetchStatsOptimizedFn = useCallback(async () => {
+    try {
+      const cached = getCache(CACHE_KEYS.MEMBER_STATS);
+      if (cached) {
+        setStats(cached);
+        return;
+      }
+      
+      const statsData = await fetchMemberStatsOptimized();
+      const newStats = {
+        total: statsData.total_members || 0,
+        active: statsData.active_members || 0,
+        newThisMonth: statsData.new_this_month || 0,
+      };
+      setStats(newStats);
+      setCache(CACHE_KEYS.MEMBER_STATS, newStats, 3 * 60 * 1000);
+    } catch (error) {
+      console.error('Error fetching stats (optimized):', error);
+      try {
+        const response = await api.get('/gym/dashboard/stats');
+        const newStats = {
+          total: response.data.total_members,
+          active: response.data.active_members,
+          newThisMonth: response.data.new_members_this_month,
+        };
+        setStats(newStats);
+        setCache(CACHE_KEYS.MEMBER_STATS, newStats, 3 * 60 * 1000);
+      } catch (fallbackError) {
+        console.error('Error fetching stats (fallback):', fallbackError);
+      }
     }
-    setCurrentPage(1);
-    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-    fetchMembers();
-  };
+  }, [getCache, setCache]);
 
   // ============================================================
-  // INITIAL MEMBER ID EFFECT
-  // ============================================================
-  useEffect(() => {
-    if (initialMemberId) {
-      setSelectedMemberId(initialMemberId);
-      setShowSingleMember(true);
-      fetchSingleMember(initialMemberId);
-    } else {
-      setShowSingleMember(false);
-      setSelectedMemberId(null);
-      setSingleMemberData(null);
-    }
-  }, [initialMemberId, fetchSingleMember]);
-
-  // ============================================================
-  // OPTIMIZED: FETCH MEMBERS WITH CACHING
+  // FETCH MEMBERS OPTIMIZED - DEFINED BEFORE fetchMembers
   // ============================================================
   const fetchMembersOptimizedFn = useCallback(async (force = false) => {
     if (showSingleMember) return;
@@ -890,43 +1055,104 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   }, [debouncedSearchTerm, filters.status, filters.gender, currentPage, itemsPerPage, showSingleMember, fetchPTData, getCache, setCache]);
 
   // ============================================================
-  // OPTIMIZED: FETCH STATS WITH CACHING
+  // FETCH MEMBERS BY PLAN - DEFINED BEFORE fetchMembers
   // ============================================================
-  const fetchStatsOptimizedFn = useCallback(async () => {
+  const fetchMembersByPlan = useCallback(async (planId) => {
+    if (!planId) {
+      // If no plan selected, use regular fetch
+      fetchMembers(true);
+      return;
+    }
+
+    setLoading(true);
     try {
-      const cached = getCache(CACHE_KEYS.MEMBER_STATS);
+      const cacheKey = `members_by_plan_${planId}`;
+      const cached = getCache(cacheKey);
       if (cached) {
-        setStats(cached);
+        setMembers(cached.members || []);
+        setTotalMembersCount(cached.members?.length || 0);
+        setTotalPages(Math.ceil((cached.members?.length || 0) / itemsPerPage));
+        setLoading(false);
         return;
       }
+
+      const response = await api.get(`/gym/members/by-plan?plan_id=${planId}`);
+      const data = response.data;
       
-      const statsData = await fetchMemberStatsOptimized();
-      const newStats = {
-        total: statsData.total_members || 0,
-        active: statsData.active_members || 0,
-        newThisMonth: statsData.new_this_month || 0,
-      };
-      setStats(newStats);
-      setCache(CACHE_KEYS.MEMBER_STATS, newStats, 3 * 60 * 1000);
-    } catch (error) {
-      console.error('Error fetching stats (optimized):', error);
-      try {
-        const response = await api.get('/gym/dashboard/stats');
-        const newStats = {
-          total: response.data.total_members,
-          active: response.data.active_members,
-          newThisMonth: response.data.new_members_this_month,
-        };
-        setStats(newStats);
-        setCache(CACHE_KEYS.MEMBER_STATS, newStats, 3 * 60 * 1000);
-      } catch (fallbackError) {
-        console.error('Error fetching stats (fallback):', fallbackError);
+      // Update plan stats from the response
+      if (data.plan_stats) {
+        setPlanStats(data.plan_stats);
+        const total = data.plan_stats.reduce((sum, p) => sum + (p.member_count || 0), 0);
+        setTotalActiveMembers(total);
       }
+
+      const transformedMembers = (data.members || []).map(item => {
+        let avatarUrl = item.avatar;
+        if (!avatarUrl) {
+          avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.full_name)}&background=0D9488&color=fff&size=128`;
+        }
+        
+        return {
+          id: item.id,
+          fullName: item.full_name,
+          email: item.email || '',
+          phone: item.phone,
+          gender: item.gender || 'male',
+          joinDate: item.join_date,
+          membership: item.membership?.plan_name || 'No Plan',
+          membershipId: item.membership?.id || null,
+          membershipEndDate: item.membership?.end_date || null,
+          membershipStatus: item.membership?.status || null,
+          status: item.status || (item.is_active ? 'active' : 'inactive'),
+          lastVisit: null,
+          payments: 0,
+          avatar: avatarUrl,
+          profile_image: item.profile_image,
+          raw: {
+            id: item.id,
+            full_name: item.full_name,
+            email: item.email || '',
+            phone: item.phone,
+            gender: item.gender || 'male',
+            joined_date: item.join_date,
+            is_active: item.is_active,
+            profile_image: item.profile_image,
+          },
+          activeMembership: item.membership ? {
+            id: item.membership.id,
+            plan_id: item.membership.plan_id,
+            plan: { name: item.membership.plan_name },
+            end_date: item.membership.end_date,
+            status: item.membership.status,
+          } : null,
+          memberPayments: [],
+          syncedToDevice: item.synced_to_device || false,
+          deviceUserId: item.device_user_id || null,
+        };
+      });
+
+      setCache(cacheKey, { members: transformedMembers }, 2 * 60 * 1000);
+      
+      setMembers(transformedMembers);
+      setTotalMembersCount(transformedMembers.length);
+      setTotalPages(Math.ceil(transformedMembers.length / itemsPerPage));
+      setCurrentPage(1);
+      
+      await fetchPTData();
+      
+    } catch (error) {
+      console.error('Error fetching members by plan:', error);
+      toast.error('Failed to fetch members for this plan');
+      setMembers([]);
+      setTotalMembersCount(0);
+      setTotalPages(0);
+    } finally {
+      setLoading(false);
     }
-  }, [getCache, setCache]);
+  }, [fetchPTData, getCache, setCache, itemsPerPage]);
 
   // ============================================================
-  // LEGACY: FETCH MEMBERS
+  // FETCH MEMBERS LEGACY
   // ============================================================
   const fetchMembersLegacy = useCallback(async () => {
     if (showSingleMember) return;
@@ -1025,7 +1251,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly, itemsPerPage, showSingleMember, fetchPTData]);
 
   // ============================================================
-  // MAIN FETCH FUNCTION
+  // MAIN FETCH FUNCTION - DEFINED AFTER ALL DEPENDENCIES
   // ============================================================
   const fetchMembers = useCallback(async (force = false) => {
     if (showSingleMember && singleMemberData) {
@@ -1035,13 +1261,59 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       return;
     }
     
+    // If a plan is selected, use the plan-specific fetch
+    if (selectedPlanId) {
+      await fetchMembersByPlan(selectedPlanId);
+      return;
+    }
+    
     try {
       await fetchMembersOptimizedFn(force);
     } catch (error) {
       console.log('Optimized fetch failed, falling back to legacy...');
       await fetchMembersLegacy();
     }
-  }, [fetchMembersOptimizedFn, fetchMembersLegacy, showSingleMember, singleMemberData]);
+  }, [fetchMembersOptimizedFn, fetchMembersLegacy, showSingleMember, singleMemberData, selectedPlanId, fetchMembersByPlan]);
+
+  // ============================================================
+  // HANDLE PLAN SELECTION
+  // ============================================================
+  const handlePlanSelect = (planId) => {
+    if (showSingleMember) {
+      handleBackToAllMembers();
+    }
+    
+    setSelectedPlanId(planId);
+    setCurrentPage(1);
+    
+    if (planId === null) {
+      // Clear plan filter, show all members
+      clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+      clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+      fetchMembers(true);
+    } else {
+      // Fetch members for selected plan
+      clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+      fetchMembersByPlan(planId);
+    }
+  };
+
+  // ============================================================
+  // HANDLE BACK TO ALL MEMBERS
+  // ============================================================
+  const handleBackToAllMembers = () => {
+    setShowSingleMember(false);
+    setSelectedMemberId(null);
+    setSingleMemberData(null);
+    if (onMemberSelect) {
+      onMemberSelect(null);
+    }
+    setCurrentPage(1);
+    setSelectedPlanId(null);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+    fetchMembers();
+  };
 
   const fetchStats = useCallback(async () => {
     try {
@@ -1084,20 +1356,72 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     fetchGymDetails();
     fetchPTData();
     fetchMembershipPlans();
+    fetchPlanStats();
   }, []);
 
   useEffect(() => {
-    if (!showSingleMember) {
+    if (!showSingleMember && !selectedPlanId) {
       fetchMembers();
-    } else if (singleMemberData) {
+    } else if (showSingleMember && singleMemberData) {
       setMembers([singleMemberData]);
       setTotalMembersCount(1);
       setTotalPages(1);
     }
-  }, [debouncedSearchTerm, filters.status, filters.gender, currentPage, showSingleMember, singleMemberData]);
+  }, [debouncedSearchTerm, filters.status, filters.gender, currentPage, showSingleMember, singleMemberData, selectedPlanId]);
 
   // ============================================================
-  // HANDLE INVOICE ACTIONS (Regenerate, Delete, Resend)
+  // FILTER HANDLERS
+  // ============================================================
+  const handleFilterAll = () => {
+    if (showSingleMember) handleBackToAllMembers();
+    setFilters({ ...filters, status: 'all' });
+    setShowNewThisMonthOnly(false);
+    setSearchTerm('');
+    setCurrentPage(1);
+    setSelectedPlanId(null);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+    fetchMembers(true);
+  };
+
+  const handleFilterActive = () => {
+    if (showSingleMember) handleBackToAllMembers();
+    setFilters({ ...filters, status: 'active' });
+    setShowNewThisMonthOnly(false);
+    setSearchTerm('');
+    setCurrentPage(1);
+    setSelectedPlanId(null);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+    fetchMembers(true);
+  };
+
+  const handleFilterInactive = () => {
+    if (showSingleMember) handleBackToAllMembers();
+    setFilters({ ...filters, status: 'inactive' });
+    setShowNewThisMonthOnly(false);
+    setSearchTerm('');
+    setCurrentPage(1);
+    setSelectedPlanId(null);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+    fetchMembers(true);
+  };
+
+  const handleFilterNewThisMonth = () => {
+    if (showSingleMember) handleBackToAllMembers();
+    setFilters({ ...filters, status: 'all' });
+    setShowNewThisMonthOnly(true);
+    setSearchTerm('');
+    setCurrentPage(1);
+    setSelectedPlanId(null);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+    fetchMembers(true);
+  };
+
+  // ============================================================
+  // HANDLE INVOICE ACTIONS
   // ============================================================
   const handleInvoiceAction = async (action, member, data) => {
     const membershipId = member.activeMembership?.id || member.membershipId || member.membership?.id;
@@ -1120,7 +1444,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           if (response.data.changes_made && response.data.changes_made.length > 0) {
             console.log('Changes made:', response.data.changes_made.join(', '));
           }
-          // Refresh data
           await fetchMembers(true);
           await fetchStats();
           invalidateMemberCache();
@@ -1134,7 +1457,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         
         if (response.data.success) {
           toast.success(response.data.message || 'Invoice deleted successfully!');
-          // Refresh data
           await fetchMembers(true);
           await fetchStats();
           invalidateMemberCache();
@@ -1237,7 +1559,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ============================================================
-  // DELETE FUNCTION WITH CONFIRMATION
+  // DELETE FUNCTIONS
   // ============================================================
   const handleDeleteClick = (member) => {
     setMemberToDelete(member);
@@ -1274,6 +1596,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       
       invalidateMemberCache();
       clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+      clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
       
       if (showSingleMember) {
         handleBackToAllMembers();
@@ -1281,6 +1604,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         setMembers(prev => prev.filter(m => m.id !== memberToDelete.id));
         setSelectedMembers(prev => prev.filter(id => id !== memberToDelete.id));
         fetchStats();
+        fetchPlanStats();
       }
       
       refreshAllData();
@@ -1343,9 +1667,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     }
   };
 
-  // ============================================================
-  // BULK DELETE
-  // ============================================================
   const handleBulkDelete = async () => {
     if (selectedMembers.length === 0) return;
     
@@ -1366,8 +1687,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       setMembers(members.filter(m => !deletedIds.includes(m.id)));
       setSelectedMembers([]);
       fetchStats();
+      fetchPlanStats();
       invalidateMemberCache();
       clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+      clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
 
       window.dispatchEvent(new CustomEvent('memberDeleted', { detail: { memberIds: deletedIds } }));
 
@@ -1378,7 +1701,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ============================================================
-  // HANDLE ADD MEMBER
+  // HANDLE ADD/UPDATE MEMBER
   // ============================================================
   const handleAddMember = async (memberData) => {
     console.log('📥 MemberModal sending data:', memberData);
@@ -1485,9 +1808,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   
     invalidateMemberCache();
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
     
     await fetchMembers(true);
     fetchStats();
+    fetchPlanStats();
     setIsModalOpen(false);
 
     window.dispatchEvent(new CustomEvent('memberAdded', { detail: { member: createdMember } }));
@@ -1531,9 +1856,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     return createdMember;
   };
 
-  // ============================================================
-  // HANDLE UPDATE MEMBER
-  // ============================================================
   const handleUpdateMember = async (memberData) => {
     const {
       plan_id, 
@@ -1667,9 +1989,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
 
     invalidateMemberCache();
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+    clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
     
     await fetchMembers(true);
     fetchStats();
+    fetchPlanStats();
     setIsModalOpen(false);
 
     window.dispatchEvent(new CustomEvent('memberUpdated', { detail: { memberId } }));
@@ -1680,7 +2004,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ============================================================
-  // LEGACY SYNC MEMBER TO BRIDGE (keep for compatibility)
+  // SYNC FUNCTIONS
   // ============================================================
   const syncMemberToBridge = async (memberId) => {
     try {
@@ -1699,27 +2023,24 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ============================================================
-  // ✅ FIXED: EXPORT ALL MEMBERS (NOT JUST CURRENT PAGE)
+  // EXPORT FUNCTION
   // ============================================================
   const handleExport = async () => {
     setExporting(true);
     const toastId = toast.loading('Fetching all members for export...');
     
     try {
-      // Fetch ALL members (not just current page)
       const allMembersResponse = await api.get('/gym/members?limit=10000');
       const allMembers = allMembersResponse.data || [];
       
       toast.loading(`Exporting ${allMembers.length} members...`, { id: toastId });
       
-      // Fetch balances for all members
       const balancesResponse = await api.get('/gym/members/balances');
       const balancesMap = new Map();
       balancesResponse.data.forEach(balance => {
         balancesMap.set(balance.member_id, balance);
       });
       
-      // Fetch PT data for all members
       const ptDataResponse = await api.get('/gym/members/pt-data');
       const ptMap = {};
       ptDataResponse.data.forEach(pt => {
@@ -1741,7 +2062,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         const balance = balancesMap.get(member.id);
         const ptInfo = ptMap[member.id];
         
-        // Get member name and details (handle both response formats)
         const fullName = member.full_name || member.fullName || 'Unknown';
         const email = member.email || '';
         const phone = member.phone || '';
@@ -1809,45 +2129,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ============================================================
-  // FILTER HANDLERS
-  // ============================================================
-  const handleFilterAll = () => {
-    if (showSingleMember) handleBackToAllMembers();
-    setFilters({ ...filters, status: 'all' });
-    setShowNewThisMonthOnly(false);
-    setSearchTerm('');
-    setCurrentPage(1);
-    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-  };
-
-  const handleFilterActive = () => {
-    if (showSingleMember) handleBackToAllMembers();
-    setFilters({ ...filters, status: 'active' });
-    setShowNewThisMonthOnly(false);
-    setSearchTerm('');
-    setCurrentPage(1);
-    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-  };
-
-  const handleFilterInactive = () => {
-    if (showSingleMember) handleBackToAllMembers();
-    setFilters({ ...filters, status: 'inactive' });
-    setShowNewThisMonthOnly(false);
-    setSearchTerm('');
-    setCurrentPage(1);
-    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-  };
-
-  const handleFilterNewThisMonth = () => {
-    if (showSingleMember) handleBackToAllMembers();
-    setFilters({ ...filters, status: 'all' });
-    setShowNewThisMonthOnly(true);
-    setSearchTerm('');
-    setCurrentPage(1);
-    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-  };
-
-  // ============================================================
   // HELPER FUNCTIONS
   // ============================================================
   const getStatusBadge = (status) => {
@@ -1896,12 +2177,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     if (targetId) {
       setMembers(prevMembers => {
         const updatedMembers = prevMembers.map(m =>
-          m.id === targetId            ? {
-                ...m,
-                deviceUserId: String(deviceUserId || targetId),
-                syncedToDevice: true,
-              }
-            : m
+          m.id === targetId ? {
+            ...m,
+            deviceUserId: String(deviceUserId || targetId),
+            syncedToDevice: true,
+          } : m
         );
         console.log('Updated member:', updatedMembers.find(m => m.id === targetId));
         return updatedMembers;
@@ -2011,7 +2291,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   const openProfileModal = (member) => {
-
     if (!member || !member.id) {
       toast.error('Invalid member data');
       return;
@@ -2076,7 +2355,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ============================================================
-  // RENDER
+  // RENDER - Keep the same as before with PlanFilter added
   // ============================================================
   return (
     <div className="p-4 sm:p-6">
@@ -2108,7 +2387,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         <div 
           onClick={handleFilterAll}
           className={`bg-white rounded-xl shadow-sm p-4 sm:p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
-            filters.status === 'all' && !showNewThisMonthOnly && !showSingleMember ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+            filters.status === 'all' && !showNewThisMonthOnly && !showSingleMember && !selectedPlanId ? 'ring-2 ring-blue-500 ring-offset-2' : ''
           }`}
         >
           <p className="text-xs sm:text-sm text-gray-600">Total Members</p>
@@ -2118,7 +2397,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         <div 
           onClick={handleFilterActive}
           className={`bg-white rounded-xl shadow-sm p-4 sm:p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
-            filters.status === 'active' && !showNewThisMonthOnly && !showSingleMember ? 'ring-2 ring-green-500 ring-offset-2' : ''
+            filters.status === 'active' && !showNewThisMonthOnly && !showSingleMember && !selectedPlanId ? 'ring-2 ring-green-500 ring-offset-2' : ''
           }`}
         >
           <p className="text-xs sm:text-sm text-gray-600">Active Members</p>
@@ -2128,7 +2407,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         <div 
           onClick={handleFilterInactive}
           className={`bg-white rounded-xl shadow-sm p-4 sm:p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
-            filters.status === 'inactive' && !showNewThisMonthOnly && !showSingleMember ? 'ring-2 ring-red-500 ring-offset-2' : ''
+            filters.status === 'inactive' && !showNewThisMonthOnly && !showSingleMember && !selectedPlanId ? 'ring-2 ring-red-500 ring-offset-2' : ''
           }`}
         >
           <p className="text-xs sm:text-sm text-gray-600">Inactive Members</p>
@@ -2138,7 +2417,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         <div 
           onClick={handleFilterNewThisMonth}
           className={`bg-white rounded-xl shadow-sm p-4 sm:p-6 cursor-pointer transition-all duration-200 hover:shadow-md ${
-            showNewThisMonthOnly && !showSingleMember ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+            showNewThisMonthOnly && !showSingleMember && !selectedPlanId ? 'ring-2 ring-blue-500 ring-offset-2' : ''
           }`}
         >
           <p className="text-xs sm:text-sm text-gray-600">New This Month</p>
@@ -2178,6 +2457,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                    clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
                   }
                 }}
                 disabled={showSingleMember}
@@ -2186,6 +2466,16 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 }`}
               />
             </div>
+            
+            {/* Plan Filter Dropdown */}
+            <PlanFilter
+              plans={planStats}
+              selectedPlanId={selectedPlanId}
+              onSelectPlan={handlePlanSelect}
+              loading={loadingPlanStats}
+              totalActiveMembers={totalActiveMembers}
+            />
+            
             <button
               onClick={() => setShowFilters(!showFilters)}
               disabled={showSingleMember}
@@ -2201,7 +2491,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   handleBackToAllMembers();
                 } else {
                   clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                  clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
                   fetchMembers(true);
+                  fetchPlanStats();
                 }
               }}
               className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex-shrink-0"
@@ -2209,14 +2501,17 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
             >
               {showSingleMember ? <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" /> : <RefreshCw className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />}
             </button>
-            {(filters.status !== 'all' || showNewThisMonthOnly || searchTerm) && !showSingleMember && (
+            {(filters.status !== 'all' || showNewThisMonthOnly || searchTerm || selectedPlanId) && !showSingleMember && (
               <button
                 onClick={() => {
                   setFilters({ ...filters, status: 'all' });
                   setShowNewThisMonthOnly(false);
                   setSearchTerm('');
                   setCurrentPage(1);
+                  setSelectedPlanId(null);
                   clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                  clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+                  fetchMembers(true);
                 }}
                 className="px-2 py-1.5 sm:px-3 sm:py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-xs sm:text-sm flex items-center gap-1 flex-shrink-0"
               >
@@ -2297,7 +2592,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   setFilters({ ...filters, status: e.target.value });
                   setShowNewThisMonthOnly(false);
                   setCurrentPage(1);
+                  setSelectedPlanId(null);
                   clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                  clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+                  fetchMembers(true);
                 }}
                 className="w-full border border-gray-300 rounded-lg p-1.5 sm:p-2 text-sm"
               >
@@ -2313,7 +2611,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 onChange={(e) => {
                   setFilters({ ...filters, gender: e.target.value });
                   setCurrentPage(1);
+                  setSelectedPlanId(null);
                   clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                  clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+                  fetchMembers(true);
                 }}
                 className="w-full border border-gray-300 rounded-lg p-1.5 sm:p-2 text-sm"
               >
@@ -2332,6 +2633,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                       setShowNewThisMonthOnly(false);
                       setCurrentPage(1);
                       clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                      clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+                      fetchMembers(true);
                     }}
                     className="ml-1 sm:ml-2 text-blue-600 hover:text-blue-800"
                   >
@@ -2340,6 +2643,29 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 </span>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Selected Plan Info Banner */}
+        {selectedPlanId && !showSingleMember && (
+          <div className="mt-3 pt-3 border-t">
+            <div className="flex items-center gap-3 bg-blue-50 rounded-lg p-2 sm:p-3">
+              <Layers className="h-5 w-5 text-blue-600" />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-blue-800 text-sm">
+                  Filtered by: <span className="font-bold">{planStats.find(p => p.id === selectedPlanId)?.name || 'Selected Plan'}</span>
+                </p>
+                <p className="text-xs text-blue-600">
+                  {members.length} member{members.length !== 1 ? 's' : ''} found in this plan
+                </p>
+              </div>
+              <button
+                onClick={() => handlePlanSelect(null)}
+                className="px-3 py-1 text-xs bg-blue-200 text-blue-800 rounded-lg hover:bg-blue-300 transition-colors"
+              >
+                Clear Filter
+              </button>
+            </div>
           </div>
         )}
 
@@ -2408,9 +2734,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   <td colSpan="8" className="px-6 py-4 text-center text-gray-500">
                     {showNewThisMonthOnly 
                       ? 'No new members joined this month' 
-                      : showSingleMember 
-                        ? 'Member not found' 
-                        : 'No members found'}
+                      : selectedPlanId
+                        ? `No members found in this plan`
+                        : showSingleMember 
+                          ? 'Member not found' 
+                          : 'No members found'}
                   </td>
                 </tr>
               ) : (
@@ -2452,7 +2780,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                             <div className="text-[10px] sm:text-xs text-gray-500 truncate">
                               Joined {new Date(member.joinDate).toLocaleDateString()}
                             </div>
-                            {/* Show phone on small screens */}
                             <div className="sm:hidden text-[10px] text-gray-400 truncate">{member.phone}</div>
                           </div>
                         </div>
@@ -2603,6 +2930,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
               Showing <span className="font-medium">{members.length > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0}</span> to{' '}
               <span className="font-medium">{members.length > 0 ? ((currentPage - 1) * itemsPerPage) + members.length : 0}</span> of{' '}
               <span className="font-medium">{totalMembersCount}</span> members
+              {selectedPlanId && (
+                <span className="ml-2 text-blue-600">
+                  (Filtered by plan)
+                </span>
+              )}
             </div>
             <div className="flex items-center space-x-2">
               <button 
@@ -2636,7 +2968,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           setSelectedMember(null);
           if (!showSingleMember) {
             clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+            clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
             fetchMembers(true);
+            fetchPlanStats();
           }
         }}
         onSave={selectedMember ? handleUpdateMember : handleAddMember}
@@ -2654,7 +2988,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         onSyncComplete={handleSyncComplete}
         refreshMemberList={() => {
           clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+          clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
           fetchMembers(true);
+          fetchPlanStats();
         }}
       />
 
@@ -2665,15 +3001,19 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
             setShowProfileModal(false);
             setSelectedMemberForProfile(null);
             clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+            clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
             clearCachePattern(CACHE_KEYS.MEMBER_STATS);
             fetchMembers(true);
             fetchStats();
+            fetchPlanStats();
           }}
           onUpdate={() => {
             clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+            clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
             clearCachePattern(CACHE_KEYS.MEMBER_STATS);
             fetchMembers(true);
             fetchStats();
+            fetchPlanStats();
             window.dispatchEvent(new CustomEvent('memberUpdated', { detail: { memberId: selectedMemberForProfile.id } }));
           }}
         />
@@ -2684,15 +3024,19 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         onClose={() => {
           setShowBulkImportModal(false);
           clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+          clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
           clearCachePattern(CACHE_KEYS.MEMBER_STATS);
           fetchMembers(true);
           fetchStats();
+          fetchPlanStats();
         }}
         onImportComplete={() => {
           clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+          clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
           clearCachePattern(CACHE_KEYS.MEMBER_STATS);
           fetchMembers(true);
           fetchStats();
+          fetchPlanStats();
           window.dispatchEvent(new CustomEvent('memberAdded'));
         }}
       />
