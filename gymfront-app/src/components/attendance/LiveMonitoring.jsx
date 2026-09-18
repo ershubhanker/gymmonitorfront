@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Bell, UserCheck, Users, Wifi, WifiOff, CheckCircle, XCircle, 
   RefreshCw, Trash2, AlertTriangle, X, Filter, Calendar,
-  UserPlus, Search, Clock, Briefcase, User
+  UserPlus, Search, Clock, Briefcase, User, MonitorPlay
 } from 'lucide-react';
 import { useAttendance } from '../../context/AttendanceContext';
 import api from '../../services/api';
@@ -841,6 +841,16 @@ const LiveMonitoring = () => {
           <span className="text-gray-600 text-sm">
             Devices: <strong className={onlineDevices > 0 ? 'text-green-600' : 'text-gray-400'}>{onlineDevices}/{devices?.length || 0} online</strong>
           </span>
+
+          {/* ✅ LIVE DISPLAY BUTTON — opens /live-display in a new tab */}
+          <button
+            onClick={() => window.open('/live-display', '_blank', 'noopener,noreferrer')}
+            className="flex items-center gap-1 px-3 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"
+            title="Open the full-screen live check-in display in a new tab"
+          >
+            <MonitorPlay className="h-3.5 w-3.5" />
+            Live Display
+          </button>
           
           <button 
             onClick={() => setShowManualModal(true)} 
@@ -927,15 +937,6 @@ const LiveMonitoring = () => {
         </button>
         
         <div className="flex-1"></div>
-        
-        {/* <button 
-          onClick={() => setShowDateFilter(!showDateFilter)} 
-          className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${dateFilter ? (activeTab === 'members' ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white') : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-        >
-          <Calendar className="h-4 w-4" />
-          {dateFilter ? `Date: ${formatDateDisplay(dateFilter)}` : 'Filter by Date'}
-          {dateFilter && <X className="h-3 w-3 cursor-pointer hover:text-white" onClick={(e) => { e.stopPropagation(); setDateFilter(''); }} />}
-        </button> */}
       </div>
 
       {/* Date Filter Panel */}

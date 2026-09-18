@@ -27,6 +27,7 @@ import TrainerSchedule from './components/TrainerSchedule';
 import HistoricalInvoices from './pages/HistoricalInvoices';
 import FollowUpPage from './components/FollowUpPage';
 import AddOns from './pages/AddOns';
+import LiveDisplay from './pages/LiveDisplay';
 
 function AdminRoute({ children }) {
   const { user, initialLoading } = useAuth();
@@ -100,7 +101,8 @@ function App() {
                   <Route path="/gym-setup" element={<PrivateRoute><GymSetup /></PrivateRoute>} />
                   <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
                   <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
-
+                  <Route path="/live-display" element={<PrivateRoute><LiveDisplay /></PrivateRoute>} />
+                  
                   {/* Follow-Up Page Route */}
                   <Route path="/follow-ups" element={<PrivateRoute><FollowUpPage /></PrivateRoute>} />
 
