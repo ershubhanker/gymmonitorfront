@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Dumbbell,
@@ -17,7 +18,8 @@ import {
   Fingerprint,
   CalendarCheck,
   Coffee,
-  Activity
+  Activity,
+  Check,
 } from 'lucide-react';
 
 const features = [
@@ -113,8 +115,30 @@ const highlights = [
   'Automated payment reminders',
 ];
 
+const planFeatures = [
+  'Unlimited Member Management',
+  'Member Balance & Payment Tracking',
+  'Gym Daily Expense Tracking',
+  'Biometric Device Integration',
+  'Staff Attendance Management',
+  'Member Attendance Tracking',
+  'Real-time Revenue Tracking',
+  'Advanced Analytics & Reports',
+  'Enterprise-grade Security',
+  'Automated Reminders',
+];
+
 export default function LandingPage() {
   const navigate = useNavigate();
+  const [billingCycle, setBillingCycle] = useState('yearly'); // 'monthly' | 'yearly'
+
+  const isYearly = billingCycle === 'yearly';
+  const basePrice = isYearly ? 3600 : 399;
+  const gstRate = 0.18;
+  const gstAmount = Math.round(basePrice * gstRate);
+  const totalPrice = basePrice + gstAmount;
+  const period = isYearly ? '/year' : '/month';
+  const monthlyEquivalent = isYearly ? Math.round((basePrice / 12) * 100) / 100 : basePrice;
 
   return (
     <div className="min-h-screen bg-white font-sans">
@@ -128,16 +152,22 @@ export default function LandingPage() {
               <span>Gym Monitor</span>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              onClick={() => navigate('/pricing')}
+              className="text-gray-600 hover:text-blue-600 font-medium text-sm px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-50 transition-all"
+            >
+              Pricing
+            </button>
             <button
               onClick={() => navigate('/login')}
-              className="text-gray-600 hover:text-blue-600 font-medium text-sm px-4 py-2 rounded-lg hover:bg-blue-50 transition-all"
+              className="text-gray-600 hover:text-blue-600 font-medium text-sm px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-50 transition-all"
             >
               Login
             </button>
             <button
               onClick={() => navigate('/signup')}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-sm font-semibold px-5 py-2 rounded-xl shadow-md hover:shadow-lg hover:scale-105 transition-all"
+              className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-sm font-semibold px-4 sm:px-5 py-2 rounded-xl shadow-md hover:shadow-lg hover:scale-105 transition-all"
             >
               Get Started Free
             </button>
@@ -147,12 +177,10 @@ export default function LandingPage() {
 
       {/* ── Hero ── */}
       <section className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 pt-20 pb-28">
-        {/* Decorative blobs */}
         <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-200 rounded-full opacity-20 blur-3xl pointer-events-none" />
         <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-purple-200 rounded-full opacity-20 blur-3xl pointer-events-none" />
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          {/* Badge */}
           <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 text-xs font-semibold px-4 py-2 rounded-full mb-6 shadow-sm">
             <Zap className="h-3.5 w-3.5" />
             The Smartest Gym Management Platform
@@ -187,7 +215,6 @@ export default function LandingPage() {
             </button>
           </div>
 
-          {/* Social proof */}
           <div className="mt-10 flex items-center justify-center gap-1 text-amber-500">
             {[...Array(5)].map((_, i) => (
               <Star key={i} className="h-4 w-4 fill-current" />
@@ -241,7 +268,6 @@ export default function LandingPage() {
       <section className="py-24 bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-14 items-center">
-            {/* Left copy */}
             <div>
               <h2 className="text-4xl font-extrabold text-gray-900 leading-tight">
                 Say goodbye to
@@ -269,7 +295,6 @@ export default function LandingPage() {
               </button>
             </div>
 
-            {/* Right visual card */}
             <div className="relative">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-100 to-purple-100 rounded-3xl rotate-3 scale-105 opacity-60" />
               <div className="relative bg-white rounded-3xl shadow-2xl p-8 border border-gray-100">
@@ -335,6 +360,148 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Pricing Section ── */}
+      <section className="py-24 bg-gradient-to-b from-gray-50 to-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 text-xs font-semibold px-4 py-2 rounded-full mb-5 shadow-sm">
+              <IndianRupee className="h-3.5 w-3.5" />
+              Simple, transparent pricing
+            </div>
+            <h2 className="text-4xl font-extrabold text-gray-900">
+              One plan. Everything included.
+            </h2>
+            <p className="mt-4 text-gray-500 text-lg max-w-xl mx-auto">
+              No tiers, no hidden fees. Get full access to every GymMonitor feature for one simple price.
+            </p>
+          </div>
+
+          {/* Billing Toggle */}
+          <div className="flex flex-col items-center gap-3 mb-12">
+            <div className="inline-flex items-center bg-white rounded-full p-1.5 shadow-lg border border-gray-100">
+              <button
+                onClick={() => setBillingCycle('monthly')}
+                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${
+                  !isYearly
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setBillingCycle('yearly')}
+                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all flex items-center gap-2 ${
+                  isYearly
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Yearly
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    isYearly ? 'bg-white/25 text-white' : 'bg-green-100 text-green-700'
+                  }`}
+                >
+                  SAVE 25%
+                </span>
+              </button>
+            </div>
+            <p className="text-xs text-gray-400">
+              {isYearly ? 'Billed annually · Best value' : 'Billed monthly · Cancel anytime'}
+            </p>
+          </div>
+
+          {/* Plan Card */}
+          <div className="max-w-lg mx-auto">
+            <div className="relative">
+              <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-purple-500 rounded-3xl opacity-20 blur-2xl" />
+              <div className="relative bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
+                <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-3 text-center">
+                  <span className="text-white text-xs font-bold tracking-wider uppercase">
+                    {isYearly ? 'Best Value · Save ₹1,188/year' : 'Flexible · Pay as you go'}
+                  </span>
+                </div>
+
+                <div className="p-8 sm:p-10">
+                  <div className="text-center mb-8">
+                    <h3 className="text-2xl font-bold text-gray-900">GymMonitor Pro</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Complete gym management for growing gyms
+                    </p>
+                  </div>
+
+                  <div className="text-center mb-2">
+                    <div className="flex items-start justify-center gap-1">
+                      <span className="text-3xl font-bold text-gray-700 mt-2">₹</span>
+                      <span className="text-6xl font-black text-gray-900 tracking-tight leading-none">
+                        {basePrice.toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-lg font-medium text-gray-500 self-end mb-1.5">
+                        {period}
+                      </span>
+                    </div>
+                    {isYearly && (
+                      <p className="text-sm text-gray-400 mt-1">
+                        ≈ ₹{monthlyEquivalent.toLocaleString('en-IN')}/month
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-5 mb-8 bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                    <div className="flex justify-between text-sm text-gray-600 mb-1.5">
+                      <span>Base price</span>
+                      <span className="font-medium">₹{basePrice.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-gray-600 mb-2.5">
+                      <span>GST (18%)</span>
+                      <span className="font-medium">₹{gstAmount.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between pt-2.5 border-t border-gray-200">
+                      <span className="text-sm font-semibold text-gray-800">Total payable</span>
+                      <span className="text-base font-bold text-gray-900">
+                        ₹{totalPrice.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  </div>
+
+                  <ul className="space-y-3 mb-8">
+                    {planFeatures.map((f) => (
+                      <li key={f} className="flex items-center gap-3">
+                        <div className="flex-shrink-0 h-5 w-5 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center">
+                          <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                        </div>
+                        <span className="text-sm text-gray-700 font-medium">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <button
+                    onClick={() => navigate('/signup')}
+                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-[1.02] active:scale-100 transition-all text-base"
+                  >
+                    Start 14-day Free Trial
+                  </button>
+                  <p className="text-center text-xs text-gray-400 mt-3">
+                    No credit card required · Cancel anytime
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 text-center">
+              <button
+                onClick={() => navigate('/pricing')}
+                className="inline-flex items-center gap-2 text-blue-600 hover:text-purple-600 font-semibold text-sm group"
+              >
+                View full pricing details & FAQ
+                <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── CTA Banner ── */}
       <section className="py-20 bg-gradient-to-r from-blue-600 to-purple-600">
         <div className="max-w-3xl mx-auto px-4 text-center text-white">
@@ -365,36 +532,39 @@ export default function LandingPage() {
 
       {/* ── Footer ── */}
       <footer className="bg-gray-900 text-gray-400 py-10 text-center text-sm">
-  <div className="flex items-center justify-center gap-2 mb-3">
-    <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1 rounded-lg font-bold text-sm flex items-center gap-2">
-      <Dumbbell className="h-4 w-4" />
-      Gym Monitor
-    </div>
-  </div>
-  
-  {/* Add navigation links */}
-  <div className="flex flex-wrap items-center justify-center gap-4 mb-4 text-xs">
-    <a href="/privacy-policy" className="text-gray-400 hover:text-blue-400 transition-colors">
-      Privacy Policy
-    </a>
-    <span className="text-gray-600">|</span>
-    <a href="/terms" className="text-gray-400 hover:text-blue-400 transition-colors">
-      Terms of Service
-    </a>
-    <span className="text-gray-600">|</span>
-    <a href="/login" className="text-gray-400 hover:text-blue-400 transition-colors">
-      Refund Policy
-    </a>
-  </div>
-  
-  <p>© {new Date().getFullYear()} Gym Monitor by Maskottchen Technology. All rights reserved.</p>
-  <p className="mt-1 text-gray-500">
-    Support:{' '}
-    <a href="mailto:info@maskottchentechnology.com" className="text-blue-400 hover:underline">
-      info@maskottchentechnology.com
-    </a>
-  </p>
-</footer>
+        <div className="flex items-center justify-center gap-2 mb-3">
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1 rounded-lg font-bold text-sm flex items-center gap-2">
+            <Dumbbell className="h-4 w-4" />
+            Gym Monitor
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-4 mb-4 text-xs">
+          <a href="/pricing" className="text-gray-400 hover:text-blue-400 transition-colors">
+            Pricing
+          </a>
+          <span className="text-gray-600">|</span>
+          <a href="/privacy-policy" className="text-gray-400 hover:text-blue-400 transition-colors">
+            Privacy Policy
+          </a>
+          <span className="text-gray-600">|</span>
+          <a href="/terms" className="text-gray-400 hover:text-blue-400 transition-colors">
+            Terms of Service
+          </a>
+          <span className="text-gray-600">|</span>
+          <a href="/login" className="text-gray-400 hover:text-blue-400 transition-colors">
+            Refund Policy
+          </a>
+        </div>
+
+        <p>© {new Date().getFullYear()} Gym Monitor by Maskottchen Technology. All rights reserved.</p>
+        <p className="mt-1 text-gray-500">
+          Support:{' '}
+          <a href="mailto:info@maskottchentechnology.com" className="text-blue-400 hover:underline">
+            info@maskottchentechnology.com
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }

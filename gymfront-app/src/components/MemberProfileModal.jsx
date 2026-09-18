@@ -1,4 +1,4 @@
-// src/components/MemberProfileModal.jsx - WITH REMOVED SYNC BUTTON & SMALLER UI
+// src/components/MemberProfileModal.jsx - WITH FIXED DEVICE ACCESS LOGIC
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -1651,16 +1651,75 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     return isActive ? 'active' : 'inactive';
   };
 
-  // ===== Get device access status =====
+  // ============================================================
+  // ✅ FIXED: Determine device access status with proper priority
+  //
+  // Rules (in priority order):
+  //   1. Not synced to device (no device_user_id)
+  //        → "No Access" (member hasn't been synced at all)
+  //   2. Synced but no active membership
+  //        → "Access Denied" (device has the member, but plan expired)
+  //   3. Synced with active membership but is_device_active === false
+  //        → "Access Denied" (admin manually blocked)
+  //   4. Synced + active membership + is_device_active !== false
+  //        → "Access Allowed"
+  // ============================================================
   const getDeviceAccessStatus = () => {
+    // 1. Not synced
     if (!member?.device_user_id) {
-      return { label: 'Not Synced', color: 'bg-gray-100 text-gray-500', icon: null };
+      return {
+        label: 'No Access',
+        color: 'bg-gray-100 text-gray-500 border-gray-200',
+        icon: XCircle,
+        canToggle: false,
+        reason: 'Not synced to device',
+      };
     }
-    const isActive = member.is_device_active !== false;
+
+    // 2. Check if member has an active membership right now
+    const hasActiveMembership = !!member?.current_membership &&
+      member.current_membership.status === 'active' &&
+      (() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const endDate = member.current_membership.end_date
+          ? new Date(member.current_membership.end_date)
+          : null;
+        if (!endDate) return false;
+        endDate.setHours(0, 0, 0, 0);
+        return today <= endDate;
+      })();
+
+    // 3. Synced but no active plan → Denied
+    if (!hasActiveMembership) {
+      return {
+        label: 'Access Denied',
+        color: 'bg-red-100 text-red-700 border-red-200',
+        icon: XCircle,
+        canToggle: true,
+        reason: 'No active membership',
+      };
+    }
+
+    // 4. Synced with active plan, but manually blocked
+    const isDeviceActive = member.is_device_active !== false;
+    if (!isDeviceActive) {
+      return {
+        label: 'Access Denied',
+        color: 'bg-red-100 text-red-700 border-red-200',
+        icon: XCircle,
+        canToggle: true,
+        reason: 'Manually blocked',
+      };
+    }
+
+    // 5. All good
     return {
-      label: isActive ? 'Access Allowed' : 'Access Blocked',
-      color: isActive ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200',
-      icon: isActive ? CheckCircle : XCircle
+      label: 'Access Allowed',
+      color: 'bg-green-100 text-green-700 border-green-200',
+      icon: CheckCircle,
+      canToggle: true,
+      reason: 'Active plan + synced',
     };
   };
 
@@ -1857,8 +1916,21 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   
   const memberStatus = getMemberStatus();
   
+  // ✅ FIXED: New device access status
   const accessStatus = getDeviceAccessStatus();
   const AccessStatusIcon = accessStatus.icon;
+  const canToggleAccess = accessStatus.canToggle;
+
+  // Determine the toggle button label based on the new logic
+  // If synced + has active plan + currently allowed → block button
+  // Otherwise → allow button (only enabled if synced)
+  const isCurrentlyAllowed =
+    accessStatus.label === 'Access Allowed' ||
+    (member.device_user_id && member.is_device_active !== false);
+  const toggleButtonLabel = isCurrentlyAllowed ? 'Block' : 'Allow';
+  const toggleButtonColor = isCurrentlyAllowed
+    ? 'bg-red-600 hover:bg-red-700 text-white'
+    : 'bg-green-600 hover:bg-green-700 text-white';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto py-8">
@@ -1887,6 +1959,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     Frozen
                   </span>
                 )}
+                {/* ✅ FIXED: Show the correct access status badge */}
                 {member?.device_user_id && (
                   <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${accessStatus.color} flex-shrink-0`}>
                     {AccessStatusIcon && <AccessStatusIcon className="h-2.5 w-2.5" />}
@@ -2031,19 +2104,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               </button>
             )}
 
-            {member?.device_user_id && (
+            {/* ✅ FIXED: Device access toggle button only shows when synced */}
+            {member?.device_user_id && canToggleAccess && (
               <button
                 onClick={handleToggleDeviceAccess}
                 disabled={togglingAccess}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-colors text-[10px] font-medium ${
-                  member.is_device_active !== false
-                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-green-600 hover:bg-green-700 text-white'
-                } disabled:opacity-50`}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-colors text-[10px] font-medium ${toggleButtonColor} disabled:opacity-50`}
+                title={accessStatus.reason}
               >
                 {togglingAccess ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
-                ) : member.is_device_active !== false ? (
+                ) : isCurrentlyAllowed ? (
                   <>
                     <Lock className="h-3 w-3" />
                     Block

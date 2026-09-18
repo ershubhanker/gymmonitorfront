@@ -1,4 +1,4 @@
-// src/App.jsx - Add FollowUpPage route
+// src/App.jsx
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -15,6 +15,9 @@ import Profile from './pages/Profile';
 import GymSetup from './pages/GymSetup';
 import AdminDashboard from './pages/AdminDashboard';
 import LandingPage from './pages/LandingPage';
+import PricingPage from './pages/PricingPage';
+import PaymentSuccess from './pages/Paymentsuccess';
+import PaymentFailed from './pages/Paymentfailed';
 import { AttendanceProvider } from './context/AttendanceContext';
 import LeadCaptureForm from './components/LeadCaptureForm';
 import WhatsAppLogs from './components/WhatsAppLogs';
@@ -22,7 +25,7 @@ import InvoicePage from './pages/InvoicePage';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TrainerSchedule from './components/TrainerSchedule';
 import HistoricalInvoices from './pages/HistoricalInvoices';
-import FollowUpPage from './components/FollowUpPage'; // ✅ Import FollowUpPage
+import FollowUpPage from './components/FollowUpPage';
 import AddOns from './pages/AddOns';
 
 function AdminRoute({ children }) {
@@ -74,34 +77,39 @@ function App() {
                 <Routes>
                   {/* Public Routes */}
                   <Route path="/" element={<LandingPage />} />
+                  <Route path="/pricing" element={<PricingPage />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Signup />} />
                   <Route path="/forgot-password" element={<ForgotPassword />} />
                   <Route path="/verify-email" element={<VerifyEmail />} />
                   <Route path="/reset-password" element={<ResetPassword />} />
                   <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-                  
+
+                  {/* Payment Result Routes (public — Razorpay redirects here) */}
+                  <Route path="/payment/success" element={<PaymentSuccess />} />
+                  <Route path="/payment/failed" element={<PaymentFailed />} />
+
                   {/* Public Lead Capture Form */}
                   <Route path="/lead-form/:gymSlug" element={<LeadCaptureForm />} />
-                  
+
                   {/* Public invoice view */}
                   <Route path="/invoice/:memberId/:membershipId" element={<InvoicePage />} />
                   <Route path="/historical-invoices" element={<HistoricalInvoices />} />
-                  
+
                   {/* Protected Routes */}
                   <Route path="/gym-setup" element={<PrivateRoute><GymSetup /></PrivateRoute>} />
                   <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
                   <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
-                  
-                  {/* ✅ Follow-Up Page Route */}
+
+                  {/* Follow-Up Page Route */}
                   <Route path="/follow-ups" element={<PrivateRoute><FollowUpPage /></PrivateRoute>} />
-                  
+
                   <Route path="/admin" element={
                     <AdminRoute>
                       <AdminDashboard />
                     </AdminRoute>
                   } />
-                  
+
                   <Route path="/admin/whatsapp-logs" element={
                     <AdminRoute>
                       <WhatsAppLogs />

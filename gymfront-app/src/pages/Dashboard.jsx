@@ -1,5 +1,6 @@
-// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH REFUND HANDLING
+// src/pages/Dashboard.jsx - COMPLETE UPDATED WITH BILLING INTEGRATION
 // Modified: Total Members and New Members are always visible (not hidden)
+// Modified: Billing & Plan tab added under Account section
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -13,7 +14,8 @@ import {
   Briefcase, Wallet, ChevronLeft, ChevronRight, Wifi, Phone,
   Mail as MailIcon, Clock, AlertTriangle, Eye, Shield, RefreshCw,
   MessageSquare, Send, Download, Filter, FileText, Utensils,
-  Tag, CalendarRange, Clock as ClockIcon2, EyeOff
+  Tag, CalendarRange, Clock as ClockIcon2, EyeOff,
+  Crown, // ✅ NEW — icon for Billing & Plan sidebar item
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCache, CACHE_KEYS } from '../context/CacheContext';
@@ -45,6 +47,7 @@ import FollowUpPage from '../components/FollowUpPage';
 import AddOns from './AddOns';
 import PTPage from './PTPage';
 import WhatsAppNotifications from './WhatsAppNotifications';
+import BillingSettings from './BillingSettings'; // ✅ NEW — SaaS billing tab
 
 const AUTO_REFRESH_INTERVAL = 60000;
 
@@ -197,6 +200,9 @@ const Dashboard = () => {
   const canSeeLeads = isAdmin || canViewLeads;
   const canSeeWhatsApp = isAdmin || canViewWhatsApp;
 
+  // ✅ NEW — Only gym owners / super admins can manage SaaS billing
+  const canSeeBilling = isAdmin;
+
   useEffect(() => {
     if (user?.role) {
       setUserRole(user.role);
@@ -208,8 +214,6 @@ const Dashboard = () => {
       }
     }
   }, [user]);
-
-
 
   useEffect(() => {
     const handleRefresh = () => {
@@ -1065,6 +1069,16 @@ const Dashboard = () => {
       id: 'whatsapp-notifications',
       section: 'reports'
     });
+
+    // ✅ NEW — Billing & Plan section (only for gym owners / super admins)
+    if (canSeeBilling) {
+      nav.push({
+        name: 'Billing & Plan',
+        icon: Crown,
+        id: 'billing',
+        section: 'account',
+      });
+    }
     
     return nav;
   };
@@ -1078,12 +1092,14 @@ const Dashboard = () => {
     return acc;
   }, {});
 
+  // ✅ NEW — added 'account' label
   const sectionLabels = {
     main: 'Main',
     management: 'Management',
     staff: 'Staff & Attendance',
     finance: 'Finance',
     reports: 'Reports & History',
+    account: 'Account',
     other: 'Other'
   };
 
@@ -2536,6 +2552,21 @@ const Dashboard = () => {
                 <IndianRupee className="h-4 w-4" />
                 Currency ({currencySymbol})
               </button>
+
+              {/* ✅ NEW — quick link to Billing from user menu */}
+              {canSeeBilling && (
+                <button
+                  onClick={() => {
+                    setActiveTab('billing');
+                    setShowUserMenu(false);
+                  }}
+                  className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
+                >
+                  <Crown className="h-4 w-4" />
+                  Billing & Plan
+                </button>
+              )}
+
               <button
                 onClick={() => {
                   setActiveTab('settings');
@@ -2598,6 +2629,9 @@ const Dashboard = () => {
           {activeTab === 'historical-invoices' && <HistoricalInvoices />}
           {activeTab === 'whatsapp-logs' && <WhatsAppLogs />}
           {activeTab === 'whatsapp-notifications' && canSeeWhatsApp && <WhatsAppNotifications />}
+
+          {/* ✅ NEW — Billing & Plan tab */}
+          {activeTab === 'billing' && canSeeBilling && <BillingSettings />}
         </div>
 
         {/* Footer */}
