@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useRazorpayCheckout } from '../hooks/useRazorpayCheckout';
 import {
   Dumbbell,
   Check,
@@ -18,7 +20,7 @@ import {
 } from 'lucide-react';
 
 const planFeatures = [
-  { icon: Users, text: 'Unlimited Member Management' },
+  { icon: Users, text: 'Dedicated Whatsapp Number' },
   { icon: Wallet, text: 'Member Balance & Payment Tracking' },
   { icon: Receipt, text: 'Gym Daily Expense Tracking' },
   { icon: Fingerprint, text: 'Biometric Device Integration' },
@@ -51,7 +53,14 @@ const faqs = [
 
 export default function PricingPage() {
   const navigate = useNavigate();
+  const { user } = useAuth() || {};
+  const { startCheckout, loading: checkoutLoading, error: checkoutError } =
+    useRazorpayCheckout();
   const [billingCycle, setBillingCycle] = useState('yearly');
+
+  // Signed-in gym owners subscribe right here; everyone else signs up first.
+  const isLoggedIn = Boolean(user);
+  const canSubscribe = user?.role === 'gym_owner' || user?.role === 'super_admin';
 
   const isYearly = billingCycle === 'yearly';
   const basePrice = isYearly ? 3600 : 399;
@@ -63,9 +72,23 @@ export default function PricingPage() {
     ? Math.round((basePrice / 12) * 100) / 100
     : basePrice;
 
-  // Public page: CTA always routes to signup. Subscribed users reach
-  // checkout from BillingSettings.jsx inside the dashboard.
-  const handleCtaClick = () => navigate('/signup');
+  // Logged-out visitors -> signup. Logged-in gym owners -> Razorpay checkout.
+  const handleCtaClick = () => {
+    if (!isLoggedIn) {
+      navigate('/signup');
+      return;
+    }
+    if (!canSubscribe || checkoutLoading) return;
+    startCheckout(billingCycle);
+  };
+
+  const ctaLabel = !isLoggedIn
+    ? 'Start 14-day Free Trial'
+    : !canSubscribe
+    ? 'Only the gym owner can subscribe'
+    : checkoutLoading
+    ? 'Opening secure checkout…'
+    : 'Subscribe Now';
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-blue-50/40 font-sans">
@@ -224,12 +247,20 @@ export default function PricingPage() {
 
               <button
                 onClick={handleCtaClick}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-[1.02] active:scale-100 transition-all text-base"
+                disabled={checkoutLoading || (isLoggedIn && !canSubscribe)}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-[1.02] active:scale-100 transition-all text-base disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
-                Start 14-day Free Trial
+                {ctaLabel}
               </button>
+              {checkoutError && (
+                <p role="alert" className="text-center text-sm text-red-600 mt-3">
+                  {checkoutError}
+                </p>
+              )}
               <p className="text-center text-xs text-gray-400 mt-3">
-                No credit card required · Cancel anytime
+                {isLoggedIn
+                  ? 'Secure payment via Razorpay · Cancel anytime'
+                  : 'No credit card required · Cancel anytime'}
               </p>
             </div>
           </div>

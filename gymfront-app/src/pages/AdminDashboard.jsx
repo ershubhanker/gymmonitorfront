@@ -1,3 +1,4 @@
+// src/pages/AdminDashboard.jsx — COMPLETE
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -12,6 +13,7 @@ import {
   ChevronLeft, PanelLeftClose, PanelLeftOpen, ArrowLeft, ExternalLink,
   BookOpen, Hash, Phone as PhoneIcon, Mail as MailIcon, Dumbbell, Gift,
   PieChart, Layers, LayoutGrid, List, Grid, Maximize2, AlertTriangle,
+  Crown,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -21,8 +23,9 @@ import GymList from '../components/admin/GymList';
 import GymDetails from '../components/admin/GymDetails';
 import AttendanceList from '../components/admin/AttendanceList';
 import IrregularMembers from '../components/attendance/IrregularMembers';
+import SubscriptionManager from '../components/admin/SubscriptionManager';
 
-// ─── Field components ─────────────────────────────────────────────────────────
+// ─── Field components ─────────────────────────────────────────────────
 
 const Field = ({ label, name, value, onChange, type = 'text', options, readOnly }) => (
   <div className="flex flex-col gap-1">
@@ -35,7 +38,7 @@ const Field = ({ label, name, value, onChange, type = 'text', options, readOnly 
         disabled={readOnly}
         className="bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
       >
-        {options.map(o => (
+        {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
@@ -61,13 +64,11 @@ const Field = ({ label, name, value, onChange, type = 'text', options, readOnly 
   </div>
 );
 
-// ─── Edit Modals ─────────────────────────────────────────────────────────────
+// ─── Edit Modals ──────────────────────────────────────────────────────
 
 const EditGymModal = ({ gym, onClose, onSave }) => {
   const [form, setForm] = useState(gym || {});
-  
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-  
   const handleSubmit = () => {
     const data = {
       name: form.name,
@@ -85,7 +86,6 @@ const EditGymModal = ({ gym, onClose, onSave }) => {
     };
     onSave(data);
   };
-  
   return (
     <ModalShell title="Edit Gym" icon={<Building2 className="h-5 w-5 text-purple-400" />} onClose={onClose} onSave={handleSubmit}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -98,10 +98,10 @@ const EditGymModal = ({ gym, onClose, onSave }) => {
         <Field label="Description" name="description" value={form.description} onChange={handleChange} />
         <Field label="Opening Time" name="opening_time" value={form.opening_time} onChange={handleChange} />
         <Field label="Closing Time" name="closing_time" value={form.closing_time} onChange={handleChange} />
-        <Field 
-          label="Subscription Plan" 
-          name="subscription_plan" 
-          value={form.subscription_plan} 
+        <Field
+          label="Subscription Plan"
+          name="subscription_plan"
+          value={form.subscription_plan}
           onChange={handleChange}
           options={[
             { value: 'basic', label: 'Basic' },
@@ -109,10 +109,10 @@ const EditGymModal = ({ gym, onClose, onSave }) => {
             { value: 'enterprise', label: 'Enterprise' },
           ]}
         />
-        <Field 
-          label="Subscription Status" 
-          name="subscription_status" 
-          value={form.subscription_status} 
+        <Field
+          label="Subscription Status"
+          name="subscription_status"
+          value={form.subscription_status}
           onChange={handleChange}
           options={[
             { value: 'active', label: 'Active' },
@@ -121,10 +121,10 @@ const EditGymModal = ({ gym, onClose, onSave }) => {
             { value: 'inactive', label: 'Inactive' },
           ]}
         />
-        <Field 
-          label="Status" 
-          name="is_active" 
-          value={String(form.is_active)} 
+        <Field
+          label="Status"
+          name="is_active"
+          value={String(form.is_active)}
           onChange={handleChange}
           options={[
             { value: 'true', label: 'Active' },
@@ -140,11 +140,9 @@ const EditGymModal = ({ gym, onClose, onSave }) => {
 
 const EditUserModal = ({ user, onClose, onSave }) => {
   const [form, setForm] = useState(user || {});
-  
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-  
   const handleSubmit = () => {
-    const data = {
+    onSave({
       full_name: form.full_name,
       email: form.email,
       username: form.username,
@@ -152,10 +150,8 @@ const EditUserModal = ({ user, onClose, onSave }) => {
       is_active: form.is_active === true || form.is_active === 'true',
       is_verified: form.is_verified === true || form.is_verified === 'true',
       gym_id: form.gym_id ? parseInt(form.gym_id) : null,
-    };
-    onSave(data);
+    });
   };
-  
   return (
     <ModalShell title="Edit User" icon={<Users className="h-5 w-5 text-blue-400" />} onClose={onClose} onSave={handleSubmit}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -163,26 +159,10 @@ const EditUserModal = ({ user, onClose, onSave }) => {
         <Field label="Username" name="username" value={form.username} onChange={handleChange} />
         <Field label="Email" name="email" value={form.email} onChange={handleChange} type="email" />
         <Field label="Phone" name="phone" value={form.phone} onChange={handleChange} />
-        <Field 
-          label="Active" 
-          name="is_active" 
-          value={String(form.is_active)} 
-          onChange={handleChange}
-          options={[
-            { value: 'true', label: 'Active' },
-            { value: 'false', label: 'Inactive' },
-          ]}
-        />
-        <Field 
-          label="Verified" 
-          name="is_verified" 
-          value={String(form.is_verified)} 
-          onChange={handleChange}
-          options={[
-            { value: 'true', label: 'Verified' },
-            { value: 'false', label: 'Not Verified' },
-          ]}
-        />
+        <Field label="Active" name="is_active" value={String(form.is_active)} onChange={handleChange}
+          options={[{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }]} />
+        <Field label="Verified" name="is_verified" value={String(form.is_verified)} onChange={handleChange}
+          options={[{ value: 'true', label: 'Verified' }, { value: 'false', label: 'Not Verified' }]} />
       </div>
     </ModalShell>
   );
@@ -190,21 +170,17 @@ const EditUserModal = ({ user, onClose, onSave }) => {
 
 const EditMemberModal = ({ member, onClose, onSave }) => {
   const [form, setForm] = useState(member || {});
-  
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-  
   const handleSubmit = () => {
-    const data = {
+    onSave({
       full_name: form.full_name,
       email: form.email,
       phone: form.phone,
       address: form.address,
       gender: form.gender,
       is_active: form.is_active === true || form.is_active === 'true',
-    };
-    onSave(data);
+    });
   };
-  
   return (
     <ModalShell title="Edit Member" icon={<User className="h-5 w-5 text-green-400" />} onClose={onClose} onSave={handleSubmit}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -212,27 +188,14 @@ const EditMemberModal = ({ member, onClose, onSave }) => {
         <Field label="Email" name="email" value={form.email} onChange={handleChange} type="email" />
         <Field label="Phone" name="phone" value={form.phone} onChange={handleChange} />
         <Field label="Address" name="address" value={form.address} onChange={handleChange} />
-        <Field 
-          label="Gender" 
-          name="gender" 
-          value={form.gender} 
-          onChange={handleChange}
+        <Field label="Gender" name="gender" value={form.gender} onChange={handleChange}
           options={[
             { value: 'male', label: 'Male' },
             { value: 'female', label: 'Female' },
             { value: 'other', label: 'Other' },
-          ]}
-        />
-        <Field 
-          label="Status" 
-          name="is_active" 
-          value={String(form.is_active)} 
-          onChange={handleChange}
-          options={[
-            { value: 'true', label: 'Active' },
-            { value: 'false', label: 'Inactive' },
-          ]}
-        />
+          ]} />
+        <Field label="Status" name="is_active" value={String(form.is_active)} onChange={handleChange}
+          options={[{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }]} />
       </div>
     </ModalShell>
   );
@@ -240,19 +203,15 @@ const EditMemberModal = ({ member, onClose, onSave }) => {
 
 const EditStaffModal = ({ staff, onClose, onSave }) => {
   const [form, setForm] = useState(staff || {});
-  
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-  
   const handleSubmit = () => {
-    const data = {
+    onSave({
       position: form.position,
       salary: form.salary ? parseFloat(form.salary) : null,
       specializations: form.specializations,
       is_active: form.is_active === true || form.is_active === 'true',
-    };
-    onSave(data);
+    });
   };
-  
   return (
     <ModalShell title="Edit Staff" icon={<Briefcase className="h-5 w-5 text-orange-400" />} onClose={onClose} onSave={handleSubmit}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -261,16 +220,8 @@ const EditStaffModal = ({ staff, onClose, onSave }) => {
         <div className="md:col-span-2">
           <Field label="Specializations" name="specializations" value={form.specializations} onChange={handleChange} />
         </div>
-        <Field 
-          label="Status" 
-          name="is_active" 
-          value={String(form.is_active)} 
-          onChange={handleChange}
-          options={[
-            { value: 'true', label: 'Active' },
-            { value: 'false', label: 'Inactive' },
-          ]}
-        />
+        <Field label="Status" name="is_active" value={String(form.is_active)} onChange={handleChange}
+          options={[{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }]} />
       </div>
     </ModalShell>
   );
@@ -278,11 +229,9 @@ const EditStaffModal = ({ staff, onClose, onSave }) => {
 
 const EditPlanModal = ({ plan, onClose, onSave }) => {
   const [form, setForm] = useState(plan || {});
-  
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-  
   const handleSubmit = () => {
-    const data = {
+    onSave({
       name: form.name,
       description: form.description,
       price: parseFloat(form.price) || 0,
@@ -290,10 +239,8 @@ const EditPlanModal = ({ plan, onClose, onSave }) => {
       duration_days: parseInt(form.duration_days) || 30,
       plan_type: form.plan_type,
       is_active: form.is_active === true || form.is_active === 'true',
-    };
-    onSave(data);
+    });
   };
-  
   return (
     <ModalShell title="Edit Plan" icon={<Award className="h-5 w-5 text-yellow-400" />} onClose={onClose} onSave={handleSubmit}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -302,28 +249,15 @@ const EditPlanModal = ({ plan, onClose, onSave }) => {
         <Field label="Price" name="price" value={form.price} onChange={handleChange} type="number" />
         <Field label="Discounted Price" name="discounted_price" value={form.discounted_price} onChange={handleChange} type="number" />
         <Field label="Duration (days)" name="duration_days" value={form.duration_days} onChange={handleChange} type="number" />
-        <Field 
-          label="Plan Type" 
-          name="plan_type" 
-          value={form.plan_type} 
-          onChange={handleChange}
+        <Field label="Plan Type" name="plan_type" value={form.plan_type} onChange={handleChange}
           options={[
             { value: 'monthly', label: 'Monthly' },
             { value: 'quarterly', label: 'Quarterly' },
             { value: 'half_yearly', label: 'Half Yearly' },
             { value: 'yearly', label: 'Yearly' },
-          ]}
-        />
-        <Field 
-          label="Status" 
-          name="is_active" 
-          value={String(form.is_active)} 
-          onChange={handleChange}
-          options={[
-            { value: 'true', label: 'Active' },
-            { value: 'false', label: 'Inactive' },
-          ]}
-        />
+          ]} />
+        <Field label="Status" name="is_active" value={String(form.is_active)} onChange={handleChange}
+          options={[{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }]} />
       </div>
     </ModalShell>
   );
@@ -331,44 +265,26 @@ const EditPlanModal = ({ plan, onClose, onSave }) => {
 
 const EditMembershipModal = ({ membership, onClose, onSave }) => {
   const [form, setForm] = useState(membership || {});
-  
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-  
   const handleSubmit = () => {
-    const data = {
-      status: form.status,
-      payment_status: form.payment_status,
-      notes: form.notes,
-    };
-    onSave(data);
+    onSave({ status: form.status, payment_status: form.payment_status, notes: form.notes });
   };
-  
   return (
     <ModalShell title="Edit Membership" icon={<CreditCard className="h-5 w-5 text-pink-400" />} onClose={onClose} onSave={handleSubmit}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Field 
-          label="Status" 
-          name="status" 
-          value={form.status} 
-          onChange={handleChange}
+        <Field label="Status" name="status" value={form.status} onChange={handleChange}
           options={[
             { value: 'active', label: 'Active' },
             { value: 'expired', label: 'Expired' },
             { value: 'cancelled', label: 'Cancelled' },
             { value: 'pending', label: 'Pending' },
-          ]}
-        />
-        <Field 
-          label="Payment Status" 
-          name="payment_status" 
-          value={form.payment_status} 
-          onChange={handleChange}
+          ]} />
+        <Field label="Payment Status" name="payment_status" value={form.payment_status} onChange={handleChange}
           options={[
             { value: 'paid', label: 'Paid' },
             { value: 'pending', label: 'Pending' },
             { value: 'overdue', label: 'Overdue' },
-          ]}
-        />
+          ]} />
         <div className="md:col-span-2">
           <Field label="Notes" name="notes" value={form.notes} onChange={handleChange} type="textarea" />
         </div>
@@ -379,48 +295,34 @@ const EditMembershipModal = ({ membership, onClose, onSave }) => {
 
 const EditPaymentModal = ({ payment, onClose, onSave }) => {
   const [form, setForm] = useState(payment || {});
-  
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-  
   const handleSubmit = () => {
-    const data = {
+    onSave({
       status: form.status,
       payment_method: form.payment_method,
       notes: form.notes,
       amount: parseFloat(form.amount) || 0,
-    };
-    onSave(data);
+    });
   };
-  
   return (
     <ModalShell title="Edit Payment" icon={<DollarSign className="h-5 w-5 text-green-400" />} onClose={onClose} onSave={handleSubmit}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="Amount" name="amount" value={form.amount} onChange={handleChange} type="number" />
-        <Field 
-          label="Payment Method" 
-          name="payment_method" 
-          value={form.payment_method} 
-          onChange={handleChange}
+        <Field label="Payment Method" name="payment_method" value={form.payment_method} onChange={handleChange}
           options={[
             { value: 'cash', label: 'Cash' },
             { value: 'card', label: 'Card' },
             { value: 'bank_transfer', label: 'Bank Transfer' },
             { value: 'upi', label: 'UPI' },
             { value: 'online', label: 'Online' },
-          ]}
-        />
-        <Field 
-          label="Status" 
-          name="status" 
-          value={form.status} 
-          onChange={handleChange}
+          ]} />
+        <Field label="Status" name="status" value={form.status} onChange={handleChange}
           options={[
             { value: 'paid', label: 'Paid' },
             { value: 'pending', label: 'Pending' },
             { value: 'overdue', label: 'Overdue' },
             { value: 'cancelled', label: 'Cancelled' },
-          ]}
-        />
+          ]} />
         <div className="md:col-span-2">
           <Field label="Notes" name="notes" value={form.notes} onChange={handleChange} type="textarea" />
         </div>
@@ -431,11 +333,9 @@ const EditPaymentModal = ({ payment, onClose, onSave }) => {
 
 const EditLeadModal = ({ lead, onClose, onSave }) => {
   const [form, setForm] = useState(lead || {});
-  
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-  
   const handleSubmit = () => {
-    const data = {
+    onSave({
       full_name: form.full_name,
       phone: form.phone,
       email: form.email,
@@ -443,21 +343,15 @@ const EditLeadModal = ({ lead, onClose, onSave }) => {
       source: form.source,
       interest: form.interest,
       notes: form.notes,
-    };
-    onSave(data);
+    });
   };
-  
   return (
     <ModalShell title="Edit Lead" icon={<Target className="h-5 w-5 text-orange-400" />} onClose={onClose} onSave={handleSubmit}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="Full Name" name="full_name" value={form.full_name} onChange={handleChange} />
         <Field label="Phone" name="phone" value={form.phone} onChange={handleChange} />
         <Field label="Email" name="email" value={form.email} onChange={handleChange} type="email" />
-        <Field 
-          label="Source" 
-          name="source" 
-          value={form.source} 
-          onChange={handleChange}
+        <Field label="Source" name="source" value={form.source} onChange={handleChange}
           options={[
             { value: 'walk_in', label: 'Walk-in' },
             { value: 'phone_call', label: 'Phone Call' },
@@ -467,13 +361,8 @@ const EditLeadModal = ({ lead, onClose, onSave }) => {
             { value: 'google', label: 'Google' },
             { value: 'referral', label: 'Referral' },
             { value: 'website', label: 'Website' },
-          ]}
-        />
-        <Field 
-          label="Status" 
-          name="status" 
-          value={form.status} 
-          onChange={handleChange}
+          ]} />
+        <Field label="Status" name="status" value={form.status} onChange={handleChange}
           options={[
             { value: 'new', label: 'New' },
             { value: 'contacted', label: 'Contacted' },
@@ -481,8 +370,7 @@ const EditLeadModal = ({ lead, onClose, onSave }) => {
             { value: 'not_interested', label: 'Not Interested' },
             { value: 'converted', label: 'Converted' },
             { value: 'lost', label: 'Lost' },
-          ]}
-        />
+          ]} />
         <div className="md:col-span-2">
           <Field label="Notes" name="notes" value={form.notes} onChange={handleChange} type="textarea" />
         </div>
@@ -493,30 +381,22 @@ const EditLeadModal = ({ lead, onClose, onSave }) => {
 
 const EditExpenseModal = ({ expense, onClose, onSave }) => {
   const [form, setForm] = useState(expense || {});
-  
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-  
   const handleSubmit = () => {
-    const data = {
+    onSave({
       title: form.title,
       description: form.description,
       amount: parseFloat(form.amount) || 0,
       category: form.category,
       vendor_name: form.vendor_name,
-    };
-    onSave(data);
+    });
   };
-  
   return (
     <ModalShell title="Edit Expense" icon={<Wallet className="h-5 w-5 text-red-400" />} onClose={onClose} onSave={handleSubmit}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="Title" name="title" value={form.title} onChange={handleChange} />
         <Field label="Amount" name="amount" value={form.amount} onChange={handleChange} type="number" />
-        <Field 
-          label="Category" 
-          name="category" 
-          value={form.category} 
-          onChange={handleChange}
+        <Field label="Category" name="category" value={form.category} onChange={handleChange}
           options={[
             { value: 'maintenance', label: 'Maintenance' },
             { value: 'equipment', label: 'Equipment' },
@@ -527,8 +407,7 @@ const EditExpenseModal = ({ expense, onClose, onSave }) => {
             { value: 'supplies', label: 'Supplies' },
             { value: 'training', label: 'Training' },
             { value: 'other', label: 'Other' },
-          ]}
-        />
+          ]} />
         <Field label="Vendor" name="vendor_name" value={form.vendor_name} onChange={handleChange} />
         <div className="md:col-span-2">
           <Field label="Description" name="description" value={form.description} onChange={handleChange} type="textarea" />
@@ -538,7 +417,7 @@ const EditExpenseModal = ({ expense, onClose, onSave }) => {
   );
 };
 
-// ─── Modal Shell ──────────────────────────────────────────────────────────────
+// ─── Modal Shell ──────────────────────────────────────────────────────
 
 const ModalShell = ({ title, icon, children, onClose, onSave }) => {
   const [saving, setSaving] = useState(false);
@@ -546,7 +425,6 @@ const ModalShell = ({ title, icon, children, onClose, onSave }) => {
     setSaving(true);
     try { await onSave(); } finally { setSaving(false); }
   };
-
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-2xl my-8 shadow-2xl">
@@ -559,9 +437,7 @@ const ModalShell = ({ title, icon, children, onClose, onSave }) => {
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="px-6 py-5 max-h-[65vh] overflow-y-auto">
-          {children}
-        </div>
+        <div className="px-6 py-5 max-h-[65vh] overflow-y-auto">{children}</div>
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-700 bg-gray-800/50 rounded-b-2xl">
           <button onClick={onClose} className="px-5 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl text-sm font-medium transition-colors">
             Cancel
@@ -580,7 +456,7 @@ const ModalShell = ({ title, icon, children, onClose, onSave }) => {
   );
 };
 
-// ─── Delete Confirm Modal ─────────────────────────────────────────────────────
+// ─── Delete Confirm Modal ─────────────────────────────────────────────
 
 const DeleteConfirmModal = ({ target, onClose, onConfirm }) => {
   const [deleting, setDeleting] = useState(false);
@@ -619,7 +495,7 @@ const DeleteConfirmModal = ({ target, onClose, onConfirm }) => {
   );
 };
 
-// ─── Table Header ─────────────────────────────────────────────────────────────
+// ─── Table Header ─────────────────────────────────────────────────────
 
 const TableHeader = ({ cols }) => (
   <thead>
@@ -633,7 +509,7 @@ const TableHeader = ({ cols }) => (
   </thead>
 );
 
-// ─── Action Buttons ───────────────────────────────────────────────────────────
+// ─── Action Buttons ───────────────────────────────────────────────────
 
 const ActionBtns = ({ onEdit, onDelete }) => (
   <div className="flex items-center gap-1.5">
@@ -648,7 +524,7 @@ const ActionBtns = ({ onEdit, onDelete }) => (
   </div>
 );
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
+// ─── Stat Card ────────────────────────────────────────────────────────
 
 const StatCard = ({ icon: Icon, label, value, sub, color = 'purple', onClick }) => {
   const colors = {
@@ -672,14 +548,13 @@ const StatCard = ({ icon: Icon, label, value, sub, color = 'purple', onClick }) 
         <Icon className="h-5 w-5" />
       </div>
       <p className="text-gray-400 text-xs font-medium">{label}</p>
-      {/* ✅ REDUCED FONT SIZE: from text-3xl to text-2xl */}
       <p className="text-2xl font-bold text-white mt-1">{value}</p>
       {sub && <p className="text-xs text-gray-500 mt-2">{sub}</p>}
     </div>
   );
 };
 
-// ─── Empty row ────────────────────────────────────────────────────────────────
+// ─── Empty row ────────────────────────────────────────────────────────
 
 const EmptyRow = ({ text }) => (
   <div className="py-16 text-center text-gray-500">
@@ -688,7 +563,7 @@ const EmptyRow = ({ text }) => (
   </div>
 );
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
@@ -701,19 +576,20 @@ const AdminDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterRole, setFilterRole] = useState('all');
-  
-  // Sidebar state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Modal states
   const [editModal, setEditModal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  // ===== WHATSAPP TOGGLE STATE =====
+  // ✅ NEW: Subscription Manager modal
+  const [subscriptionGym, setSubscriptionGym] = useState(null);
+
+  // WhatsApp toggle
   const [whatsappEnabled, setWhatsappEnabled] = useState(true);
   const [togglingWhatsApp, setTogglingWhatsApp] = useState(false);
 
-  // ===== GYM DETAILS VIEW STATE =====
+  // Gym details view
   const [selectedGym, setSelectedGym] = useState(null);
   const [selectedGymId, setSelectedGymId] = useState(null);
   const [viewingGymDetails, setViewingGymDetails] = useState(false);
@@ -733,7 +609,7 @@ const AdminDashboard = () => {
   const [leads, setLeads] = useState([]);
   const [expenses, setExpenses] = useState([]);
 
-  // ===== FETCH WHATSAPP STATUS =====
+  // ─── Fetch WhatsApp status ──────────────────────────────────────────
   const fetchWhatsAppStatus = useCallback(async () => {
     try {
       const response = await api.get('/whatsapp/settings/whatsapp-status');
@@ -744,7 +620,6 @@ const AdminDashboard = () => {
     }
   }, []);
 
-  // ===== TOGGLE WHATSAPP =====
   const toggleWhatsApp = async () => {
     setTogglingWhatsApp(true);
     try {
@@ -764,9 +639,10 @@ const AdminDashboard = () => {
     if (user && user.role !== 'super_admin') navigate('/dashboard');
   }, [user, navigate]);
 
-  useEffect(() => { 
+  useEffect(() => {
     fetchAllData();
     fetchWhatsAppStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchAllData = async (showToast = false) => {
@@ -795,9 +671,9 @@ const AdminDashboard = () => {
       if (paymentsR.data) setPayments(paymentsR.data);
       if (leadsR.data) setLeads(leadsR.data);
       if (expensesR.data) setExpenses(expensesR.data);
-      
+
       await fetchWhatsAppStatus();
-      
+
       if (showToast) toast.success('Data refreshed!');
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -808,23 +684,22 @@ const AdminDashboard = () => {
     }
   };
 
-  // ===== GYM DETAILS FUNCTIONS =====
+  // ─── Gym details ──────────────────────────────────────────────────────
   const fetchGymDetails = async (gymId, gymName) => {
     setLoadingGymDetails(true);
     setSelectedGymId(gymId);
     setViewingGymDetails(true);
     setGymMemberSearch('');
-    
+
     try {
       const response = await api.get(`/admin/gyms/${gymId}`);
       setSelectedGym(response.data);
-      
+
       const membersResponse = await api.get(`/admin/gyms/${gymId}/members?limit=1000`);
-      setSelectedGym(prev => ({
+      setSelectedGym((prev) => ({
         ...prev,
-        members: membersResponse.data || []
+        members: membersResponse.data || [],
       }));
-      
     } catch (error) {
       console.error('Error fetching gym details:', error);
       toast.error('Failed to load gym details');
@@ -842,16 +717,16 @@ const AdminDashboard = () => {
     setFilteredGymMembers([]);
   };
 
-  // Filter gym members when search changes
   useEffect(() => {
     if (selectedGym?.members) {
       const search = gymMemberSearch.toLowerCase();
       if (search) {
         setFilteredGymMembers(
-          selectedGym.members.filter(m =>
-            m.full_name?.toLowerCase().includes(search) ||
-            m.email?.toLowerCase().includes(search) ||
-            m.phone?.includes(search)
+          selectedGym.members.filter(
+            (m) =>
+              m.full_name?.toLowerCase().includes(search) ||
+              m.email?.toLowerCase().includes(search) ||
+              m.phone?.includes(search)
           )
         );
       } else {
@@ -889,38 +764,63 @@ const AdminDashboard = () => {
     }
   };
 
+  // ─── Filters ──────────────────────────────────────────────────────────
   const s = searchTerm.toLowerCase();
-  const filteredGyms = gyms.filter(g =>
-    (g.name?.toLowerCase().includes(s) || g.owner_name?.toLowerCase().includes(s) || g.email?.toLowerCase().includes(s)) &&
-    (filterStatus === 'all' || g.subscription_status === filterStatus)
+  const filteredGyms = gyms.filter(
+    (g) =>
+      (g.name?.toLowerCase().includes(s) ||
+        g.owner_name?.toLowerCase().includes(s) ||
+        g.email?.toLowerCase().includes(s)) &&
+      (filterStatus === 'all' ||
+        (g.saas_status || g.subscription_status) === filterStatus)
   );
-  const filteredUsers = users.filter(u =>
-    (u.full_name?.toLowerCase().includes(s) || u.email?.toLowerCase().includes(s) || u.username?.toLowerCase().includes(s)) &&
-    (filterRole === 'all' || u.role === filterRole)
+  const filteredUsers = users.filter(
+    (u) =>
+      (u.full_name?.toLowerCase().includes(s) ||
+        u.email?.toLowerCase().includes(s) ||
+        u.username?.toLowerCase().includes(s)) &&
+      (filterRole === 'all' || u.role === filterRole)
   );
-  const filteredMembers = members.filter(m =>
-    m.full_name?.toLowerCase().includes(s) || m.email?.toLowerCase().includes(s) || m.phone?.includes(searchTerm)
+  const filteredMembers = members.filter(
+    (m) =>
+      m.full_name?.toLowerCase().includes(s) ||
+      m.email?.toLowerCase().includes(s) ||
+      m.phone?.includes(searchTerm)
   );
-  const filteredStaff = staff.filter(st =>
-    st.user?.full_name?.toLowerCase().includes(s) || st.position?.toLowerCase().includes(s) || st.gym_name?.toLowerCase().includes(s)
+  const filteredStaff = staff.filter(
+    (st) =>
+      st.user?.full_name?.toLowerCase().includes(s) ||
+      st.position?.toLowerCase().includes(s) ||
+      st.gym_name?.toLowerCase().includes(s)
   );
-  const filteredPlans = plans.filter(p =>
-    p.name?.toLowerCase().includes(s) || p.gym_name?.toLowerCase().includes(s)
+  const filteredPlans = plans.filter(
+    (p) => p.name?.toLowerCase().includes(s) || p.gym_name?.toLowerCase().includes(s)
   );
-  const filteredMemberships = memberships.filter(m =>
-    m.member?.full_name?.toLowerCase().includes(s) || m.plan?.name?.toLowerCase().includes(s) || m.gym_name?.toLowerCase().includes(s)
+  const filteredMemberships = memberships.filter(
+    (m) =>
+      m.member?.full_name?.toLowerCase().includes(s) ||
+      m.plan?.name?.toLowerCase().includes(s) ||
+      m.gym_name?.toLowerCase().includes(s)
   );
-  const filteredPayments = payments.filter(p =>
-    p.member?.full_name?.toLowerCase().includes(s) || p.transaction_id?.toLowerCase().includes(s)
+  const filteredPayments = payments.filter(
+    (p) =>
+      p.member?.full_name?.toLowerCase().includes(s) ||
+      p.transaction_id?.toLowerCase().includes(s)
   );
-  const filteredLeads = leads.filter(l =>
-    l.full_name?.toLowerCase().includes(s) || l.phone?.includes(s) || l.email?.toLowerCase().includes(s)
+  const filteredLeads = leads.filter(
+    (l) =>
+      l.full_name?.toLowerCase().includes(s) ||
+      l.phone?.includes(s) ||
+      l.email?.toLowerCase().includes(s)
   );
-  const filteredExpenses = expenses.filter(e =>
-    e.title?.toLowerCase().includes(s) || e.vendor_name?.toLowerCase().includes(s) || e.gym_name?.toLowerCase().includes(s)
+  const filteredExpenses = expenses.filter(
+    (e) =>
+      e.title?.toLowerCase().includes(s) ||
+      e.vendor_name?.toLowerCase().includes(s) ||
+      e.gym_name?.toLowerCase().includes(s)
   );
 
-  // ===== UPDATED NAVIGATION WITH IRREGULAR MEMBERS =====
+  // ─── Navigation ───────────────────────────────────────────────────────
   const navigation = [
     { id: 'overview', name: 'Overview', icon: Home, count: null },
     { id: 'gyms', name: 'Gyms', icon: Building2, count: gyms.length },
@@ -954,14 +854,12 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex">
-      
-      {/* ==================== LEFT SIDEBAR ==================== */}
-      <aside 
+      {/* ── SIDEBAR ── */}
+      <aside
         className={`bg-gray-900 border-r border-gray-800 flex flex-col transition-all duration-300 ease-in-out ${
           sidebarCollapsed ? 'w-16' : 'w-56'
         } fixed h-full z-50`}
       >
-        {/* Logo / Brand */}
         <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} px-3 h-14 border-b border-gray-800 flex-shrink-0`}>
           {!sidebarCollapsed && (
             <div className="flex items-center gap-2">
@@ -980,15 +878,14 @@ const AdminDashboard = () => {
           </button>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
           {navigation.map((item) => (
             <button
               key={item.id}
-              onClick={() => { 
-                setSelectedTab(item.id); 
-                setSearchTerm(''); 
-                setFilterStatus('all'); 
+              onClick={() => {
+                setSelectedTab(item.id);
+                setSearchTerm('');
+                setFilterStatus('all');
                 setFilterRole('all');
                 if (item.id !== 'gyms') {
                   setViewingGymDetails(false);
@@ -1020,11 +917,10 @@ const AdminDashboard = () => {
           ))}
         </nav>
 
-        {/* User Menu at Bottom */}
         <div className="border-t border-gray-800 p-2 flex-shrink-0">
           <div className="relative">
-            <button 
-              onClick={() => setShowUserMenu(v => !v)}
+            <button
+              onClick={() => setShowUserMenu((v) => !v)}
               className={`w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-800 transition-colors ${
                 sidebarCollapsed ? 'justify-center' : ''
               }`}
@@ -1043,7 +939,7 @@ const AdminDashboard = () => {
                 </>
               )}
             </button>
-            
+
             {showUserMenu && (
               <div className={`absolute ${sidebarCollapsed ? 'left-full ml-2' : 'bottom-full mb-2 left-0'} w-52 bg-gray-800 border border-gray-700 rounded-xl shadow-xl py-2 z-50`}>
                 <div className="px-4 py-3 border-b border-gray-700">
@@ -1065,10 +961,8 @@ const AdminDashboard = () => {
         </div>
       </aside>
 
-      {/* ==================== MAIN CONTENT ==================== */}
+      {/* ── MAIN CONTENT ── */}
       <div className={`flex-1 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-56'}`}>
-        
-        {/* Top Navbar */}
         <nav className="bg-gray-900 border-b border-gray-800 sticky top-0 z-40">
           <div className="px-4 lg:px-8 h-14 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -1079,12 +973,11 @@ const AdminDashboard = () => {
                 {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
               </button>
               <h1 className="text-sm font-semibold text-white capitalize">
-                {viewingGymDetails ? `${selectedGym?.name || 'Gym'} - Details` : (selectedTab === 'overview' ? 'Dashboard Overview' : selectedTab)}
+                {viewingGymDetails ? `${selectedGym?.name || 'Gym'} - Details` : selectedTab === 'overview' ? 'Dashboard Overview' : selectedTab}
               </h1>
             </div>
 
             <div className="flex items-center gap-2">
-              {/* WhatsApp Toggle Button */}
               <button
                 onClick={toggleWhatsApp}
                 disabled={togglingWhatsApp}
@@ -1093,19 +986,12 @@ const AdminDashboard = () => {
                     ? 'bg-green-900/40 hover:bg-green-900/60 text-green-400 border border-green-700/50'
                     : 'bg-red-900/40 hover:bg-red-900/60 text-red-400 border border-red-700/50'
                 } ${togglingWhatsApp ? 'opacity-50 cursor-not-allowed' : ''}`}
-                title={whatsappEnabled ? 'WhatsApp is enabled - Click to disable' : 'WhatsApp is disabled - Click to enable'}
               >
-                {togglingWhatsApp ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <MessageSquare className="h-3.5 w-3.5" />
-                )}
-                <span className="hidden sm:block">
-                  WhatsApp {whatsappEnabled ? 'ON' : 'OFF'}
-                </span>
+                {togglingWhatsApp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquare className="h-3.5 w-3.5" />}
+                <span className="hidden sm:block">WhatsApp {whatsappEnabled ? 'ON' : 'OFF'}</span>
                 <span className={`h-2 w-2 rounded-full ${whatsappEnabled ? 'bg-green-400' : 'bg-red-400'} flex-shrink-0`} />
               </button>
-              
+
               <button
                 onClick={() => fetchAllData(true)}
                 disabled={refreshing}
@@ -1125,24 +1011,31 @@ const AdminDashboard = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
               <input
                 value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder={`Search ${selectedTab}…`}
                 className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500"
               />
             </div>
             {selectedTab === 'gyms' && (
-              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-                className="bg-gray-800 border border-gray-700 text-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="bg-gray-800 border border-gray-700 text-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
                 <option value="all">All Status</option>
                 <option value="active">Active</option>
-                <option value="suspended">Suspended</option>
-                <option value="trial">Trial</option>
-                <option value="inactive">Inactive</option>
+                <option value="pending">Pending</option>
+                <option value="halted">Halted</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="created">Created</option>
               </select>
             )}
             {selectedTab === 'users' && (
-              <select value={filterRole} onChange={e => setFilterRole(e.target.value)}
-                className="bg-gray-800 border border-gray-700 text-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+              <select
+                value={filterRole}
+                onChange={(e) => setFilterRole(e.target.value)}
+                className="bg-gray-800 border border-gray-700 text-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
                 <option value="all">All Roles</option>
                 <option value="gym_owner">Gym Owners</option>
                 <option value="gym_staff">Staff</option>
@@ -1151,14 +1044,11 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* Main Content */}
+        {/* Main content */}
         <main className="px-4 lg:px-8 py-6 space-y-6">
-
-          {/* ==================== TAB CONTENT ==================== */}
           {/* OVERVIEW */}
           {selectedTab === 'overview' && (
             <div className="space-y-6">
-              {/* ✅ Stat cards with reduced font size (text-2xl instead of text-3xl) */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
                 <StatCard icon={Building2} label="Total Gyms" value={stats.total_gyms || 0}
                   sub={`${stats.active_gyms || 0} active`} color="purple"
@@ -1173,16 +1063,16 @@ const AdminDashboard = () => {
                   sub={`${stats.active_staff || 0} active`} color="orange"
                   onClick={() => setSelectedTab('staff')} />
                 <StatCard icon={Award} label="Plans" value={plans.length}
-                  sub={`${plans.filter(p => p.is_active).length} active`} color="yellow"
+                  sub={`${plans.filter((p) => p.is_active).length} active`} color="yellow"
                   onClick={() => setSelectedTab('plans')} />
                 <StatCard icon={CreditCard} label="Memberships" value={memberships.length}
-                  sub={`${memberships.filter(m => m.status === 'active').length} active`} color="pink"
+                  sub={`${memberships.filter((m) => m.status === 'active').length} active`} color="pink"
                   onClick={() => setSelectedTab('memberships')} />
                 <StatCard icon={DollarSign} label="Payments" value={payments.length}
                   sub={`Total: ${formatCurrency(payments.reduce((acc, p) => acc + (p.amount || 0), 0))}`} color="green"
                   onClick={() => setSelectedTab('payments')} />
                 <StatCard icon={Target} label="Leads" value={leads.length}
-                  sub={`${leads.filter(l => l.status === 'new').length} new`} color="orange"
+                  sub={`${leads.filter((l) => l.status === 'new').length} new`} color="orange"
                   onClick={() => setSelectedTab('leads')} />
                 <StatCard icon={Wallet} label="Expenses" value={expenses.length}
                   sub={`Total: ${formatCurrency(expenses.reduce((acc, e) => acc + (e.amount || 0), 0))}`} color="red"
@@ -1195,7 +1085,6 @@ const AdminDashboard = () => {
                   sub="from all payments" color="green" />
               </div>
 
-              {/* Recent Gyms */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                   <div className="flex items-center justify-between mb-4">
@@ -1207,13 +1096,10 @@ const AdminDashboard = () => {
                     </button>
                   </div>
                   <div className="space-y-2">
-                    {(stats.recent_gyms || gyms).slice(0, 6).map(g => (
-                      <div 
-                        key={g.id} 
-                        onClick={() => {
-                          setSelectedTab('gyms');
-                          fetchGymDetails(g.id, g.name);
-                        }}
+                    {(stats.recent_gyms || gyms).slice(0, 6).map((g) => (
+                      <div
+                        key={g.id}
+                        onClick={() => { setSelectedTab('gyms'); fetchGymDetails(g.id, g.name); }}
                         className="flex items-center justify-between p-2.5 bg-gray-800/60 rounded-xl hover:bg-gray-800 transition-colors cursor-pointer"
                       >
                         <div className="flex items-center gap-2.5">
@@ -1225,15 +1111,14 @@ const AdminDashboard = () => {
                             <p className="text-xs text-gray-500">{g.owner_name}</p>
                           </div>
                         </div>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${statusBadge(g.subscription_status)}`}>
-                          {g.subscription_status}
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${statusBadge(g.saas_status || g.subscription_status)}`}>
+                          {g.saas_status || g.subscription_status}
                         </span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Recent Signups */}
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-semibold text-white flex items-center gap-2">
@@ -1244,7 +1129,7 @@ const AdminDashboard = () => {
                     </button>
                   </div>
                   <div className="space-y-2">
-                    {(stats.recent_signups || users).slice(0, 6).map(u => (
+                    {(stats.recent_signups || users).slice(0, 6).map((u) => (
                       <div key={u.id} className="flex items-center justify-between p-2.5 bg-gray-800/60 rounded-xl">
                         <div className="flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
@@ -1256,9 +1141,7 @@ const AdminDashboard = () => {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {u.last_login && (
-                            <span className="text-xs text-gray-500">{formatDate(u.last_login)}</span>
-                          )}
+                          {u.last_login && <span className="text-xs text-gray-500">{formatDate(u.last_login)}</span>}
                           <span className={`text-xs px-2 py-0.5 rounded-full ${u.is_verified ? 'bg-emerald-900/60 text-emerald-300' : 'bg-amber-900/60 text-amber-300'}`}>
                             {u.is_verified ? 'Verified' : 'Pending'}
                           </span>
@@ -1269,7 +1152,6 @@ const AdminDashboard = () => {
                 </div>
               </div>
 
-              {/* Payment Methods Stats */}
               {stats.payment_method_stats && stats.payment_method_stats.length > 0 && (
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                   <h3 className="font-semibold text-white flex items-center gap-2 mb-4">
@@ -1287,7 +1169,6 @@ const AdminDashboard = () => {
                 </div>
               )}
 
-              {/* Recent Logins */}
               {stats.recent_logins && stats.recent_logins.length > 0 && (
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                   <div className="flex items-center justify-between mb-4">
@@ -1296,7 +1177,7 @@ const AdminDashboard = () => {
                     </h3>
                   </div>
                   <div className="space-y-2">
-                    {stats.recent_logins.slice(0, 10).map(login => (
+                    {stats.recent_logins.slice(0, 10).map((login) => (
                       <div key={login.id} className="flex items-center justify-between p-2.5 bg-gray-800/60 rounded-xl">
                         <div className="flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-yellow-600 to-orange-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
@@ -1322,21 +1203,22 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* ==================== GYMS TABLE OR GYM DETAILS VIEW ==================== */}
+          {/* GYMS TABLE / DETAILS */}
           {selectedTab === 'gyms' && !viewingGymDetails && (
             <GymList
               gyms={filteredGyms}
               onGymClick={(id, name) => fetchGymDetails(id, name)}
               onEdit={(gym) => openEdit('gym', gym)}
               onDelete={(id, name) => openDelete('gym', id, name, `admin/gyms/${id}`)}
+              onManageSubscription={(gym) => setSubscriptionGym({ id: gym.id, name: gym.name })}
               onBulkDelete={(ids) => {
                 if (window.confirm(`Are you sure you want to delete ${ids.length} selected gyms?`)) {
-                  Promise.all(ids.map(id => api.delete(`/admin/gyms/${id}`)))
+                  Promise.all(ids.map((id) => api.delete(`/admin/gyms/${id}`)))
                     .then(() => {
                       toast.success(`${ids.length} gyms deleted successfully!`);
                       fetchAllData();
                     })
-                    .catch(err => {
+                    .catch((err) => {
                       console.error('Bulk delete error:', err);
                       toast.error('Failed to delete some gyms');
                     });
@@ -1345,7 +1227,6 @@ const AdminDashboard = () => {
             />
           )}
 
-          {/* ==================== GYM DETAILS VIEW ==================== */}
           {selectedTab === 'gyms' && viewingGymDetails && selectedGym && (
             <GymDetails
               gymId={selectedGymId}
@@ -1360,7 +1241,7 @@ const AdminDashboard = () => {
             />
           )}
 
-          {/* ==================== USERS TABLE ==================== */}
+          {/* USERS */}
           {selectedTab === 'users' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800">
@@ -1370,7 +1251,7 @@ const AdminDashboard = () => {
                 <table className="min-w-full">
                   <TableHeader cols={['ID', 'User', 'Username', 'Email', 'Phone', 'Role', 'Gym', 'Last Login', 'Verified', 'Active', 'Joined', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
-                    {filteredUsers.map(u => (
+                    {filteredUsers.map((u) => (
                       <tr key={u.id} className="hover:bg-gray-800/40 transition-colors">
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{u.id}</td>
                         <td className="px-4 py-3">
@@ -1405,9 +1286,7 @@ const AdminDashboard = () => {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {u.is_verified
-                            ? <CheckCircle className="h-4 w-4 text-emerald-400" />
-                            : <XCircle className="h-4 w-4 text-red-400" />}
+                          {u.is_verified ? <CheckCircle className="h-4 w-4 text-emerald-400" /> : <XCircle className="h-4 w-4 text-red-400" />}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-0.5 text-xs rounded-full ${u.is_active ? 'bg-emerald-900/60 text-emerald-300' : 'bg-red-900/60 text-red-300'}`}>
@@ -1416,10 +1295,7 @@ const AdminDashboard = () => {
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{formatDate(u.created_at)}</td>
                         <td className="px-4 py-3">
-                          <ActionBtns
-                            onEdit={() => openEdit('user', u)}
-                            onDelete={() => openDelete('user', u.id, u.full_name, `admin/users/${u.id}`)}
-                          />
+                          <ActionBtns onEdit={() => openEdit('user', u)} onDelete={() => openDelete('user', u.id, u.full_name, `admin/users/${u.id}`)} />
                         </td>
                       </tr>
                     ))}
@@ -1430,7 +1306,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* ==================== MEMBERS TABLE ==================== */}
+          {/* MEMBERS */}
           {selectedTab === 'members' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800">
@@ -1440,7 +1316,7 @@ const AdminDashboard = () => {
                 <table className="min-w-full">
                   <TableHeader cols={['ID', 'Member', 'Email', 'Phone', 'Gender', 'DOB', 'Gym', 'Current Plan', 'Total Paid', 'Status', 'Joined', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
-                    {filteredMembers.map(m => (
+                    {filteredMembers.map((m) => (
                       <tr key={m.id} className="hover:bg-gray-800/40 transition-colors">
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{m.id}</td>
                         <td className="px-4 py-3">
@@ -1465,10 +1341,7 @@ const AdminDashboard = () => {
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{formatDate(m.joined_date)}</td>
                         <td className="px-4 py-3">
-                          <ActionBtns
-                            onEdit={() => openEdit('member', m)}
-                            onDelete={() => openDelete('member', m.id, m.full_name, `admin/members/${m.id}`)}
-                          />
+                          <ActionBtns onEdit={() => openEdit('member', m)} onDelete={() => openDelete('member', m.id, m.full_name, `admin/members/${m.id}`)} />
                         </td>
                       </tr>
                     ))}
@@ -1479,7 +1352,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* ==================== STAFF TABLE ==================== */}
+          {/* STAFF */}
           {selectedTab === 'staff' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800">
@@ -1489,7 +1362,7 @@ const AdminDashboard = () => {
                 <table className="min-w-full">
                   <TableHeader cols={['ID', 'Staff', 'Position', 'Email', 'Phone', 'Gym', 'Last Login', 'Hire Date', 'Salary', 'Status', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
-                    {filteredStaff.map(s => (
+                    {filteredStaff.map((s) => (
                       <tr key={s.id} className="hover:bg-gray-800/40 transition-colors">
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{s.id}</td>
                         <td className="px-4 py-3">
@@ -1516,10 +1389,7 @@ const AdminDashboard = () => {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <ActionBtns
-                            onEdit={() => openEdit('staff', s)}
-                            onDelete={() => openDelete('staff', s.id, s.user?.full_name, `admin/staff/${s.id}`)}
-                          />
+                          <ActionBtns onEdit={() => openEdit('staff', s)} onDelete={() => openDelete('staff', s.id, s.user?.full_name, `admin/staff/${s.id}`)} />
                         </td>
                       </tr>
                     ))}
@@ -1530,7 +1400,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* ==================== PLANS TABLE ==================== */}
+          {/* PLANS */}
           {selectedTab === 'plans' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800">
@@ -1540,7 +1410,7 @@ const AdminDashboard = () => {
                 <table className="min-w-full">
                   <TableHeader cols={['ID', 'Plan Name', 'Gym', 'Type', 'Duration', 'Price', 'Disc. Price', 'Active Mbrs', 'Total Revenue', 'Status', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
-                    {filteredPlans.map(p => (
+                    {filteredPlans.map((p) => (
                       <tr key={p.id} className="hover:bg-gray-800/40 transition-colors">
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{p.id}</td>
                         <td className="px-4 py-3">
@@ -1569,10 +1439,7 @@ const AdminDashboard = () => {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <ActionBtns
-                            onEdit={() => openEdit('plan', p)}
-                            onDelete={() => openDelete('plan', p.id, p.name, `admin/plans/${p.id}`)}
-                          />
+                          <ActionBtns onEdit={() => openEdit('plan', p)} onDelete={() => openDelete('plan', p.id, p.name, `admin/plans/${p.id}`)} />
                         </td>
                       </tr>
                     ))}
@@ -1583,7 +1450,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* ==================== MEMBERSHIPS TABLE ==================== */}
+          {/* MEMBERSHIPS */}
           {selectedTab === 'memberships' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800">
@@ -1593,7 +1460,7 @@ const AdminDashboard = () => {
                 <table className="min-w-full">
                   <TableHeader cols={['ID', 'Member', 'Plan', 'Gym', 'Start', 'End', 'Days Left', 'Status', 'Payment', 'Amount Paid', 'Balance', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
-                    {filteredMemberships.map(ms => (
+                    {filteredMemberships.map((ms) => (
                       <tr key={ms.id} className="hover:bg-gray-800/40 transition-colors">
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{ms.id}</td>
                         <td className="px-4 py-3">
@@ -1637,7 +1504,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* ==================== PAYMENTS TABLE ==================== */}
+          {/* PAYMENTS */}
           {selectedTab === 'payments' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
@@ -1650,7 +1517,7 @@ const AdminDashboard = () => {
                 <table className="min-w-full">
                   <TableHeader cols={['ID', 'Txn ID', 'Member', 'Gym', 'Amount', 'Method', 'Date', 'Status', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
-                    {filteredPayments.map(p => (
+                    {filteredPayments.map((p) => (
                       <tr key={p.id} className="hover:bg-gray-800/40 transition-colors">
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{p.id}</td>
                         <td className="px-4 py-3 text-xs text-gray-400 font-mono">{p.transaction_id || '—'}</td>
@@ -1680,7 +1547,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* ==================== LEADS TABLE ==================== */}
+          {/* LEADS */}
           {selectedTab === 'leads' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800">
@@ -1690,7 +1557,7 @@ const AdminDashboard = () => {
                 <table className="min-w-full">
                   <TableHeader cols={['ID', 'Name', 'Phone', 'Email', 'Source', 'Status', 'Interest', 'Gym', 'Created', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
-                    {filteredLeads.map(l => (
+                    {filteredLeads.map((l) => (
                       <tr key={l.id} className="hover:bg-gray-800/40 transition-colors">
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{l.id}</td>
                         <td className="px-4 py-3">
@@ -1711,10 +1578,7 @@ const AdminDashboard = () => {
                         <td className="px-4 py-3 text-sm text-gray-400">{l.gym_name}</td>
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{formatDate(l.created_at)}</td>
                         <td className="px-4 py-3">
-                          <ActionBtns
-                            onEdit={() => openEdit('lead', l)}
-                            onDelete={() => openDelete('lead', l.id, l.full_name, `admin/leads/${l.id}`)}
-                          />
+                          <ActionBtns onEdit={() => openEdit('lead', l)} onDelete={() => openDelete('lead', l.id, l.full_name, `admin/leads/${l.id}`)} />
                         </td>
                       </tr>
                     ))}
@@ -1725,7 +1589,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* ==================== EXPENSES TABLE ==================== */}
+          {/* EXPENSES */}
           {selectedTab === 'expenses' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
@@ -1738,7 +1602,7 @@ const AdminDashboard = () => {
                 <table className="min-w-full">
                   <TableHeader cols={['ID', 'Title', 'Amount', 'Category', 'Vendor', 'Gym', 'Date', 'Created By', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
-                    {filteredExpenses.map(e => (
+                    {filteredExpenses.map((e) => (
                       <tr key={e.id} className="hover:bg-gray-800/40 transition-colors">
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">#{e.id}</td>
                         <td className="px-4 py-3">
@@ -1752,10 +1616,7 @@ const AdminDashboard = () => {
                         <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(e.expense_date)}</td>
                         <td className="px-4 py-3 text-sm text-gray-400">{e.created_by_name || '—'}</td>
                         <td className="px-4 py-3">
-                          <ActionBtns
-                            onEdit={() => openEdit('expense', e)}
-                            onDelete={() => openDelete('expense', e.id, e.title, `admin/expenses/${e.id}`)}
-                          />
+                          <ActionBtns onEdit={() => openEdit('expense', e)} onDelete={() => openDelete('expense', e.id, e.title, `admin/expenses/${e.id}`)} />
                         </td>
                       </tr>
                     ))}
@@ -1766,7 +1627,7 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* ==================== ATTENDANCE TABLE ==================== */}
+          {/* ATTENDANCE */}
           {selectedTab === 'attendance' && (
             <AttendanceList
               gymId={viewingGymDetails ? selectedGymId : null}
@@ -1776,12 +1637,10 @@ const AdminDashboard = () => {
             />
           )}
 
-          {/* ==================== IRREGULAR MEMBERS ==================== */}
-          {selectedTab === 'irregular-members' && (
-            <IrregularMembers />
-          )}
+          {/* IRREGULAR MEMBERS */}
+          {selectedTab === 'irregular-members' && <IrregularMembers />}
 
-          {/* ==================== WHATSAPP LOGS ==================== */}
+          {/* WHATSAPP LOGS */}
           {selectedTab === 'whatsapp' && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
               <div className="flex items-center justify-between mb-4">
@@ -1796,77 +1655,50 @@ const AdminDashboard = () => {
         </main>
       </div>
 
-      {/* Edit Modals */}
+      {/* ── EDIT MODALS ── */}
       {editModal?.type === 'gym' && (
-        <EditGymModal
-          gym={editModal.data}
-          onClose={closeEdit}
-          onSave={form => handleUpdate(`admin/gyms/${editModal.data.id}`, form)}
-        />
+        <EditGymModal gym={editModal.data} onClose={closeEdit} onSave={(form) => handleUpdate(`admin/gyms/${editModal.data.id}`, form)} />
       )}
       {editModal?.type === 'user' && (
-        <EditUserModal
-          user={editModal.data}
-          onClose={closeEdit}
-          onSave={form => handleUpdate(`admin/users/${editModal.data.id}`, form)}
-        />
+        <EditUserModal user={editModal.data} onClose={closeEdit} onSave={(form) => handleUpdate(`admin/users/${editModal.data.id}`, form)} />
       )}
       {editModal?.type === 'member' && (
-        <EditMemberModal
-          member={editModal.data}
-          onClose={closeEdit}
-          onSave={form => handleUpdate(`admin/members/${editModal.data.id}`, form)}
-        />
+        <EditMemberModal member={editModal.data} onClose={closeEdit} onSave={(form) => handleUpdate(`admin/members/${editModal.data.id}`, form)} />
       )}
       {editModal?.type === 'staff' && (
-        <EditStaffModal
-          staff={editModal.data}
-          onClose={closeEdit}
-          onSave={form => handleUpdate(`admin/staff/${editModal.data.id}`, form)}
-        />
+        <EditStaffModal staff={editModal.data} onClose={closeEdit} onSave={(form) => handleUpdate(`admin/staff/${editModal.data.id}`, form)} />
       )}
       {editModal?.type === 'plan' && (
-        <EditPlanModal
-          plan={editModal.data}
-          onClose={closeEdit}
-          onSave={form => handleUpdate(`admin/plans/${editModal.data.id}`, form)}
-        />
+        <EditPlanModal plan={editModal.data} onClose={closeEdit} onSave={(form) => handleUpdate(`admin/plans/${editModal.data.id}`, form)} />
       )}
       {editModal?.type === 'membership' && (
-        <EditMembershipModal
-          membership={editModal.data}
-          onClose={closeEdit}
-          onSave={form => handleUpdate(`admin/memberships/${editModal.data.id}`, form)}
-        />
+        <EditMembershipModal membership={editModal.data} onClose={closeEdit} onSave={(form) => handleUpdate(`admin/memberships/${editModal.data.id}`, form)} />
       )}
       {editModal?.type === 'payment' && (
-        <EditPaymentModal
-          payment={editModal.data}
-          onClose={closeEdit}
-          onSave={form => handleUpdate(`admin/payments/${editModal.data.id}`, form)}
-        />
+        <EditPaymentModal payment={editModal.data} onClose={closeEdit} onSave={(form) => handleUpdate(`admin/payments/${editModal.data.id}`, form)} />
       )}
       {editModal?.type === 'lead' && (
-        <EditLeadModal
-          lead={editModal.data}
-          onClose={closeEdit}
-          onSave={form => handleUpdate(`admin/leads/${editModal.data.id}`, form)}
-        />
+        <EditLeadModal lead={editModal.data} onClose={closeEdit} onSave={(form) => handleUpdate(`admin/leads/${editModal.data.id}`, form)} />
       )}
       {editModal?.type === 'expense' && (
-        <EditExpenseModal
-          expense={editModal.data}
-          onClose={closeEdit}
-          onSave={form => handleUpdate(`admin/expenses/${editModal.data.id}`, form)}
-        />
+        <EditExpenseModal expense={editModal.data} onClose={closeEdit} onSave={(form) => handleUpdate(`admin/expenses/${editModal.data.id}`, form)} />
       )}
 
-      {/* Delete Confirm */}
+      {/* ── DELETE CONFIRM ── */}
       {deleteTarget && (
-        <DeleteConfirmModal
-          target={deleteTarget}
-          onClose={closeDelete}
-          onConfirm={handleDelete}
+        <DeleteConfirmModal target={deleteTarget} onClose={closeDelete} onConfirm={handleDelete} />
+      )}
+
+      {/* ── SUBSCRIPTION MANAGER ── */}
+      {subscriptionGym && (
+        <SubscriptionManager
+          gymId={subscriptionGym.id}
+          gymName={subscriptionGym.name}
+          onClose={() => setSubscriptionGym(null)}
+          onChanged={() => {
+            // Refresh the gyms list so SaaS Plan/Status columns update
+            fetchAllData(false);
+          }}
         />
       )}
     </div>
