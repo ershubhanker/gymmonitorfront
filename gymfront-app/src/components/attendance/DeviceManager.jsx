@@ -48,7 +48,7 @@ const DeviceManager = () => {
     device_serial: '',
     location: '',
     connection_type: 'bridge',
-    server_port: 8080,
+    server_port: 8003,
   });
   const [formErrors, setFormErrors] = useState({});
   const [zkTesting, setZkTesting] = useState({});
@@ -534,7 +534,7 @@ const DeviceManager = () => {
       device_serial: '',
       location: '',
       connection_type: 'bridge',
-      server_port: 8080,
+      server_port: 8003,
     });
     setFormErrors({});
     setEditingDevice(null);
@@ -550,7 +550,7 @@ const DeviceManager = () => {
       device_serial: device.device_serial,
       location: device.location || '',
       connection_type: device.connection_type || 'bridge',
-      server_port: device.server_port || 8080,
+      server_port: device.server_port || 8003,
     });
     setConnectionType(device.connection_type || 'bridge');
     setShowModal(true);
@@ -690,7 +690,7 @@ const DeviceManager = () => {
                     {device.connection_type === 'server' && (
                       <div className="flex justify-between">
                         <span className="text-gray-500">Server Port:</span>
-                        <span className="text-gray-800 font-mono">{device.server_port || 8080}</span>
+                        <span className="text-gray-800 font-mono">{device.server_port || 8003}</span>
                       </div>
                     )}
                     
@@ -962,9 +962,9 @@ const DeviceManager = () => {
                   <input
                     type="number"
                     value={formData.server_port}
-                    onChange={(e) => setFormData({ ...formData, server_port: parseInt(e.target.value) || 8080 })}
+                    onChange={(e) => setFormData({ ...formData, server_port: parseInt(e.target.value) || 8003 })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="8080"
+                    placeholder="8003"
                   />
                   <p className="text-xs text-gray-400 mt-1">
                     Port on which the server will listen for device connections.
