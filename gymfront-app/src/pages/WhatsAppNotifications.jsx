@@ -42,6 +42,8 @@ const WhatsAppNotifications = () => {
   const [logs, setLogs] = useState([]);
   const [showLogs, setShowLogs] = useState(false);
   const [logLoading, setLogLoading] = useState(false);
+  const [logStatusFilter, setLogStatusFilter] = useState('all');
+  const [lastLogRefresh, setLastLogRefresh] = useState(null);
 
   // Fetch members
   const fetchMembers = useCallback(async () => {
@@ -90,6 +92,7 @@ const WhatsAppNotifications = () => {
       const response = await api.get('/whatsapp/notification-logs?limit=100');
       if (response.data) {
         setLogs(response.data.logs || []);
+        setLastLogRefresh(new Date());
       }
     } catch (error) {
       console.error('Error fetching logs:', error);
@@ -106,6 +109,17 @@ const WhatsAppNotifications = () => {
     if (showLogs) {
       fetchLogs();
     }
+  }, [showLogs, fetchLogs]);
+
+  // Auto-refresh logs while the panel is open, so delivery statuses that
+  // arrive later via the WhatsApp webhook (delivered/read/failed) show up
+  // on their own without the user needing to click Refresh.
+  useEffect(() => {
+    if (!showLogs) return;
+    const interval = setInterval(() => {
+      fetchLogs();
+    }, 8000);
+    return () => clearInterval(interval);
   }, [showLogs, fetchLogs]);
 
   // Handle select all
@@ -264,16 +278,43 @@ const WhatsAppNotifications = () => {
     }
   };
 
-  // Get log status color
+  // Get log status color. 'sent' only means WhatsApp accepted the message -
+  // 'delivered' and 'read' are the real confirmations, reported later by
+  // the WhatsApp webhook once the phone actually receives/opens it.
   const getLogStatusColor = (status) => {
     switch (status) {
+      case 'read': return 'bg-purple-100 text-purple-700';
+      case 'delivered': return 'bg-blue-100 text-blue-700';
       case 'sent': return 'bg-green-100 text-green-700';
-      case 'failed': return 'bg-red-100 text-red-700';
       case 'pending': return 'bg-yellow-100 text-yellow-700';
+      case 'failed': return 'bg-red-100 text-red-700';
       case 'disabled': return 'bg-gray-100 text-gray-700';
       default: return 'bg-gray-100 text-gray-700';
     }
   };
+
+  // Small icon per status so the table reads at a glance, similar to
+  // WhatsApp's own tick indicators.
+  const getLogStatusIcon = (status) => {
+    switch (status) {
+      case 'read': return <Eye className="h-3 w-3" />;
+      case 'delivered': return <CheckCircle className="h-3 w-3" />;
+      case 'sent': return <Send className="h-3 w-3" />;
+      case 'pending': return <Clock className="h-3 w-3" />;
+      case 'failed': return <AlertCircle className="h-3 w-3" />;
+      default: return <Info className="h-3 w-3" />;
+    }
+  };
+
+  const formatLogStatus = (status) => {
+    if (!status) return 'Unknown';
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  // Apply the status filter client-side over whatever's already loaded
+  const filteredLogs = logStatusFilter === 'all'
+    ? logs
+    : logs.filter((log) => log.status === logStatusFilter);
 
   return (
     <div className="space-y-6">
@@ -628,12 +669,36 @@ const WhatsAppNotifications = () => {
       {/* Logs Section */}
       {showLogs && (
         <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
             <div>
-              <h2 className="text-lg font-bold text-gray-800">Notification Logs</h2>
-              <p className="text-sm text-gray-500">Recent WhatsApp notification history</p>
+              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                Notification Logs
+                {showLogs && (
+                  <span className="flex items-center gap-1 text-xs font-normal text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                    Live
+                  </span>
+                )}
+              </h2>
+              <p className="text-sm text-gray-500">
+                Recent WhatsApp notification history
+                {lastLogRefresh && (
+                  <> · Updated {lastLogRefresh.toLocaleTimeString('en-IN')}</>
+                )}
+              </p>
             </div>
             <div className="flex items-center gap-2">
+              <select
+                value={logStatusFilter}
+                onChange={(e) => setLogStatusFilter(e.target.value)}
+                className="bg-gray-50 border-0 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Statuses</option>
+                <option value="sent">Sent</option>
+                <option value="delivered">Delivered</option>
+                <option value="read">Read</option>
+                <option value="failed">Failed</option>
+              </select>
               <button
                 onClick={fetchLogs}
                 className="text-blue-600 hover:text-blue-700 flex items-center gap-1 text-sm"
@@ -651,14 +716,14 @@ const WhatsAppNotifications = () => {
             </div>
           </div>
 
-          {logLoading ? (
+          {logLoading && logs.length === 0 ? (
             <div className="text-center py-8">
               <Loader className="h-8 w-8 animate-spin text-blue-500 mx-auto" />
             </div>
-          ) : logs.length === 0 ? (
+          ) : filteredLogs.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <MessageSquare className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-              <p>No notification logs found</p>
+              <p>{logs.length === 0 ? 'No notification logs found' : 'No logs match this status filter'}</p>
             </div>
           ) : (
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
@@ -673,14 +738,26 @@ const WhatsAppNotifications = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {logs.map((log) => (
+                  {filteredLogs.map((log) => (
                     <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 font-medium text-gray-900">{log.member_name || 'External'}</td>
                       <td className="px-4 py-3 text-gray-600">{log.phone_number}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getLogStatusColor(log.status)}`}>
-                          {log.status}
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getLogStatusColor(log.status)}`}
+                          title={log.status === 'failed' && log.error_message ? log.error_message : undefined}
+                        >
+                          {getLogStatusIcon(log.status)}
+                          {formatLogStatus(log.status)}
                         </span>
+                        {log.status === 'failed' && log.error_message && (
+                          <p
+                            className="text-xs text-red-500 mt-1 max-w-[220px] truncate"
+                            title={log.error_message}
+                          >
+                            {log.error_message}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-600 text-sm">
                         {new Date(log.sent_at).toLocaleString('en-IN')}

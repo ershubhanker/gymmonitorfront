@@ -26,6 +26,40 @@ import {
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
+// Status badge color - shared between the table and the detail modal.
+// 'sent' only means WhatsApp accepted the message; 'delivered' and 'read'
+// are the real confirmations, reported later by the WhatsApp status
+// webhook once the phone actually receives/opens it.
+const getStatusBadge = (status) => {
+  const styles = {
+    sent: 'bg-green-100 text-green-700 border-green-200',
+    failed: 'bg-red-100 text-red-700 border-red-200',
+    pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    delivered: 'bg-blue-100 text-blue-700 border-blue-200',
+    read: 'bg-purple-100 text-purple-700 border-purple-200'
+  };
+  return styles[status] || 'bg-gray-100 text-gray-700 border-gray-200';
+};
+
+// A distinct icon per status so sent/delivered/read/failed are easy to
+// tell apart at a glance, similar to WhatsApp's own tick indicators.
+const getStatusIcon = (status) => {
+  switch (status) {
+    case 'sent':
+      return <Send className="h-4 w-4" />;
+    case 'delivered':
+      return <CheckCircle className="h-4 w-4" />;
+    case 'read':
+      return <Eye className="h-4 w-4" />;
+    case 'failed':
+      return <XCircle className="h-4 w-4" />;
+    case 'pending':
+      return <Clock className="h-4 w-4" />;
+    default:
+      return <MessageSquare className="h-4 w-4" />;
+  }
+};
+
 // Message Detail Modal Component
 const MessageDetailModal = ({ log, isOpen, onClose }) => {
   if (!isOpen || !log) return null;
@@ -119,16 +153,26 @@ const MessageDetailModal = ({ log, isOpen, onClose }) => {
               <div className="flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-gray-400" />
                 <span className="text-sm text-gray-600">Status:</span>
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                  log.status === 'sent' ? 'bg-green-100 text-green-700' :
-                  log.status === 'failed' ? 'bg-red-100 text-red-700' :
-                  'bg-yellow-100 text-yellow-700'
-                }`}>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusBadge(log.status)}`}>
+                  {getStatusIcon(log.status)}
                   {log.status || 'Unknown'}
                 </span>
               </div>
             </div>
           </div>
+
+          {/* Failure Reason - only shown when the WhatsApp webhook reported
+              an actual delivery failure, e.g. invalid number, blocked, or
+              a rejected template */}
+          {log.status === 'failed' && log.error_message && (
+            <div className="bg-red-50 rounded-xl p-4 mb-6 border border-red-100">
+              <div className="flex items-center gap-2 mb-1">
+                <XCircle className="h-4 w-4 text-red-600" />
+                <span className="text-sm font-semibold text-red-600">Delivery Failed</span>
+              </div>
+              <p className="text-sm text-red-700">{log.error_message}</p>
+            </div>
+          )}
 
           {/* Message Content */}
           <div className="space-y-4">
@@ -208,6 +252,7 @@ const WhatsAppLogs = () => {
   const [exporting, setExporting] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(null);
   
   // Filter states
   const [filters, setFilters] = useState({
@@ -241,9 +286,11 @@ const WhatsAppLogs = () => {
     }
   }, []);
 
-  // Fetch WhatsApp logs with filters and pagination
-  const fetchLogs = useCallback(async (page = 1) => {
-    setLoading(true);
+  // Fetch WhatsApp logs with filters and pagination.
+  // `silent=true` is used by the background auto-refresh so it doesn't
+  // flash the full-page loading spinner every 10 seconds.
+  const fetchLogs = useCallback(async (page = 1, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const offset = (page - 1) * pagination.itemsPerPage;
       let url = `/whatsapp/logs?limit=${pagination.itemsPerPage}&offset=${offset}`;
@@ -260,7 +307,6 @@ const WhatsAppLogs = () => {
       
       const response = await api.get(url);
       if (response.data) {
-        console.log('📊 Logs response:', response.data);
         setLogs(response.data.logs || []);
         setPagination(prev => ({
           ...prev,
@@ -268,14 +314,15 @@ const WhatsAppLogs = () => {
           totalItems: response.data.total || 0,
           totalPages: Math.ceil((response.data.total || 0) / pagination.itemsPerPage)
         }));
+        setLastRefresh(new Date());
       }
     } catch (error) {
       if (error.response?.status !== 403) {
         console.error('Error fetching WhatsApp logs:', error);
-        toast.error('Failed to fetch logs');
+        if (!silent) toast.error('Failed to fetch logs');
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [filters, pagination.itemsPerPage]);
 
@@ -361,32 +408,16 @@ const WhatsAppLogs = () => {
     fetchLogs(1);
   }, []);
 
-  // Get status badge color
-  const getStatusBadge = (status) => {
-    const styles = {
-      sent: 'bg-green-100 text-green-700 border-green-200',
-      failed: 'bg-red-100 text-red-700 border-red-200',
-      pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-      delivered: 'bg-blue-100 text-blue-700 border-blue-200',
-      read: 'bg-purple-100 text-purple-700 border-purple-200'
-    };
-    return styles[status] || 'bg-gray-100 text-gray-700 border-gray-200';
-  };
-
-  // Get status icon
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'sent':
-      case 'delivered':
-        return <CheckCircle className="h-4 w-4" />;
-      case 'failed':
-        return <XCircle className="h-4 w-4" />;
-      case 'pending':
-        return <Clock className="h-4 w-4" />;
-      default:
-        return <MessageSquare className="h-4 w-4" />;
-    }
-  };
+  // Quietly re-fetch the current page (and stats) every 10s, so delivery
+  // statuses that arrive later via the WhatsApp webhook (delivered/read/
+  // failed) show up on their own without reapplying filters.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchLogs(pagination.currentPage, true);
+      fetchStats();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [fetchLogs, fetchStats, pagination.currentPage]);
 
   return (
     <>
@@ -398,8 +429,17 @@ const WhatsAppLogs = () => {
               <MessageSquare className="h-6 w-6 text-blue-600" />
               WhatsApp Message Logs
             </h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-gray-500 mt-1 flex items-center flex-wrap gap-2">
               View and manage all WhatsApp messages sent from your account
+              <span className="inline-flex items-center gap-1 text-xs font-normal text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                Live
+              </span>
+              {lastRefresh && (
+                <span className="text-xs text-gray-400">
+                  · Updated {lastRefresh.toLocaleTimeString('en-IN')}
+                </span>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -557,10 +597,21 @@ const WhatsAppLogs = () => {
                             {log.days_left ? `${log.days_left} days` : '—'}
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border ${getStatusBadge(log.status)}`}>
+                            <span
+                              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border ${getStatusBadge(log.status)}`}
+                              title={log.status === 'failed' && log.error_message ? log.error_message : undefined}
+                            >
                               {getStatusIcon(log.status)}
                               {log.status}
                             </span>
+                            {log.status === 'failed' && log.error_message && (
+                              <p
+                                className="text-xs text-red-500 mt-1 max-w-[200px] truncate"
+                                title={log.error_message}
+                              >
+                                {log.error_message}
+                              </p>
+                            )}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-500">
                             {new Date(log.sent_at).toLocaleString('en-IN', {
