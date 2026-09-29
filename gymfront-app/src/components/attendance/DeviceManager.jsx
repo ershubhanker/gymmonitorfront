@@ -1,11 +1,10 @@
-// src/components/attendance/DeviceManager.jsx - COMPLETE WITH ZK TESTING
+// src/components/attendance/DeviceManager.jsx
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Trash2, Wifi, WifiOff, Copy, RefreshCw, 
   Eye, EyeOff, Edit, Check, X, AlertCircle, Loader2,
-  DoorOpen, Lock, Unlock, Server, Laptop, HelpCircle,
-  Zap
+  DoorOpen, Lock, Unlock, Server, Laptop, HelpCircle
 } from 'lucide-react';
 import api, { API_BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
@@ -51,7 +50,6 @@ const DeviceManager = () => {
     server_port: 8003,
   });
   const [formErrors, setFormErrors] = useState({});
-  const [zkTesting, setZkTesting] = useState({});
 
   const fetchDevices = async () => {
     setLoading(true);
@@ -185,53 +183,6 @@ const DeviceManager = () => {
     
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
-  };
-
-  // ===== ZK CONNECTION TEST =====
-  const handleZKTest = async (device) => {
-    if (device.connection_type !== 'server') {
-      toast.info('This device is not in server mode. ZK test requires server mode.');
-      return;
-    }
-
-    setZkTesting(prev => ({ ...prev, [device.id]: true }));
-    const toastId = toast.loading(`Testing ZK connection to ${device.device_name}...`);
-    
-    try {
-      const response = await api.post(`/attendance/devices/${device.id}/test-zk`);
-      
-      toast.dismiss(toastId);
-      
-      if (response.data.success) {
-        toast.success(
-          <div className="p-2">
-            <p className="font-bold text-green-800 mb-1">✅ ZK Connection Successful!</p>
-            <p className="text-sm text-gray-600">Device: {response.data.device_name}</p>
-            <p className="text-xs text-gray-500">IP: {response.data.device_ip}:{response.data.device_port}</p>
-            <p className="text-xs text-gray-500">Users on device: {response.data.user_count}</p>
-            {response.data.device_time && (
-              <p className="text-xs text-gray-500">Device Time: {new Date(response.data.device_time).toLocaleString()}</p>
-            )}
-          </div>,
-          { duration: 8000 }
-        );
-      } else {
-        toast.error(
-          <div className="p-2">
-            <p className="font-bold text-red-800 mb-1">❌ ZK Connection Failed</p>
-            <p className="text-sm text-gray-600">{response.data.message}</p>
-            <p className="text-xs text-gray-500 mt-2">Make sure the device is powered on and reachable.</p>
-          </div>,
-          { duration: 8000 }
-        );
-      }
-    } catch (error) {
-      toast.dismiss(toastId);
-      console.error('ZK test error:', error);
-      toast.error(`ZK test failed: ${error.response?.data?.detail || error.message}`);
-    } finally {
-      setZkTesting(prev => ({ ...prev, [device.id]: false }));
-    }
   };
 
   const handleRegisterServerDevice = async (e) => {
@@ -571,7 +522,6 @@ const DeviceManager = () => {
     return { label: '🔗 Bridge', color: 'bg-purple-100 text-purple-700' };
   };
 
-  const isZkTesting = (deviceId) => zkTesting[deviceId] || false;
 
   return (
     <div className="p-6">
@@ -649,7 +599,6 @@ const DeviceManager = () => {
             const isStatusLoading = statusLoading[device.id] || false;
             const isUnlocking = unlockingDevice === device.id;
             const connType = getConnectionTypeLabel(device.connection_type);
-            const isZkTestRunning = isZkTesting(device.id);
             
             return (
               <div key={device.id} className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden hover:shadow-lg transition-all duration-300">
@@ -777,22 +726,6 @@ const DeviceManager = () => {
                       {isUnlocking ? 'Unlocking...' : 'Unlock Door'}
                     </button>
 
-                    {device.connection_type === 'server' && (
-                      <button
-                        onClick={() => handleZKTest(device)}
-                        disabled={isZkTestRunning}
-                        className={`flex-1 px-3 py-2 rounded-lg transition-colors text-sm ${
-                          isZkTestRunning ? 'opacity-50 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                        }`}
-                      >
-                        {isZkTestRunning ? (
-                          <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
-                        ) : (
-                          <Zap className="h-4 w-4 inline mr-1" />
-                        )}
-                        {isZkTestRunning ? 'Testing ZK...' : 'Test ZK'}
-                      </button>
-                    )}
                     
                     <button
                       onClick={() => openEditModal(device)}

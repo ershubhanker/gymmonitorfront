@@ -1,4 +1,4 @@
-// src/pages/Members.jsx - Complete updated with Plan Filter (FIXED)
+// src/pages/Members.jsx - Complete updated with Plan Filter + Membership Transfer (FIXED)
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
@@ -6,11 +6,12 @@ import {
   ChevronLeft, ChevronRight, X, CheckCircle, XCircle,
   Clock, FileText, RefreshCw, Wifi, Loader2, WifiOff,
   FileSpreadsheet, Link, AlertTriangle, Smartphone, User,
-  ArrowLeft, Dumbbell, Send, MoreVertical, Eye, Layers,
+  ArrowLeft, ArrowRight, Dumbbell, Send, MoreVertical, Eye, Layers,
   ChevronDown
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
+import MembershipTransferModal from '../components/MembershipTransferModal';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL, fetchMembersOptimized, fetchMemberStatsOptimized, resendInvoiceWhatsApp } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -163,10 +164,9 @@ const PlanFilter = ({
 };
 
 // ============================================================
-// DELETE CONFIRMATION MODAL COMPONENT (keep existing)
+// DELETE CONFIRMATION MODAL COMPONENT
 // ============================================================
 const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, member, loading }) => {
-  // ... keep existing implementation - same as before
   if (!isOpen || !member) return null;
 
   const hasDeviceSync = member.syncedToDevice || member.deviceUserId;
@@ -287,10 +287,9 @@ const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, member, loading }
 };
 
 // ============================================================
-// INVOICE ACTION MODAL COMPONENT (keep existing)
+// INVOICE ACTION MODAL COMPONENT
 // ============================================================
 const InvoiceActionModal = ({ isOpen, onClose, member, onAction }) => {
-  // ... keep existing implementation
   const [loading, setLoading] = useState(false);
   const [selectedAction, setSelectedAction] = useState('regenerate');
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -628,10 +627,9 @@ const InvoiceActionModal = ({ isOpen, onClose, member, onAction }) => {
 };
 
 // ============================================================
-// ACTION DROPDOWN COMPONENT (keep existing)
+// ACTION DROPDOWN COMPONENT (with Transfer added)
 // ============================================================
 const ActionDropdown = ({ member, onAction }) => {
-  // ... keep existing implementation
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -650,6 +648,7 @@ const ActionDropdown = ({ member, onAction }) => {
     { id: 'invoice', label: 'Download Invoice', icon: FileText, color: 'text-green-600' },
     { id: 'whatsapp', label: 'Resend Invoice', icon: Send, color: 'text-blue-500' },
     { id: 'invoice_action', label: 'Invoice Actions', icon: FileText, color: 'text-amber-600' },
+    { id: 'transfer', label: 'Transfer Membership', icon: ArrowRight, color: 'text-indigo-600' }, // ✅ NEW
     { id: 'sync', label: 'Sync to Device', icon: Wifi, color: 'text-purple-600' },
     { id: 'edit', label: 'Edit Member', icon: Edit, color: 'text-blue-600' },
     { id: 'delete', label: 'Delete Member', icon: Trash2, color: 'text-red-600' },
@@ -665,7 +664,7 @@ const ActionDropdown = ({ member, onAction }) => {
         <MoreVertical className="h-5 w-5 text-gray-500" />
       </button>
       {isOpen && (
-        <div className="absolute right-0 mt-1 w-52 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+        <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
           {actions.map((action) => (
             <button
               key={action.id}
@@ -745,6 +744,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
 
   const [showBulkLinkModal, setShowBulkLinkModal] = useState(false);
   const [linkingMembers, setLinkingMembers] = useState(false);
+
+  // ===== MEMBERSHIP TRANSFER STATE =====
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferMember, setTransferMember] = useState(null);
 
   const [exporting, setExporting] = useState(false);
   const itemsPerPage = 50;
@@ -950,7 +953,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   }, [getCache, setCache]);
 
   // ============================================================
-  // FETCH MEMBERS OPTIMIZED - DEFINED BEFORE fetchMembers
+  // FETCH MEMBERS OPTIMIZED
   // ============================================================
   const fetchMembersOptimizedFn = useCallback(async (force = false) => {
     if (showSingleMember) return;
@@ -1055,11 +1058,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   }, [debouncedSearchTerm, filters.status, filters.gender, currentPage, itemsPerPage, showSingleMember, fetchPTData, getCache, setCache]);
 
   // ============================================================
-  // FETCH MEMBERS BY PLAN - DEFINED BEFORE fetchMembers
+  // FETCH MEMBERS BY PLAN
   // ============================================================
   const fetchMembersByPlan = useCallback(async (planId) => {
     if (!planId) {
-      // If no plan selected, use regular fetch
       fetchMembers(true);
       return;
     }
@@ -1079,7 +1081,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       const response = await api.get(`/gym/members/by-plan?plan_id=${planId}`);
       const data = response.data;
       
-      // Update plan stats from the response
       if (data.plan_stats) {
         setPlanStats(data.plan_stats);
         const total = data.plan_stats.reduce((sum, p) => sum + (p.member_count || 0), 0);
@@ -1251,7 +1252,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly, itemsPerPage, showSingleMember, fetchPTData]);
 
   // ============================================================
-  // MAIN FETCH FUNCTION - DEFINED AFTER ALL DEPENDENCIES
+  // MAIN FETCH FUNCTION
   // ============================================================
   const fetchMembers = useCallback(async (force = false) => {
     if (showSingleMember && singleMemberData) {
@@ -1261,7 +1262,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       return;
     }
     
-    // If a plan is selected, use the plan-specific fetch
     if (selectedPlanId) {
       await fetchMembersByPlan(selectedPlanId);
       return;
@@ -1287,12 +1287,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     setCurrentPage(1);
     
     if (planId === null) {
-      // Clear plan filter, show all members
       clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
       clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
       fetchMembers(true);
     } else {
-      // Fetch members for selected plan
       clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
       fetchMembersByPlan(planId);
     }
@@ -1497,6 +1495,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       case 'invoice_action':
         setSelectedInvoiceMember(member);
         setShowInvoiceActionModal(true);
+        break;
+      case 'transfer':
+        // Open the profile modal — the transfer button lives inside it,
+        // and staff get full context before confirming.
+        openProfileModal(member);
         break;
       case 'sync':
         const memberForSync = {
@@ -2136,6 +2139,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       active: { color: 'bg-green-100 text-green-800', icon: CheckCircle },
       inactive: { color: 'bg-gray-100 text-gray-800', icon: XCircle },
       pending: { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
+      transferred: { color: 'bg-indigo-100 text-indigo-800', icon: ArrowRight },
     };
     const config = statusConfig[status] || statusConfig.pending;
     const Icon = config.icon;
@@ -2355,7 +2359,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   };
 
   // ============================================================
-  // RENDER - Keep the same as before with PlanFilter added
+  // RENDER
   // ============================================================
   return (
     <div className="p-4 sm:p-6">
@@ -2867,6 +2871,15 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                             title="Invoice Actions (Edit/Delete/Regenerate)"
                           >
                             <FileText className="h-4 w-4" />
+                          </button>
+
+                          {/* ✅ NEW: Transfer Membership shortcut */}
+                          <button
+                            onClick={() => openProfileModal(member)}
+                            className="hidden sm:inline-flex p-1.5 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition-colors"
+                            title="Transfer Membership"
+                          >
+                            <ArrowRight className="h-4 w-4" />
                           </button>
                           
                           <button 

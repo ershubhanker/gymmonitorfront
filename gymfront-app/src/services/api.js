@@ -359,6 +359,35 @@ export const resendInvoiceWhatsApp = async (memberId) => {
     throw error;
   }
 };
+
+
+// ==================== MEMBERSHIP TRANSFER ====================
+
+/**
+ * Preview a membership transfer — returns remaining days + prorated value.
+ */
+export const previewMembershipTransfer = async (memberId) => {
+  const response = await api.get(`/gym/members/${memberId}/transfer-preview`);
+  return response.data;
+};
+
+/**
+ * Transfer a membership to another member (existing or new).
+ */
+export const transferMembership = async (memberId, payload) => {
+  const response = await api.post(`/gym/members/${memberId}/transfer`, payload);
+  return response.data;
+};
+
+/**
+ * Get all transfer history for a member (as sender OR recipient).
+ */
+export const getMemberTransfers = async (memberId) => {
+  const response = await api.get(`/gym/members/${memberId}/transfers`);
+  return response.data;
+};
+
+
 // ============================================================
 // KEEP ALL YOUR EXISTING EXPORTS AS THEY WERE
 // ============================================================
@@ -368,3 +397,5 @@ export default api;
 
 // Also export the api instance for direct use if needed
 export { api };
+
+

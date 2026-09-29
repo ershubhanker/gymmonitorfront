@@ -1,4 +1,4 @@
-// src/components/MemberProfileModal.jsx - WITH FIXED DEVICE ACCESS LOGIC
+// src/components/MemberProfileModal.jsx - WITH MEMBERSHIP TRANSFER SUPPORT
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -9,10 +9,12 @@ import {
   Edit, RefreshCw, Loader2, Trash2, Save, XCircle,
   Dumbbell, Pencil, Maximize2, Hash, Snowflake,
   Heart, AlertTriangle, Filter, Plus, ChevronDown,
-  Percent, Camera, Wifi, Lock, Unlock
+  Percent, Camera, Wifi, Lock, Unlock,
+  ArrowRight, ArrowLeftRight
 } from 'lucide-react';
-import api, { API_BASE_URL } from '../services/api';
+import api, { API_BASE_URL, getMemberTransfers } from '../services/api';
 import toast from 'react-hot-toast';
+import MembershipTransferModal from './MembershipTransferModal';
 
 // ============================================================
 // HELPER: Properly format currency (ALL AMOUNTS IN RUPEES)
@@ -580,6 +582,11 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const [ptSessions, setPtSessions] = useState([]);
   const [loadingPt, setLoadingPt] = useState(false);
 
+  // ===== MEMBERSHIP TRANSFER STATE =====
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transfers, setTransfers] = useState([]);
+  const [loadingTransfers, setLoadingTransfers] = useState(false);
+
   // ===== EDIT STATE =====
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState({
@@ -792,14 +799,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       const response = await api.get(`/gym/members/${memberId}/personal-training`);
       const sessions = response.data || [];
       
-      // Update statuses on the backend if they've changed based on dates
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
       const updatePromises = [];
       
       for (const session of sessions) {
-        // Only check sessions that are not cancelled or completed
         if (session.status !== 'cancelled' && session.status !== 'completed') {
           const endDate = session.end_date ? new Date(session.end_date) : null;
           const startDate = session.start_date ? new Date(session.start_date) : null;
@@ -854,6 +859,21 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setFreezeHistory([]);
     } finally {
       setLoadingFreezes(false);
+    }
+  }, [memberId]);
+
+  // ===== TRANSFER HISTORY FETCH =====
+  const fetchTransfers = useCallback(async () => {
+    if (!memberId || memberId === 'undefined') return;
+    try {
+      setLoadingTransfers(true);
+      const data = await getMemberTransfers(memberId);
+      setTransfers(data || []);
+    } catch (error) {
+      console.error('Error fetching transfers:', error);
+      setTransfers([]);
+    } finally {
+      setLoadingTransfers(false);
     }
   }, [memberId]);
 
@@ -1328,19 +1348,15 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   // ===== AUTO-CALCULATE END DATE WHEN PLAN OR START DATE CHANGES =====
   useEffect(() => {
-    // Only calculate if we have a plan selected and a start date
     if (membershipEditData.plan_id && membershipEditData.start_date) {
       const selectedPlan = plans.find(p => p.id.toString() === membershipEditData.plan_id);
       if (selectedPlan && selectedPlan.duration_days) {
         const startDate = new Date(membershipEditData.start_date);
-        // Add duration_days to start date
         const endDate = new Date(startDate);
         endDate.setDate(endDate.getDate() + selectedPlan.duration_days);
         
-        // Format as YYYY-MM-DD
         const endDateStr = endDate.toISOString().split('T')[0];
         
-        // Only update if different from current end date
         if (endDateStr !== membershipEditData.end_date) {
           setMembershipEditData(prev => ({
             ...prev,
@@ -1415,7 +1431,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       }
       setIsEditingMembership(false);
       
-      // ✅ Refresh all data
       await Promise.all([
         fetchMemberDetails(),
         fetchMembershipHistory(),
@@ -1423,15 +1438,11 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         fetchPayments(),
       ]);
       
-      // ✅ CRITICAL: Refresh dashboard data if the parent component has a refresh function
       if (onUpdate) {
         onUpdate();
       }
       
-      // ✅ Force refresh the dashboard stats
       try {
-        // If the dashboard is open, it will refresh on next render
-        // We can also trigger a global event
         window.dispatchEvent(new CustomEvent('refreshDashboard'));
         console.log('📊 Dashboard refresh triggered');
       } catch (refreshError) {
@@ -1446,7 +1457,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setSavingMembership(false);
     }
   };
-
 
   const handleMembershipEditCancel = () => {
     setIsEditingMembership(false);
@@ -1574,6 +1584,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       inactive: { color: 'bg-gray-100 text-gray-500', icon: XCircle },
       expired: { color: 'bg-red-100 text-red-700', icon: AlertCircle },
       pending: { color: 'bg-yellow-100 text-yellow-700', icon: Clock },
+      transferred: { color: 'bg-indigo-100 text-indigo-700', icon: ArrowRight },
     };
     const config = statusConfig[status] || statusConfig.pending;
     const Icon = config.icon;
@@ -1652,20 +1663,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   };
 
   // ============================================================
-  // ✅ FIXED: Determine device access status with proper priority
-  //
-  // Rules (in priority order):
-  //   1. Not synced to device (no device_user_id)
-  //        → "No Access" (member hasn't been synced at all)
-  //   2. Synced but no active membership
-  //        → "Access Denied" (device has the member, but plan expired)
-  //   3. Synced with active membership but is_device_active === false
-  //        → "Access Denied" (admin manually blocked)
-  //   4. Synced + active membership + is_device_active !== false
-  //        → "Access Allowed"
+  // Determine device access status with proper priority
   // ============================================================
   const getDeviceAccessStatus = () => {
-    // 1. Not synced
     if (!member?.device_user_id) {
       return {
         label: 'No Access',
@@ -1676,7 +1676,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       };
     }
 
-    // 2. Check if member has an active membership right now
     const hasActiveMembership = !!member?.current_membership &&
       member.current_membership.status === 'active' &&
       (() => {
@@ -1690,7 +1689,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         return today <= endDate;
       })();
 
-    // 3. Synced but no active plan → Denied
     if (!hasActiveMembership) {
       return {
         label: 'Access Denied',
@@ -1701,7 +1699,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       };
     }
 
-    // 4. Synced with active plan, but manually blocked
     const isDeviceActive = member.is_device_active !== false;
     if (!isDeviceActive) {
       return {
@@ -1713,7 +1710,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       };
     }
 
-    // 5. All good
     return {
       label: 'Access Allowed',
       color: 'bg-green-100 text-green-700 border-green-200',
@@ -1727,11 +1723,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // EFFECTS
   // ============================================================
   useEffect(() => {
-    // Guard: don't fire any member-scoped API calls until we actually have
-    // a valid memberId. Without this, the modal can mount briefly with
-    // memberId=undefined (e.g. before the parent's state settles) and every
-    // request below resolves to a URL like /gym/members/undefined/... which
-    // the backend rejects with a 422 int_parsing error.
     const isValidMemberId =
       memberId !== null &&
       memberId !== undefined &&
@@ -1756,14 +1747,13 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         fetchPtSessions(),
         fetchPlans(),
         fetchFreezeHistory(),
-        fetchMemberAddons()
+        fetchMemberAddons(),
+        fetchTransfers(),
       ]);
     };
     fetchAll();
   }, [memberId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // If we never had a valid memberId, don't render a broken modal shell —
-  // close it and let the parent handle it (e.g. re-open once it has an id).
   useEffect(() => {
     const isValidMemberId =
       memberId !== null &&
@@ -1776,33 +1766,26 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       toast.error('No member selected');
       onClose();
     }
-    // Only run this check once per mount / memberId change, not on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memberId]);
+  }, [memberId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ===== CALCULATE CURRENT TOTAL PAID (Only current membership, addons, and PT) =====
   const calculateCurrentTotalPaid = useCallback(() => {
     let total = 0;
     
-    // 1. Current membership amount paid
     if (member?.current_membership?.amount_paid) {
       total += parseFloat(member.current_membership.amount_paid) || 0;
     }
     
-    // 2. Active add-ons amount paid
     if (memberAddons && memberAddons.length > 0) {
       memberAddons.forEach(addon => {
-        // Only include addons that are active or have payments
         if (addon.status !== 'cancelled' && addon.amount_paid) {
           total += parseFloat(addon.amount_paid) || 0;
         }
       });
     }
     
-    // 3. Active PT sessions amount paid
     if (ptSessions && ptSessions.length > 0) {
       ptSessions.forEach(session => {
-        // Only include active or upcoming sessions
         const status = getPtStatus(session);
         if (status.status !== 'cancelled' && status.status !== 'expired' && status.status !== 'completed') {
           if (session.amount_paid) {
@@ -1815,16 +1798,13 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     return total;
   }, [member, memberAddons, ptSessions]);
 
-  // ===== CALCULATE CURRENT PLAN AMOUNT =====
   const calculateCurrentPlanAmount = useCallback(() => {
     let total = 0;
     
-    // 1. Current membership plan price
     if (member?.current_membership?.plan?.price) {
       total += parseFloat(member.current_membership.plan.price) || 0;
     }
     
-    // 2. Active add-ons price
     if (memberAddons && memberAddons.length > 0) {
       memberAddons.forEach(addon => {
         if (addon.status !== 'cancelled' && addon.price) {
@@ -1833,7 +1813,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       });
     }
     
-    // 3. Active PT sessions total amount
     if (ptSessions && ptSessions.length > 0) {
       ptSessions.forEach(session => {
         const status = getPtStatus(session);
@@ -1848,11 +1827,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     return total;
   }, [member, memberAddons, ptSessions]);
 
-  // ===== CALCULATE CURRENT BALANCE DUE =====
   const calculateCurrentBalanceDue = useCallback(() => {
     let totalBalance = 0;
     
-    // 1. Current membership balance due
     if (member?.current_membership) {
       const membership = member.current_membership;
       const planPrice = membership.plan?.price || 0;
@@ -1863,7 +1840,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       totalBalance += balanceDue;
     }
     
-    // 2. Active add-ons balance due
     if (memberAddons && memberAddons.length > 0) {
       memberAddons.forEach(addon => {
         if (addon.status !== 'cancelled' && addon.balance_due) {
@@ -1872,7 +1848,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       });
     }
     
-    // 3. Active PT sessions balance due
     if (ptSessions && ptSessions.length > 0) {
       ptSessions.forEach(session => {
         const status = getPtStatus(session);
@@ -1903,7 +1878,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const currentMembership = member.current_membership;
   const paymentSummary = getPaymentSummary();
   
-  // ✅ FIXED: Calculate totals only from current items
   const totalPaid = calculateCurrentTotalPaid();
   const totalPlanAmount = calculateCurrentPlanAmount();
   const balanceDue = calculateCurrentBalanceDue();
@@ -1916,14 +1890,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   
   const memberStatus = getMemberStatus();
   
-  // ✅ FIXED: New device access status
   const accessStatus = getDeviceAccessStatus();
   const AccessStatusIcon = accessStatus.icon;
   const canToggleAccess = accessStatus.canToggle;
 
-  // Determine the toggle button label based on the new logic
-  // If synced + has active plan + currently allowed → block button
-  // Otherwise → allow button (only enabled if synced)
   const isCurrentlyAllowed =
     accessStatus.label === 'Access Allowed' ||
     (member.device_user_id && member.is_device_active !== false);
@@ -1959,7 +1929,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     Frozen
                   </span>
                 )}
-                {/* ✅ FIXED: Show the correct access status badge */}
                 {member?.device_user_id && (
                   <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${accessStatus.color} flex-shrink-0`}>
                     {AccessStatusIcon && <AccessStatusIcon className="h-2.5 w-2.5" />}
@@ -1989,6 +1958,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 fetchPtSessions();
                 fetchFreezeHistory();
                 fetchMemberAddons();
+                fetchTransfers();
               }}
               className="p-1.5 rounded-lg hover:bg-gray-100"
               title="Refresh"
@@ -2096,6 +2066,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
           <div className="flex flex-wrap justify-end gap-1.5">
             {currentMembership && !hasActiveFreeze && (
               <button
+                onClick={() => setShowTransferModal(true)}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-[10px] font-medium"
+                title="Transfer this membership to another person"
+              >
+                <ArrowRight className="h-3 w-3" />
+                Transfer
+              </button>
+            )}
+
+            {currentMembership && !hasActiveFreeze && (
+              <button
                 onClick={() => setShowFreezeModal(true)}
                 className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-[10px] font-medium"
               >
@@ -2104,7 +2085,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               </button>
             )}
 
-            {/* ✅ FIXED: Device access toggle button only shows when synced */}
             {member?.device_user_id && canToggleAccess && (
               <button
                 onClick={handleToggleDeviceAccess}
@@ -2618,7 +2598,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       onChange={handleMembershipEditChange}
                       className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                     />
-                    {/* ✅ Show auto-calc info */}
                     {membershipEditData.plan_id && membershipEditData.start_date && (
                       <p className="text-[10px] text-indigo-600 mt-0.5 flex items-center gap-0.5">
                         <Clock className="h-2.5 w-2.5" />
@@ -2628,7 +2607,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   </div>
                 </div>
 
-                {/* ✅ Show selected plan details with duration */}
                 {membershipEditData.plan_id && (
                   <div className="bg-white rounded-lg p-2 border border-indigo-200">
                     <p className="text-[10px] font-semibold text-gray-600 mb-1">Plan Details</p>
@@ -2774,6 +2752,87 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               </div>
             )}
           </div>
+
+          {/* Membership Transfer History */}
+          {(transfers.length > 0 || loadingTransfers) && (
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="font-semibold text-gray-900 text-xs mb-2 flex items-center gap-1.5">
+                <ArrowLeftRight className="h-4 w-4 text-indigo-600" />
+                Membership Transfers
+              </h3>
+              {loadingTransfers ? (
+                <div className="text-center py-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400 mx-auto" />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {transfers.map((t) => {
+                    const isSender = String(t.from_member_id) === String(member.id);
+                    return (
+                      <div
+                        key={t.id}
+                        className={`rounded-lg p-3 border ${
+                          isSender
+                            ? 'bg-orange-50 border-orange-200'
+                            : 'bg-green-50 border-green-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${
+                              isSender
+                                ? 'bg-orange-100 text-orange-700'
+                                : 'bg-green-100 text-green-700'
+                            }`}
+                          >
+                            {isSender ? (
+                              <>
+                                <ArrowRight className="h-2.5 w-2.5" />
+                                Sent to {t.to_member_name}
+                              </>
+                            ) : (
+                              <>
+                                <ArrowLeftRight className="h-2.5 w-2.5" />
+                                Received from {t.from_member_name}
+                              </>
+                            )}
+                          </span>
+                          <span className="text-[10px] text-gray-500">
+                            {formatDate(t.transfer_date)}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-1 text-[10px]">
+                          <div>
+                            <span className="text-gray-500">Plan:</span>
+                            <span className="ml-1 font-medium">{t.plan_name || '—'}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Days:</span>
+                            <span className="ml-1 font-medium">{t.remaining_days}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Value:</span>
+                            <span className="ml-1 font-medium text-green-600">
+                              {formatCurrency(t.prorated_value)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">End:</span>
+                            <span className="ml-1 font-medium">{formatDate(t.original_end_date)}</span>
+                          </div>
+                        </div>
+                        {t.reason && (
+                          <p className="text-[10px] text-gray-500 mt-1">
+                            Reason: {t.reason}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Member Information Grid - Smaller text */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3567,6 +3626,28 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             Close
           </button>
         </div>
+
+        {/* Membership Transfer Modal */}
+        <MembershipTransferModal
+          isOpen={showTransferModal}
+          onClose={() => setShowTransferModal(false)}
+          member={{
+            id: member.id,
+            fullName: member.full_name,
+            full_name: member.full_name,
+            phone: member.phone,
+            email: member.email,
+            membership: currentMembership?.plan?.name,
+          }}
+          onTransferComplete={() => {
+            // Refresh everything since BOTH members changed
+            fetchMemberDetails();
+            fetchMembershipHistory();
+            fetchTransfers();
+            fetchBalanceDetails();
+            if (onUpdate) onUpdate();
+          }}
+        />
 
         {/* Addon Payment Modal - Smaller */}
         {showAddonPaymentModal && selectedAddonForPayment && (
