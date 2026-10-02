@@ -2053,7 +2053,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       const csvRows = [
         [
           'Member ID', 'Name', 'Email', 'Phone', 'Gender',
-          'Membership Plan', 'Status', 'Join Date', 'Payments Count',
+          'Membership Plan', 'Status', 'Join Date', 'Membership Expiry Date', 'Payments Count',
           'Plan Amount (₹)', 'Amount Paid (₹)', 'Pending Balance (₹)',
           'Payment Status', 'Next Payment Date', 'Last Payment Date',
           'Device User ID', 'Synced to Device', 'Personal Training',
@@ -2072,6 +2072,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         const membership = member.membership || member.current_membership?.plan?.name || 'No Plan';
         const status = member.status || member.is_active ? 'active' : 'inactive';
         const joinDate = member.join_date || member.joined_date || '';
+        const membershipExpiryDate = member.current_membership?.end_date || member.membership_end_date || '';
         const payments = member.payments || member.payment_count || 0;
         const deviceUserId = member.device_user_id || member.deviceUserId || '';
         const syncedToDevice = member.synced_to_device || member.syncedToDevice || false;
@@ -2085,6 +2086,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           membership,
           status,
           joinDate,
+          membershipExpiryDate,
           payments,
           balance ? balance.total_amount : '0',
           balance ? balance.amount_paid : '0',
