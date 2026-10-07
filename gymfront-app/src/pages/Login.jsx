@@ -1,14 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Dumbbell, Mail, Lock, Loader2, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { hasPendingCheckout, getPendingCheckout } from '../utils/pendingCheckout';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '' });
+
+  // If the user is already logged in and lands on /login with a pending
+  // checkout, we should send them straight back to /pricing so the
+  // PricingPage's auto-resume effect can kick in and open Razorpay.
+  // (Covers the case where the auth round-trip already completed —
+  // e.g. user refreshed the login page after signing in elsewhere.)
+  useEffect(() => {
+    if (user && hasPendingCheckout()) {
+      navigate('/pricing', { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -18,7 +30,15 @@ const Login = () => {
       const result = await login(formData.email, formData.password);
 
       if (result?.success) {
-        navigate(result.redirect || '/dashboard');
+        // Priority order:
+        // 1. Pending checkout (user came here from /pricing) → /pricing
+        // 2. Role-based redirect the auth context already computed
+        // 3. Fallback to /dashboard
+        if (hasPendingCheckout()) {
+          navigate('/pricing', { replace: true });
+        } else {
+          navigate(result.redirect || '/dashboard', { replace: true });
+        }
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -64,6 +84,13 @@ const Login = () => {
             </div>
             <h2 className="mt-6 text-3xl font-extrabold text-gray-900">Welcome back!</h2>
           </div>
+
+          {/* Hint banner if user came here intending to subscribe */}
+          {hasPendingCheckout() && (
+            <div className="rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-sm px-4 py-3">
+              Sign in to continue to your subscription checkout.
+            </div>
+          )}
 
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="space-y-4">

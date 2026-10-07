@@ -173,12 +173,20 @@ const DeviceManager = () => {
   const validateForm = () => {
     const errors = {};
     if (!formData.device_name.trim()) errors.device_name = 'Device name is required';
-    if (!formData.device_ip.trim()) errors.device_ip = 'Device IP is required';
     if (!formData.device_serial.trim()) errors.device_serial = 'Device serial is required';
     
-    const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
-    if (formData.device_ip && !ipPattern.test(formData.device_ip)) {
-      errors.device_ip = 'Invalid IP address format';
+    const effectiveConnType = editingDevice ? (editingDevice.connection_type || 'bridge') : connectionType;
+    if (effectiveConnType === 'bridge') {
+      if (!formData.device_ip.trim()) errors.device_ip = 'Device IP is required for Bridge mode';
+      const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+      if (formData.device_ip && !ipPattern.test(formData.device_ip)) {
+        errors.device_ip = 'Invalid IP address format';
+      }
+    } else if (formData.device_ip && formData.device_ip.trim()) {
+      const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+      if (!ipPattern.test(formData.device_ip.trim())) {
+        errors.device_ip = 'Invalid IP address format';
+      }
     }
     
     setFormErrors(errors);
@@ -769,6 +777,48 @@ const DeviceManager = () => {
             </div>
             
             <form onSubmit={editingDevice ? handleUpdate : handleRegister} className="p-6 space-y-4">
+              {!editingDevice && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Connection Mode <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConnectionType('server');
+                        setFormData(prev => ({ ...prev, connection_type: 'server' }));
+                      }}
+                      className={`p-3 rounded-lg border-2 text-center transition-all ${
+                        connectionType === 'server'
+                          ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+                          : 'border-gray-200 hover:border-blue-300 text-gray-600'
+                      }`}
+                    >
+                      <Server className="h-5 w-5 mx-auto mb-1 text-blue-600" />
+                      <span className="text-xs">🌐 Cloud Server (ADMS)</span>
+                      <p className="text-[10px] text-gray-500 mt-0.5">Direct device-to-VPS (No PC)</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConnectionType('bridge');
+                        setFormData(prev => ({ ...prev, connection_type: 'bridge' }));
+                      }}
+                      className={`p-3 rounded-lg border-2 text-center transition-all ${
+                        connectionType === 'bridge'
+                          ? 'border-purple-500 bg-purple-50 text-purple-700 font-semibold'
+                          : 'border-gray-200 hover:border-purple-300 text-gray-600'
+                      }`}
+                    >
+                      <Laptop className="h-5 w-5 mx-auto mb-1 text-purple-600" />
+                      <span className="text-xs">🔗 Local PC Bridge</span>
+                      <p className="text-[10px] text-gray-500 mt-0.5">Requires gym Windows PC</p>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Device Name <span className="text-red-500">*</span>
@@ -781,7 +831,7 @@ const DeviceManager = () => {
                   className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                     formErrors.device_name ? 'border-red-500' : 'border-gray-300'
                   }`}
-                  placeholder="Main Entrance"
+                  placeholder="e.g. Main Entrance Biometric"
                 />
                 {formErrors.device_name && (
                   <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
@@ -790,53 +840,24 @@ const DeviceManager = () => {
                   </p>
                 )}
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Device IP <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.device_ip}
-                  onChange={(e) => setFormData({ ...formData, device_ip: e.target.value })}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    formErrors.device_ip ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="192.168.1.201"
-                />
-                {formErrors.device_ip && (
-                  <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" />
-                    {formErrors.device_ip}
-                  </p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
-                <input
-                  type="number"
-                  value={formData.device_port}
-                  onChange={(e) => setFormData({ ...formData, device_port: parseInt(e.target.value) || 4370 })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Device Serial <span className="text-red-500">*</span>
+                  Device Serial Number <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={formData.device_serial}
                   onChange={(e) => setFormData({ ...formData, device_serial: e.target.value })}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm ${
                     formErrors.device_serial ? 'border-red-500' : 'border-gray-300'
                   }`}
-                  placeholder="K30-PRO-001"
+                  placeholder="e.g. RAG8262600327"
                 />
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  Exact Serial Number from the device sticker or Menu ➔ System Info.
+                </p>
                 {formErrors.device_serial && (
                   <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
                     <AlertCircle className="h-3 w-3" />
@@ -845,52 +866,75 @@ const DeviceManager = () => {
                 )}
               </div>
 
-              {!editingDevice && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Connection Type <span className="text-red-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setConnectionType('bridge');
-                        setFormData(prev => ({ ...prev, connection_type: 'bridge' }));
-                      }}
-                      className={`p-3 rounded-lg border-2 text-center transition-all ${
-                        connectionType === 'bridge'
-                          ? 'border-purple-500 bg-purple-50 text-purple-700'
-                          : 'border-gray-200 hover:border-purple-300 text-gray-600'
+              {/* Show Device IP & Port ONLY for Bridge mode (or when editing a bridge device) */}
+              {((!editingDevice && connectionType === 'bridge') || (editingDevice && editingDevice.connection_type !== 'server')) && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Device Local LAN IP <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.device_ip}
+                      onChange={(e) => setFormData({ ...formData, device_ip: e.target.value })}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                        formErrors.device_ip ? 'border-red-500' : 'border-gray-300'
                       }`}
-                    >
-                      <Laptop className="h-5 w-5 mx-auto mb-1" />
-                      <span className="text-xs font-medium">🔗 Bridge</span>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Local PC required</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setConnectionType('server');
-                        setFormData(prev => ({ ...prev, connection_type: 'server' }));
-                      }}
-                      className={`p-3 rounded-lg border-2 text-center transition-all ${
-                        connectionType === 'server'
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 hover:border-blue-300 text-gray-600'
-                      }`}
-                    >
-                      <Server className="h-5 w-5 mx-auto mb-1" />
-                      <span className="text-xs font-medium">🌐 Server</span>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Direct connection</p>
-                    </button>
+                      placeholder="192.168.1.201"
+                    />
+                    {formErrors.device_ip && (
+                      <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {formErrors.device_ip}
+                      </p>
+                    )}
                   </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Device Port</label>
+                    <input
+                      type="number"
+                      value={formData.device_port}
+                      onChange={(e) => setFormData({ ...formData, device_port: parseInt(e.target.value) || 4370 })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Server Mode Configuration & Info Box */}
+              {!editingDevice && connectionType === 'server' && (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <Server className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs">
+                      <p className="text-blue-900 font-semibold">Enter these on your Biometric Machine:</p>
+                      <p className="text-blue-700 text-[11px] mt-0.5">
+                        On device keypad: <strong>Menu ➔ Comm. ➔ Cloud Server (ADMS)</strong>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="bg-white/80 rounded p-2 text-xs font-mono space-y-1 border border-blue-100">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Server Host/IP:</span>
+                      <strong className="text-blue-900">{getBackendHost()}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Server Port:</span>
+                      <strong className="text-blue-900">{formData.server_port || 8003}</strong>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-500">
+                    💡 Device IP is NOT needed. The machine will connect automatically over gym Wi-Fi/Ethernet.
+                  </p>
                 </div>
               )}
 
               {connectionType === 'server' && !editingDevice && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Server Port
+                    Server Port (Backend ADMS Port)
                   </label>
                   <input
                     type="number"
@@ -899,8 +943,8 @@ const DeviceManager = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="8003"
                   />
-                  <p className="text-xs text-gray-400 mt-1">
-                    Port on which the server will listen for device connections.
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Default is 8003 (or 80/443 if proxied via Nginx).
                   </p>
                 </div>
               )}
@@ -912,39 +956,18 @@ const DeviceManager = () => {
                   value={formData.location}
                   onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Front Door, Back Entrance, etc."
+                  placeholder="Front Door, Floor 1, etc."
                 />
               </div>
               
               {!editingDevice && connectionType === 'bridge' && (
-                <div className="bg-blue-50 rounded-lg p-3">
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
                   <div className="flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
+                    <AlertCircle className="h-4 w-4 text-purple-600 mt-0.5" />
                     <div>
-                      <p className="text-xs text-blue-800 font-medium">Bridge Mode</p>
-                      <p className="text-xs text-blue-700">
-                        After registration, a unique API key will be generated. 
-                        Save this key - you'll need it to configure the bridge application.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {!editingDevice && connectionType === 'server' && (
-                <div className="bg-blue-50 rounded-lg p-3">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
-                    <div>
-                      <p className="text-xs text-blue-800 font-medium">Server Mode</p>
-                      <p className="text-xs text-blue-700">
-                        Configure your device to point to:
-                      </p>
-                      <code className="text-xs bg-white p-1 rounded block mt-1 font-mono">
-                        {getBackendHost()}:{formData.server_port}
-                      </code>
-                      <p className="text-xs text-blue-700 mt-1">
-                        No local installation required. The server will handle all communication.
+                      <p className="text-xs text-purple-800 font-medium">Bridge Mode</p>
+                      <p className="text-xs text-purple-700">
+                        An API key will be generated for your local Windows bridge application.
                       </p>
                     </div>
                   </div>

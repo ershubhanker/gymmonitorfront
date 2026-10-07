@@ -111,7 +111,7 @@ api.interceptors.response.use(
         method: originalRequest?.method,
         detail: error.response?.data?.detail || 'Permission denied'
       });
-      
+
       // Don't show toast - permissions are handled gracefully in UI
       // Just return the error so components can handle it silently
       return Promise.reject(error);
@@ -175,7 +175,7 @@ api.interceptors.response.use(
  */
 export const fetchMembersOptimized = async (params = {}) => {
   const { search = '', status = 'all', page = 1, limit = 50 } = params;
-  
+
   const queryParams = new URLSearchParams({
     skip: (page - 1) * limit,
     limit: Math.min(limit, 100),
@@ -196,7 +196,7 @@ export const fetchMemberStatsOptimized = async () => {
   try {
     const response = await api.get('/gym/dashboard/stats/optimized');
     console.log('📊 Optimized stats response:', response.data);
-    
+
     // Return the data with proper field mapping
     return {
       total_members: response.data.total_members || 0,
@@ -241,20 +241,20 @@ export const fetchBalanceOverviewOptimized = async () => {
 export const generateInvoicePDF = async (memberId) => {
   try {
     console.log('Generating invoice for member:', memberId);
-    
+
     const response = await api.post(`/gym/members/${memberId}/invoice`, {}, {
       responseType: 'blob',
       timeout: 30000
     });
-    
+
     if (!response.data || response.data.size === 0) {
       throw new Error('Received empty response from server');
     }
-    
+
     // Validate PDF BEFORE creating download link
     const blob = new Blob([response.data], { type: 'application/pdf' });
     const blobText = await blob.slice(0, 4).text();
-    
+
     if (blobText !== '%PDF') {
       console.error('Not a valid PDF. First 4 bytes:', blobText);
       // Try to parse as JSON error
@@ -266,24 +266,24 @@ export const generateInvoicePDF = async (memberId) => {
         throw new Error('Server returned invalid PDF format');
       }
     }
-    
+
     // Only create download link if PDF is valid
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = getFilename(response, memberId);
-    
+
     document.body.appendChild(link);
     link.click();
-    
+
     setTimeout(() => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     }, 100);
-    
+
     toast.success('Invoice downloaded successfully');
     return { success: true, filename: link.download };
-    
+
   } catch (error) {
     console.error('Error generating invoice:', error);
     handleInvoiceError(error);
@@ -295,24 +295,24 @@ export const generateInvoicePDF = async (memberId) => {
 export const generateBulkInvoices = async (memberIds) => {
   try {
     console.log('Generating bulk invoices for members:', memberIds);
-    
+
     const response = await api.post('/gym/members/invoices/bulk', memberIds, {
       responseType: 'blob',
       timeout: 60000 // 60 second timeout for bulk
     });
-    
+
     let filename = `invoices_${new Date().toISOString().split('T')[0]}.zip`;
     const contentDisposition = response.headers['content-disposition'];
-    
+
     if (contentDisposition) {
       const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
       if (filenameMatch && filenameMatch[1]) {
         filename = filenameMatch[1].replace(/['"]/g, '');
       }
     }
-    
+
     const blob = new Blob([response.data], { type: 'application/zip' });
-    
+
     // Validate it's a zip file (starts with PK)
     const blobText = await blob.slice(0, 2).text();
     if (blobText !== 'PK') {
@@ -325,23 +325,23 @@ export const generateBulkInvoices = async (memberIds) => {
         throw new Error('Server returned invalid ZIP format');
       }
     }
-    
+
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
-    
+
     document.body.appendChild(link);
     link.click();
-    
+
     setTimeout(() => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     }, 100);
-    
+
     toast.success('Bulk invoices downloaded successfully');
     return { success: true, filename };
-    
+
   } catch (error) {
     console.error('Error generating bulk invoices:', error);
     toast.error(error.message || 'Failed to generate bulk invoices');

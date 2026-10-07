@@ -1,7 +1,13 @@
-import { useState } from 'react';
+// src/pages/PricingPage.jsx
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRazorpayCheckout } from '../hooks/useRazorpayCheckout';
+import {
+  rememberPendingCheckout,
+  getPendingCheckout,
+  clearPendingCheckout,
+} from '../utils/pendingCheckout';
 import {
   Dumbbell,
   Check,
@@ -58,7 +64,10 @@ export default function PricingPage() {
     useRazorpayCheckout();
   const [billingCycle, setBillingCycle] = useState('yearly');
 
-  // Signed-in gym owners subscribe right here; everyone else signs up first.
+  // Track if we've already auto-resumed checkout this session so we
+  // don't open Razorpay twice on rapid re-renders.
+  const autoResumeRef = useRef(false);
+
   const isLoggedIn = Boolean(user);
   const canSubscribe = user?.role === 'gym_owner' || user?.role === 'super_admin';
 
@@ -72,13 +81,52 @@ export default function PricingPage() {
     ? Math.round((basePrice / 12) * 100) / 100
     : basePrice;
 
-  // Logged-out visitors -> signup. Logged-in gym owners -> Razorpay checkout.
+  // ────────────────────────────────────────────────────────────
+  // Auto-resume checkout after login/signup round-trip
+  // ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isLoggedIn || !canSubscribe) return;
+    if (autoResumeRef.current) return;
+
+    const pending = getPendingCheckout();
+    if (!pending) return;
+
+    autoResumeRef.current = true;
+
+    // Restore the cycle they picked before redirecting
+    if (pending.billingCycle === 'monthly' || pending.billingCycle === 'yearly') {
+      setBillingCycle(pending.billingCycle);
+    }
+
+    // Give the page a moment to render + settle, then fire checkout.
+    // (Small delay also avoids racing with AuthContext hydration.)
+    const timer = setTimeout(() => {
+      clearPendingCheckout();
+      startCheckout(pending.billingCycle || 'yearly');
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [isLoggedIn, canSubscribe, startCheckout]);
+
+  // ────────────────────────────────────────────────────────────
+  // CTA click handler
+  // ────────────────────────────────────────────────────────────
   const handleCtaClick = () => {
+    // Case 1 — not logged in: remember intent, then send to signup.
+    // (User can switch to login from the signup page.)
     if (!isLoggedIn) {
-      navigate('/signup');
+      rememberPendingCheckout(billingCycle);
+      navigate('/signup', { state: { from: 'pricing' } });
       return;
     }
-    if (!canSubscribe || checkoutLoading) return;
+
+    // Case 2 — logged in but not a gym owner
+    if (!canSubscribe) {
+      return;
+    }
+
+    // Case 3 — logged in as gym owner: straight to checkout
+    if (checkoutLoading) return;
     startCheckout(billingCycle);
   };
 
@@ -313,7 +361,15 @@ export default function PricingPage() {
             Start your free trial today. No credit card required.
           </p>
           <button
-            onClick={() => navigate('/signup')}
+            onClick={() => {
+              // Same intent-preserving flow as the main CTA
+              if (!isLoggedIn) {
+                rememberPendingCheckout(billingCycle);
+                navigate('/signup', { state: { from: 'pricing' } });
+              } else if (canSubscribe) {
+                startCheckout(billingCycle);
+              }
+            }}
             className="bg-white text-blue-700 font-bold px-8 py-4 rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all text-base"
           >
             Get Started Free

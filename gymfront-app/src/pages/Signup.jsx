@@ -1,29 +1,52 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { Mail, Lock, User, UserCircle, LogIn, ArrowLeft, Dumbbell } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import InputField from '../components/InputField';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { hasPendingCheckout, clearPendingCheckout, getPendingCheckout } from '../utils/pendingCheckout';
 
 const Signup = () => {
   const { register, handleSubmit, watch, formState: { errors } } = useForm();
-  const { signup, loading } = useAuth();
+  const { signup, loading, user } = useAuth();
   const navigate = useNavigate();
+
+  // If a user is already logged in and lands on /signup with a pending
+  // checkout, send them straight to /pricing so the auto-resume effect
+  // can complete what they started.
+  useEffect(() => {
+    if (user && hasPendingCheckout()) {
+      navigate('/pricing', { replace: true });
+    }
+  }, [user, navigate]);
 
   const onSubmit = async (data) => {
     console.log('Form data:', data);
-    
+
+    // Capture the pending-checkout intent BEFORE we call signup().
+    // Right now it lives in sessionStorage — signup() won't touch it,
+    // but capturing it here makes the intent crystal clear and
+    // protects us if anything in the auth flow ever clears it.
+    const pending = getPendingCheckout();
+
     const result = await signup({
       email: data.email,
       username: data.username,
       full_name: data.fullName,
       password: data.password
     });
-    
+
     console.log('Signup result:', result);
-    
+
     if (result.success) {
+      // If the user came here from the pricing page intending to buy,
+      // take them through email verification first, then back to
+      // /pricing. We stow a flag so VerifyEmail knows where to send them.
+      if (pending) {
+        sessionStorage.setItem('postVerifyRedirect', '/pricing');
+      }
+
       navigate('/verify-email');
     }
   };
@@ -69,6 +92,13 @@ const Signup = () => {
             </p>
           </div>
 
+          {/* Hint banner if user came here intending to subscribe */}
+          {hasPendingCheckout() && (
+            <div className="rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-sm px-4 py-3">
+              Complete signup to continue to your subscription checkout.
+            </div>
+          )}
+
           <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
             <InputField
               label="Full Name"
@@ -100,7 +130,7 @@ const Signup = () => {
               error={errors.email?.message}
               icon={Mail}
               placeholder="Enter your email"
-              rules={{ 
+              rules={{
                 required: 'Email is required',
                 pattern: {
                   value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
@@ -117,7 +147,7 @@ const Signup = () => {
               error={errors.password?.message}
               icon={Lock}
               placeholder="Create a password"
-              rules={{ 
+              rules={{
                 required: 'Password is required',
                 minLength: {
                   value: 8,
@@ -134,7 +164,7 @@ const Signup = () => {
               error={errors.confirmPassword?.message}
               icon={Lock}
               placeholder="Confirm your password"
-              rules={{ 
+              rules={{
                 required: 'Please confirm your password',
                 validate: value => value === watch('password') || 'Passwords do not match'
               }}

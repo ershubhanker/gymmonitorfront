@@ -9,7 +9,7 @@ const AuthContext = createContext();
 const API_BASE_URL = 'https://api.gymmonitor.in';
 
 
-export const useAuth = () => { 
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
@@ -23,7 +23,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [tempEmail, setTempEmail] = useState('');
-  
+
   // ✅ Add a ref to track if initial load has been done
   const initialLoadDone = useRef(false);
 
@@ -32,7 +32,7 @@ export const AuthProvider = ({ children }) => {
     // ✅ Prevent multiple executions
     if (initialLoadDone.current) return;
     initialLoadDone.current = true;
-    
+
     const loadUser = async () => {
       const token = localStorage.getItem('access_token');
 
