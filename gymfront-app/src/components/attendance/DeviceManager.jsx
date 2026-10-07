@@ -635,21 +635,31 @@ const DeviceManager = () => {
                   </div>
 
                   <div className="space-y-2 text-sm mb-4">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">IP:</span>
-                      <span className="text-gray-800 font-mono">{device.device_ip}:{device.device_port}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Serial:</span>
-                      <span className="text-gray-800 font-mono text-xs">{device.device_serial}</span>
-                    </div>
-                    
-                    {device.connection_type === 'server' && (
+                    {device.connection_type === 'server' ? (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Device IP:</span>
+                          <span className="text-gray-800 font-mono text-xs">
+                            {device.device_ip && device.device_ip !== '0.0.0.0' && device.device_ip !== '' 
+                              ? device.device_ip 
+                              : <span className="text-orange-500 italic text-[11px]">Awaiting connection...</span>}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Server Port:</span>
+                          <span className="text-gray-800 font-mono">{device.server_port || 8003}</span>
+                        </div>
+                      </>
+                    ) : (
                       <div className="flex justify-between">
-                        <span className="text-gray-500">Server Port:</span>
-                        <span className="text-gray-800 font-mono">{device.server_port || 8003}</span>
+                        <span className="text-gray-500">LAN IP:</span>
+                        <span className="text-gray-800 font-mono">{device.device_ip}:{device.device_port || 4370}</span>
                       </div>
                     )}
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Serial:</span>
+                      <span className="text-gray-800 font-mono text-xs font-semibold">{device.device_serial}</span>
+                    </div>
                     
                     <div className="flex justify-between items-center border-t border-gray-100 pt-2 mt-2">
                       <span className="text-gray-500">Door Status:</span>
