@@ -109,7 +109,9 @@ const calculateStaffWorkingHours = (records, staffId, dateStr) => {
   let checkInTime = null;
   let checkOutTime = null;
   
-  dayRecords.forEach(r => {
+  const validRecords = dayRecords.filter(r => (r.event_type || '').toLowerCase() !== 'access_denied');
+  
+  validRecords.forEach(r => {
     const eventType = (r.event_type || '').toLowerCase();
     if (eventType === 'check_in' || eventType.includes('check_in')) {
       const time = new Date(r.check_in_time || r.created_at);
@@ -127,13 +129,13 @@ const calculateStaffWorkingHours = (records, staffId, dateStr) => {
     }
   });
   
-  if (!firstCheckIn && dayRecords.length > 0) {
-    const earliest = new Date(Math.min(...dayRecords.map(r => new Date(r.created_at).getTime())));
+  if (!firstCheckIn && validRecords.length > 0) {
+    const earliest = new Date(Math.min(...validRecords.map(r => new Date(r.created_at).getTime())));
     firstCheckIn = earliest;
   }
   
-  if (!lastCheckOut && dayRecords.length > 0) {
-    const latest = new Date(Math.max(...dayRecords.map(r => new Date(r.created_at).getTime())));
+  if (!lastCheckOut && validRecords.length > 0) {
+    const latest = new Date(Math.max(...validRecords.map(r => new Date(r.created_at).getTime())));
     lastCheckOut = latest;
   }
   
@@ -1361,8 +1363,9 @@ const AttendanceHistory = () => {
                     : (record.created_at || record.check_in_time);
 
                   const rawEventType = (record.event_type || '').toLowerCase();
-                  const isCheckOut = rawEventType.includes('check_out') || rawEventType.includes('checkout');
-                  const eventLabel = isCheckOut ? 'CHECK OUT' : 'CHECK IN';
+                  const isDenied = rawEventType.includes('denied');
+                  const isCheckOut = !isDenied && (rawEventType.includes('check_out') || rawEventType.includes('checkout'));
+                  const eventLabel = isDenied ? 'ACCESS DENIED' : isCheckOut ? 'CHECK OUT' : 'CHECK IN';
 
                   let workingHours = null;
                   let staffId = null;
@@ -1416,9 +1419,11 @@ const AttendanceHistory = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          isCheckOut
-                            ? 'bg-orange-100 text-orange-800'
-                            : 'bg-green-100 text-green-800'
+                          isDenied
+                            ? 'bg-red-100 text-red-800 font-bold'
+                            : isCheckOut
+                              ? 'bg-orange-100 text-orange-800'
+                              : 'bg-green-100 text-green-800'
                         }`}>
                           {eventLabel}
                         </span>

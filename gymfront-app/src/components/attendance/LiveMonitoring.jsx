@@ -440,7 +440,7 @@ const LiveMonitoring = () => {
       filtered = [...staffLiveEvents];
     }
     
-    // Filter by event type (check_in or check_out)
+    // Filter by event type (check_in or check_out or access_denied)
     if (filter === 'check_in') {
       filtered = filtered.filter(event => {
         const eventType = event?.event_type;
@@ -450,6 +450,11 @@ const LiveMonitoring = () => {
       filtered = filtered.filter(event => {
         const eventType = event?.event_type;
         return eventType === 'check_out';
+      });
+    } else if (filter === 'access_denied') {
+      filtered = filtered.filter(event => {
+        const eventType = event?.event_type;
+        return eventType === 'access_denied';
       });
     }
     
@@ -525,7 +530,11 @@ const LiveMonitoring = () => {
       const type = e?.event_type;
       return type === 'check_out';
     });
-    return { all: allEventsList.length, checkIns: checkIns.length, checkOuts: checkOuts.length };
+    const denied = allEventsList.filter(e => {
+      const type = e?.event_type;
+      return type === 'access_denied';
+    });
+    return { all: allEventsList.length, checkIns: checkIns.length, checkOuts: checkOuts.length, denied: denied.length };
   };
 
   const counts = getEventCounts();
@@ -935,6 +944,14 @@ const LiveMonitoring = () => {
         >
           Check-outs ({counts.checkOuts})
         </button>
+        {counts.denied > 0 && (
+          <button 
+            onClick={() => setFilter('access_denied')} 
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'access_denied' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}
+          >
+            Access Denied ({counts.denied})
+          </button>
+        )}
         
         <div className="flex-1"></div>
       </div>
@@ -1020,11 +1037,13 @@ const LiveMonitoring = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          eventType === 'check_in' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-orange-100 text-orange-800'
+                          eventType === 'access_denied'
+                            ? 'bg-red-100 text-red-800 font-bold'
+                            : eventType === 'check_in' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-orange-100 text-orange-800'
                         }`}>
-                          {eventType === 'check_in' ? 'CHECK IN' : 'CHECK OUT'}
+                          {eventType === 'access_denied' ? 'ACCESS DENIED' : eventType === 'check_in' ? 'CHECK IN' : 'CHECK OUT'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

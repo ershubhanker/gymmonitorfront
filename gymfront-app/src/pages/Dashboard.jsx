@@ -160,6 +160,16 @@ const Dashboard = () => {
   const userMenuRef = useRef(null);
   const userButtonRef = useRef(null);
 
+  // SaaS plan expiry & admin notification states
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationsData, setNotificationsData] = useState({
+    plan_alert: null,
+    recent_alerts: [],
+    unread_count: 0
+  });
+  const notifMenuRef = useRef(null);
+  const notifButtonRef = useRef(null);
+
   // ─── PERMISSION CHECKS FOR DASHBOARD CARDS ──────────────────────────────
   const canViewDashboard = hasPermission('view_dashboard');
   const effectiveRole = user?.role || userRole;
@@ -225,7 +235,46 @@ const Dashboard = () => {
     return () => {
         window.removeEventListener('refreshDashboard', handleRefresh);
     };
-}, []);
+  }, []);
+
+  // Fetch admin notifications (SaaS plan expiry + security alerts)
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await api.get('/gym/billing/notifications');
+      if (res.data) {
+        setNotificationsData(res.data);
+      }
+    } catch (err) {
+      console.debug('Failed to fetch admin notifications:', err?.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, AUTO_REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  // Close notifications dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        notifMenuRef.current &&
+        !notifMenuRef.current.contains(event.target) &&
+        notifButtonRef.current &&
+        !notifButtonRef.current.contains(event.target)
+      ) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const planAlert = notificationsData.plan_alert;
+  const isExpiringSoon = Boolean(planAlert?.is_expiring_soon);
+  const isExpired = Boolean(planAlert?.is_expired);
+  const daysRemaining = planAlert?.days_remaining ?? 0;
 
   const [stats, setStats] = useState({
     totalMembers: 0,
@@ -1070,13 +1119,15 @@ const Dashboard = () => {
       section: 'reports'
     });
 
-    // ✅ NEW — Billing & Plan section (only for gym owners / super admins)
+    // Billing & Plan section (only for gym owners / super admins)
     if (canSeeBilling) {
       nav.push({
         name: 'Billing & Plan',
         icon: Crown,
         id: 'billing',
         section: 'account',
+        badge: isExpired ? 'Expired' : isExpiringSoon ? `${daysRemaining}d` : null,
+        badgeColor: isExpired ? 'bg-red-500 text-white shadow-sm' : 'bg-amber-500 text-white animate-pulse shadow-sm',
       });
     }
     
@@ -2392,14 +2443,19 @@ const Dashboard = () => {
                     {!sidebarCollapsed && (
                       <span className="text-sm font-medium truncate">{item.name}</span>
                     )}
+                    {item.badge && !sidebarCollapsed && (
+                      <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${item.badgeColor || 'bg-amber-500 text-white'}`}>
+                        {item.badge}
+                      </span>
+                    )}
                     {sidebarCollapsed && (
                       <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded 
                                     opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity 
                                     whitespace-nowrap z-50 shadow-lg">
-                        {item.name}
+                        {item.name} {item.badge ? `(${item.badge})` : ''}
                       </div>
                     )}
-                    {activeTab === item.id && !sidebarCollapsed && (
+                    {activeTab === item.id && !sidebarCollapsed && !item.badge && (
                       <div className="ml-auto w-1 h-6 bg-blue-400 rounded-full flex-shrink-0" />
                     )}
                   </button>
@@ -2499,10 +2555,222 @@ const Dashboard = () => {
                 />
               </div>
               
-              <button className="p-2 rounded-lg hover:bg-gray-100 relative">
-                <Bell className="h-5 w-5 text-gray-600" />
-                <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full animate-pulse"></span>
-              </button>
+              {/* Minor Glowing Plan Expiry Beacon (shows when gym's plan ends in <= 3 days or expired) */}
+              {(isExpiringSoon || isExpired) && (
+                <button
+                  onClick={() => {
+                    if (canSeeBilling) {
+                      setActiveTab('billing');
+                    } else {
+                      setShowNotifications(true);
+                    }
+                  }}
+                  title={isExpired ? 'Gym subscription has expired!' : `Gym plan ends in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}! Click to view.`}
+                  className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${
+                    isExpired
+                      ? 'bg-rose-50 text-rose-700 border border-rose-300 shadow-[0_0_14px_rgba(244,63,94,0.4)] hover:shadow-[0_0_20px_rgba(244,63,94,0.65)] hover:bg-rose-100'
+                      : 'bg-amber-50 text-amber-800 border border-amber-300 shadow-[0_0_14px_rgba(245,158,11,0.45)] hover:shadow-[0_0_20px_rgba(245,158,11,0.7)] hover:bg-amber-100'
+                  }`}
+                >
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                      isExpired ? 'bg-rose-500' : 'bg-amber-500'
+                    }`}></span>
+                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                      isExpired ? 'bg-rose-600' : 'bg-amber-500'
+                    }`}></span>
+                  </span>
+                  <span className="hidden sm:inline font-medium">
+                    {isExpired ? 'Plan Expired' : `Plan Ends in ${daysRemaining}d`}
+                  </span>
+                  <span className="sm:hidden font-mono font-bold">
+                    {isExpired ? 'Expired' : `${daysRemaining}d`}
+                  </span>
+                </button>
+              )}
+
+              {/* Notification Bell & Dropdown */}
+              <div className="relative">
+                <button 
+                  ref={notifButtonRef}
+                  onClick={() => setShowNotifications(prev => !prev)}
+                  className={`p-2 rounded-lg hover:bg-gray-100 relative transition-colors ${
+                    showNotifications ? 'bg-gray-100 text-gray-900' : 'text-gray-600'
+                  }`}
+                  title="Notifications"
+                >
+                  <Bell className="h-5 w-5" />
+                  {(isExpiringSoon || isExpired || (notificationsData.unread_count > 0)) && (
+                    <span className="absolute top-1 right-1 flex h-2.5 w-2.5">
+                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                        isExpired ? 'bg-rose-400' : isExpiringSoon ? 'bg-amber-400' : 'bg-blue-400'
+                      }`}></span>
+                      <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                        isExpired ? 'bg-rose-500' : isExpiringSoon ? 'bg-amber-500' : 'bg-blue-500'
+                      }`}></span>
+                    </span>
+                  )}
+                </button>
+
+                {/* Notifications Dropdown Panel */}
+                {showNotifications && (
+                  <div 
+                    ref={notifMenuRef}
+                    className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200"
+                  >
+                    <div className="flex items-center justify-between px-4 pb-3 border-b border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <Bell className="h-4 w-4 text-gray-700" />
+                        <h4 className="font-semibold text-sm text-gray-900">Notifications</h4>
+                        {notificationsData.unread_count > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">
+                            {notificationsData.unread_count} new
+                          </span>
+                        )}
+                      </div>
+                      <button 
+                        onClick={() => fetchNotifications()}
+                        title="Refresh"
+                        className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="max-h-[380px] overflow-y-auto px-3 py-2 space-y-2.5">
+                      {/* SaaS Plan Expiry Alert Card */}
+                      {planAlert && (isExpiringSoon || isExpired) ? (
+                        <div className={`p-3.5 rounded-xl border transition-all ${
+                          isExpired 
+                            ? 'bg-rose-50/70 border-rose-200' 
+                            : 'bg-amber-50/70 border-amber-200'
+                        }`}>
+                          <div className="flex items-start gap-2.5">
+                            <div className={`p-2 rounded-lg mt-0.5 flex-shrink-0 ${
+                              isExpired ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'
+                            }`}>
+                              <AlertTriangle className="h-4 w-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className={`text-xs font-bold uppercase tracking-wider ${
+                                  isExpired ? 'text-rose-700' : 'text-amber-700'
+                                }`}>
+                                  {isExpired ? 'Subscription Expired' : 'Plan Expiring Soon'}
+                                </span>
+                                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                  isExpired ? 'bg-rose-200 text-rose-800' : 'bg-amber-200 text-amber-800'
+                                }`}>
+                                  {isExpired ? '0 days' : `${daysRemaining}d left`}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-700 mt-1 leading-snug">
+                                {planAlert.message}
+                              </p>
+                              {planAlert.end_date && (
+                                <p className="text-[11px] text-gray-500 mt-1 flex items-center gap-1">
+                                  <Clock className="h-3 w-3" /> Ends on {new Date(planAlert.end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </p>
+                              )}
+                              {canSeeBilling && (
+                                <button
+                                  onClick={() => {
+                                    setActiveTab('billing');
+                                    setShowNotifications(false);
+                                  }}
+                                  className={`mt-2.5 w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold text-white transition-all shadow-sm ${
+                                    isExpired 
+                                      ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-200' 
+                                      : 'bg-amber-600 hover:bg-amber-700 shadow-amber-200'
+                                  }`}
+                                >
+                                  <Crown className="h-3.5 w-3.5" /> Renew Subscription Now
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        planAlert && (
+                          <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-2.5">
+                            <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-600">
+                              <CheckCircle className="h-4 w-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-slate-800">
+                                Plan Active ({planAlert.plan_name || 'Standard'})
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                {daysRemaining > 0 ? `${daysRemaining} days remaining` : 'Subscription is in good standing'}
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      )}
+
+                      {/* Recent Biometric Security Alerts (e.g. Access Denied) */}
+                      {notificationsData.recent_alerts && notificationsData.recent_alerts.length > 0 && (
+                        <div>
+                          <div className="px-1 pt-1 pb-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                            Biometric Security Alerts
+                          </div>
+                          <div className="space-y-1.5">
+                            {notificationsData.recent_alerts.map((alert, idx) => (
+                              <div 
+                                key={alert.id || idx}
+                                className="p-2.5 rounded-lg bg-red-50/60 border border-red-100 text-xs flex items-start gap-2"
+                              >
+                                <Shield className="h-3.5 w-3.5 text-rose-500 flex-shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-semibold text-gray-900 truncate">
+                                      {alert.member_name}
+                                    </span>
+                                    <span className="text-[10px] text-rose-600 font-medium">Denied</span>
+                                  </div>
+                                  <p className="text-[11px] text-gray-600 mt-0.5">
+                                    {alert.reason || 'Membership expired'} · {alert.device_name}
+                                  </p>
+                                  <span className="text-[10px] text-gray-400">
+                                    {alert.time ? new Date(alert.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Empty state if neither */}
+                      {(!planAlert || (!isExpiringSoon && !isExpired)) && (!notificationsData.recent_alerts || notificationsData.recent_alerts.length === 0) && (
+                        <div className="py-6 text-center text-gray-400">
+                          <CheckCircle className="h-8 w-8 mx-auto text-emerald-400 mb-2 opacity-80" />
+                          <p className="text-xs font-medium text-gray-600">All caught up!</p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">No critical alerts for your gym</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer */}
+                    {canSeeBilling && (
+                      <div className="px-3 pt-2 mt-1 border-t border-gray-100">
+                        <button
+                          onClick={() => {
+                            setActiveTab('billing');
+                            setShowNotifications(false);
+                          }}
+                          className="w-full flex items-center justify-between py-1.5 px-3 rounded-lg text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <Crown className="h-3.5 w-3.5 text-amber-500" /> Manage Billing & Plan
+                          </span>
+                          <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <div className="text-right hidden sm:block">
                   <p className="text-sm font-medium text-gray-700">{user?.full_name}</p>
