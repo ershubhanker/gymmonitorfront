@@ -156,18 +156,19 @@ const DeviceManager = () => {
       return onlineStatuses[device.id];
     }
     
-    if (!device.is_online) return false;
+    if (device.is_online) return true;
     
     if (device.last_seen) {
       const lastSeen = new Date(device.last_seen);
       const now = new Date();
       const diffSeconds = (now - lastSeen) / 1000;
-      if (diffSeconds > 60) {
-        return false;
+      const maxDiff = (device.connection_type === 'server' || !device.connection_type) ? 180 : 90;
+      if (diffSeconds <= maxDiff) {
+        return true;
       }
     }
     
-    return true;
+    return false;
   };
 
   const validateForm = () => {
