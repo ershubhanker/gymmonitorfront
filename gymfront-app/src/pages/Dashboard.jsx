@@ -16,6 +16,7 @@ import {
   MessageSquare, Send, Download, Filter, FileText, Utensils,
   Tag, CalendarRange, Clock as ClockIcon2, EyeOff,
   Crown, // ✅ NEW — icon for Billing & Plan sidebar item
+  Plus, // ✅ NEW — for Create Membership Plan action
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCache, CACHE_KEYS } from '../context/CacheContext';
@@ -136,6 +137,7 @@ const Dashboard = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [openCreatePlan, setOpenCreatePlan] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
@@ -1248,95 +1250,131 @@ const Dashboard = () => {
 
   // ─── RENDER DASHBOARD ─────────────────────────────────────────────────────
   const renderDashboard = () => (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Welcome Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white shadow-xl">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-xl p-4 sm:p-5 text-white shadow-md">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2 flex-wrap">
               Welcome back, {user?.full_name || 'Admin'}! 👋
-              <span className="bg-yellow-400 text-yellow-900 text-xs px-3 py-1 rounded-full font-semibold ml-2">
+              <span className="bg-yellow-400 text-yellow-900 text-[11px] px-2.5 py-0.5 rounded-full font-semibold ml-1">
                 {user?.role === 'gym_owner' ? 'GYM OWNER' : user?.role?.toUpperCase()}
               </span>
             </h1>
-            <p className="text-blue-100 mt-2 text-lg">Here's what's happening at your gym today.</p>
+            <p className="text-blue-100 mt-0.5 text-sm sm:text-base">Here's what's happening at your gym today.</p>
           </div>
-          
-          {/* Hide/Show Toggle Button */}
           <button
-            onClick={toggleHideValues}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-300 font-medium ${
-              hideValues 
-                ? 'bg-amber-500/30 text-amber-100 border border-amber-400/50 hover:bg-amber-500/40' 
-                : 'bg-white/20 text-white border border-white/20 hover:bg-white/30'
-            }`}
-            title={hideValues ? 'Show values' : 'Hide values'}
+            onClick={() => {
+              setOpenCreatePlan(true);
+              setActiveTab('membership-plans');
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-white text-indigo-700 hover:bg-blue-50 font-bold text-xs sm:text-sm rounded-xl shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer border border-white/40 ml-auto sm:ml-0"
+            title="Create a new membership plan"
           >
-            {hideValues ? (
-              <>
-                <Eye className="h-5 w-5" />
-                <span className="hidden sm:inline">Show Values</span>
-              </>
-            ) : (
-              <>
-                <EyeOff className="h-5 w-5" />
-                <span className="hidden sm:inline">Hide Values</span>
-              </>
-            )}
+            <Plus className="h-4 w-4 text-indigo-600 stroke-[3]" />
+            <span>+ Create Membership Plan</span>
           </button>
         </div>
         
-        <div className="flex flex-wrap gap-3 mt-6">
-          <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
-            <Calendar className="h-4 w-4" />
-            {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        <div className="flex flex-wrap gap-2 mt-3.5">
+          <div className="bg-white/10 backdrop-blur-sm rounded-full px-3 py-1 text-xs flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5" />
+            {new Date().toLocaleDateString('en-IN', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
           </div>
           
           {canSeeAttendance && (
-            <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
-              <Users className="h-4 w-4" />
+            <div className="bg-white/10 backdrop-blur-sm rounded-full px-3 py-1 text-xs flex items-center gap-1.5">
+              <Users className="h-3.5 w-3.5" />
               {formatNumberMasked(stats.todayCheckins, 'todayCheckins')} check-ins today
             </div>
           )}
           
           {canSeePayments && (
-            <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2">
-              <TrendUp className="h-4 w-4" />
+            <div className="bg-white/10 backdrop-blur-sm rounded-full px-3 py-1 text-xs flex items-center gap-1.5">
+              <TrendUp className="h-3.5 w-3.5" />
               {stats.monthlyRevenue > 0 ? formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue') : 'No revenue yet'} this month
             </div>
           )}
           
           {canSeeLeads && followupsCount > 0 && (
-            <div className="bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-sm flex items-center gap-2 animate-pulse">
-              <Calendar className="h-4 w-4" />
-              {followupsCount} follow-up{followupsCount !== 1 ? 's' : ''} today
-            </div>
+            <button
+              onClick={() => {
+                const el = document.getElementById('followup-card-section');
+                if (el) {
+                  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  el.classList.add('ring-2', 'ring-purple-400', 'ring-offset-2');
+                  setTimeout(() => {
+                    el.classList.remove('ring-2', 'ring-purple-400', 'ring-offset-2');
+                  }, 2000);
+                }
+              }}
+              title="Click to view follow-ups today"
+              className="bg-white/15 hover:bg-white/25 active:scale-95 transition-all backdrop-blur-sm rounded-full px-3 py-1 text-xs flex items-center gap-1.5 animate-pulse cursor-pointer border border-white/25 hover:border-white/50 shadow-xs"
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              <span>{followupsCount} follow-up{followupsCount !== 1 ? 's' : ''} today</span>
+              <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded-full font-medium ml-0.5">↓ View</span>
+            </button>
           )}
+        </div>
+      </div>
+
+      {/* Quick Action Plan Management Bar on Front Page */}
+      <div className="bg-white rounded-xl shadow-xs border border-gray-100 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-xl shadow-xs">
+            <Dumbbell className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-gray-900">Membership Plans Management</h3>
+              <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold px-2 py-0.5 rounded-full">Quick Access</span>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">Easily configure pricing, durations & custom packages for your members.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveTab('membership-plans')}
+            className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg transition-all border border-gray-200 cursor-pointer"
+          >
+            Manage Plans
+          </button>
+          <button
+            onClick={() => {
+              setOpenCreatePlan(true);
+              setActiveTab('membership-plans');
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg shadow-xs hover:shadow transition-all active:scale-95 cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
+            Create Membership Plan
+          </button>
         </div>
       </div>
   
       {/* Row 1: Key Stats Cards - Total Members ALWAYS visible */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {canViewMemberStats && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-blue-500">
-            <div className="flex items-center justify-between mb-4">
-              <div className="bg-blue-100 p-3 rounded-xl">
-                <Users className="h-6 w-6 text-blue-600" />
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-blue-500">
+            <div className="flex items-center justify-between mb-2">
+              <div className="bg-blue-100 p-2 rounded-lg">
+                <Users className="h-4.5 w-4.5 text-blue-600" />
               </div>
-              <span className="text-sm font-medium text-green-600 bg-green-100 px-3 py-1 rounded-full">
+              <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
                 {stats.totalMembers > 0 ? ((stats.activeMembers / stats.totalMembers) * 100).toFixed(1) : 0}% active
               </span>
             </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Members</h3>
+            <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wider">Total Members</h3>
             {/* Total Members - ALWAYS visible (never hidden) */}
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatNumberMasked(stats.totalMembers, 'totalMembers')}</p>
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-              <span className="text-green-600 flex items-center text-sm">
-                <UserCheck className="h-4 w-4 mr-1" />
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-0.5">{formatNumberMasked(stats.totalMembers, 'totalMembers')}</p>
+            <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-100">
+              <span className="text-green-600 flex items-center text-xs">
+                <UserCheck className="h-3.5 w-3.5 mr-1" />
                 {formatNumberMasked(stats.activeMembers, 'activeMembers')} active
               </span>
-              <span className="text-gray-500 flex items-center text-sm">
-                <UserMinus className="h-4 w-4 mr-1" />
+              <span className="text-gray-500 flex items-center text-xs">
+                <UserMinus className="h-3.5 w-3.5 mr-1" />
                 {formatNumberMasked(stats.inactiveMembers, 'inactiveMembers')} inactive
               </span>
             </div>
@@ -1344,25 +1382,25 @@ const Dashboard = () => {
         )}
 
         {canViewMemberStats && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-green-500">
-            <div className="flex items-center justify-between mb-4">
-              <div className="bg-green-100 p-3 rounded-xl">
-                <UserPlus className="h-6 w-6 text-green-600" />
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-green-500">
+            <div className="flex items-center justify-between mb-2">
+              <div className="bg-green-100 p-2 rounded-lg">
+                <UserPlus className="h-4.5 w-4.5 text-green-600" />
               </div>
-              <span className="text-sm font-medium text-green-600 bg-green-100 px-3 py-1 rounded-full">
+              <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
                 +{formatNumberMasked(stats.newMembersThisMonth, 'newMembersThisMonth')} new
               </span>
             </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">New Members</h3>
+            <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wider">New Members</h3>
             {/* New Members - ALWAYS visible (never hidden) */}
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatNumberMasked(stats.newMembersThisMonth, 'newMembersThisMonth')}</p>
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-              <span className="text-gray-600 flex items-center text-sm">
-                <Calendar className="h-4 w-4 mr-1" />
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-0.5">{formatNumberMasked(stats.newMembersThisMonth, 'newMembersThisMonth')}</p>
+            <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-100">
+              <span className="text-gray-600 flex items-center text-xs">
+                <Calendar className="h-3.5 w-3.5 mr-1" />
                 This month
               </span>
-              <span className="text-blue-600 font-medium text-sm flex items-center">
-                <Flame className="h-4 w-4 mr-1" />
+              <span className="text-blue-600 font-medium text-xs flex items-center">
+                <Flame className="h-3.5 w-3.5 mr-1" />
                 {formatNumberMasked(stats.expiringThisMonth, 'expiringThisMonth')} expiring
               </span>
             </div>
@@ -1371,26 +1409,26 @@ const Dashboard = () => {
   
         {canViewRevenueStats && (
           <div 
-            className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-purple-500 cursor-pointer group"
+            className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-purple-500 cursor-pointer group"
             onClick={() => setActiveTab('payments')}
           >
-            <div className="flex items-center justify-between mb-4">
-              <div className="bg-purple-100 p-3 rounded-xl group-hover:bg-purple-200 transition-colors">
-                <IndianRupee className="h-6 w-6 text-purple-600" />
+            <div className="flex items-center justify-between mb-2">
+              <div className="bg-purple-100 p-2 rounded-lg group-hover:bg-purple-200 transition-colors">
+                <IndianRupee className="h-4.5 w-4.5 text-purple-600" />
               </div>
-              <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-                stats.revenueGrowth >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                stats.revenueGrowth >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
               }`}>
                 {stats.revenueGrowth >= 0 ? '↑' : '↓'} {Math.abs(stats.revenueGrowth || 0)}%
               </span>
             </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Revenue</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue')}</p>
-            <p className="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100 flex items-center">
+            <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wider">Monthly Revenue</h3>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-0.5">{formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue')}</p>
+            <p className="text-xs text-gray-600 mt-2.5 pt-2 border-t border-gray-100 flex items-center">
               {stats.revenueGrowth >= 0 ? (
-                <TrendingUp className="h-4 w-4 mr-1 text-green-500" />
+                <TrendingUp className="h-3.5 w-3.5 mr-1 text-green-500" />
               ) : (
-                <TrendingDown className="h-4 w-4 mr-1 text-red-500" />
+                <TrendingDown className="h-3.5 w-3.5 mr-1 text-red-500" />
               )}
               vs last month
             </p>
@@ -1399,26 +1437,26 @@ const Dashboard = () => {
   
         {canViewRevenueStats && (
           <div 
-            className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-orange-500 cursor-pointer group"
+            className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-orange-500 cursor-pointer group"
             onClick={() => setActiveTab('payments')}
           >
-            <div className="flex items-center justify-between mb-4">
-              <div className="bg-orange-100 p-3 rounded-xl group-hover:bg-orange-200 transition-colors">
-                <CreditCard className="h-6 w-6 text-orange-600" />
+            <div className="flex items-center justify-between mb-2">
+              <div className="bg-orange-100 p-2 rounded-lg group-hover:bg-orange-200 transition-colors">
+                <CreditCard className="h-4.5 w-4.5 text-orange-600" />
               </div>
-              <span className="text-sm font-medium text-orange-600 bg-orange-100 px-3 py-1 rounded-full">
+              <span className="text-xs font-semibold text-orange-700 bg-orange-100 px-2 py-0.5 rounded-full">
                 {formatNumberMasked(stats.pendingPayments, 'pendingPayments')} pending
               </span>
             </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Total Yearly Revenue</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.totalRevenue, 'totalRevenue')}</p>
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-              <span className="text-gray-600 flex items-center text-sm">
-                <CalendarIcon className="h-4 w-4 mr-1" />
+            <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wider">Total Yearly Revenue</h3>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-0.5">{formatCurrencyMasked(stats.totalRevenue, 'totalRevenue')}</p>
+            <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-100">
+              <span className="text-gray-600 flex items-center text-xs">
+                <CalendarIcon className="h-3.5 w-3.5 mr-1" />
                 {new Date().getFullYear()}
               </span>
-              <span className="text-orange-600 font-medium text-sm flex items-center">
-                <ClockIcon className="h-4 w-4 mr-1" />
+              <span className="text-orange-600 font-medium text-xs flex items-center">
+                <ClockIcon className="h-3.5 w-3.5 mr-1" />
                 {formatNumberMasked(stats.expiringSoon, 'expiringSoon')} expiring
               </span>
             </div>
@@ -1428,50 +1466,50 @@ const Dashboard = () => {
 
       {/* Row 1.5: Refund Stats Cards */}
       {canViewRevenueStats && stats.totalRefunds > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-white/80 text-sm font-medium">Total Refunds</p>
-                <p className="text-3xl font-bold text-white mt-1">{formatCurrencyMasked(stats.totalRefunds, 'totalRefunds')}</p>
+                <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Total Refunds</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white mt-0.5">{formatCurrencyMasked(stats.totalRefunds, 'totalRefunds')}</p>
               </div>
-              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-                <TrendingDown className="h-8 w-8 text-white" />
+              <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                <TrendingDown className="h-5 w-5 text-white" />
               </div>
             </div>
-            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+            <div className="mt-2 flex items-center gap-1.5 text-white/80 text-xs">
               <span>{stats.refundCount} refund{stats.refundCount !== 1 ? 's' : ''} issued</span>
             </div>
           </div>
 
-          <div className="bg-gradient-to-r from-emerald-500 to-green-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-r from-emerald-500 to-green-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-white/80 text-sm font-medium">Net Revenue</p>
-                <p className="text-3xl font-bold text-white mt-1">{formatCurrencyMasked(stats.netRevenue, 'netRevenue')}</p>
+                <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Net Revenue</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white mt-0.5">{formatCurrencyMasked(stats.netRevenue, 'netRevenue')}</p>
               </div>
-              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-                <TrendingUp className="h-8 w-8 text-white" />
+              <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                <TrendingUp className="h-5 w-5 text-white" />
               </div>
             </div>
-            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+            <div className="mt-2 flex items-center gap-1.5 text-white/80 text-xs">
               <span>After refunds</span>
             </div>
           </div>
 
-          <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-white/80 text-sm font-medium">Refund Rate</p>
-                <p className="text-3xl font-bold text-white mt-1">
+                <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Refund Rate</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white mt-0.5">
                   {stats.totalRevenue > 0 ? ((stats.totalRefunds / stats.totalRevenue) * 100).toFixed(1) : 0}%
                 </p>
               </div>
-              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-                <BarChart3 className="h-8 w-8 text-white" />
+              <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                <BarChart3 className="h-5 w-5 text-white" />
               </div>
             </div>
-            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+            <div className="mt-2 flex items-center gap-1.5 text-white/80 text-xs">
               <span>Of gross revenue</span>
             </div>
           </div>
@@ -1480,65 +1518,65 @@ const Dashboard = () => {
   
       {/* Balance Overview Cards */}
       {canViewBalanceStats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-white/80 text-sm font-medium">Total Balance Due</p>
-                <p className="text-3xl font-bold text-white mt-1">{formatCurrencyMasked(stats.totalBalanceDue, 'totalBalanceDue')}</p>
+                <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Total Balance Due</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white mt-0.5">{formatCurrencyMasked(stats.totalBalanceDue, 'totalBalanceDue')}</p>
               </div>
-              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-                <Wallet className="h-8 w-8 text-white" />
+              <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                <Wallet className="h-5 w-5 text-white" />
               </div>
             </div>
-            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+            <div className="mt-2 flex items-center gap-1.5 text-white/80 text-xs">
               <span>{formatNumberMasked(stats.membersWithBalance, 'membersWithBalance')} members have dues</span>
             </div>
           </div>
   
-          <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-white/80 text-sm font-medium">Members with Balance</p>
+                <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Members with Balance</p>
                 {/* membersWithBalance - ALWAYS visible */}
-                <p className="text-3xl font-bold text-white mt-1">{formatNumberMasked(stats.membersWithBalance, 'membersWithBalance')}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white mt-0.5">{formatNumberMasked(stats.membersWithBalance, 'membersWithBalance')}</p>
               </div>
-              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-                <Users className="h-8 w-8 text-white" />
+              <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                <Users className="h-5 w-5 text-white" />
               </div>
             </div>
-            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
-              <AlertCircle className="h-4 w-4" />
+            <div className="mt-2 flex items-center gap-1.5 text-white/80 text-xs">
+              <AlertCircle className="h-3.5 w-3.5" />
               <span>Need to collect payment</span>
             </div>
           </div>
   
-          <div className="bg-gradient-to-r from-red-500 to-pink-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-r from-red-500 to-pink-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-white/80 text-sm font-medium">Overdue Payments</p>
-                <p className="text-3xl font-bold text-white mt-1">{formatNumberMasked(stats.overdueCount, 'overdueCount')}</p>
+                <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Overdue Payments</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white mt-0.5">{formatNumberMasked(stats.overdueCount, 'overdueCount')}</p>
               </div>
-              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-                <AlertCircle className="h-8 w-8 text-white" />
+              <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                <AlertCircle className="h-5 w-5 text-white" />
               </div>
             </div>
-            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+            <div className="mt-2 flex items-center gap-1.5 text-white/80 text-xs">
               <span>Past due date</span>
             </div>
           </div>
   
-          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-white/80 text-sm font-medium">Upcoming Payments</p>
-                <p className="text-3xl font-bold text-white mt-1">{formatNumberMasked(stats.upcomingPayments, 'upcomingPayments')}</p>
+                <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Upcoming Payments</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white mt-0.5">{formatNumberMasked(stats.upcomingPayments, 'upcomingPayments')}</p>
               </div>
-              <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-                <Calendar className="h-8 w-8 text-white" />
+              <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                <Calendar className="h-5 w-5 text-white" />
               </div>
             </div>
-            <div className="mt-3 flex items-center gap-2 text-white/80 text-sm">
+            <div className="mt-2 flex items-center gap-1.5 text-white/80 text-xs">
               <span>Due in next 7 days</span>
             </div>
           </div>
@@ -1547,117 +1585,117 @@ const Dashboard = () => {
   
       {/* Row 3: Expense and Profit Cards */}
       {canViewExpenseStats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-red-500">
-            <div className="flex items-center justify-between mb-4">
-              <div className="bg-red-100 p-3 rounded-xl">
-                <Wallet className="h-6 w-6 text-red-600" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-red-500">
+            <div className="flex items-center justify-between mb-2">
+              <div className="bg-red-100 p-2 rounded-lg">
+                <Wallet className="h-4.5 w-4.5 text-red-600" />
               </div>
-              <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-                stats.expenseGrowth <= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                stats.expenseGrowth <= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
               }`}>
                 {stats.expenseGrowth <= 0 ? '↓' : '↑'} {Math.abs(stats.expenseGrowth || 0)}%
               </span>
             </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Monthly Expenses</h3>
-            <p className="text-4xl font-bold text-gray-900 mt-1">{formatCurrencyMasked(stats.monthlyExpenses, 'monthlyExpenses')}</p>
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-              <span className="text-gray-600 flex items-center text-sm">
-                <Calendar className="h-4 w-4 mr-1" />
+            <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wider">Monthly Expenses</h3>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-0.5">{formatCurrencyMasked(stats.monthlyExpenses, 'monthlyExpenses')}</p>
+            <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-100">
+              <span className="text-gray-600 flex items-center text-xs">
+                <Calendar className="h-3.5 w-3.5 mr-1" />
                 This month
               </span>
-              <span className="text-red-600 font-medium text-sm flex items-center">
-                <TrendingDown className="h-4 w-4 mr-1" />
+              <span className="text-red-600 font-medium text-xs flex items-center">
+                <TrendingDown className="h-3.5 w-3.5 mr-1" />
                 Total: {formatCurrencyMasked(stats.totalExpenses, 'totalExpenses')}
               </span>
             </div>
           </div>
 
           {(canViewExpenseStats && canViewRevenueStats) && (
-            <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-emerald-500">
-              <div className="flex items-center justify-between mb-4">
-                <div className="bg-emerald-100 p-3 rounded-xl">
-                  <TrendingUp className="h-6 w-6 text-emerald-600" />
+            <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-emerald-500">
+              <div className="flex items-center justify-between mb-2">
+                <div className="bg-emerald-100 p-2 rounded-lg">
+                  <TrendingUp className="h-4.5 w-4.5 text-emerald-600" />
                 </div>
-                <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-                  stats.profitMargin >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                  stats.profitMargin >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                 }`}>
                   {stats.profitMargin >= 0 ? '↑' : '↓'} {Math.abs(stats.profitMargin || 0)}% margin
                 </span>
               </div>
-              <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Net Profit</h3>
-              <p className="text-4xl font-bold text-emerald-600 mt-1">{formatCurrencyMasked(stats.netProfit, 'netProfit')}</p>
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                <span className="text-gray-600 flex items-center text-sm">
-                  Revenue: {formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue')}
+              <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wider">Net Profit</h3>
+              <p className="text-2xl sm:text-3xl font-bold text-emerald-600 mt-0.5">{formatCurrencyMasked(stats.netProfit, 'netProfit')}</p>
+              <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-100">
+                <span className="text-gray-600 flex items-center text-xs truncate mr-1">
+                  Rev: {formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue')}
                 </span>
-                <span className="text-emerald-600 font-medium text-sm flex items-center">
-                  <CheckCircle className="h-4 w-4 mr-1" />
+                <span className="text-emerald-600 font-medium text-xs flex items-center whitespace-nowrap">
+                  <CheckCircle className="h-3.5 w-3.5 mr-1" />
                   Profit: {hideValues ? '**' : stats.profitMargin || 0}%
                 </span>
               </div>
             </div>
           )}
   
-          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-cyan-500">
-            <div className="flex items-center justify-between mb-4">
-              <div className="bg-cyan-100 p-3 rounded-xl">
-                <BarChart3 className="h-6 w-6 text-cyan-600" />
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-cyan-500">
+            <div className="flex items-center justify-between mb-2">
+              <div className="bg-cyan-100 p-2 rounded-lg">
+                <BarChart3 className="h-4.5 w-4.5 text-cyan-600" />
               </div>
-              <span className="text-sm font-medium text-cyan-600 bg-cyan-100 px-3 py-1 rounded-full">
+              <span className="text-xs font-semibold text-cyan-700 bg-cyan-100 px-2 py-0.5 rounded-full">
                 {Object.keys(stats.expenseByCategory).length} categories
               </span>
             </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Top Expense Category</h3>
-            <p className="text-2xl font-bold text-gray-900 mt-1 truncate">
+            <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wider">Top Expense</h3>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-0.5 truncate">
               {Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0]?.[0] || 'None'}
             </p>
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-              <span className="text-gray-600 flex items-center text-sm">
-                <Wallet className="h-4 w-4 mr-1" />
+            <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-100">
+              <span className="text-gray-600 flex items-center text-xs">
+                <Wallet className="h-3.5 w-3.5 mr-1" />
                 {Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0]?.[1] 
                   ? formatCurrencyMasked(Object.entries(stats.expenseByCategory).sort(([,a], [,b]) => b - a)[0][1], 'expenseTop') 
                   : '₹0'}
               </span>
               <button 
                 onClick={() => setActiveTab('expenses')}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1"
+                className="text-blue-600 hover:text-blue-700 text-xs font-medium flex items-center gap-0.5"
               >
-                View Details →
+                Details →
               </button>
             </div>
           </div>
           
           {(canViewExpenseStats && canViewRevenueStats) && (
-            <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-              <div className="flex items-center justify-between mb-4">
-                <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
-                  <DollarSign className="h-6 w-6 text-white" />
+            <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
+              <div className="flex items-center justify-between mb-2">
+                <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                  <DollarSign className="h-4.5 w-4.5 text-white" />
                 </div>
-                <span className="text-sm font-medium bg-white/20 text-white px-3 py-1 rounded-full backdrop-blur-sm">
+                <span className="text-xs font-medium bg-white/20 text-white px-2 py-0.5 rounded-full backdrop-blur-sm">
                   Financial Health
                 </span>
               </div>
-              <h3 className="text-white/80 text-sm font-medium uppercase tracking-wider">Profit vs Expenses</h3>
-              <div className="mt-3 space-y-2">
-                <div className="flex justify-between text-sm text-white">
-                  <span>Profit</span>
+              <h3 className="text-white/80 text-xs font-semibold uppercase tracking-wider">Profit vs Expenses</h3>
+              <div className="mt-2 space-y-1.5">
+                <div className="flex justify-between text-xs text-white">
+                  <span>Profit Margin</span>
                   <span className="font-semibold">{hideValues ? '**' : stats.profitMargin || 0}%</span>
                 </div>
-                <div className="w-full bg-white/30 rounded-full h-2 overflow-hidden">
+                <div className="w-full bg-white/30 rounded-full h-1.5 overflow-hidden">
                   <div 
-                    className="bg-green-400 rounded-full h-2 transition-all duration-500" 
+                    className="bg-green-400 rounded-full h-1.5 transition-all duration-500" 
                     style={{ width: `${hideValues ? 50 : Math.min(Math.max(stats.profitMargin || 0, 0), 100)}%` }}
                   />
                 </div>
-                <div className="flex justify-between text-sm text-white/80 mt-2">
+                <div className="flex justify-between text-[11px] text-white/80 mt-1.5">
                   <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                    Revenue: {formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue')}
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+                    Rev: {formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue')}
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 bg-red-400 rounded-full"></span>
-                    Expenses: {formatCurrencyMasked(stats.monthlyExpenses, 'monthlyExpenses')}
+                    <span className="w-1.5 h-1.5 bg-red-400 rounded-full"></span>
+                    Exp: {formatCurrencyMasked(stats.monthlyExpenses, 'monthlyExpenses')}
                   </span>
                 </div>
               </div>
@@ -1667,83 +1705,81 @@ const Dashboard = () => {
       )}
   
       {/* Row 4: Member Demographics and Expiring Memberships */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {canViewMemberStats && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-1 hover:shadow-xl transition-all">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <div className="bg-blue-100 p-2 rounded-lg">
-                  <Users className="h-5 w-5 text-blue-600" />
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 lg:col-span-1 transition-all">
+            <div className="flex items-center justify-between mb-3.5">
+              <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                <div className="bg-blue-100 p-1.5 rounded-md">
+                  <Users className="h-4 w-4 text-blue-600" />
                 </div>
-                Member Demographics
+                Demographics
               </h3>
-              <span className="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full">
+              <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium">
                 {formatNumberMasked(stats.totalMembers, 'totalMembers')} total
               </span>
             </div>
             
-            <div className="space-y-5">
+            <div className="space-y-3">
               <div>
-                <div className="flex justify-between text-sm mb-2">
+                <div className="flex justify-between text-xs mb-1.5">
                   <span className="text-gray-600 font-medium">Male</span>
                   <span className="font-semibold text-blue-600">{formatNumberMasked(stats.membersByGender?.male, 'membersByGender')}</span>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
                   <div 
-                    className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-full h-3 transition-all duration-500" 
+                    className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-full h-2 transition-all duration-500" 
                     style={{ width: `${stats.totalMembers > 0 ? ((stats.membersByGender?.male || 0) / stats.totalMembers) * 100 : 0}%` }}
                   />
                 </div>
               </div>
               
               <div>
-                <div className="flex justify-between text-sm mb-2">
+                <div className="flex justify-between text-xs mb-1.5">
                   <span className="text-gray-600 font-medium">Female</span>
                   <span className="font-semibold text-pink-600">{formatNumberMasked(stats.membersByGender?.female, 'membersByGender')}</span>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
                   <div 
-                    className="bg-gradient-to-r from-pink-500 to-pink-600 rounded-full h-3 transition-all duration-500" 
+                    className="bg-gradient-to-r from-pink-500 to-pink-600 rounded-full h-2 transition-all duration-500" 
                     style={{ width: `${stats.totalMembers > 0 ? ((stats.membersByGender?.female || 0) / stats.totalMembers) * 100 : 0}%` }}
                   />
                 </div>
               </div>
               
               <div>
-                <div className="flex justify-between text-sm mb-2">
+                <div className="flex justify-between text-xs mb-1.5">
                   <span className="text-gray-600 font-medium">Other</span>
                   <span className="font-semibold text-purple-600">{formatNumberMasked(stats.membersByGender?.other, 'membersByGender')}</span>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
                   <div 
-                    className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-full h-3 transition-all duration-500" 
+                    className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-full h-2 transition-all duration-500" 
                     style={{ width: `${stats.totalMembers > 0 ? ((stats.membersByGender?.other || 0) / stats.totalMembers) * 100 : 0}%` }}
                   />
                 </div>
               </div>
             </div>
             
-            <div className="mt-8">
-              <h4 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                <Award className="h-4 w-4 text-yellow-500" />
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <h4 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                <Award className="h-3.5 w-3.5 text-yellow-500" />
                 Top Membership Plans
               </h4>
-              <div className="space-y-3">
+              <div className="space-y-1.5">
                 {Object.entries(stats.membershipDistribution)
                   .sort(([,a], [,b]) => b - a)
                   .slice(0, 3)
                   .map(([plan, count]) => (
-                  <div key={plan} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                    <span className="text-sm text-gray-700 font-medium truncate max-w-[150px]">{plan}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-semibold">
-                        {formatNumberMasked(count)} members
-                      </span>
-                    </div>
+                  <div key={plan} className="flex items-center justify-between p-1.5 bg-gray-50 rounded-lg text-xs">
+                    <span className="text-gray-700 font-medium truncate max-w-[150px]">{plan}</span>
+                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">
+                      {formatNumberMasked(count)}
+                    </span>
                   </div>
                 ))}
                 {Object.keys(stats.membershipDistribution).length === 0 && (
-                  <p className="text-gray-400 text-sm text-center py-2">No plans assigned yet</p>
+                  <p className="text-gray-400 text-xs text-center py-1">No plans assigned yet</p>
                 )}
               </div>
             </div>
@@ -1751,26 +1787,24 @@ const Dashboard = () => {
         )}
   
         {canViewMemberStats && stats.expiringMembers.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="bg-gradient-to-r from-orange-400 to-red-400 p-2 rounded-lg">
-                  <ClockIcon className="h-5 w-5 text-white" />
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 lg:col-span-2 transition-all">
+            <div className="flex items-center justify-between mb-3.5">
+              <div className="flex items-center gap-2">
+                <div className="bg-gradient-to-r from-orange-400 to-red-400 p-1.5 rounded-md">
+                  <ClockIcon className="h-4 w-4 text-white" />
                 </div>
-                <h3 className="text-lg font-bold text-gray-800">Memberships Expiring Soon</h3>
+                <h3 className="text-base font-bold text-gray-800">Expiring Soon</h3>
               </div>
-              {stats.expiringMembers.length > 0 && (
-                <span className="bg-red-100 text-red-600 text-sm font-bold px-4 py-2 rounded-full animate-pulse">
-                  {stats.expiringMembers.length} {stats.expiringMembers.length === 1 ? 'member' : 'members'} need attention
-                </span>
-              )}
+              <span className="bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full animate-pulse">
+                {stats.expiringMembers.length} {stats.expiringMembers.length === 1 ? 'member' : 'members'} need attention
+              </span>
             </div>
             
-            <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-2 max-h-[290px] overflow-y-auto pr-1.5 custom-scrollbar">
               {stats.expiringMembers.map((member) => (
                 <div 
                   key={member.id} 
-                  className={`group relative flex items-center justify-between p-4 rounded-xl transition-all hover:shadow-md cursor-pointer ${
+                  className={`group relative flex items-center justify-between p-2.5 rounded-lg transition-all hover:shadow-sm cursor-pointer ${
                     member.daysLeft <= 3 
                       ? 'bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500' 
                       : 'bg-gradient-to-r from-orange-50 to-yellow-50 border-l-4 border-orange-400'
@@ -1783,32 +1817,32 @@ const Dashboard = () => {
                     }, 0);
                   }}
                 >
-                  <div className="flex items-center gap-4 flex-1">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
                     <img 
                       src={member.avatar} 
                       alt={member.memberName} 
-                      className="w-12 h-12 rounded-full border-2 border-white shadow-md"
+                      className="w-9 h-9 rounded-full border border-white shadow-sm flex-shrink-0"
                     />
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="font-semibold text-gray-900">{member.memberName}</p>
+                        <p className="font-semibold text-sm text-gray-900 truncate">{member.memberName}</p>
                         {member.daysLeft <= 3 && (
-                          <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full animate-pulse">
+                          <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.2 rounded-full animate-pulse flex-shrink-0">
                             Urgent
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-600 mt-1">{member.planName}</p>
-                      <div className="flex items-center gap-3 mt-2">
-                        <span className="text-xs bg-white/80 px-2 py-1 rounded-full text-gray-700 shadow-sm">
-                          📅 Expires: {member.endDate}
+                      <p className="text-[11px] text-gray-600 truncate">{member.planName}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[11px] bg-white/80 px-1.5 py-0.5 rounded text-gray-700 shadow-xs">
+                          Expires: {member.endDate}
                         </span>
-                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                        <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${
                           member.daysLeft <= 3 
                             ? 'bg-red-100 text-red-700' 
                             : 'bg-orange-100 text-orange-700'
                         }`}>
-                          ⏳ {member.daysLeft} {member.daysLeft === 1 ? 'day' : 'days'} left
+                          {member.daysLeft}d left
                         </span>
                       </div>
                     </div>
@@ -1822,92 +1856,91 @@ const Dashboard = () => {
                         setActiveTab('members');
                       }, 0);
                     }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transform hover:-translate-y-0.5 transition-all"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-blue-500 to-purple-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:shadow-md flex-shrink-0 ml-2"
                   >
-                    Renew Now →
+                    Renew →
                   </button>
                 </div>
               ))}
             </div>
             
-            <div className="mt-6 pt-4 border-t border-gray-100">
+            <div className="mt-3 pt-2 border-t border-gray-100 text-center">
               <button 
                 onClick={() => setActiveTab('members')}
-                className="text-blue-600 hover:text-blue-800 font-medium flex items-center justify-center gap-1 w-full py-2 hover:bg-blue-50 rounded-lg transition-colors"
+                className="text-blue-600 hover:text-blue-800 text-xs font-medium inline-flex items-center justify-center gap-1 py-1 hover:bg-blue-50 px-3 rounded-lg transition-colors"
               >
                 View all expiring members
-                <ChevronDown className="h-4 w-4 ml-1 rotate-270" />
+                <ChevronDown className="h-3.5 w-3.5 rotate-270" />
               </button>
             </div>
           </div>
         )}
   
         {canViewMemberStats && stats.expiringMembers.length === 0 && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 lg:col-span-2 hover:shadow-xl transition-all">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="bg-gradient-to-r from-orange-400 to-red-400 p-2 rounded-lg">
-                  <ClockIcon className="h-5 w-5 text-white" />
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 lg:col-span-2 transition-all">
+            <div className="flex items-center justify-between mb-3.5">
+              <div className="flex items-center gap-2">
+                <div className="bg-gradient-to-r from-orange-400 to-red-400 p-1.5 rounded-md">
+                  <ClockIcon className="h-4 w-4 text-white" />
                 </div>
-                <h3 className="text-lg font-bold text-gray-800">Memberships Expiring Soon</h3>
+                <h3 className="text-base font-bold text-gray-800">Memberships Expiring Soon</h3>
               </div>
             </div>
-            <div className="text-center py-12">
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full mb-6 shadow-lg">
-                <Gift className="h-10 w-10 text-white" />
+            <div className="text-center py-8">
+              <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full mb-3 shadow-md">
+                <Gift className="h-7 w-7 text-white" />
               </div>
-              <p className="text-gray-900 font-bold text-xl mb-2">All Memberships Active! 🎉</p>
-              <p className="text-gray-500">No memberships expiring in the next 7 days.</p>
-              <p className="text-sm text-gray-400 mt-2">You're doing great! Keep up the good work.</p>
+              <p className="text-gray-900 font-bold text-base mb-1">All Memberships Active! 🎉</p>
+              <p className="text-gray-500 text-xs">No memberships expiring in the next 7 days.</p>
             </div>
           </div>
         )}
       </div>
   
       {/* Row 5: Members with Balance & Recent Leads */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {canViewBalanceStats && (
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all">
-            <div className="bg-gradient-to-r from-red-500 to-orange-500 px-6 py-4">
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md overflow-hidden transition-all">
+            <div className="bg-gradient-to-r from-red-500 to-orange-500 px-4 py-2.5">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="bg-white/20 p-2 rounded-lg">
-                    <Wallet className="h-5 w-5 text-white" />
+                <div className="flex items-center gap-2">
+                  <div className="bg-white/20 p-1.5 rounded-md">
+                    <Wallet className="h-4 w-4 text-white" />
                   </div>
-                  <h3 className="text-lg font-bold text-white">Members with Balance</h3>
+                  <h3 className="text-base font-bold text-white">Members with Balance</h3>
                 </div>
                 <button 
                   onClick={() => setActiveTab('balance')}
-                  className="text-white/90 hover:text-white text-sm font-medium flex items-center gap-1 transition-colors"
+                  className="text-white/90 hover:text-white text-xs font-medium flex items-center gap-1 transition-colors"
                 >
                   View All
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <p className="text-white/80 text-sm mt-1">
-                {formatNumberMasked(stats.membersWithBalance, 'membersWithBalance')} members have outstanding balance • Total: {formatCurrencyMasked(stats.totalBalanceDue, 'totalBalanceDue')}
+              <p className="text-white/80 text-xs mt-0.5">
+                {formatNumberMasked(stats.membersWithBalance, 'membersWithBalance')} members with due • Total: {formatCurrencyMasked(stats.totalBalanceDue, 'totalBalanceDue')}
               </p>
             </div>
             
-            <div className="p-4 max-h-[400px] overflow-y-auto">
+            <div className="p-3 max-h-[320px] overflow-y-auto custom-scrollbar">
               {membersWithBalanceList.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {membersWithBalanceList.map((member) => (
                     <div 
                       key={member.id} 
-                      className="group relative flex items-center gap-4 p-3 rounded-xl hover:bg-red-50 transition-all border border-transparent hover:border-red-200"
+                      className="group relative flex items-center gap-3 p-2.5 rounded-lg hover:bg-red-50 transition-all border border-transparent hover:border-red-200"
                     >
                       <img 
                         src={member.avatar} 
                         alt={member.name} 
-                        className="w-12 h-12 rounded-full ring-2 ring-red-200 object-cover"
+                        className="w-9 h-9 rounded-full ring-2 ring-red-200 object-cover flex-shrink-0"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <p className="font-semibold text-gray-900 truncate">{member.name}</p>
-                          <span className="text-lg font-bold text-red-600">{formatCurrencyMasked(member.balanceDue, 'balanceDue')}</span>
+                          <p className="font-semibold text-sm text-gray-900 truncate">{member.name}</p>
+                          <span className="text-sm font-bold text-red-600">{formatCurrencyMasked(member.balanceDue, 'balanceDue')}</span>
                         </div>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                        <div className="flex items-center gap-2.5 mt-0.5 text-[11px] text-gray-500">
                           <span className="flex items-center gap-1">
                             <Phone className="h-3 w-3" />
                             {member.phone || 'No phone'}
@@ -1918,10 +1951,10 @@ const Dashboard = () => {
                           </span>
                         </div>
                         {member.daysOverdue > 0 && (
-                          <div className="mt-2">
-                            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit">
+                          <div className="mt-1">
+                            <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.2 rounded-full flex items-center gap-1 w-fit font-medium">
                               <AlertTriangle className="h-3 w-3" />
-                              Overdue by {member.daysOverdue} days
+                              Overdue by {member.daysOverdue}d
                             </span>
                           </div>
                         )}
@@ -1931,27 +1964,27 @@ const Dashboard = () => {
                           setActiveTab('balance');
                           toast.success(`Viewing balance details for ${member.name}`);
                         }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-red-500 to-orange-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:shadow-lg"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-red-500 to-orange-500 text-white px-2.5 py-1 rounded-md text-xs font-medium hover:shadow-md flex-shrink-0"
                       >
-                        Collect Payment
+                        Collect
                       </button>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-12">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-                    <CheckCircle className="h-8 w-8 text-green-600" />
+                <div className="text-center py-8">
+                  <div className="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-full mb-2">
+                    <CheckCircle className="h-6 w-6 text-green-600" />
                   </div>
-                  <p className="text-gray-900 font-medium">All caught up! 🎉</p>
-                  <p className="text-gray-500 text-sm mt-1">No members with outstanding balance</p>
+                  <p className="text-gray-900 font-medium text-sm">All caught up! 🎉</p>
+                  <p className="text-gray-500 text-xs">No members with outstanding balance</p>
                 </div>
               )}
             </div>
             
             {membersWithBalanceList.length > 0 && (
-              <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
-                <div className="flex items-center justify-between text-sm">
+              <div className="border-t border-gray-100 px-3 py-2 bg-gray-50">
+                <div className="flex items-center justify-between text-xs">
                   <span className="text-gray-600">Total Outstanding:</span>
                   <span className="font-bold text-red-600">{formatCurrencyMasked(stats.totalBalanceDue, 'totalBalanceDue')}</span>
                 </div>
@@ -1961,35 +1994,35 @@ const Dashboard = () => {
         )}
   
         {canViewLeadStats && (
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all">
-            <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-4">
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md overflow-hidden transition-all">
+            <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-4 py-2.5">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="bg-white/20 p-2 rounded-lg">
-                    <Target className="h-5 w-5 text-white" />
+                <div className="flex items-center gap-2">
+                  <div className="bg-white/20 p-1.5 rounded-md">
+                    <Target className="h-4 w-4 text-white" />
                   </div>
-                  <h3 className="text-lg font-bold text-white">Recent Leads</h3>
+                  <h3 className="text-base font-bold text-white">Recent Leads</h3>
                 </div>
                 <button 
                   onClick={() => setActiveTab('leads')}
-                  className="text-white/90 hover:text-white text-sm font-medium flex items-center gap-1 transition-colors"
+                  className="text-white/90 hover:text-white text-xs font-medium flex items-center gap-1 transition-colors"
                 >
-                  View All Leads
-                  <ChevronRight className="h-4 w-4" />
+                  View All
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <p className="text-white/80 text-sm mt-1">
+              <p className="text-white/80 text-xs mt-0.5">
                 Track and manage incoming gym inquiries
               </p>
             </div>
             
-            <div className="p-4 max-h-[400px] overflow-y-auto">
+            <div className="p-3 max-h-[320px] overflow-y-auto custom-scrollbar">
               {recentLeads.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {recentLeads.map((lead) => (
                     <div 
                       key={lead.id} 
-                      className="group relative flex items-center gap-4 p-3 rounded-xl hover:bg-purple-50 transition-all border border-transparent hover:border-purple-200 cursor-pointer"
+                      className="group relative flex items-center gap-3 p-2.5 rounded-lg hover:bg-purple-50 transition-all border border-transparent hover:border-purple-200 cursor-pointer"
                       onClick={() => {
                         setActiveTab('leads');
                         setSelectedLeadId(lead.id);
@@ -1999,70 +2032,68 @@ const Dashboard = () => {
                       <img 
                         src={lead.avatar} 
                         alt={lead.name} 
-                        className="w-12 h-12 rounded-full ring-2 ring-purple-200 object-cover"
+                        className="w-9 h-9 rounded-full ring-2 ring-purple-200 object-cover flex-shrink-0"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <p className="font-semibold text-gray-900 truncate">{lead.name}</p>
-                          <div className="flex items-center gap-2">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getLeadQualityColor(lead.leadQuality)}`}>
-                              {lead.leadQuality === 'hot' ? '🔥 Hot' : lead.leadQuality === 'warm' ? '☀️ Warm' : '❄️ Cold'}
-                            </span>
-                          </div>
+                          <p className="font-semibold text-sm text-gray-900 truncate">{lead.name}</p>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${getLeadQualityColor(lead.leadQuality)}`}>
+                            {lead.leadQuality === 'hot' ? '🔥 Hot' : lead.leadQuality === 'warm' ? '☀️ Warm' : '❄️ Cold'}
+                          </span>
                         </div>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                        <div className="flex items-center gap-2.5 mt-0.5 text-[11px] text-gray-500">
                           <span className="flex items-center gap-1">
                             <Phone className="h-3 w-3" />
                             {lead.phone}
                           </span>
                           {lead.email && (
-                            <span className="flex items-center gap-1">
+                            <span className="flex items-center gap-1 truncate max-w-[140px]">
                               <MailIcon className="h-3 w-3" />
                               {lead.email}
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${getLeadStatusColor(lead.status)}`}>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${getLeadStatusColor(lead.status)}`}>
                             {getLeadStatusLabel(lead.status)}
                           </span>
-                          <span className="text-xs text-gray-400 flex items-center gap-1">
+                          <span className="text-[10px] text-gray-400 flex items-center gap-1">
                             <Clock className="h-3 w-3" />
                             {new Date(lead.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                           </span>
                         </div>
                       </div>
-                      <ChevronRight className="h-5 w-5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <ChevronRight className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-12">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-4">
-                    <Target className="h-8 w-8 text-purple-600" />
+                <div className="text-center py-8">
+                  <div className="inline-flex items-center justify-center w-12 h-12 bg-purple-100 rounded-full mb-2">
+                    <Target className="h-6 w-6 text-purple-600" />
                   </div>
-                  <p className="text-gray-900 font-medium">No leads yet</p>
-                  <p className="text-gray-500 text-sm mt-1">Start tracking your first lead</p>
+                  <p className="text-gray-900 font-medium text-sm">No leads yet</p>
+                  <p className="text-gray-500 text-xs">Start tracking your first lead</p>
                   <button 
                     onClick={() => setActiveTab('leads')}
-                    className="mt-4 inline-flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
+                    className="mt-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:shadow-md transition-all"
                   >
-                    <UserPlus className="h-4 w-4" />
-                    Add New Lead
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Add Lead
                   </button>
                 </div>
               )}
             </div>
             
             {recentLeads.length > 0 && (
-              <div className="border-t border-gray-100 px-4 py-3 bg-gray-50 flex items-center justify-between">
-                <span className="text-sm text-gray-600">New leads need attention</span>
+              <div className="border-t border-gray-100 px-3 py-2 bg-gray-50 flex items-center justify-between text-xs">
+                <span className="text-gray-600">New leads need attention</span>
                 <button 
                   onClick={() => setActiveTab('leads')}
-                  className="text-purple-600 hover:text-purple-700 text-sm font-medium flex items-center gap-1"
+                  className="text-purple-600 hover:text-purple-700 font-medium flex items-center gap-0.5"
                 >
                   Manage Leads
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </button>
               </div>
             )}
@@ -2072,7 +2103,7 @@ const Dashboard = () => {
   
       {/* Row 6: Follow-Up Card */}
       {canViewLeadStats && (
-        <div className="grid grid-cols-1 gap-6">
+        <div id="followup-card-section" className="grid grid-cols-1 gap-4 transition-all duration-300 rounded-xl">
           <FollowUpCard 
             onFollowUpClick={(lead) => {
               if (lead && lead.viewAll) {
@@ -2091,51 +2122,51 @@ const Dashboard = () => {
   
       {/* Row 7: Birthday Notifications */}
       {(stats.upcomingBirthdays?.members?.length > 0 || stats.upcomingBirthdays?.staff?.length > 0) && (
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-            <Gift className="h-5 w-5 text-pink-500" />
+        <div className="space-y-3">
+          <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <Gift className="h-4.5 w-4.5 text-pink-500" />
             🎂 Upcoming Birthdays
           </h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {canViewMemberStats && stats.upcomingBirthdays?.members?.length > 0 && (
-              <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all border-l-4 border-pink-500">
-                <div className="flex items-center justify-between mb-4">
+              <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all border-l-4 border-pink-500">
+                <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <div className="bg-pink-100 p-2 rounded-lg">
-                      <Users className="h-5 w-5 text-pink-600" />
+                    <div className="bg-pink-100 p-1.5 rounded-md">
+                      <Users className="h-4 w-4 text-pink-600" />
                     </div>
-                    <h3 className="text-lg font-bold text-gray-800">Member Birthdays</h3>
+                    <h3 className="text-base font-bold text-gray-800">Member Birthdays</h3>
                   </div>
-                  <span className="text-xs bg-pink-100 text-pink-600 px-3 py-1 rounded-full">
+                  <span className="text-xs bg-pink-100 text-pink-700 px-2.5 py-0.5 rounded-full font-medium">
                     {stats.upcomingBirthdays.members.length} this week
                   </span>
                 </div>
                 
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {stats.upcomingBirthdays.members.map((member) => (
-                    <div key={member.id} className="flex items-center gap-4 p-3 rounded-xl bg-gradient-to-r from-pink-50 to-rose-50 hover:shadow-md transition-all">
+                    <div key={member.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-gradient-to-r from-pink-50 to-rose-50 hover:shadow-xs transition-all">
                       <img 
                         src={member.avatar} 
                         alt={member.name} 
-                        className="w-12 h-12 rounded-full ring-2 ring-pink-200 object-cover"
+                        className="w-9 h-9 rounded-full ring-2 ring-pink-200 object-cover flex-shrink-0"
                       />
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-900">{member.name}</p>
-                        <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-gray-900 truncate">{member.name}</p>
+                        <p className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
                           <Calendar className="h-3 w-3" />
                           {member.birthdayDate}
                         </p>
                       </div>
                       <div className="text-right">
-                        <span className={`text-sm font-bold px-3 py-1 rounded-full ${
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                           member.daysUntil === 0 
                             ? 'bg-red-500 text-white animate-pulse' 
                             : member.daysUntil === 1
                             ? 'bg-orange-500 text-white'
                             : 'bg-pink-100 text-pink-700'
                         }`}>
-                          {member.daysUntil === 0 ? 'Today! 🎉' : `${member.daysUntil} day${member.daysUntil !== 1 ? 's' : ''}`}
+                          {member.daysUntil === 0 ? 'Today! 🎉' : `${member.daysUntil}d`}
                         </span>
                       </div>
                     </div>
@@ -2145,47 +2176,43 @@ const Dashboard = () => {
             )}
             
             {canViewStaffStats && stats.upcomingBirthdays?.staff?.length > 0 && (
-              <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all border-l-4 border-purple-500">
-                <div className="flex items-center justify-between mb-4">
+              <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all border-l-4 border-purple-500">
+                <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <div className="bg-purple-100 p-2 rounded-lg">
-                      <Briefcase className="h-5 w-5 text-purple-600" />
+                    <div className="bg-purple-100 p-1.5 rounded-md">
+                      <Briefcase className="h-4 w-4 text-purple-600" />
                     </div>
-                    <h3 className="text-lg font-bold text-gray-800">Staff Birthdays</h3>
+                    <h3 className="text-base font-bold text-gray-800">Staff Birthdays</h3>
                   </div>
-                  <span className="text-xs bg-purple-100 text-purple-600 px-3 py-1 rounded-full">
+                  <span className="text-xs bg-purple-100 text-purple-700 px-2.5 py-0.5 rounded-full font-medium">
                     {stats.upcomingBirthdays.staff.length} this week
                   </span>
                 </div>
                 
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {stats.upcomingBirthdays.staff.map((staff) => (
-                    <div key={staff.id} className="flex items-center gap-4 p-3 rounded-xl bg-gradient-to-r from-purple-50 to-indigo-50 hover:shadow-md transition-all">
+                    <div key={staff.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-gradient-to-r from-purple-50 to-indigo-50 hover:shadow-xs transition-all">
                       <img 
                         src={staff.avatar} 
                         alt={staff.name} 
-                        className="w-12 h-12 rounded-full ring-2 ring-purple-200"
+                        className="w-9 h-9 rounded-full ring-2 ring-purple-200 object-cover flex-shrink-0"
                       />
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-900">{staff.name}</p>
-                        <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-gray-900 truncate">{staff.name}</p>
+                        <p className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5 truncate">
                           <Briefcase className="h-3 w-3" />
                           {staff.position || 'Staff Member'}
                         </p>
-                        <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                          <Calendar className="h-3 w-3" />
-                          {staff.birthdayDate}
-                        </p>
                       </div>
                       <div className="text-right">
-                        <span className={`text-sm font-bold px-3 py-1 rounded-full ${
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                           staff.daysUntil === 0 
                             ? 'bg-red-500 text-white animate-pulse' 
                             : staff.daysUntil === 1
                             ? 'bg-orange-500 text-white'
                             : 'bg-purple-100 text-purple-700'
                         }`}>
-                          {staff.daysUntil === 0 ? 'Today! 🎉' : `${staff.daysUntil} day${staff.daysUntil !== 1 ? 's' : ''}`}
+                          {staff.daysUntil === 0 ? 'Today! 🎉' : `${staff.daysUntil}d`}
                         </span>
                       </div>
                     </div>
@@ -2198,93 +2225,96 @@ const Dashboard = () => {
       )}
   
       {/* Row 8: Recent Activities and Classes */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {(canViewMemberStats || canViewRevenueStats) && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <div className="bg-indigo-100 p-2 rounded-lg">
-                  <Activity className="h-5 w-5 text-indigo-600" />
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all">
+            <div className="flex items-center justify-between mb-3.5">
+              <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                <div className="bg-indigo-100 p-1.5 rounded-md">
+                  <Activity className="h-4 w-4 text-indigo-600" />
                 </div>
                 Recent Activity
               </h3>
             </div>
             
-            <div className="space-y-4">
+            <div className="space-y-2.5">
               {recentActivities.length > 0 && recentActivities[0]?.member !== 'No activities yet' ? (
                 recentActivities.map((activity) => (
-                  <div key={activity.id} className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-all">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold ${getActivityColor(activity.type)}`}>
+                  <div key={activity.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg transition-all">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${getActivityColor(activity.type)}`}>
                       {activity.avatar || activity.member?.charAt(0) || 'U'}
                     </div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-900">{activity.member}</p>
-                      <p className="text-sm text-gray-500">{activity.action}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-gray-900 truncate">{activity.member}</p>
+                      <p className="text-xs text-gray-500 truncate">{activity.action}</p>
                     </div>
-                    <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
+                    <span className="text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full whitespace-nowrap">
                       {activity.time}
                     </span>
                   </div>
                 ))
               ) : (
-                <p className="text-gray-400 text-center py-8">No recent activities</p>
+                <p className="text-gray-400 text-xs text-center py-6">No recent activities</p>
               )}
             </div>
           </div>
         )}
   
         {(canSeeAttendance || canViewMemberStats) && (
-          <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <div className="bg-orange-100 p-2 rounded-lg">
-                  <CalendarIcon className="h-5 w-5 text-orange-600" />
+          <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all">
+            <div className="flex items-center justify-between mb-3.5">
+              <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                <div className="bg-orange-100 p-1.5 rounded-md">
+                  <CalendarIcon className="h-4 w-4 text-orange-600" />
                 </div>
                 Today's Classes
               </h3>
               <button 
                 onClick={() => setActiveTab('classes')}
-                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
               >
                 Schedule
               </button>
             </div>
             
-            <div className="space-y-4">
+            <div className="space-y-2.5">
               {upcomingClasses.length > 0 ? (
                 upcomingClasses.map((classItem) => (
-                  <div key={classItem.id} className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl hover:shadow-md transition-all">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-bold text-gray-900 flex items-center gap-2">
-                        <Dumbbell className="h-4 w-4 text-blue-500" />
-                        {classItem.name}
+                  <div key={classItem.id} className="p-2.5 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg hover:shadow-xs transition-all">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <h4 className="font-bold text-sm text-gray-900 flex items-center gap-1.5 truncate">
+                        <Dumbbell className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                        <span className="truncate">{classItem.name}</span>
                       </h4>
-                      <span className="text-xs bg-blue-100 text-blue-600 px-3 py-1 rounded-full font-medium">
+                      <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap ml-2">
                         {classItem.attendees || 0}/{classItem.capacity || 20} booked
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-3 text-gray-600">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2.5 text-gray-600 text-[11px]">
                         <span className="flex items-center gap-1">
-                          <ClockIcon className="h-4 w-4" />
+                          <ClockIcon className="h-3 w-3" />
                           {classItem.time}
                         </span>
                         <span className="flex items-center gap-1">
-                          <User className="h-4 w-4" />
+                          <User className="h-3 w-3" />
                           {classItem.trainer || 'TBA'}
                         </span>
                       </div>
-                      <button className="text-xs bg-white px-3 py-1 rounded-full text-blue-600 hover:bg-blue-600 hover:text-white transition-colors">
+                      <button className="text-[11px] bg-white px-2 py-0.5 rounded-full text-blue-600 hover:bg-blue-600 hover:text-white transition-colors">
                         Join
                       </button>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="text-center py-8">
-                  <CalendarIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-400">No classes scheduled today</p>
-                  <button className="mt-3 text-blue-600 hover:text-blue-700 text-sm font-medium">
+                <div className="text-center py-6">
+                  <CalendarIcon className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-gray-400 text-xs">No classes scheduled today</p>
+                  <button 
+                    onClick={() => setActiveTab('classes')}
+                    className="mt-2 text-blue-600 hover:text-blue-700 text-xs font-medium"
+                  >
                     Schedule a class →
                   </button>
                 </div>
@@ -2296,19 +2326,19 @@ const Dashboard = () => {
   
       {/* Row 9: Alerts Section */}
       {(stats.expiringThisMonth > 0 || stats.pendingPayments > 0 || stats.overdueCount > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {canViewBalanceStats && stats.overdueCount > 0 && (
-            <div className="bg-gradient-to-r from-red-600 to-red-800 rounded-2xl p-6 shadow-lg text-white">
-              <div className="flex items-start gap-4">
-                <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
-                  <AlertCircle className="h-6 w-6" />
+            <div className="bg-gradient-to-r from-red-600 to-red-800 rounded-xl p-4 shadow-md text-white">
+              <div className="flex items-start gap-3">
+                <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                  <AlertCircle className="h-5 w-5" />
                 </div>
                 <div className="flex-1">
-                  <h4 className="font-bold text-lg mb-1">Overdue Payments</h4>
-                  <p className="text-white/90 mb-3">{formatNumberMasked(stats.overdueCount, 'overdueCount')} members have overdue payments</p>
+                  <h4 className="font-bold text-base mb-0.5">Overdue Payments</h4>
+                  <p className="text-white/90 text-xs mb-2.5">{formatNumberMasked(stats.overdueCount, 'overdueCount')} members have overdue payments</p>
                   <button 
                     onClick={() => setActiveTab('balance')}
-                    className="bg-white text-red-600 px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
+                    className="bg-white text-red-600 px-3 py-1.5 rounded-md text-xs font-semibold hover:shadow-md transition-all"
                   >
                     View Balance →
                   </button>
@@ -2318,17 +2348,17 @@ const Dashboard = () => {
           )}
           
           {canViewMemberStats && stats.expiringSoon > 0 && (
-            <div className="bg-gradient-to-r from-orange-500 to-yellow-600 rounded-2xl p-6 shadow-lg text-white">
-              <div className="flex items-start gap-4">
-                <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
-                  <ClockIcon className="h-6 w-6" />
+            <div className="bg-gradient-to-r from-orange-500 to-yellow-600 rounded-xl p-4 shadow-md text-white">
+              <div className="flex items-start gap-3">
+                <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                  <ClockIcon className="h-5 w-5" />
                 </div>
                 <div className="flex-1">
-                  <h4 className="font-bold text-lg mb-1">Expiring Memberships</h4>
-                  <p className="text-white/90 mb-3">{formatNumberMasked(stats.expiringSoon, 'expiringSoon')} memberships expire within 7 days</p>
+                  <h4 className="font-bold text-base mb-0.5">Expiring Memberships</h4>
+                  <p className="text-white/90 text-xs mb-2.5">{formatNumberMasked(stats.expiringSoon, 'expiringSoon')} memberships expire within 7 days</p>
                   <button 
                     onClick={() => setActiveTab('members')}
-                    className="bg-white text-orange-600 px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-all"
+                    className="bg-white text-orange-600 px-3 py-1.5 rounded-md text-xs font-semibold hover:shadow-md transition-all"
                   >
                     View Members →
                   </button>
@@ -2588,6 +2618,24 @@ const Dashboard = () => {
                   </span>
                 </button>
               )}
+
+              {/* Hide/Show Values Eye Favicon Toggle */}
+              <button
+                onClick={toggleHideValues}
+                className={`p-2 rounded-lg relative transition-all duration-200 ${
+                  hideValues 
+                    ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 ring-1 ring-amber-300' 
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+                title={hideValues ? 'Show values' : 'Hide values'}
+                aria-label={hideValues ? 'Show values' : 'Hide values'}
+              >
+                {hideValues ? (
+                  <Eye className="h-5 w-5" />
+                ) : (
+                  <EyeOff className="h-5 w-5" />
+                )}
+              </button>
 
               {/* Notification Bell & Dropdown */}
               <div className="relative">
@@ -2858,7 +2906,7 @@ const Dashboard = () => {
         </header>
 
         {/* Page Content */}
-        <div className="p-6">
+        <div className="p-4 sm:p-5 md:p-6">
           {activeTab === 'dashboard' && renderDashboard()}
           {activeTab === 'members' && canSeeMembers && (
             <Members 
@@ -2867,7 +2915,12 @@ const Dashboard = () => {
             />
           )}
           {activeTab === 'pt' && <PTPage />}
-          {activeTab === 'membership-plans' && <MembershipPlans />}
+          {activeTab === 'membership-plans' && (
+            <MembershipPlans 
+              initialCreate={openCreatePlan} 
+              onCloseCreate={() => setOpenCreatePlan(false)} 
+            />
+          )}
           {activeTab === 'addons' && <AddOns />}
           {activeTab === 'balance' && canSeeBalances && <Balance />}
           {activeTab === 'devices' && canSeeDevices && <DeviceManager />}

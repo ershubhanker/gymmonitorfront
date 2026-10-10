@@ -106,28 +106,29 @@ export const AttendanceProvider = ({ children }) => {
   const fetchNewEvents = useCallback(async () => {
     if (!isActive.current) return;
     try {
-      const oneHourAgo = new Date();
-      oneHourAgo.setHours(oneHourAgo.getHours() - 1);
-      
+      // Fetch latest 30 attendance records in real-time
       const data = await attendanceApi.getAttendanceRecords({ 
-        limit: 20,
-        start_date: oneHourAgo.toISOString().split('T')[0]
+        limit: 30
       });
       
       if (data.records && data.records.length > 0) {
         const newEvents = data.records.map(record => ({
           id: record.id,
-          user_id: record.member_id,
-          user_name: record.member_name,
-          timestamp: record.created_at,
-          event_type: record.event_type,
-          verified: record.verified,
-          device_serial: record.device_serial
+          user_id: record.member_id || (record.staff_id ? `S${record.staff_id}` : record.id),
+          member_id: record.member_id,
+          staff_id: record.staff_id,
+          user_name: record.member_name || record.user_name || 'Unknown',
+          timestamp: record.created_at || record.timestamp || record.check_in_time,
+          event_type: record.event_type || 'check_in',
+          verified: record.verified !== undefined ? record.verified : true,
+          notes: record.notes,
+          device_serial: record.device_serial || 'N/A'
         }));
         
         setLiveEvents(prev => {
           const existingIds = new Set(prev.map(e => e.id));
           const uniqueNewEvents = newEvents.filter(e => !existingIds.has(e.id));
+          if (uniqueNewEvents.length === 0) return prev;
           return [...uniqueNewEvents, ...prev].slice(0, 100);
         });
         setHasAttendancePermission(true);
@@ -418,7 +419,7 @@ export const AttendanceProvider = ({ children }) => {
           fetchNewEvents();
           fetchTodayStats();
         }
-      }, 30000);
+      }, 4000);
     }
     
     return () => {
@@ -452,7 +453,7 @@ export const AttendanceProvider = ({ children }) => {
             fetchNewEvents();
             fetchTodayStats();
           }
-        }, 30000);
+        }, 4000);
       }
     };
 

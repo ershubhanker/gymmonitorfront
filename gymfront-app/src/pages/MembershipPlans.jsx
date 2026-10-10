@@ -24,15 +24,22 @@ import {
 import toast from 'react-hot-toast';
 import api from '../services/api';
 
-const MembershipPlans = () => {
+const MembershipPlans = ({ initialCreate = false, onCloseCreate }) => {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(initialCreate);
   const [editingPlan, setEditingPlan] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [expandedPlanId, setExpandedPlanId] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'active', 'inactive'
+
+  useEffect(() => {
+    if (initialCreate) {
+      setShowCreateModal(true);
+      setEditingPlan(null);
+    }
+  }, [initialCreate]);
   
   // Bulk selection state
   const [selectedPlans, setSelectedPlans] = useState(new Set());
@@ -114,6 +121,7 @@ const MembershipPlans = () => {
       await api.post('/gym/plans', payload);
       toast.success('Plan created successfully!');
       setShowCreateModal(false);
+      if (onCloseCreate) onCloseCreate();
       resetForm();
       fetchPlans();
     } catch (error) {
@@ -699,6 +707,7 @@ const MembershipPlans = () => {
                 <button
                   onClick={() => {
                     setShowCreateModal(false);
+                    if (onCloseCreate) onCloseCreate();
                     setEditingPlan(null);
                     resetForm();
                   }}
@@ -854,6 +863,7 @@ const MembershipPlans = () => {
                 <button
                   onClick={() => {
                     setShowCreateModal(false);
+                    if (onCloseCreate) onCloseCreate();
                     setEditingPlan(null);
                     resetForm();
                   }}

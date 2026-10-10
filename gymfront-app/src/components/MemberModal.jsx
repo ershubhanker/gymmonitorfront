@@ -2081,93 +2081,114 @@ const MembershipSelector = ({
         <PlanFormModal onSave={handlePlanSave} onCancel={cancelPlanForm} />
       )}
 
-      {membershipPlans.length > 0 && !shouldShowPlanCreator && (
-        <div>
-          <div className="flex justify-between items-center mb-3">
-            <p className="text-sm text-gray-500">
-              {isEdit ? 'Select new plan (change will be prorated):' : 'Select a plan:'}
-            </p>
-            <button
-              type="button"
-              onClick={onRefreshPlans}
-              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+      {membershipPlans.length > 0 && !shouldShowPlanCreator && (() => {
+        // Filter active plans (or keep current plan in edit mode)
+        const activePlans = membershipPlans.filter(
+          plan => plan.is_active !== false || (isEdit && String(formData.plan_id) === String(plan.id))
+        );
+        const plansToDisplay = activePlans.length > 0 ? activePlans : membershipPlans;
+        const hasMoreThan5 = plansToDisplay.length > 5;
+
+        return (
+          <div>
+            <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm text-gray-500">
+                  {isEdit ? 'Select new plan (change will be prorated):' : 'Select a plan:'}
+                </p>
+                {hasMoreThan5 && (
+                  <span className="text-xs bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded-full border border-blue-200">
+                    Showing 5 of {plansToDisplay.length} active plans (scroll down for more)
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={onRefreshPlans}
+                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
+              >
+                <RefreshCw className="h-3 w-3" /> Refresh
+              </button>
+            </div>
+
+            {/* Container showing up to 5 active plans cleanly, scrollable after 5 */}
+            <div 
+              className={`space-y-2 pr-1.5 ${hasMoreThan5 ? 'max-h-[395px] overflow-y-auto' : ''}`}
+              style={{ scrollbarWidth: 'thin' }}
             >
-              <RefreshCw className="h-3 w-3" /> Refresh
+              {plansToDisplay.map(plan => {
+                const price = plan.discounted_price || plan.price;
+                const isSelected = String(formData.plan_id) === String(plan.id);
+                const isDeleting = deletingPlanId === plan.id;
+                const isCurrentPlan = isEdit && String(formData.plan_id) === String(plan.id);
+                
+                return (
+                  <div key={plan.id}
+                    className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                      isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                    }`}>
+                    <input 
+                      type="radio" 
+                      name="plan_id" 
+                      value={String(plan.id)}
+                      checked={isSelected} 
+                      onChange={handlePlanSelect}
+                      className="accent-blue-600 w-4 h-4 flex-shrink-0" 
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-gray-900 text-sm truncate">{plan.name}</p>
+                        {!plan.is_active && (
+                          <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                            Inactive
+                          </span>
+                        )}
+                        {isCurrentPlan && isEdit && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                            Current
+                          </span>
+                        )}
+                        <div className="flex items-center gap-1 ml-auto">
+                          <button
+                            type="button"
+                            onClick={() => startEditPlan(plan)}
+                            className="text-gray-400 hover:text-blue-600 p-1"
+                            title="Edit plan"
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePlan(plan)}
+                            disabled={isDeleting}
+                            className="text-gray-400 hover:text-red-600 p-1 disabled:opacity-50"
+                            title="Delete plan"
+                          >
+                            {isDeleting ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">{plan.duration_days} days{plan.description ? ` · ${plan.description}` : ''}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-lg font-bold text-gray-900">₹{price}</p>
+                      {plan.discounted_price && <p className="text-xs text-gray-400 line-through">₹{plan.price}</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <button type="button" onClick={() => { setEditingPlan(null); setShowPlanCreator(true); }}
+              className="mt-3 flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium">
+              <Plus className="h-4 w-4" /> Create a new plan
             </button>
           </div>
-          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-            {membershipPlans.map(plan => {
-              const price = plan.discounted_price || plan.price;
-              const isSelected = String(formData.plan_id) === String(plan.id);
-              const isDeleting = deletingPlanId === plan.id;
-              const isCurrentPlan = isEdit && String(formData.plan_id) === String(plan.id);
-              
-              return (
-                <div key={plan.id}
-                  className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${
-                    isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                  }`}>
-                  <input 
-                    type="radio" 
-                    name="plan_id" 
-                    value={String(plan.id)}
-                    checked={isSelected} 
-                    onChange={handlePlanSelect}
-                    className="accent-blue-600 w-4 h-4 flex-shrink-0" 
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-gray-900 text-sm truncate">{plan.name}</p>
-                      {!plan.is_active && (
-                        <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
-                          Inactive
-                        </span>
-                      )}
-                      {isCurrentPlan && isEdit && (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                          Current
-                        </span>
-                      )}
-                      <div className="flex items-center gap-1 ml-auto">
-                        <button
-                          type="button"
-                          onClick={() => startEditPlan(plan)}
-                          className="text-gray-400 hover:text-blue-600 p-1"
-                          title="Edit plan"
-                        >
-                          <Edit className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePlan(plan)}
-                          disabled={isDeleting}
-                          className="text-gray-400 hover:text-red-600 p-1 disabled:opacity-50"
-                          title="Delete plan"
-                        >
-                          {isDeleting ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">{plan.duration_days} days{plan.description ? ` · ${plan.description}` : ''}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-lg font-bold text-gray-900">₹{price}</p>
-                    {plan.discounted_price && <p className="text-xs text-gray-400 line-through">₹{plan.price}</p>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <button type="button" onClick={() => { setEditingPlan(null); setShowPlanCreator(true); }}
-            className="mt-3 flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium">
-            <Plus className="h-4 w-4" /> Create a new plan
-          </button>
-        </div>
-      )}
+        );
+      })()}
 
       {shouldShowPlanCreator && (
         <PlanFormModal

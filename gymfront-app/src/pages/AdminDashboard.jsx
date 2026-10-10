@@ -24,6 +24,8 @@ import GymDetails from '../components/admin/GymDetails';
 import AttendanceList from '../components/admin/AttendanceList';
 import IrregularMembers from '../components/attendance/IrregularMembers';
 import SubscriptionManager from '../components/admin/SubscriptionManager';
+import AdminRevenueGraph from '../components/admin/AdminRevenueGraph';
+import SoftwarePlanModal from '../components/admin/SoftwarePlanModal';
 
 // ─── Field components ─────────────────────────────────────────────────
 
@@ -584,6 +586,8 @@ const AdminDashboard = () => {
 
   // ✅ NEW: Subscription Manager modal
   const [subscriptionGym, setSubscriptionGym] = useState(null);
+  // ✅ Software Plan (Free / Monthly / Yearly + Custom Price + Dates) modal
+  const [softwarePlanGym, setSoftwarePlanGym] = useState(null);
 
   // WhatsApp toggle
   const [whatsappEnabled, setWhatsappEnabled] = useState(true);
@@ -1085,6 +1089,9 @@ const AdminDashboard = () => {
                   sub="from all payments" color="green" />
               </div>
 
+              {/* REVENUE & SOFTWARE SUBSCRIPTION ANALYTICS GRAPH */}
+              <AdminRevenueGraph />
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                   <div className="flex items-center justify-between mb-4">
@@ -1210,7 +1217,8 @@ const AdminDashboard = () => {
               onGymClick={(id, name) => fetchGymDetails(id, name)}
               onEdit={(gym) => openEdit('gym', gym)}
               onDelete={(id, name) => openDelete('gym', id, name, `admin/gyms/${id}`)}
-              onManageSubscription={(gym) => setSubscriptionGym({ id: gym.id, name: gym.name })}
+              onManageSubscription={(gym) => setSoftwarePlanGym(gym)}
+              onManageSoftwarePlan={(gym) => setSoftwarePlanGym(gym)}
               onBulkDelete={(ids) => {
                 if (window.confirm(`Are you sure you want to delete ${ids.length} selected gyms?`)) {
                   Promise.all(ids.map((id) => api.delete(`/admin/gyms/${id}`)))
@@ -1238,6 +1246,7 @@ const AdminDashboard = () => {
               onMemberEdit={(member) => openEdit('member', member)}
               onStaffEdit={(staff) => openEdit('staff', staff)}
               onPlanEdit={(plan) => openEdit('plan', plan)}
+              onSoftwarePlanEdit={(gym) => setSoftwarePlanGym(gym)}
             />
           )}
 
@@ -1698,6 +1707,20 @@ const AdminDashboard = () => {
           onChanged={() => {
             // Refresh the gyms list so SaaS Plan/Status columns update
             fetchAllData(false);
+          }}
+        />
+      )}
+
+      {/* ── SOFTWARE PLAN MODAL ── */}
+      {softwarePlanGym && (
+        <SoftwarePlanModal
+          gym={softwarePlanGym}
+          onClose={() => setSoftwarePlanGym(null)}
+          onSaved={() => {
+            fetchAllData(false);
+            if (viewingGymDetails && selectedGymId) {
+              fetchGymDetails(selectedGymId, selectedGym?.name);
+            }
           }}
         />
       )}

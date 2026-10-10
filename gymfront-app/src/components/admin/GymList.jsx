@@ -13,6 +13,7 @@ const GymList = ({
   onDelete,
   onBulkDelete,
   onManageSubscription,
+  onManageSoftwarePlan,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -85,9 +86,19 @@ const GymList = ({
         return 'bg-purple-900/60 text-purple-300 border border-purple-700/50';
       case 'monthly':
         return 'bg-blue-900/60 text-blue-300 border border-blue-700/50';
+      case 'free':
+        return 'bg-emerald-950/60 text-emerald-300 border border-emerald-700/50';
       default:
-        return 'bg-gray-800 text-gray-500 border border-gray-700/50';
+        return 'bg-gray-800 text-gray-400 border border-gray-700/50';
     }
+  };
+
+  const getPlanDetails = (gym) => {
+    const type = (gym.software_plan_type || gym.saas_plan || 'free').toLowerCase();
+    const price = gym.software_plan_price != null ? gym.software_plan_price : (gym.saas_amount || 0);
+    const start = gym.software_plan_start_date;
+    const end = gym.software_plan_end_date || gym.saas_period_end;
+    return { type, price, start, end };
   };
 
   return (
@@ -232,37 +243,62 @@ const GymList = ({
                   <span className="text-gray-600">/{gym.total_staff}</span>
                 </td>
 
-                {/* SaaS Plan */}
+                {/* Software Plan */}
                 <td className="px-4 py-3">
-                  <span
-                    className={`inline-block px-2 py-0.5 text-xs rounded-full font-medium capitalize ${saasPlanClass(gym.saas_plan)}`}
-                  >
-                    {gym.saas_plan || 'No plan'}
-                  </span>
-                  {gym.saas_amount != null && (
-                    <p className="text-[10px] text-gray-500 mt-0.5">
-                      ₹{Number(gym.saas_amount).toLocaleString('en-IN')}
-                    </p>
-                  )}
+                  {(() => {
+                    const p = getPlanDetails(gym);
+                    return (
+                      <div>
+                        <span
+                          className={`inline-block px-2.5 py-0.5 text-xs rounded-full font-bold capitalize ${saasPlanClass(p.type)}`}
+                        >
+                          {p.type === 'free' ? 'Free Plan' : `${p.type} Plan`}
+                        </span>
+                        <p className="text-[11px] font-semibold text-white mt-0.5">
+                          {p.type === 'free'
+                            ? '₹0'
+                            : `₹${Number(p.price || 0).toLocaleString('en-IN')}${p.type === 'monthly' ? '/mo' : '/yr'}`}
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </td>
 
                 {/* SaaS Status */}
                 <td className="px-4 py-3">
                   <span
-                    className={`inline-block px-2 py-0.5 text-xs rounded-full font-medium capitalize ${saasStatusClass(gym.saas_status)}`}
+                    className={`inline-block px-2 py-0.5 text-xs rounded-full font-medium capitalize ${saasStatusClass(gym.subscription_status || gym.saas_status)}`}
                   >
-                    {gym.saas_status || 'none'}
+                    {gym.subscription_status || gym.saas_status || 'active'}
                   </span>
                   {gym.saas_cancel_at_cycle_end && (
                     <p className="text-[10px] text-amber-500 mt-0.5">will cancel</p>
                   )}
                 </td>
 
-                {/* Renews */}
+                {/* Plan Dates & Expiry */}
                 <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                  {gym.saas_period_end
-                    ? formatDate(gym.saas_period_end)
-                    : '—'}
+                  {(() => {
+                    const p = getPlanDetails(gym);
+                    if (!p.end) {
+                      return <span className="text-gray-500">No expiry</span>;
+                    }
+                    const end = new Date(p.end);
+                    const now = new Date();
+                    const diffDays = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+                    return (
+                      <div>
+                        <span className="text-gray-200">{formatDate(p.end)}</span>
+                        {diffDays < 0 ? (
+                          <p className="text-[10px] text-red-400 font-medium">Expired</p>
+                        ) : diffDays <= 3 ? (
+                          <p className="text-[10px] text-amber-400 font-semibold animate-pulse">{diffDays}d left</p>
+                        ) : (
+                          <p className="text-[10px] text-emerald-400">{diffDays}d left</p>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </td>
 
                 {/* Revenue */}
@@ -279,11 +315,11 @@ const GymList = ({
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1.5">
                     <button
-                      onClick={() => onManageSubscription(gym)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-amber-900/40 hover:bg-amber-900/70 text-amber-300 rounded-lg border border-amber-800/50 transition-colors"
-                      title="Manage SaaS subscription"
+                      onClick={() => (onManageSoftwarePlan ? onManageSoftwarePlan(gym) : onManageSubscription(gym))}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-gradient-to-r from-amber-900/60 to-purple-900/60 hover:from-amber-800/80 hover:to-purple-800/80 text-amber-200 rounded-lg border border-amber-700/60 transition-colors shadow-sm"
+                      title="Manage Software Plan, Custom Price, Start & End Dates"
                     >
-                      <Crown className="h-3.5 w-3.5" />
+                      <Crown className="h-3.5 w-3.5 text-amber-400" />
                       Plan
                     </button>
                     <button

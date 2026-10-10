@@ -729,13 +729,15 @@ const DeviceManager = () => {
                     
                     <button
                       onClick={() => handleUnlockDoor(device)}
-                      disabled={isUnlocking || !isOnline}
-                      className={`flex-1 px-3 py-2 rounded-lg transition-colors text-sm ${
-                        isOnline && !isUnlocking
-                          ? 'bg-green-50 text-green-600 hover:bg-green-100'
-                          : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                      disabled={isUnlocking}
+                      className={`flex-1 px-3 py-2 rounded-lg transition-colors text-sm font-medium ${
+                        isUnlocking
+                          ? 'bg-gray-100 text-gray-400 cursor-wait'
+                          : isOnline
+                          ? 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200'
+                          : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
                       }`}
-                      title={isOnline ? 'Unlock Door' : 'Device offline - cannot unlock door'}
+                      title={isOnline ? 'Unlock Door (Device Online)' : 'Send Unlock Command (Command will be queued for device)'}
                     >
                       {isUnlocking ? (
                         <Loader2 className="h-4 w-4 animate-spin inline mr-1" />

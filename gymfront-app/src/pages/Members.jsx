@@ -106,13 +106,13 @@ const PlanFilter = ({
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 mt-1 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 max-h-80 overflow-y-auto">
+        <div className="absolute left-0 mt-1 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
           <button
             onClick={() => {
               onSelectPlan(null);
               setIsOpen(false);
             }}
-            className={`w-full flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
+            className={`w-full flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100 ${
               !selectedPlanId ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
             }`}
           >
@@ -122,41 +122,52 @@ const PlanFilter = ({
             </span>
           </button>
 
-          {plans.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-gray-500 text-center">
-              No plans available
-            </div>
-          ) : (
-            plans.map((plan) => (
-              <button
-                key={plan.id}
-                onClick={() => {
-                  onSelectPlan(plan.id);
-                  setIsOpen(false);
-                }}
-                className={`w-full flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
-                  selectedPlanId === plan.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
-                }`}
+          {(() => {
+            const activePlans = plans.filter(p => p.is_active !== false);
+            if (activePlans.length === 0) {
+              return (
+                <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                  No active plans available
+                </div>
+              );
+            }
+            return (
+              <div 
+                className={activePlans.length > 5 ? "max-h-[210px] overflow-y-auto" : ""}
+                style={{ scrollbarWidth: 'thin' }}
               >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    selectedPlanId === plan.id ? 'bg-blue-500' : 'bg-gray-300'
-                  }`} />
-                  <span className="truncate">{plan.name}</span>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${getPlanBadgeColor(plan)}`}>
-                    {plan.member_count || 0}
-                  </span>
-                  {plan.percentage !== undefined && plan.percentage > 0 && (
-                    <span className="text-xs text-gray-400">
-                      {plan.percentage}%
-                    </span>
-                  )}
-                </div>
-              </button>
-            ))
-          )}
+                {activePlans.map((plan) => (
+                  <button
+                    key={plan.id}
+                    onClick={() => {
+                      onSelectPlan(plan.id);
+                      setIsOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
+                      selectedPlanId === plan.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        selectedPlanId === plan.id ? 'bg-blue-500' : 'bg-gray-300'
+                      }`} />
+                      <span className="truncate">{plan.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${getPlanBadgeColor(plan)}`}>
+                        {plan.member_count || 0}
+                      </span>
+                      {plan.percentage !== undefined && plan.percentage > 0 && (
+                        <span className="text-xs text-gray-400">
+                          {plan.percentage}%
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

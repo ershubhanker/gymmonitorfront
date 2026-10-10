@@ -4,7 +4,7 @@ import {
   ArrowLeft, User, MailIcon, PhoneIcon, MapPin, Clock, 
   BarChart3, Shield, Award, CreditCard, DollarSign, Wallet,
   Users, Building2, Loader2, Edit, Trash2, ExternalLink,
-  Search, X, ChevronRight, Calendar, AlertCircle
+  Search, X, ChevronRight, Calendar, AlertCircle, Crown, IndianRupee
 } from 'lucide-react';
 import { formatCurrency, formatDate, formatDateTime, statusBadge } from '../../services/adminHelpers';
 
@@ -46,7 +46,7 @@ const StatCard = ({ icon: Icon, label, value, sub, color = 'green' }) => {
   );
 };
 
-const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdit, onStaffEdit, onPlanEdit }) => {
+const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdit, onStaffEdit, onPlanEdit, onSoftwarePlanEdit }) => {
   const [memberSearch, setMemberSearch] = useState('');
   const [filteredMembers, setFilteredMembers] = useState([]);
 
@@ -122,6 +122,12 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
+              onClick={() => onSoftwarePlanEdit && onSoftwarePlanEdit(gym)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-600 to-purple-600 hover:from-amber-500 hover:to-purple-500 text-white rounded-lg text-xs font-semibold transition-all shadow-md shadow-purple-900/40"
+            >
+              <Crown className="h-3.5 w-3.5" /> Plan
+            </button>
+            <button
               onClick={() => onEdit(gym)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition-colors"
             >
@@ -175,6 +181,83 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
           sub="monthly revenue" color="green" />
         <StatCard icon={Wallet} label="Expenses" value={formatCurrency(gym.stats?.total_expenses || 0)}
           sub="total expenses" color="red" />
+      </div>
+
+      {/* Software Plan & Pricing Overview */}
+      <div className="bg-gradient-to-r from-purple-950/60 via-gray-900 to-indigo-950/60 border border-purple-800/60 rounded-2xl p-5 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-800">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-br from-amber-500 to-purple-600 rounded-xl text-white shadow-lg shadow-purple-900/30">
+              <Crown className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-base flex items-center gap-2">
+                Gym Software Subscription
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full capitalize bg-purple-900/60 text-purple-300 border border-purple-700/50">
+                  {gym.software_plan_type ? `${gym.software_plan_type} Plan` : 'Free Plan'}
+                </span>
+              </h3>
+              <p className="text-xs text-gray-400">
+                Software plan type, custom pricing, and validity period for this gym
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => onSoftwarePlanEdit && onSoftwarePlanEdit(gym)}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold transition-colors self-start sm:self-auto shadow-md shadow-purple-900/30"
+          >
+            <Crown className="h-4 w-4" /> Change Plan & Price
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4">
+          <div>
+            <span className="text-xs text-gray-400 block mb-1">Custom Plan Price</span>
+            <span className="text-lg font-bold text-white flex items-center gap-1">
+              <IndianRupee className="h-4 w-4 text-amber-400" />
+              {gym.software_plan_price != null
+                ? Number(gym.software_plan_price).toLocaleString('en-IN')
+                : '0'}
+              <span className="text-xs font-normal text-gray-400">
+                {gym.software_plan_type === 'yearly' ? '/year' : gym.software_plan_type === 'monthly' ? '/month' : ''}
+              </span>
+            </span>
+          </div>
+
+          <div>
+            <span className="text-xs text-gray-400 block mb-1">Plan Start Date</span>
+            <span className="text-sm font-semibold text-gray-200">
+              {gym.software_plan_start_date ? formatDate(gym.software_plan_start_date) : 'Not specified'}
+            </span>
+          </div>
+
+          <div>
+            <span className="text-xs text-gray-400 block mb-1">Plan End Date</span>
+            <span className="text-sm font-semibold text-gray-200">
+              {gym.software_plan_end_date ? formatDate(gym.software_plan_end_date) : 'No expiration (Free)'}
+            </span>
+          </div>
+
+          <div>
+            <span className="text-xs text-gray-400 block mb-1">Validity / Status</span>
+            {(() => {
+              if (!gym.software_plan_end_date) {
+                return <span className="text-xs font-medium text-emerald-400">Active (Continuous)</span>;
+              }
+              const end = new Date(gym.software_plan_end_date);
+              const now = new Date();
+              const diffDays = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+              if (diffDays < 0) {
+                return <span className="text-xs font-semibold text-red-400">Expired ({Math.abs(diffDays)}d ago)</span>;
+              }
+              if (diffDays <= 3) {
+                return <span className="text-xs font-bold text-amber-300 animate-pulse">Ending Soon ({diffDays}d left)</span>;
+              }
+              return <span className="text-xs font-semibold text-emerald-300">Active ({diffDays}d remaining)</span>;
+            })()}
+          </div>
+        </div>
       </div>
 
       {/* Gym Details Grid */}

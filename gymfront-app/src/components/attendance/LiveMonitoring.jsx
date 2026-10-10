@@ -484,11 +484,19 @@ const LiveMonitoring = () => {
     }
   };
 
-  // Load staff events when tab changes
+  // Polling for staff live events when on staff tab
   useEffect(() => {
+    let timer = null;
     if (activeTab === 'staff') {
       fetchStaffLiveEvents();
+      timer = setInterval(() => {
+        fetchStaffLiveEvents();
+        fetchStaffStatsOnly();
+      }, 4000);
     }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
   }, [activeTab]);
 
   // Initial load of staff events
