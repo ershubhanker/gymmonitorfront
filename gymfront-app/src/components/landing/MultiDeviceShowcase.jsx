@@ -38,14 +38,13 @@ export default function MultiDeviceShowcase() {
             <span>One Unified Cloud Platform · Any Device</span>
           </div>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight">
-            Run Your Entire Gym on{' '}
+            One Unified Platform.{' '}
             <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent">
-              PC, Tablet & Mobile Phone
+              Tailored for Every Screen.
             </span>
           </h2>
           <p className="mt-4 text-base sm:text-lg text-slate-400">
-            Whether you're at the reception desk with a PC, walking the gym floor with an iPad,
-            or tracking daily revenue on your smartphone — GymMonitor synchronizes in real-time.
+            High-speed workstation for your reception desk, touch-friendly kiosk for floor check-ins, and on-the-go tracking right from your pocket.
           </p>
 
           {/* Device Switcher Pills */}

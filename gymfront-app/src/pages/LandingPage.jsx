@@ -211,19 +211,19 @@ export default function LandingPage() {
 
           {/* Main Title */}
           <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black text-white leading-[1.1] tracking-tight max-w-5xl mx-auto">
-            Run Your Gym With{' '}
+            Manage Your Gym{' '}
             <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
-              Superpowers.
+              Like a Pro.
             </span>
             <br />
-            <span className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-slate-300 block mt-2">
-              On PC, Tablet & Mobile Phone.
+            <span className="text-xl sm:text-3xl lg:text-4xl font-extrabold text-slate-300 block mt-3">
+              Biometric Turnstiles, Automated WhatsApp & Real-Time Sync.
             </span>
           </h1>
 
-          <p className="mt-6 max-w-2xl mx-auto text-base sm:text-xl text-slate-400 leading-relaxed font-normal">
-            Automate member attendance, control biometric turnstiles, send instant WhatsApp fee reminders,
-            and track daily gym revenue from any device in real-time.
+          <p className="mt-6 max-w-2xl mx-auto text-base sm:text-lg text-slate-400 leading-relaxed font-normal">
+            Automate member attendance, control turnstile gates, collect membership fees,
+            and send automated payment reminders effortlessly.
           </p>
 
           {/* Cross-Device Availability Badge */}
@@ -264,39 +264,6 @@ export default function LandingPage() {
             <span className="ml-2 text-slate-400 text-sm font-medium">
               Trusted by 500+ Fitness Clubs & Gym Owners Across India
             </span>
-          </div>
-
-          {/* Floating Live Motion Badges */}
-          <div className="mt-14 max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
-            <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl backdrop-blur-xl animate-float-slow flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                <Unlock className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-xs font-bold text-white block">Biometric Gate Unlocked</span>
-                <span className="text-[11px] text-slate-400">Turnstile response in 0.2s</span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl backdrop-blur-xl animate-float-delayed flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                <TrendingUp className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-xs font-bold text-white block">₹2.45L Monthly Revenue</span>
-                <span className="text-[11px] text-emerald-400">+18% growth this month</span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl backdrop-blur-xl animate-float-slow flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-green-500/10 text-green-400 border border-green-500/20">
-                <MessageCircle className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-xs font-bold text-white block">WhatsApp Expiry Alerts</span>
-                <span className="text-[11px] text-slate-400">Auto-sent 3 days before</span>
-              </div>
-            </div>
           </div>
 
         </div>
