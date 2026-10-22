@@ -147,8 +147,8 @@ export default function MultiDeviceShowcase() {
                   <div className="bg-slate-800/40 rounded-xl p-3 border border-slate-700/40">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-semibold text-slate-300">Live Biometric Punch Feed</span>
-                      <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full">
-                        Cloud ADMS Active
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium">
+                        ⚡ Real-Time Cloud Sync
                       </span>
                     </div>
                     <div className="space-y-1.5 text-xs">

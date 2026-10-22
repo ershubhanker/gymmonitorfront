@@ -98,6 +98,14 @@ const DB_FIELDS = [
     example: '500'
   },
   { 
+    key: 'balance', 
+    label: 'Balance Due', 
+    required: false, 
+    icon: DollarSign,
+    description: 'Remaining pending balance for the member',
+    example: '1000'
+  },
+  { 
     key: 'gender', 
     label: 'Gender', 
     required: false, 
@@ -337,9 +345,6 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     if (isEmpty(value)) return null;
 
     if (typeof value === 'number') {
-      if (value > 10000) {
-        return value / 100;
-      }
       return value;
     }
 
@@ -350,7 +355,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       if (!cleaned) return null;
       
       const numValue = parseFloat(cleaned);
-      if (isNaN(numValue) || numValue <= 0) {
+      if (isNaN(numValue) || numValue < 0) {
         return null;
       }
 
@@ -506,10 +511,39 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
         const headers = Object.keys(data[0] || {});
         
-        // Initialize mapping with empty values
+        // Intelligent auto-match of headers to DB_FIELDS
         const initialMapping = {};
+        const searchKeys = {
+          full_name: ['full name', 'fullname', 'member name', 'name', 'customer name', 'client name'],
+          phone: ['phone', 'mobile', 'contact', 'phone number', 'mobile number', 'cell', 'whatsapp'],
+          email: ['email', 'email address', 'mail'],
+          plan_name: ['plan name', 'plan', 'membership', 'membership plan', 'package', 'type'],
+          start_date: ['start date', 'start', 'joining date', 'join date', 'admission date', 'from date', 'doj'],
+          end_date: ['end date', 'end', 'expiry date', 'expiry', 'valid till', 'to date', 'due date'],
+          base_cost: ['base cost', 'price', 'plan cost', 'original price', 'actual fee', 'mrp', 'fee'],
+          net_cost: ['net cost', 'paid', 'amount paid', 'paid amount', 'collected', 'fee paid', 'received', 'advance'],
+          discount: ['discount', 'disc', 'concession', 'off'],
+          balance: ['balance due', 'balance', 'due', 'pending', 'due amount', 'pending amount', 'bal', 'remaining', 'unpaid', 'outstanding'],
+          gender: ['gender', 'sex'],
+          date_of_birth: ['date of birth', 'dob', 'birth date', 'birthdate'],
+          address: ['address', 'location', 'city', 'residence'],
+          emergency_contact_name: ['emergency contact name', 'emergency name', 'guardian name'],
+          emergency_contact_phone: ['emergency contact phone', 'emergency phone', 'guardian phone'],
+          medical_conditions: ['medical conditions', 'medical', 'health issue', 'health conditions'],
+          allergies: ['allergies', 'allergy'],
+          medications: ['medications', 'medicine'],
+        };
+
         DB_FIELDS.forEach(field => {
           initialMapping[field.key] = '';
+          const aliases = searchKeys[field.key] || [field.label.toLowerCase()];
+          const matchedHeader = headers.find(h => {
+            const cleanH = h.toLowerCase().trim().replace(/[_\s-]+/g, ' ');
+            return aliases.some(alias => cleanH === alias || cleanH.includes(alias));
+          });
+          if (matchedHeader) {
+            initialMapping[field.key] = matchedHeader;
+          }
         });
 
         setRawData(data);
@@ -584,7 +618,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             } else {
               mapped[field.key] = safeString(value);
             }
-          } else if (field.key === 'base_cost' || field.key === 'net_cost' || field.key === 'discount') {
+          } else if (field.key === 'base_cost' || field.key === 'net_cost' || field.key === 'discount' || field.key === 'balance') {
             mapped[field.key] = parseCost(value);
           } else {
             mapped[field.key] = safeString(value);
@@ -1007,10 +1041,24 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               
               if (endDate) {
                 let amountPaid = 0;
-                if (member.net_cost !== null && member.net_cost > 0) {
+                if (member.net_cost !== null && member.net_cost !== undefined && member.net_cost > 0) {
                   amountPaid = member.net_cost;
-                } else if (member.base_cost !== null && member.base_cost > 0) {
+                } else if (member.base_cost !== null && member.base_cost !== undefined && member.base_cost > 0) {
                   amountPaid = member.base_cost;
+                  if (member.balance !== null && member.balance !== undefined && member.balance !== '') {
+                    const parsedBal = parseFloat(member.balance) || 0;
+                    if (parsedBal > 0 && parsedBal <= amountPaid) {
+                      amountPaid = Math.max(0, amountPaid - parsedBal - (member.discount || 0));
+                    }
+                  }
+                }
+                
+                let balanceDue = undefined;
+                if (member.balance !== null && member.balance !== undefined && member.balance !== '') {
+                  const b = parseFloat(member.balance);
+                  if (!isNaN(b)) {
+                    balanceDue = Math.max(0, b);
+                  }
                 }
                 
                 const membershipPayload = {
@@ -1020,6 +1068,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                   end_date: endDate,
                   amount_paid: amountPaid,
                   discount_applied: member.discount || 0,
+                  balance_due: balanceDue,
                 };
                 
                 await api.post('/gym/memberships', membershipPayload);
@@ -1158,6 +1207,79 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   // 🎨 RENDER FUNCTIONS
   // ============================================================
 
+  const downloadSampleTemplate = () => {
+    const sampleHeaders = [
+      'Full Name',
+      'Phone Number',
+      'Email',
+      'Plan Name',
+      'Start Date',
+      'End Date',
+      'Base Cost',
+      'Net Cost',
+      'Discount',
+      'Balance Due',
+      'Gender',
+      'Date of Birth',
+      'Address',
+      'Emergency Contact Name',
+      'Emergency Contact Phone',
+      'Medical Conditions',
+      'Allergies',
+      'Medications'
+    ];
+
+    const sampleRows = [
+      [
+        'Rahul Sharma',
+        '9876543210',
+        'rahul@example.com',
+        'Monthly Plan',
+        '2026-01-01',
+        '2026-01-31',
+        '1500',
+        '1500',
+        '0',
+        '0',
+        'Male',
+        '1995-05-15',
+        'Flat 101, Green Heights',
+        'Suresh Sharma',
+        '9876543211',
+        'None',
+        'None',
+        'None'
+      ],
+      [
+        'Pooja Verma',
+        '9811223344',
+        'pooja@example.com',
+        '6 Months Plan',
+        '2026-01-01',
+        '2026-06-30',
+        '6500',
+        '4500',
+        '500',
+        '1500',
+        'Female',
+        '1998-08-20',
+        'Sector 14, Main Road',
+        'Amit Verma',
+        '9811223355',
+        'None',
+        'None',
+        'None'
+      ]
+    ];
+
+    const wsData = [sampleHeaders, ...sampleRows];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    XLSX.utils.book_append_sheet(wb, ws, 'Template');
+    XLSX.writeFile(wb, 'gym_members_import_template.xlsx');
+    toast.success('Sample template downloaded with Balance Due column!');
+  };
+
   // ─── STEP 1: Upload ──────────────────────────────────────────
   const renderStep1 = () => (
     <div className="text-center py-8">
@@ -1165,11 +1287,22 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         <FileSpreadsheet className="h-10 w-10 text-blue-600" />
       </div>
       <h3 className="text-lg font-bold text-gray-900 mb-2">Upload Your File</h3>
-      <p className="text-sm text-gray-500 mb-6">
+      <p className="text-sm text-gray-500 mb-4">
         Upload Excel (.xlsx, .xls) or CSV (.csv) file with member data.
         <br />
         <span className="text-xs text-blue-500">After uploading, you'll map your columns to our database fields.</span>
       </p>
+
+      <div className="mb-6 flex justify-center">
+        <button
+          type="button"
+          onClick={downloadSampleTemplate}
+          className="inline-flex items-center gap-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-4 py-2 rounded-lg transition-colors shadow-sm cursor-pointer"
+        >
+          <Download className="h-4 w-4 text-blue-600" />
+          Download Sample Template (with Balance Due)
+        </button>
+      </div>
       
       <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-blue-500 hover:bg-blue-50/50 transition-all cursor-pointer">
         <input
@@ -1193,7 +1326,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         </p>
         <ol className="text-xs text-blue-600 mt-2 space-y-1 list-decimal list-inside">
           <li>Upload your file (Excel or CSV)</li>
-          <li>Map your columns to our database fields</li>
+          <li>Map your columns to our database fields (including <strong>Balance Due</strong>)</li>
           <li>Preview the data before importing</li>
           <li>Import with one click!</li>
         </ol>
@@ -1365,6 +1498,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   const renderStep3 = () => {
     const membersWithCost = previewData.filter(m => m.base_cost !== null && m.base_cost > 0);
     const totalCost = membersWithCost.reduce((sum, m) => sum + (m.base_cost || 0), 0);
+    const membersWithBalance = previewData.filter(m => m.balance !== null && m.balance !== undefined && Number(m.balance) > 0);
+    const totalBalance = membersWithBalance.reduce((sum, m) => sum + (Number(m.balance) || 0), 0);
     const activeCount = previewData.filter(m => m._isActive === true).length;
 
     return (
@@ -1450,6 +1585,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Start</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">End</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance Due</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
               </tr>
             </thead>
@@ -1476,6 +1612,15 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                       </span>
                     ) : '—'}
                   </td>
+                  <td className="px-4 py-3 text-sm text-gray-500">
+                    {member.balance !== null && member.balance !== undefined && Number(member.balance) > 0 ? (
+                      <span className="text-red-600 font-semibold">
+                        ₹{Number(member.balance).toLocaleString('en-IN')}
+                      </span>
+                    ) : (member.balance === 0 || member.balance === '0') ? (
+                      <span className="text-gray-400">₹0</span>
+                    ) : '—'}
+                  </td>
                   <td className="px-4 py-3 text-sm">
                     <span className={`px-2 py-1 rounded-full text-xs ${
                       member._isActive === true 
@@ -1498,12 +1643,18 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           )}
         </div>
 
-        <div className="mt-4 flex justify-between items-center">
-          <div className="text-sm text-gray-500">
+        <div className="mt-4 flex justify-between items-center flex-wrap gap-2">
+          <div className="text-sm text-gray-500 flex items-center gap-4 flex-wrap">
             {membersWithCost.length > 0 && (
               <span>
                 Total Cost: <strong className="text-purple-600">₹{totalCost.toLocaleString('en-IN')}</strong>
                 {' '}({membersWithCost.length} members with cost)
+              </span>
+            )}
+            {membersWithBalance.length > 0 && (
+              <span>
+                Total Balance: <strong className="text-red-600">₹{totalBalance.toLocaleString('en-IN')}</strong>
+                {' '}({membersWithBalance.length} with balance)
               </span>
             )}
           </div>

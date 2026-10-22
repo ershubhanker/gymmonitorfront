@@ -2649,6 +2649,8 @@ const MemberModal = ({ isOpen, onClose,
     console.log('📋 MemberModal - rawData:', rawData);
 
     if (member && member.id !== null) {
+      const activeMem = member.current_membership || member.active_membership || member.membershipData || member.raw?.membership || (member.memberships && member.memberships[0]);
+      setUserManuallyChangedAmount(true);
       setFormData({
         full_name: member.full_name || '',
         email: member.email || '',
@@ -2663,12 +2665,13 @@ const MemberModal = ({ isOpen, onClose,
         medications: member.medications || '',
         id_proof_type: member.id_proof_type || 'aadhar',
         id_proof_number: member.id_proof_number || '',
-        plan_id: member.current_membership?.plan_id?.toString() || '', 
-        membership_start_date: member.current_membership?.start_date || today, 
-        payment_method: 'cash', 
-        amount_paid: member.current_membership?.amount_paid?.toString() || '',
-        discount_applied: member.current_membership?.discount_applied?.toString() || '',
+        plan_id: (activeMem?.plan_id || member.plan_id || '')?.toString(), 
+        membership_start_date: activeMem?.start_date || member.joined_date || today, 
+        payment_method: activeMem?.payment_method || 'cash', 
+        amount_paid: activeMem?.amount_paid !== undefined && activeMem?.amount_paid !== null ? activeMem.amount_paid.toString() : '',
+        discount_applied: activeMem?.discount_applied !== undefined && activeMem?.discount_applied !== null ? activeMem.discount_applied.toString() : '',
         renew_membership: false,
+        current_membership_id: activeMem?.id || member.membershipId || null,
         custom_due_date: '',
         payment_date: today,
         pt_trainer_id: '',
@@ -2943,6 +2946,14 @@ const MemberModal = ({ isOpen, onClose,
       } else if (isEdit) {
         payload = {
           ...memberFields,
+          plan_id: formData.plan_id,
+          membership_start_date: formData.membership_start_date,
+          payment_method: formData.payment_method,
+          amount_paid: amountPaid,
+          discount_applied: discountApplied,
+          current_membership_id: formData.current_membership_id || member?.current_membership?.id || member?.membershipData?.id || member?.membershipId || null,
+          custom_due_date: dueDate,
+          payment_date: formData.payment_date,
           pt_data: ptData,
         };
       } else {

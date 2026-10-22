@@ -625,6 +625,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     start_date: '',
     end_date: '',
     status: 'active',
+    amount_paid: '',
+    discount_applied: '',
   });
   const [savingMembership, setSavingMembership] = useState(false);
   const [plans, setPlans] = useState([]);
@@ -694,6 +696,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
           start_date: memberData.current_membership.start_date || '',
           end_date: memberData.current_membership.end_date || '',
           status: memberData.current_membership.status || 'active',
+          amount_paid: memberData.current_membership.amount_paid !== undefined ? memberData.current_membership.amount_paid.toString() : '',
+          discount_applied: memberData.current_membership.discount_applied !== undefined ? memberData.current_membership.discount_applied.toString() : '',
         });
       }
     } catch (error) {
@@ -1339,6 +1343,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         start_date: member.current_membership.start_date || '',
         end_date: member.current_membership.end_date || '',
         status: member.current_membership.status || 'active',
+        amount_paid: member.current_membership.amount_paid !== undefined ? member.current_membership.amount_paid.toString() : '',
+        discount_applied: member.current_membership.discount_applied !== undefined ? member.current_membership.discount_applied.toString() : '',
       });
       setIsEditingMembership(true);
     } else {
@@ -1411,6 +1417,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         start_date: membershipEditData.start_date,
         end_date: membershipEditData.end_date,
         status: membershipEditData.status,
+        amount_paid: membershipEditData.amount_paid !== '' ? parseFloat(membershipEditData.amount_paid) : undefined,
+        discount_applied: membershipEditData.discount_applied !== '' ? parseFloat(membershipEditData.discount_applied) : undefined,
       };
       
       const response = await api.put(`/gym/memberships/${membershipId}`, payload);
@@ -1431,6 +1439,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       }
       setIsEditingMembership(false);
       
+      window.dispatchEvent(new CustomEvent('paymentUpdated'));
+      window.dispatchEvent(new CustomEvent('paymentAdded'));
+
       await Promise.all([
         fetchMemberDetails(),
         fetchMembershipHistory(),
@@ -2604,6 +2615,36 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                         Auto-calculated from plan duration
                       </p>
                     )}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                      Amount Paid (₹)
+                    </label>
+                    <input
+                      type="number"
+                      name="amount_paid"
+                      step="any"
+                      min="0"
+                      value={membershipEditData.amount_paid}
+                      onChange={handleMembershipEditChange}
+                      placeholder="0"
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                      Discount Applied (₹)
+                    </label>
+                    <input
+                      type="number"
+                      name="discount_applied"
+                      step="any"
+                      min="0"
+                      value={membershipEditData.discount_applied}
+                      onChange={handleMembershipEditChange}
+                      placeholder="0"
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                    />
                   </div>
                 </div>
 

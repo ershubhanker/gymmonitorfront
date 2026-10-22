@@ -45,7 +45,7 @@ const features = [
   {
     icon: Fingerprint,
     title: 'Biometric & Turnstile Access',
-    description: 'Direct cloud integration with ZKTeco and ADMS devices. Instant member bio-sync, turnstile gate unlock and fraud-proof attendance.',
+    description: 'Universal cloud integration for biometric gates & turnstiles. Instant member bio-sync, automatic gate unlock and 100% fraud-proof entry.',
     color: 'from-indigo-500 to-indigo-600',
     bg: 'bg-indigo-50',
     iconColor: 'text-indigo-600',

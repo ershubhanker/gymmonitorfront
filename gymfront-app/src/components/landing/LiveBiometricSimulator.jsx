@@ -100,9 +100,12 @@ export default function LiveBiometricSimulator() {
               <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#22d3ee] animate-scan z-20 pointer-events-none" />
             )}
 
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">
-              ZKTeco / ADMS Optical Scanner
-            </span>
+            <div className="flex items-center gap-2 mb-4 px-3 py-1 rounded-full bg-slate-800/90 border border-slate-700/80 shadow-inner">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+              <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                Smart Cloud Biometric Scanner
+              </span>
+            </div>
 
             {/* Interactive Fingerprint Pad Button */}
             <button
@@ -138,7 +141,7 @@ export default function LiveBiometricSimulator() {
             <div className="mt-5">
               <span className="text-xs font-semibold text-slate-300 block">
                 {punchState === 'idle' && '👆 Click Fingerprint To Test Punch'}
-                {punchState === 'scanning' && '⚡ Verifying Biometric Hardware (180ms)...'}
+                {punchState === 'scanning' && '⚡ Verifying Access Credentials (180ms)...'}
                 {punchState === 'success' && '✅ Verified! Turnstile Unlocked (10s)'}
                 {punchState === 'blocked' && '⛔ Turnstile Locked — Membership Expired'}
               </span>
@@ -173,18 +176,18 @@ export default function LiveBiometricSimulator() {
                       ? 'GATE 1 TURNSTILE: OPEN'
                       : punchState === 'blocked'
                       ? 'GATE 1 TURNSTILE: CLOSED'
-                      : 'HARDWARE STATUS: READY'}
+                      : 'GATE CONTROLLER: ARMED & READY'}
                   </span>
                 </div>
 
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                   punchState === 'success'
-                    ? 'bg-emerald-500/20 text-emerald-300'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                     : punchState === 'blocked'
-                    ? 'bg-rose-500/20 text-rose-300'
-                    : 'bg-slate-800 text-slate-400'
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                    : 'bg-slate-800 text-slate-300 border border-slate-700'
                 }`}>
-                  {punchState === 'success' ? '0.24s LATENCY' : 'CLOUD ADMS'}
+                  {punchState === 'success' ? '0.24s LATENCY' : 'INSTANT CLOUD SYNC'}
                 </span>
               </div>
 

@@ -1024,6 +1024,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           payments: 0,
           avatar: avatarUrl,
           profile_image: item.profile_image,
+          membershipData: item.membership,
+          current_membership: item.membership,
           raw: {
             id: item.id,
             full_name: item.full_name,
@@ -1033,6 +1035,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
             joined_date: item.join_date,
             is_active: item.is_active,
             profile_image: item.profile_image,
+            membership: item.membership,
+            current_membership: item.membership,
           },
           activeMembership: item.membership ? {
             id: item.membership.id,
@@ -1963,6 +1967,51 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         hasError = true;
         toast.error(`Details saved but membership renewal failed. Please assign membership manually.`);
       }
+    } else if (!renew_membership && plan_id) {
+      try {
+        const paidAmount = amount_paid !== undefined && amount_paid !== '' ? parseFloat(amount_paid) : 0;
+        const discount = discount_applied !== undefined && discount_applied !== '' ? parseFloat(discount_applied) : 0;
+
+        let targetMembershipId = current_membership_id || selectedMember?.current_membership?.id || selectedMember?.membershipId || selectedMember?.membershipData?.id;
+
+        if (!targetMembershipId && memberId) {
+          try {
+            const memberDetailsRes = await api.get(`/gym/members/${memberId}`);
+            targetMembershipId = memberDetailsRes.data?.current_membership?.id || memberDetailsRes.data?.memberships?.[0]?.id;
+          } catch (fetchErr) {
+            console.warn('Could not query member details for membership ID:', fetchErr);
+          }
+        }
+
+        const membershipPayload = {
+          plan_id: parseInt(plan_id),
+          start_date: membership_start_date,
+          amount_paid: paidAmount,
+          discount_applied: discount,
+          payment_method: payment_method || 'cash',
+          payment_date: payment_date || undefined,
+        };
+
+        if (targetMembershipId) {
+          console.log(`📤 Updating existing membership ${targetMembershipId}:`, membershipPayload);
+          await api.put(`/gym/memberships/${targetMembershipId}`, membershipPayload);
+          toast.success('Membership updated successfully!');
+        } else {
+          console.log('📤 Creating membership for member:', memberId, membershipPayload);
+          await api.post('/gym/memberships', {
+            member_id: memberId,
+            ...membershipPayload,
+          });
+          toast.success('Membership assigned successfully!');
+        }
+
+        window.dispatchEvent(new CustomEvent('paymentAdded'));
+        window.dispatchEvent(new CustomEvent('paymentUpdated'));
+      } catch (err) {
+        console.error('Membership update error:', err);
+        hasError = true;
+        toast.error(err.response?.data?.detail || 'Failed to update membership details.');
+      }
     }
 
     if (pt_data && pt_data.trainer_id) {
@@ -2317,7 +2366,16 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     setShowProfileModal(true);
   };
 
-  const openEditModal = (member) => {
+  const openEditModal = async (member) => {
+    const initialMembership = member.membershipData || member.current_membership || member.raw?.membership || (member.membershipId ? {
+      id: member.membershipId,
+      plan_id: member.raw?.membership?.plan_id,
+      start_date: member.raw?.membership?.start_date,
+      end_date: member.membershipEndDate,
+      amount_paid: member.raw?.membership?.amount_paid,
+      discount_applied: member.raw?.membership?.discount_applied,
+    } : null);
+
     setSelectedMember({
       id: member.id,
       full_name: member.fullName,
@@ -2327,9 +2385,26 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       joined_date: member.joinDate,
       membership: member.membership,
       membershipEndDate: member.membershipEndDate,
+      current_membership: initialMembership,
+      membershipData: initialMembership,
       ...member.raw,
     });
     setIsModalOpen(true);
+
+    try {
+      const res = await api.get(`/gym/members/${member.id}`);
+      if (res.data) {
+        const freshMem = res.data.current_membership || res.data.active_membership || (res.data.memberships && res.data.memberships[0]);
+        setSelectedMember(prev => ({
+          ...prev,
+          ...res.data,
+          current_membership: freshMem,
+          membershipData: freshMem,
+        }));
+      }
+    } catch (e) {
+      console.warn('Could not fetch fresh member details for edit modal:', e);
+    }
   };
 
   const copyDeviceIdToClipboard = (deviceUserId) => {
