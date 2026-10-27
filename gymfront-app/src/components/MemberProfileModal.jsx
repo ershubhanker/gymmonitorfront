@@ -744,9 +744,8 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     if (!memberId || memberId === 'undefined') return;
     try {
       setLoadingPayments(true);
-      const response = await api.get(`/gym/payments?limit=100`);
-      const memberPayments = response.data.filter(p => p.member_id === memberId);
-      setPayments(memberPayments);
+      const response = await api.get(`/gym/payments?member_id=${memberId}&limit=100`);
+      setPayments(response.data || []);
     } catch (error) {
       console.error('Error fetching payments:', error);
       setPayments([]);
@@ -3412,43 +3411,59 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
             )}
           </div>
 
-          {/* Membership History - Smaller */}
-          {membershipHistory.length > 1 && (
-            <div className="border-t border-gray-100 pt-4">
-              <h3 className="font-semibold text-gray-900 text-xs mb-2 flex items-center gap-1.5">
-                <History className="h-4 w-4" />
-                Membership History
-              </h3>
+          {/* Membership History */}
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="font-semibold text-gray-900 text-xs mb-2 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <History className="h-4 w-4 text-blue-600" />
+                Previous Plans & Membership History
+              </span>
+              <span className="text-[10px] text-gray-400">
+                {membershipHistory.length} {membershipHistory.length === 1 ? 'record' : 'records'}
+              </span>
+            </h3>
+            {membershipHistory.length > 0 ? (
               <div className="space-y-2">
                 {membershipHistory.map((membership) => (
-                  <div key={membership.id} className="bg-gray-50 rounded-lg p-3">
+                  <div key={membership.id} className="bg-gray-50 border border-gray-200/80 rounded-lg p-3 hover:border-gray-300 transition-colors">
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-semibold text-gray-900 text-xs">{membership.plan?.name || 'Unknown'}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-gray-900 text-xs">{membership.plan?.name || 'Unknown Plan'}</span>
+                        {membership.plan?.duration_days && (
+                          <span className="text-[9px] bg-blue-50 text-blue-600 font-medium px-1.5 py-0.5 rounded">
+                            {membership.plan.duration_days}d
+                          </span>
+                        )}
+                      </div>
                       {getStatusBadge(membership.status)}
                     </div>
                     <div className="grid grid-cols-2 gap-1 text-[10px]">
                       <div>
                         <span className="text-gray-500">Start:</span>
-                        <span className="ml-1 text-gray-900">{formatDate(membership.start_date)}</span>
+                        <span className="ml-1 text-gray-900 font-medium">{formatDate(membership.start_date)}</span>
                       </div>
                       <div>
                         <span className="text-gray-500">End:</span>
-                        <span className="ml-1 text-gray-900">{formatDate(membership.end_date)}</span>
+                        <span className="ml-1 text-gray-900 font-medium">{formatDate(membership.end_date)}</span>
                       </div>
                       <div>
                         <span className="text-gray-500">Paid:</span>
-                        <span className="ml-1 text-green-600">{formatCurrency(membership.amount_paid || 0)}</span>
+                        <span className="ml-1 text-green-600 font-semibold">{formatCurrency(membership.amount_paid || 0)}</span>
                       </div>
                       <div>
                         <span className="text-gray-500">Balance:</span>
-                        <span className="ml-1 text-orange-600">{formatCurrency(membership.balance_due || 0)}</span>
+                        <span className={`ml-1 font-semibold ${(membership.balance_due || 0) > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                          {formatCurrency(membership.balance_due || 0)}
+                        </span>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="text-xs text-gray-400 text-center py-2">No previous membership records</p>
+            )}
+          </div>
 
           {/* Attendance History - Smaller */}
           <div className="border-t border-gray-100 pt-4">

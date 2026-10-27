@@ -5,7 +5,7 @@ import {
   X, User, Phone, Heart, FileText, Camera, Plus, CheckCircle,
   Calendar, CreditCard, AlertCircle, ChevronRight, Loader2, RefreshCw,
   ChevronUp, ChevronDown, Upload, Trash2, Edit, CalendarDays, Dumbbell,
-  Tag, Video, Image, DollarSign, ArrowUp, ArrowDown
+  Tag, Video, Image, DollarSign, ArrowUp, ArrowDown, History
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL } from '../services/api';
@@ -1820,6 +1820,7 @@ const MembershipSelector = ({
   setSelectedPlanForChange,
   showPlanChangePreview,
   setShowPlanChangePreview,
+  isMemberActive = true,
 }) => {
   const [editingPlan, setEditingPlan] = useState(null);
   const [deletingPlanId, setDeletingPlanId] = useState(null);
@@ -1847,13 +1848,13 @@ const MembershipSelector = ({
 
   // ─── HANDLE PLAN CHANGE ──────────────────────────────────────────────────────
   const handlePlanChange = async (newPlanId) => {
-    if (!isEdit || !memberId) {
-      // For new members, just select the plan normally
+    if (!isEdit || !memberId || !isMemberActive) {
+      // For new members or inactive members, just select the plan normally
       setFormData(prev => ({ ...prev, plan_id: newPlanId }));
       return;
     }
 
-    // For existing members, show the plan change preview
+    // For existing active members, show the plan change preview
     const newPlan = membershipPlans.find(p => String(p.id) === String(newPlanId));
     const currentPlan = membershipPlans.find(p => String(p.id) === String(formData.plan_id));
     
@@ -1905,7 +1906,8 @@ const MembershipSelector = ({
 
   const handlePlanSelect = (e) => {
     const planId = e.target.value;
-    if (isEdit && memberId) {
+    // Upgrade / prorated change is ONLY available for active members when not explicitly renewing
+    if (isEdit && memberId && isMemberActive && !formData.renew_membership) {
       handlePlanChange(planId);
     } else {
       setFormData(prev => ({ ...prev, plan_id: planId }));
@@ -2013,8 +2015,8 @@ const MembershipSelector = ({
 
   return (
     <div className="space-y-4">
-      {/* Plan Change Preview Modal */}
-      {showPlanChangePreview && selectedPlanForChange && (
+      {/* Plan Change Preview Modal (Only for active members changing plan) */}
+      {showPlanChangePreview && selectedPlanForChange && isMemberActive && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-4">
@@ -2094,7 +2096,11 @@ const MembershipSelector = ({
             <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="text-sm text-gray-500">
-                  {isEdit ? 'Select new plan (change will be prorated):' : 'Select a plan:'}
+                  {isEdit && isMemberActive && !formData.renew_membership 
+                    ? 'Select new plan (change will be prorated):' 
+                    : isEdit && !isMemberActive 
+                    ? 'Select a plan to renew membership:' 
+                    : 'Select a plan:'}
                 </p>
                 {hasMoreThan5 && (
                   <span className="text-xs bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded-full border border-blue-200">
@@ -2511,6 +2517,15 @@ const MemberModal = ({ isOpen, onClose,
  }) => {
   const today = new Date().toISOString().split('T')[0];
   const isEdit = !!member;
+  const isMemberActive = Boolean(
+    isEdit &&
+    member &&
+    (
+      (member.membershipStatus && member.membershipStatus.toLowerCase() === 'active') ||
+      (member.current_membership?.status === 'active' && (!member.current_membership?.end_date || new Date(member.current_membership.end_date) >= new Date(new Date().setHours(0,0,0,0)))) ||
+      (member.membershipEndDate && new Date(member.membershipEndDate) >= new Date(new Date().setHours(0,0,0,0)) && member.membership && member.membership !== 'No Plan' && member.membershipStatus !== 'expired')
+    )
+  );
 
   const [formData, setFormData] = useState({
     full_name: '', email: '', phone: '', date_of_birth: '', gender: 'male',
@@ -2553,6 +2568,11 @@ const MemberModal = ({ isOpen, onClose,
   const [loadingAddons, setLoadingAddons] = useState(false);
   const [addonTotal, setAddonTotal] = useState(0);
   const [addonsPaid, setAddonsPaid] = useState(true);
+
+  // ===== MEMBER PREVIOUS PLANS & PAYMENT HISTORY =====
+  const [memberHistory, setMemberHistory] = useState({ memberships: [], payments: [] });
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(true);
 
   const getPendingFileRef = useRef(null);
 
@@ -2649,7 +2669,25 @@ const MemberModal = ({ isOpen, onClose,
     console.log('📋 MemberModal - rawData:', rawData);
 
     if (member && member.id !== null) {
+      setLoadingHistory(true);
+      api.get(`/gym/members/${member.id}`)
+        .then(res => {
+          setMemberHistory({
+            memberships: res.data?.memberships || [],
+            payments: res.data?.payments || [],
+          });
+        })
+        .catch(err => {
+          console.warn('Could not load member history in modal:', err);
+        })
+        .finally(() => setLoadingHistory(false));
+
       const activeMem = member.current_membership || member.active_membership || member.membershipData || member.raw?.membership || (member.memberships && member.memberships[0]);
+      const memIsActive = Boolean(
+        (member.membershipStatus && member.membershipStatus.toLowerCase() === 'active') ||
+        (activeMem?.status === 'active' && (!activeMem?.end_date || new Date(activeMem.end_date) >= new Date(new Date().setHours(0,0,0,0)))) ||
+        (member.membershipEndDate && new Date(member.membershipEndDate) >= new Date(new Date().setHours(0,0,0,0)) && member.membership && member.membership !== 'No Plan' && member.membershipStatus !== 'expired')
+      );
       setUserManuallyChangedAmount(true);
       setFormData({
         full_name: member.full_name || '',
@@ -2670,7 +2708,7 @@ const MemberModal = ({ isOpen, onClose,
         payment_method: activeMem?.payment_method || 'cash', 
         amount_paid: activeMem?.amount_paid !== undefined && activeMem?.amount_paid !== null ? activeMem.amount_paid.toString() : '',
         discount_applied: activeMem?.discount_applied !== undefined && activeMem?.discount_applied !== null ? activeMem.discount_applied.toString() : '',
-        renew_membership: false,
+        renew_membership: !memIsActive,
         current_membership_id: activeMem?.id || member.membershipId || null,
         custom_due_date: '',
         payment_date: today,
@@ -3267,8 +3305,14 @@ const MemberModal = ({ isOpen, onClose,
                       <div className="flex items-center gap-3">
                         <RefreshCw className="h-5 w-5 text-blue-600" />
                         <div>
-                          <p className="font-medium text-blue-900 text-sm">Renew or Change Plan</p>
-                          <p className="text-xs text-blue-600 mt-0.5">Creates a new membership period for this member</p>
+                          <p className="font-medium text-blue-900 text-sm">
+                            {isMemberActive ? 'Renew or Upgrade / Change Plan' : 'Renew Membership'}
+                          </p>
+                          <p className="text-xs text-blue-600 mt-0.5">
+                            {isMemberActive 
+                              ? 'Creates a new membership period or change active plan' 
+                              : 'Assign a new membership plan period for this inactive member'}
+                          </p>
                         </div>
                       </div>
                       <button
@@ -3321,6 +3365,7 @@ const MemberModal = ({ isOpen, onClose,
                         setSelectedPlanForChange={setSelectedPlanForChange}
                         showPlanChangePreview={showPlanChangePreview}
                         setShowPlanChangePreview={setShowPlanChangePreview}
+                        isMemberActive={isMemberActive}
                       />
 
                       {/* ✅ Payment Date Picker - Show for renewal and new members */}
@@ -3350,8 +3395,121 @@ const MemberModal = ({ isOpen, onClose,
 
                 {isEdit && !formData.renew_membership && (
                   <p className="text-sm text-gray-400 text-center py-6">
-                    Toggle the switch above to renew or change this member's plan.
+                    {isMemberActive 
+                      ? "Toggle the switch above to renew or change this member's plan." 
+                      : "Toggle the switch above to renew this member's membership plan."}
                   </p>
+                )}
+
+                {/* Previous Plans & Payment History for Gym Owner */}
+                {isEdit && member?.id && (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setShowHistory(prev => !prev)}
+                      className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100/80 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <History className="h-4 w-4 text-blue-600" />
+                        <span className="font-semibold text-gray-800 text-sm">Previous Plans & Payment History</span>
+                        {(memberHistory.memberships.length > 0 || memberHistory.payments.length > 0) && (
+                          <span className="text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full">
+                            {memberHistory.memberships.length} plans • {memberHistory.payments.length} payments
+                          </span>
+                        )}
+                      </div>
+                      {showHistory ? <ChevronUp className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-gray-500" />}
+                    </button>
+
+                    {showHistory && (
+                      <div className="p-4 space-y-4">
+                        {loadingHistory ? (
+                          <div className="text-center py-4 text-gray-400 text-sm">
+                            <Loader2 className="h-5 w-5 animate-spin mx-auto text-blue-500 mb-1" />
+                            Loading member history...
+                          </div>
+                        ) : (
+                          <>
+                            {/* Previous Plans History */}
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Previous Plans</p>
+                              {memberHistory.memberships.length > 0 ? (
+                                <div className="space-y-2 max-h-56 overflow-y-auto">
+                                  {memberHistory.memberships.map((m) => (
+                                    <div key={m.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200/80 flex items-center justify-between">
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <p className="font-semibold text-xs text-gray-800">{m.plan?.name || 'Unknown Plan'}</p>
+                                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                                            m.status === 'active' ? 'bg-green-100 text-green-700' :
+                                            m.status === 'expired' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                                          }`}>
+                                            {m.status?.toUpperCase()}
+                                          </span>
+                                        </div>
+                                        <p className="text-[11px] text-gray-500 mt-0.5">
+                                          {new Date(m.start_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} – {new Date(m.end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        </p>
+                                      </div>
+                                      <div className="text-right text-xs">
+                                        <p className="font-semibold text-green-600">₹{m.amount_paid || 0} paid</p>
+                                        {(m.balance_due || 0) > 0 ? (
+                                          <p className="text-[11px] font-medium text-red-600">₹{m.balance_due} due</p>
+                                        ) : (
+                                          <p className="text-[11px] text-gray-400">Paid in full</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-gray-400 italic">No previous membership plans found.</p>
+                              )}
+                            </div>
+
+                            {/* Payment History */}
+                            <div className="border-t border-gray-100 pt-3">
+                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Payment History</p>
+                              {memberHistory.payments.length > 0 ? (
+                                <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                                  <table className="w-full text-xs text-left">
+                                    <thead className="bg-gray-50 text-gray-600 text-[11px]">
+                                      <tr>
+                                        <th className="p-2">Date</th>
+                                        <th className="p-2">Amount</th>
+                                        <th className="p-2">Method</th>
+                                        <th className="p-2">Status</th>
+                                        <th className="p-2">Notes</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                      {memberHistory.payments.map((p) => (
+                                        <tr key={p.id} className="hover:bg-gray-50/80">
+                                          <td className="p-2 text-gray-600">
+                                            {new Date(p.payment_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                          </td>
+                                          <td className="p-2 font-semibold text-green-600">₹{p.amount}</td>
+                                          <td className="p-2 capitalize text-gray-700">{p.payment_method}</td>
+                                          <td className="p-2">
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 font-medium">
+                                              {p.status || 'paid'}
+                                            </span>
+                                          </td>
+                                          <td className="p-2 text-gray-400 text-[11px]">{p.notes || '—'}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-gray-400 italic">No payment records found.</p>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 <PersonalTrainingSection 

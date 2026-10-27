@@ -16,7 +16,6 @@ import {
   MessageSquare, Send, Download, Filter, FileText, Utensils,
   Tag, CalendarRange, Clock as ClockIcon2, EyeOff,
   Crown, // ✅ NEW — icon for Billing & Plan sidebar item
-  Plus, // ✅ NEW — for Create Membership Plan action
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCache, CACHE_KEYS } from '../context/CacheContext';
@@ -137,7 +136,6 @@ const Dashboard = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [openCreatePlan, setOpenCreatePlan] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
@@ -439,7 +437,7 @@ const Dashboard = () => {
 
   const fetchSilently = async (url, options = {}) => {
     try {
-      const response = await api.get(url, options);
+      const response = await api.get(url, { ...options, silent: true });
       return { data: response.data, success: true };
     } catch (error) {
       if (error.response?.status === 403) {
@@ -1263,16 +1261,28 @@ const Dashboard = () => {
             </h1>
             <p className="text-blue-100 mt-0.5 text-sm sm:text-base">Here's what's happening at your gym today.</p>
           </div>
+          
+          {/* Hide/Show Toggle Button */}
           <button
-            onClick={() => {
-              setOpenCreatePlan(true);
-              setActiveTab('membership-plans');
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-white text-indigo-700 hover:bg-blue-50 font-bold text-xs sm:text-sm rounded-xl shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer border border-white/40 ml-auto sm:ml-0"
-            title="Create a new membership plan"
+            onClick={toggleHideValues}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all duration-300 text-xs sm:text-sm font-medium ml-auto sm:ml-0 cursor-pointer ${
+              hideValues 
+                ? 'bg-amber-500/30 text-amber-100 border border-amber-400/50 hover:bg-amber-500/40' 
+                : 'bg-white/20 text-white border border-white/20 hover:bg-white/30'
+            }`}
+            title={hideValues ? 'Show values' : 'Hide values'}
           >
-            <Plus className="h-4 w-4 text-indigo-600 stroke-[3]" />
-            <span>+ Create Membership Plan</span>
+            {hideValues ? (
+              <>
+                <Eye className="h-4 w-4" />
+                <span className="hidden sm:inline">Show Values</span>
+              </>
+            ) : (
+              <>
+                <EyeOff className="h-4 w-4" />
+                <span className="hidden sm:inline">Hide Values</span>
+              </>
+            )}
           </button>
         </div>
         
@@ -1316,40 +1326,6 @@ const Dashboard = () => {
               <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded-full font-medium ml-0.5">↓ View</span>
             </button>
           )}
-        </div>
-      </div>
-
-      {/* Quick Action Plan Management Bar on Front Page */}
-      <div className="bg-white rounded-xl shadow-xs border border-gray-100 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-xl shadow-xs">
-            <Dumbbell className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-gray-900">Membership Plans Management</h3>
-              <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold px-2 py-0.5 rounded-full">Quick Access</span>
-            </div>
-            <p className="text-xs text-gray-500 mt-0.5">Easily configure pricing, durations & custom packages for your members.</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setActiveTab('membership-plans')}
-            className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg transition-all border border-gray-200 cursor-pointer"
-          >
-            Manage Plans
-          </button>
-          <button
-            onClick={() => {
-              setOpenCreatePlan(true);
-              setActiveTab('membership-plans');
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg shadow-xs hover:shadow transition-all active:scale-95 cursor-pointer"
-          >
-            <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
-            Create Membership Plan
-          </button>
         </div>
       </div>
   
@@ -2915,12 +2891,7 @@ const Dashboard = () => {
             />
           )}
           {activeTab === 'pt' && <PTPage />}
-          {activeTab === 'membership-plans' && (
-            <MembershipPlans 
-              initialCreate={openCreatePlan} 
-              onCloseCreate={() => setOpenCreatePlan(false)} 
-            />
-          )}
+          {activeTab === 'membership-plans' && <MembershipPlans />}
           {activeTab === 'addons' && <AddOns />}
           {activeTab === 'balance' && canSeeBalances && <Balance />}
           {activeTab === 'devices' && canSeeDevices && <DeviceManager />}

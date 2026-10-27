@@ -117,6 +117,11 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // Suppress toasts if the request was marked silent or skipToast (e.g. background polling/prefetch)
+    if (originalRequest?.silent || originalRequest?.skipToast) {
+      return Promise.reject(error);
+    }
+
     // Handle 422 (Validation Error) - don't show toast for permissions endpoint
     if (error.response?.status === 422) {
       // Don't show toast for permissions endpoint validation errors
@@ -130,10 +135,10 @@ api.interceptors.response.use(
       if (!originalRequest?.url?.includes('/permissions')) {
         const detail = error.response?.data?.detail;
         if (typeof detail === 'string') {
-          toast.error(detail);
+          toast.error(detail, { id: detail });
         } else if (Array.isArray(detail)) {
           const messages = detail.map(d => d.msg || d.message || 'Invalid input').join(', ');
-          toast.error(messages);
+          toast.error(messages, { id: 'validation-error' });
         }
       }
       return Promise.reject(error);
@@ -142,13 +147,13 @@ api.interceptors.response.use(
     // Handle 500 (Server Error)
     if (error.response?.status === 500) {
       console.error('Server error:', error.response?.data);
-      toast.error('Server error. Please try again later.');
+      toast.error('Server error. Please try again later.', { id: 'server-error' });
       return Promise.reject(error);
     }
 
-    // Handle Network Errors
+    // Handle Network Errors (deduplicated by id so multiple calls don't flood the UI)
     if (error.code === 'ECONNABORTED' || error.message?.includes('Network Error')) {
-      toast.error('Network error. Please check your connection.');
+      toast.error('Network error. Please check your connection.', { id: 'network-error' });
       return Promise.reject(error);
     }
 
@@ -157,7 +162,7 @@ api.interceptors.response.use(
     if (error.response?.status && error.response.status !== 403 && error.response.status !== 401) {
       const message = error.response?.data?.detail || error.response?.data?.message || error.message || 'Something went wrong';
       if (typeof message === 'string' && !message.startsWith('<!DOCTYPE')) {
-        toast.error(message);
+        toast.error(message, { id: message });
       }
     }
 

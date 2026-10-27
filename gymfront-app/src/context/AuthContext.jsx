@@ -1,12 +1,9 @@
 import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import api from '../services/api';
+import api, { API_BASE_URL } from '../services/api';
 
 const AuthContext = createContext();
-
-// const API_BASE_URL = 'http://localhost:8001';
-const API_BASE_URL = 'https://api.gymmonitor.in';
 
 
 export const useAuth = () => {
