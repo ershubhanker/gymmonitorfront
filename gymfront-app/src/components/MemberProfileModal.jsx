@@ -10,11 +10,12 @@ import {
   Dumbbell, Pencil, Maximize2, Hash, Snowflake,
   Heart, AlertTriangle, Filter, Plus, ChevronDown,
   Percent, Camera, Wifi, Lock, Unlock,
-  ArrowRight, ArrowLeftRight
+  ArrowRight, ArrowLeftRight, Upload
 } from 'lucide-react';
 import api, { API_BASE_URL, getMemberTransfers } from '../services/api';
 import toast from 'react-hot-toast';
 import MembershipTransferModal from './MembershipTransferModal';
+import CameraCapture from './CameraCapture';
 
 // ============================================================
 // HELPER: Properly format currency (ALL AMOUNTS IN RUPEES)
@@ -187,6 +188,7 @@ const ProfileImageEditor = ({
   const [deleting, setDeleting] = useState(false);
   const [preview, setPreview] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
 
   const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
   const MAX_SIZE_MB = 5;
@@ -329,6 +331,48 @@ const ProfileImageEditor = ({
     }
   };
 
+  const handleCameraCapture = async (file) => {
+    setShowCamera(false);
+    setUploading(true);
+    toast.loading('Saving photo...', { id: 'compress' });
+
+    try {
+      const compressedFile = await compressImage(file, 400, 400, 0.8);
+      toast.dismiss('compress');
+
+      const localUrl = URL.createObjectURL(compressedFile);
+      setPreview(localUrl);
+
+      const formData = new FormData();
+      formData.append('file', compressedFile);
+
+      toast.loading('Uploading photo...', { id: 'upload' });
+
+      const response = await api.post(
+        `/gym/members/${memberId}/upload-photo`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+
+      toast.dismiss('upload');
+      toast.success('Photo updated successfully!');
+
+      if (onImageUpdated) {
+        onImageUpdated(response.data.photo_url);
+      }
+
+      setPreview(null);
+    } catch (err) {
+      toast.dismiss('compress');
+      toast.dismiss('upload');
+      console.error('Camera upload error:', err);
+      toast.error(err.response?.data?.detail || 'Photo upload failed. Please try again.');
+      setPreview(null);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleDeletePhoto = async () => {
     setDeleting(true);
     try {
@@ -389,9 +433,11 @@ const ProfileImageEditor = ({
         </p>
         <div className="flex flex-wrap gap-1.5 mt-0.5">
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
             className="text-[10px] text-blue-600 hover:text-blue-800 font-medium flex items-center gap-0.5 disabled:opacity-50"
+            title="Upload photo from files"
           >
             {uploading ? (
               <>
@@ -400,13 +446,24 @@ const ProfileImageEditor = ({
               </>
             ) : (
               <>
-                <Camera className="h-3 w-3" />
+                <Upload className="h-3 w-3" />
                 {member?.profile_image ? 'Change' : 'Upload'}
               </>
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => setShowCamera(true)}
+            disabled={uploading}
+            className="text-[10px] text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-0.5 disabled:opacity-50"
+            title="Take photo using webcam"
+          >
+            <Camera className="h-3 w-3" />
+            Take Photo
+          </button>
           {member?.profile_image && (
             <button
+              type="button"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={deleting}
               className="text-[10px] text-red-600 hover:text-red-800 font-medium flex items-center gap-0.5 disabled:opacity-50"
@@ -416,6 +473,7 @@ const ProfileImageEditor = ({
             </button>
           )}
           <button
+            type="button"
             onClick={() => onImageZoom && onImageZoom()}
             className="text-[10px] text-gray-500 hover:text-gray-700 font-medium flex items-center gap-0.5"
           >
@@ -469,6 +527,14 @@ const ProfileImageEditor = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Camera Capture Modal */}
+      {showCamera && (
+        <CameraCapture
+          onCapture={handleCameraCapture}
+          onClose={() => setShowCamera(false)}
+        />
       )}
     </div>
   );

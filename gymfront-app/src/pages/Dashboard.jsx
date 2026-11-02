@@ -1261,29 +1261,6 @@ const Dashboard = () => {
             </h1>
             <p className="text-blue-100 mt-0.5 text-sm sm:text-base">Here's what's happening at your gym today.</p>
           </div>
-          
-          {/* Hide/Show Toggle Button */}
-          <button
-            onClick={toggleHideValues}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all duration-300 text-xs sm:text-sm font-medium ml-auto sm:ml-0 cursor-pointer ${
-              hideValues 
-                ? 'bg-amber-500/30 text-amber-100 border border-amber-400/50 hover:bg-amber-500/40' 
-                : 'bg-white/20 text-white border border-white/20 hover:bg-white/30'
-            }`}
-            title={hideValues ? 'Show values' : 'Hide values'}
-          >
-            {hideValues ? (
-              <>
-                <Eye className="h-4 w-4" />
-                <span className="hidden sm:inline">Show Values</span>
-              </>
-            ) : (
-              <>
-                <EyeOff className="h-4 w-4" />
-                <span className="hidden sm:inline">Hide Values</span>
-              </>
-            )}
-          </button>
         </div>
         
         <div className="flex flex-wrap gap-2 mt-3.5">

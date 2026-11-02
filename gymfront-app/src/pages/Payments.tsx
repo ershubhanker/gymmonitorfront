@@ -33,7 +33,7 @@ import toast from 'react-hot-toast';
 
 
 const Payments = () => {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const [payments, setPayments] = useState([]);
   const [filteredPayments, setFilteredPayments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -80,9 +80,18 @@ const Payments = () => {
   const currencySymbol = user?.currency_symbol || '₹';
   const gymGST = user?.gym_gst_number || user?.gst_number || 'Not Available';
   const gymName = user?.gym_name || 'Gym Management System';
-  const [gstRate, setGstRate] = useState<number>(user?.gst_rate || 5.0);
+  const [gstRate, setGstRate] = useState<number>(
+    user?.gst_rate !== undefined && user?.gst_rate !== null ? Number(user.gst_rate) : 5.0
+  );
   const [showGstModal, setShowGstModal] = useState(false);
   const [updatingGst, setUpdatingGst] = useState(false);
+
+  // Sync gstRate whenever user profile updates
+  useEffect(() => {
+    if (user?.gst_rate !== undefined && user?.gst_rate !== null) {
+      setGstRate(Number(user.gst_rate));
+    }
+  }, [user?.gst_rate]);
 
   // ✅ Set initial date range to current month
   useEffect(() => {
@@ -603,12 +612,12 @@ const Payments = () => {
       const totalTransactions = filteredPayments.length;
       
       const halfRate = gstRate / 2;
-      const taxableAmount = summary.totalGST > 0
-        ? totalRevenue - summary.totalGST
-        : totalRevenue / (1 + gstRate / 100);
-      const gstCollected = summary.totalGST > 0
-        ? summary.totalGST
-        : totalRevenue - taxableAmount;
+      const taxableAmount = gstRate === 0
+        ? totalRevenue
+        : (summary.totalGST > 0 ? totalRevenue - summary.totalGST : totalRevenue / (1 + gstRate / 100));
+      const gstCollected = gstRate === 0
+        ? 0
+        : (summary.totalGST > 0 ? summary.totalGST : totalRevenue - taxableAmount);
       const cgstAmount = gstCollected / 2;
       const sgstAmount = gstCollected / 2;
       
@@ -785,6 +794,9 @@ const Payments = () => {
                 api.put('/gym/my-gym/gst-rate', { gst_rate: rate })
                   .then(() => {
                     setGstRate(rate);
+                    if (setUser) {
+                      setUser((prev: any) => prev ? { ...prev, gst_rate: rate } : prev);
+                    }
                     setShowGstModal(false);
                     toast.success(`GST rate updated to ${rate}%`);
                   })
@@ -1076,7 +1088,7 @@ const Payments = () => {
               Payment Transactions
             </h1>
             <p className="text-blue-100 mt-2">
-              GST: {gymGST} ({gstRate}% — CGST {gstRate/2}% + SGST {gstRate/2}%) | {gymName}
+              GST: {gymGST} ({gstRate === 0 ? '0% — Exempt' : `${gstRate}% — CGST ${gstRate/2}% + SGST ${gstRate/2}%`}) | {gymName}
             </p>
           </div>
           <div className="flex gap-2">
