@@ -366,6 +366,42 @@ export const resendInvoiceWhatsApp = async (memberId) => {
 };
 
 
+// ==================== WHATSAPP CHATS & WEBHOOK REPLIES ====================
+
+export const fetchWhatsAppConversations = async (params = {}) => {
+  const response = await api.get('/whatsapp/chats/conversations', { params });
+  return response.data;
+};
+
+export const fetchWhatsAppChatMessages = async (phoneNumber) => {
+  const response = await api.get('/whatsapp/chats/messages', {
+    params: { phone_number: phoneNumber }
+  });
+  return response.data;
+};
+
+export const sendWhatsAppChatMessage = async (phoneNumber, message, gymId = null) => {
+  const response = await api.post('/whatsapp/chats/send', {
+    phone_number: phoneNumber,
+    message,
+    gym_id: gymId
+  });
+  return response.data;
+};
+
+export const markWhatsAppChatRead = async (phoneNumber) => {
+  const response = await api.post('/whatsapp/chats/mark-read', {
+    phone_number: phoneNumber
+  });
+  return response.data;
+};
+
+export const fetchWhatsAppUnreadCount = async () => {
+  const response = await api.get('/whatsapp/chats/unread-count');
+  return response.data;
+};
+
+
 // ==================== MEMBERSHIP TRANSFER ====================
 
 /**

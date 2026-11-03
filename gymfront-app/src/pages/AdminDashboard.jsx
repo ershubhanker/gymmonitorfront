@@ -13,10 +13,10 @@ import {
   ChevronLeft, PanelLeftClose, PanelLeftOpen, ArrowLeft, ExternalLink,
   BookOpen, Hash, Phone as PhoneIcon, Mail as MailIcon, Dumbbell, Gift,
   PieChart, Layers, LayoutGrid, List, Grid, Maximize2, AlertTriangle,
-  Crown,
+  Crown, MessageCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import api from '../services/api';
+import api, { fetchWhatsAppUnreadCount } from '../services/api';
 import toast from 'react-hot-toast';
 import { formatCurrency, formatDate, formatDateTime, statusBadge, roleBadge } from '../services/adminHelpers';
 import GymList from '../components/admin/GymList';
@@ -26,6 +26,8 @@ import IrregularMembers from '../components/attendance/IrregularMembers';
 import SubscriptionManager from '../components/admin/SubscriptionManager';
 import AdminRevenueGraph from '../components/admin/AdminRevenueGraph';
 import SoftwarePlanModal from '../components/admin/SoftwarePlanModal';
+import WhatsAppChatScreen from '../components/admin/WhatsAppChatScreen';
+import WhatsAppLogs from '../components/WhatsAppLogs';
 
 // ─── Field components ─────────────────────────────────────────────────
 
@@ -567,18 +569,19 @@ const EmptyRow = ({ text }) => (
 
 // ─── Main Component ───────────────────────────────────────────────────
 
-const AdminDashboard = () => {
+const AdminDashboard = ({ defaultTab }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedTab, setSelectedTab] = useState('overview');
+  const [selectedTab, setSelectedTab] = useState(defaultTab || 'overview');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterRole, setFilterRole] = useState('all');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
 
   // Modal states
   const [editModal, setEditModal] = useState(null);
@@ -639,6 +642,15 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchUnreadChats = useCallback(async () => {
+    try {
+      const data = await fetchWhatsAppUnreadCount();
+      setUnreadChatCount(data.unread_count || 0);
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     if (user && user.role !== 'super_admin') navigate('/dashboard');
   }, [user, navigate]);
@@ -646,6 +658,9 @@ const AdminDashboard = () => {
   useEffect(() => {
     fetchAllData();
     fetchWhatsAppStatus();
+    fetchUnreadChats();
+    const interval = setInterval(fetchUnreadChats, 15000);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -838,6 +853,7 @@ const AdminDashboard = () => {
     { id: 'expenses', name: 'Expenses', icon: Wallet, count: expenses.length },
     { id: 'attendance', name: 'Attendance', icon: Clock, count: null },
     { id: 'irregular-members', name: 'Irregular Members', icon: AlertTriangle, count: null },
+    { id: 'whatsapp-chat', name: 'WhatsApp Chats', icon: MessageCircle, count: unreadChatCount > 0 ? unreadChatCount : null },
     { id: 'whatsapp', name: 'WhatsApp Logs', icon: MessageSquare, count: null },
   ];
 
@@ -1009,7 +1025,7 @@ const AdminDashboard = () => {
         </nav>
 
         {/* Search / Filter Bar */}
-        {selectedTab !== 'overview' && !viewingGymDetails && selectedTab !== 'irregular-members' && (
+        {selectedTab !== 'overview' && !viewingGymDetails && selectedTab !== 'irregular-members' && selectedTab !== 'whatsapp-chat' && selectedTab !== 'whatsapp' && (
           <div className="bg-gray-900/60 border-b border-gray-800 px-4 lg:px-8 py-3 flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
@@ -1649,16 +1665,15 @@ const AdminDashboard = () => {
           {/* IRREGULAR MEMBERS */}
           {selectedTab === 'irregular-members' && <IrregularMembers />}
 
+          {/* WHATSAPP CHAT / LIVE REPLIES */}
+          {selectedTab === 'whatsapp-chat' && (
+            <WhatsAppChatScreen />
+          )}
+
           {/* WHATSAPP LOGS */}
           {selectedTab === 'whatsapp' && (
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5 text-green-400" />
-                  WhatsApp Message Logs
-                </h2>
-                <p className="text-xs text-gray-500">Coming soon - WhatsApp logs will be displayed here</p>
-              </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+              <WhatsAppLogs />
             </div>
           )}
         </main>

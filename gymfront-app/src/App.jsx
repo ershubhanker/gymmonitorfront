@@ -112,6 +112,12 @@ function App() {
                     </AdminRoute>
                   } />
 
+                  <Route path="/admin/whatsapp-chat" element={
+                    <AdminRoute>
+                      <AdminDashboard defaultTab="whatsapp-chat" />
+                    </AdminRoute>
+                  } />
+
                   <Route path="/admin/whatsapp-logs" element={
                     <AdminRoute>
                       <WhatsAppLogs />
