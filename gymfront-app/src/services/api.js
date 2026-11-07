@@ -366,6 +366,33 @@ export const resendInvoiceWhatsApp = async (memberId) => {
 };
 
 
+export const sendBalanceNotification = async (memberId, balanceAmount) => {
+  try {
+    const response = await api.post('/whatsapp/send-balance-notification', {
+      member_id: memberId,
+      balance_amount: balanceAmount
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error sending balance notification:', error);
+    throw error;
+  }
+};
+
+
+export const sendBulkBalanceNotifications = async (memberIds = null) => {
+  try {
+    const response = await api.post('/whatsapp/send-bulk-balance-notifications', {
+      member_ids: memberIds
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error sending bulk balance notifications:', error);
+    throw error;
+  }
+};
+
+
 // ==================== WHATSAPP CHATS & WEBHOOK REPLIES ====================
 
 export const fetchWhatsAppConversations = async (params = {}) => {

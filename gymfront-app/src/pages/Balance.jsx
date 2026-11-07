@@ -26,7 +26,9 @@ import {
   Trash2,
   Dumbbell,
   FileSpreadsheet,
-  Download
+  Download,
+  MessageCircle,
+  Send
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -66,6 +68,10 @@ const Balance = () => {
   const [clearingBalance, setClearingBalance] = useState(false);
   const [clearBalanceNotes, setClearBalanceNotes] = useState('');
   const [clearBalanceType, setClearBalanceType] = useState('all');
+
+  // ===== Balance Notification State =====
+  const [notifyingMemberId, setNotifyingMemberId] = useState(null);
+  const [notifyingAll, setNotifyingAll] = useState(false);
   
   // ===== Payment allocation state =====
   const [paymentAllocation, setPaymentAllocation] = useState({
@@ -661,6 +667,72 @@ const Balance = () => {
     await fetchPaymentHistory(member.member_id);
   };
 
+  // ============================================================
+  // HANDLE SEND BALANCE NOTIFICATION (WHATSAPP + EMAIL)
+  // ============================================================
+  const handleSendBalanceNotification = async (member) => {
+    const totalDue = getTotalBalance(member);
+    if (totalDue <= 0) {
+      toast.error('This member has no outstanding balance.');
+      return;
+    }
+
+    setNotifyingMemberId(member.member_id);
+    const toastId = toast.loading(`Sending balance notice to ${member.member_name}...`);
+
+    try {
+      const response = await api.post('/whatsapp/send-balance-notification', {
+        member_id: member.member_id,
+        balance_amount: totalDue
+      });
+
+      toast.dismiss(toastId);
+      if (response.data?.success) {
+        const channels = response.data?.channels?.length > 0 ? response.data.channels.join(' & ') : 'WhatsApp';
+        toast.success(`✅ Balance notice of ${formatCurrency(totalDue)} sent to ${member.member_name} via ${channels}!`);
+      } else {
+        toast.error(response.data?.message || 'Failed to send balance notice. Check WhatsApp logs.');
+      }
+    } catch (error) {
+      toast.dismiss(toastId);
+      console.error('Error sending balance notice:', error);
+      toast.error(error.response?.data?.detail || error.message || 'Failed to send balance notice.');
+    } finally {
+      setNotifyingMemberId(null);
+    }
+  };
+
+  const handleNotifyAllWithBalance = async () => {
+    const count = overview.members_with_balance || 0;
+    if (count <= 0) {
+      toast.error('No members currently have an outstanding balance.');
+      return;
+    }
+
+    if (!window.confirm(`Send WhatsApp & Email balance notice to all ${count} members with pending dues?`)) {
+      return;
+    }
+
+    setNotifyingAll(true);
+    const toastId = toast.loading(`Queueing balance notifications for ${count} members...`);
+
+    try {
+      const response = await api.post('/whatsapp/send-bulk-balance-notifications', {});
+      toast.dismiss(toastId);
+      if (response.data?.success) {
+        toast.success(`✅ Queued balance notices for ${response.data.total_queued || count} members!`);
+      } else {
+        toast.error(response.data?.message || 'Failed to queue balance notifications.');
+      }
+    } catch (error) {
+      toast.dismiss(toastId);
+      console.error('Error sending bulk balance notifications:', error);
+      toast.error(error.response?.data?.detail || error.message || 'Failed to queue balance notifications.');
+    } finally {
+      setNotifyingAll(false);
+    }
+  };
+
   const getStatusBadge = (member) => {
     const totalBalance = getTotalBalance(member);
     if (totalBalance <= 0) {
@@ -997,6 +1069,22 @@ const Balance = () => {
               Show paid members only
             </label>
             
+            {overview.members_with_balance > 0 && (
+              <button
+                onClick={handleNotifyAllWithBalance}
+                disabled={notifyingAll}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-sm"
+                title="Send WhatsApp & Email balance notice to all members with dues"
+              >
+                {notifyingAll ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                {notifyingAll ? 'Queueing...' : `Notify All (${overview.members_with_balance})`}
+              </button>
+            )}
+
             <button
               onClick={handleExportToExcel}
               disabled={exporting || members.length === 0}
@@ -1181,6 +1269,21 @@ const Balance = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {totalBalance > 0 && (
+                            <button
+                              onClick={() => handleSendBalanceNotification(member)}
+                              disabled={notifyingMemberId === member.member_id}
+                              className="inline-flex items-center px-3 py-1.5 bg-emerald-50 text-emerald-700 text-sm rounded-lg hover:bg-emerald-100 transition-colors border border-emerald-200"
+                              title="Send WhatsApp & Email Balance Notice"
+                            >
+                              {notifyingMemberId === member.member_id ? (
+                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                              ) : (
+                                <MessageCircle className="h-4 w-4 mr-1 text-emerald-600" />
+                              )}
+                              Notify
+                            </button>
+                          )}
                           {totalBalance > 0 && (
                             <button
                               onClick={() => openPaymentModal(member)}

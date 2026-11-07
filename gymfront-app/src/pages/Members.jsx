@@ -1562,7 +1562,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       toast.dismiss('resend-invoice');
 
       if (result.success) {
-        toast.success(`✅ Invoice sent to ${member.fullName} via WhatsApp!`);
+        const channelText = result.email_sent ? 'WhatsApp & Email' : 'WhatsApp';
+        toast.success(`✅ Invoice sent to ${member.fullName} via ${channelText}!`);
       } else {
         toast.error(result.error || 'Failed to send invoice');
       }

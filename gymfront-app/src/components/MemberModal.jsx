@@ -2765,7 +2765,8 @@ const MemberModal = ({ isOpen, onClose,
           try {
             const invoiceResponse = await api.post(`/gym/members/${savedMember.id}/send-invoice`);
             if (invoiceResponse?.data?.success) {
-              toast.success('Invoice sent via WhatsApp!');
+              const channelText = invoiceResponse?.data?.email_sent ? 'WhatsApp & Email' : 'WhatsApp';
+              toast.success(`Invoice sent via ${channelText}!`);
             } else {
               console.warn('WhatsApp invoice not sent:', invoiceResponse?.data?.message);
               toast('Member added. WhatsApp invoice could not be sent — check WhatsApp logs for details.', { icon: '⚠️' });
