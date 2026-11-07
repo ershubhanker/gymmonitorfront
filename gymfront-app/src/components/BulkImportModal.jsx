@@ -1032,10 +1032,12 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               if (!endDate) {
                 const plan = allPlans.find(p => p.id === planId);
                 if (plan) {
-                  const start = new Date(startDate);
-                  endDate = new Date(start);
-                  endDate.setDate(endDate.getDate() + plan.duration_days);
-                  endDate = endDate.toISOString().split('T')[0];
+                  const [y, m, d] = startDate.split('-').map(Number);
+                  const end = new Date(y, m - 1, d + Math.max(0, plan.duration_days - 1));
+                  const yyyy = end.getFullYear();
+                  const mm = String(end.getMonth() + 1).padStart(2, '0');
+                  const dd = String(end.getDate()).padStart(2, '0');
+                  endDate = `${yyyy}-${mm}-${dd}`;
                 }
               }
               

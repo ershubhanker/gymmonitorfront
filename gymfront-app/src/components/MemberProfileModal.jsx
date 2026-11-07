@@ -718,6 +718,49 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ===== DEVICE ACCESS TOGGLE STATE =====
   const [togglingAccess, setTogglingAccess] = useState(false);
 
+  // ===== ID PROOF STATE & UPLOAD =====
+  const idProofInputRef = useRef(null);
+  const [uploadingIdProof, setUploadingIdProof] = useState(false);
+  const [idProofModalOpen, setIdProofModalOpen] = useState(false);
+
+  const handleIdProofUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!allowed.includes(file.type)) {
+      toast.error('Please upload an image (JPEG, PNG, WebP) or PDF document');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File size must be under 10MB');
+      return;
+    }
+
+    setUploadingIdProof(true);
+    const fd = new FormData();
+    fd.append('file', file);
+
+    try {
+      toast.loading('Uploading ID proof...', { id: 'upload-id-proof' });
+      const res = await api.post(`/gym/members/${memberId}/upload-id-proof`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.dismiss('upload-id-proof');
+      toast.success('ID proof uploaded successfully!');
+      setMember(prev => ({ ...prev, id_proof_image: res.data.id_proof_url }));
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      toast.dismiss('upload-id-proof');
+      console.error('Error uploading ID proof:', err);
+      toast.error(err.response?.data?.detail || 'Failed to upload ID proof');
+    } finally {
+      setUploadingIdProof(false);
+      if (idProofInputRef.current) idProofInputRef.current.value = '';
+    }
+  };
+
   // ============================================================
   // FETCH FUNCTIONS
   // ============================================================
@@ -1422,11 +1465,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     if (membershipEditData.plan_id && membershipEditData.start_date) {
       const selectedPlan = plans.find(p => p.id.toString() === membershipEditData.plan_id);
       if (selectedPlan && selectedPlan.duration_days) {
-        const startDate = new Date(membershipEditData.start_date);
-        const endDate = new Date(startDate);
-        endDate.setDate(endDate.getDate() + selectedPlan.duration_days);
-        
-        const endDateStr = endDate.toISOString().split('T')[0];
+        const [y, m, d] = membershipEditData.start_date.split('-').map(Number);
+        const endDate = new Date(y, m - 1, d + Math.max(0, selectedPlan.duration_days - 1));
+        const yyyy = endDate.getFullYear();
+        const mm = String(endDate.getMonth() + 1).padStart(2, '0');
+        const dd = String(endDate.getDate()).padStart(2, '0');
+        const endDateStr = `${yyyy}-${mm}-${dd}`;
         
         if (endDateStr !== membershipEditData.end_date) {
           setMembershipEditData(prev => ({
@@ -3239,6 +3283,125 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 </div>
               )}
             </div>
+
+            {/* ID Proof & Documents */}
+            <div className="bg-gray-50 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-gray-900 text-xs flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5" />
+                  ID Proof & Documents
+                  {isEditing && <span className="text-[10px] text-blue-600 ml-1">(Editing)</span>}
+                </h3>
+                <input
+                  type="file"
+                  ref={idProofInputRef}
+                  onChange={handleIdProofUpload}
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => idProofInputRef.current?.click()}
+                  disabled={uploadingIdProof}
+                  className="text-[10px] text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 hover:underline disabled:opacity-50"
+                >
+                  <Upload className="h-3 w-3" />
+                  {member.id_proof_image ? 'Update Doc' : 'Upload Doc'}
+                </button>
+              </div>
+
+              {isEditing ? (
+                <form className="space-y-2">
+                  <div>
+                    <label className="text-[10px] font-medium text-gray-600">Document Type</label>
+                    <select
+                      name="id_proof_type"
+                      value={editFormData.id_proof_type || 'aadhar'}
+                      onChange={handleEditChange}
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                    >
+                      <option value="aadhar">Aadhar Card</option>
+                      <option value="pan">PAN Card</option>
+                      <option value="dl">Driving License</option>
+                      <option value="passport">Passport</option>
+                      <option value="voter">Voter ID</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-gray-600">
+                      ID Proof Number {editFormData.id_proof_type === 'aadhar' ? '(Aadhar Card)' : ''}
+                    </label>
+                    <input
+                      type="text"
+                      name="id_proof_number"
+                      value={editFormData.id_proof_number}
+                      onChange={handleEditChange}
+                      placeholder={editFormData.id_proof_type === 'aadhar' ? '1234 5678 9012' : 'Enter ID number'}
+                      className="w-full mt-0.5 px-2 py-1 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-1.5 text-[11px]">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Document Type:</span>
+                    <span className="font-medium text-gray-900 capitalize">
+                      {member.id_proof_type === 'aadhar' ? 'Aadhar Card' :
+                       member.id_proof_type === 'pan' ? 'PAN Card' :
+                       member.id_proof_type === 'dl' ? 'Driving License' :
+                       member.id_proof_type === 'passport' ? 'Passport' :
+                       member.id_proof_type === 'voter' ? 'Voter ID' :
+                       member.id_proof_type || 'Aadhar Card'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">ID Number:</span>
+                    <span className="font-medium text-gray-900 font-mono">
+                      {member.id_proof_number || <span className="text-gray-400 italic font-sans">Not provided</span>}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <span className="text-gray-500 block mb-1">Document File:</span>
+                    {member.id_proof_image ? (
+                      <div className="flex items-center justify-between p-1.5 bg-white rounded border border-gray-200">
+                        <div className="flex items-center gap-2">
+                          {member.id_proof_image.endsWith('.pdf') ? (
+                            <div className="w-8 h-8 bg-red-50 text-red-600 rounded flex items-center justify-center border border-red-200">
+                              <FileText className="h-4 w-4" />
+                            </div>
+                          ) : (
+                            <img
+                              src={member.id_proof_image.startsWith('http') ? member.id_proof_image : `${API_BASE_URL}${member.id_proof_image}`}
+                              alt="ID Proof"
+                              className="w-8 h-8 object-cover rounded border border-gray-200 cursor-pointer"
+                              onClick={() => setIdProofModalOpen(true)}
+                            />
+                          )}
+                          <span className="text-[11px] font-medium text-gray-700 truncate max-w-[120px]">
+                            {member.id_proof_type ? `${member.id_proof_type.toUpperCase()} File` : 'ID File'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <a
+                            href={member.id_proof_image.startsWith('http') ? member.id_proof_image : `${API_BASE_URL}${member.id_proof_image}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 hover:bg-gray-100 rounded text-blue-600 transition-colors"
+                            title="Open full document"
+                          >
+                            <Maximize2 className="h-3.5 w-3.5" />
+                          </a>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-gray-400 italic">No document image uploaded</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Personal Training Section - Smaller */}
@@ -3892,6 +4055,51 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+        {/* ID Proof Full View Modal */}
+        {idProofModalOpen && member?.id_proof_image && (
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+            <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-4 max-h-[90vh] flex flex-col">
+              <div className="flex items-center justify-between pb-3 border-b mb-3">
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                  {member.full_name}'s ID Proof ({member.id_proof_type ? member.id_proof_type.toUpperCase() : 'Document'})
+                </h3>
+                <button
+                  onClick={() => setIdProofModalOpen(false)}
+                  className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-auto flex items-center justify-center bg-gray-100 rounded-xl p-2 min-h-[300px]">
+                {member.id_proof_image.endsWith('.pdf') ? (
+                  <iframe
+                    src={member.id_proof_image.startsWith('http') ? member.id_proof_image : `${API_BASE_URL}${member.id_proof_image}`}
+                    className="w-full h-[500px] rounded-lg border-0"
+                    title="ID Document PDF"
+                  />
+                ) : (
+                  <img
+                    src={member.id_proof_image.startsWith('http') ? member.id_proof_image : `${API_BASE_URL}${member.id_proof_image}`}
+                    alt="ID Proof Document"
+                    className="max-h-[70vh] max-w-full object-contain rounded-lg shadow-sm"
+                  />
+                )}
+              </div>
+              <div className="pt-3 mt-3 border-t flex justify-between items-center text-xs text-gray-500">
+                <span>Number: <strong className="text-gray-800">{member.id_proof_number || 'N/A'}</strong></span>
+                <a
+                  href={member.id_proof_image.startsWith('http') ? member.id_proof_image : `${API_BASE_URL}${member.id_proof_image}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors"
+                >
+                  Open in New Tab
+                </a>
+              </div>
             </div>
           </div>
         )}

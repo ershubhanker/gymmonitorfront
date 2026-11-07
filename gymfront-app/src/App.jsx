@@ -91,6 +91,7 @@ function App() {
                   <Route path="/payment/failed" element={<PaymentFailed />} />
 
                   {/* Public Lead Capture Form */}
+                  <Route path="/lead-capture/:gymSlug" element={<LeadCaptureForm />} />
                   <Route path="/lead-form/:gymSlug" element={<LeadCaptureForm />} />
 
                   {/* Public invoice view */}

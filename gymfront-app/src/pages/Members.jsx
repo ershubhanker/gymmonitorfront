@@ -2064,6 +2064,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     if (!hasError) {
       toast.success('Member updated successfully!');
     }
+    return { id: memberId };
   };
 
   // ============================================================

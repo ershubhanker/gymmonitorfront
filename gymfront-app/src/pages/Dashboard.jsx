@@ -47,6 +47,7 @@ import FollowUpPage from '../components/FollowUpPage';
 import AddOns from './AddOns';
 import PTPage from './PTPage';
 import WhatsAppNotifications from './WhatsAppNotifications';
+import WhatsAppContactNotice from '../components/WhatsAppContactNotice';
 import BillingSettings from './BillingSettings'; // ✅ NEW — SaaS billing tab
 
 const AUTO_REFRESH_INTERVAL = 60000;
@@ -1111,6 +1112,7 @@ const Dashboard = () => {
         section: 'reports'
       });
     }
+    nav.push({ name: 'WhatsApp Chat', icon: MessageCircle, id: 'whatsapp-chat', section: 'reports' });
     nav.push({ name: 'WhatsApp Logs', icon: MessageSquare, id: 'whatsapp-logs', section: 'reports' });
     nav.push({ 
       name: 'WhatsApp Notifications', 
@@ -2896,6 +2898,7 @@ const Dashboard = () => {
           )}
           {activeTab === 'trainer-schedule' && <TrainerSchedule />}
           {activeTab === 'historical-invoices' && <HistoricalInvoices />}
+          {activeTab === 'whatsapp-chat' && <WhatsAppContactNotice />}
           {activeTab === 'whatsapp-logs' && <WhatsAppLogs />}
           {activeTab === 'whatsapp-notifications' && canSeeWhatsApp && <WhatsAppNotifications />}
 

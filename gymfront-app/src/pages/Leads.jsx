@@ -852,8 +852,15 @@ const Leads = () => {
   const fetchShareableLink = async () => {
     try {
       const response = await api.get('/gym/lead-form-link');
-      setShareableLink(response.data.shareable_link);
-      setGymSlug(response.data.gym_slug);
+      const slug = response.data.gym_slug;
+      const baseUrl = (typeof window !== 'undefined' && window.location?.origin)
+        ? window.location.origin
+        : '';
+      const finalLink = slug && baseUrl
+        ? `${baseUrl}/lead-capture/${slug}`
+        : response.data.shareable_link;
+      setShareableLink(finalLink);
+      setGymSlug(slug);
       setShowShareModal(true);
       toast.success('Shareable link generated!');
     } catch (error) {

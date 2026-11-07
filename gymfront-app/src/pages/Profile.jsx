@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   User, Mail, Phone, Shield, Key, Save, Camera, Building2, 
   MapPin, Clock, Users, CreditCard, AlertCircle,
@@ -34,6 +34,7 @@ const Profile = () => {
   const [currencySaving, setCurrencySaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [imageKey, setImageKey] = useState(Date.now());
+  const fileInputRef = useRef(null);
 
   const [profileForm, setProfileForm] = useState({
     full_name: user?.full_name || '',
@@ -187,7 +188,9 @@ const Profile = () => {
       toast.error(error.response?.data?.detail || 'Failed to upload photo');
     } finally {
       setUploadingPhoto(false);
-      e.target.value = '';
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -231,6 +234,9 @@ const Profile = () => {
       toast.error(error.response?.data?.detail || 'Failed to delete photo');
     } finally {
       setUploadingPhoto(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -461,6 +467,7 @@ const Profile = () => {
               <Camera className="h-3.5 w-3.5 text-gray-600" />
             )}
             <input 
+              ref={fileInputRef}
               type="file" 
               className="hidden" 
               accept="image/*"

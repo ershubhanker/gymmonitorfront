@@ -9,8 +9,9 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { API_BASE_URL as CONFIGURED_API_URL } from '../services/api';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.gymmonitor.in';
+const API_BASE_URL = import.meta.env.VITE_API_URL || CONFIGURED_API_URL || 'https://api.gymmonitor.in';
 
 const LeadCaptureForm = () => {
   const { gymSlug } = useParams();

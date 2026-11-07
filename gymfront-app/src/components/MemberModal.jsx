@@ -12,6 +12,7 @@ import api, { API_BASE_URL } from '../services/api';
 import AddonManager from './addons/AddonManager';
 import { useAuth } from '../context/AuthContext';
 import CameraCapture from './CameraCapture';
+import DOBPicker from './DOBPicker';
 
 // ─── Plan type presets ────────────────────────────────────────────────────────
 const PLAN_PRESETS = [
@@ -20,10 +21,6 @@ const PLAN_PRESETS = [
   { label: 'Half-Yearly', plan_type: 'half_yearly', duration_days: 180 },
   { label: 'Yearly',      plan_type: 'yearly',      duration_days: 365 },
 ];
-
-// ─── DOB Scroll Picker ────────────────────────────────────────────────────────
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const ITEM_H = 40;
 
 // ─── Optimized Image Compression ──────────────────────────────────────────────
 const resizeBitmapToFile = (bitmap, sourceFile, maxWidth, maxHeight, quality) => {
@@ -103,156 +100,6 @@ const compressImage = async (file, maxWidth = 600, maxHeight = 600, quality = 0.
   }
 
   return compressImageLegacy(file, maxWidth, maxHeight, quality);
-};
-
-const ScrollColumn = ({ items, selectedIndex, onChange, label }) => {
-  const listRef = useRef(null);
-  const isDragging = useRef(false);
-  const startY = useRef(0);
-  const startScroll = useRef(0);
-
-  const scrollToIndex = useCallback((idx, smooth = true) => {
-    if (!listRef.current) return;
-    listRef.current.scrollTo({ top: idx * ITEM_H, behavior: smooth ? 'smooth' : 'auto' });
-  }, []);
-
-  useEffect(() => { scrollToIndex(selectedIndex, false); }, [selectedIndex, scrollToIndex]);
-
-  const handleScroll = () => {
-    if (!listRef.current || isDragging.current) return;
-    const rawIdx = Math.round(listRef.current.scrollTop / ITEM_H);
-    const clamped = Math.max(0, Math.min(rawIdx, items.length - 1));
-    if (clamped !== selectedIndex) onChange(clamped);
-  };
-
-  const onPointerDown = (e) => {
-    isDragging.current = true;
-    startY.current = e.clientY ?? e.touches?.[0]?.clientY;
-    startScroll.current = listRef.current?.scrollTop ?? 0;
-  };
-  const onPointerMove = (e) => {
-    if (!isDragging.current || !listRef.current) return;
-    const y = e.clientY ?? e.touches?.[0]?.clientY;
-    listRef.current.scrollTop = startScroll.current + (startY.current - y);
-  };
-  const onPointerUp = () => {
-    if (!isDragging.current || !listRef.current) return;
-    isDragging.current = false;
-    const rawIdx = Math.round(listRef.current.scrollTop / ITEM_H);
-    const clamped = Math.max(0, Math.min(rawIdx, items.length - 1));
-    scrollToIndex(clamped);
-    if (clamped !== selectedIndex) onChange(clamped);
-  };
-
-  return (
-    <div className="flex flex-col items-center select-none" style={{ width: 72 }}>
-      <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">{label}</span>
-      <button type="button" className="text-gray-300 hover:text-blue-500 transition-colors p-1"
-        onClick={() => { const ni = Math.max(0, selectedIndex - 1); scrollToIndex(ni); onChange(ni); }}>
-        <ChevronUp className="h-4 w-4" />
-      </button>
-      <div className="relative overflow-hidden rounded-xl" style={{ height: ITEM_H * 3, width: 72 }}>
-        <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-white to-transparent z-10 pointer-events-none" />
-        <div className="absolute inset-x-0 z-10 pointer-events-none rounded-lg border-2 border-blue-500 bg-blue-50/60"
-          style={{ top: ITEM_H, height: ITEM_H }} />
-        <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent z-10 pointer-events-none" />
-        <div ref={listRef} onScroll={handleScroll}
-          onMouseDown={onPointerDown} onMouseMove={onPointerMove}
-          onMouseUp={onPointerUp} onMouseLeave={onPointerUp}
-          onTouchStart={onPointerDown} onTouchMove={onPointerMove} onTouchEnd={onPointerUp}
-          style={{ overflowY: 'scroll', height: '100%', scrollSnapType: 'y mandatory', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          <div style={{ height: ITEM_H }} />
-          {items.map((item, i) => (
-            <div key={i}
-              className={`flex items-center justify-center font-medium transition-all cursor-pointer
-                ${i === selectedIndex ? 'text-blue-600 text-base' : 'text-gray-400 text-sm hover:text-gray-600'}`}
-              style={{ height: ITEM_H, scrollSnapAlign: 'start' }}
-              onClick={() => { scrollToIndex(i); onChange(i); }}>
-              {typeof item === 'number' ? String(item).padStart(2, '0') : item}
-            </div>
-          ))}
-          <div style={{ height: ITEM_H }} />
-        </div>
-      </div>
-      <button type="button" className="text-gray-300 hover:text-blue-500 transition-colors p-1"
-        onClick={() => { const ni = Math.min(items.length - 1, selectedIndex + 1); scrollToIndex(ni); onChange(ni); }}>
-        <ChevronDown className="h-4 w-4" />
-      </button>
-    </div>
-  );
-};
-
-const DOBPicker = ({ value, onChange, maxDate }) => {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef(null);
-
-  const parseValue = (v) => {
-    if (!v) return { year: 1995, month: 0, day: 1 };
-    const [y, m, d] = v.split('-').map(Number);
-    return { year: y, month: m - 1, day: d };
-  };
-  const parsed = parseValue(value);
-  const currentYear = maxDate ? parseInt(maxDate.split('-')[0]) : new Date().getFullYear();
-  const years = [];
-  for (let y = currentYear; y >= 1930; y--) years.push(y);
-  const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
-  const days = Array.from({ length: daysInMonth(parsed.year, parsed.month) }, (_, i) => i + 1);
-  const yearIdx  = Math.max(0, years.indexOf(parsed.year));
-  const monthIdx = parsed.month;
-  const dayIdx   = Math.min(parsed.day - 1, days.length - 1);
-  const emit = (y, m, d) => {
-    const safeDay = Math.min(d + 1, daysInMonth(y, m));
-    onChange(`${y}-${String(m + 1).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`);
-  };
-  const displayValue = value
-    ? new Date(value + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
-    : '';
-
-  useEffect(() => {
-    const handler = (e) => { if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false); };
-    if (open) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  return (
-    <div ref={containerRef} className="relative">
-      <button type="button" onClick={() => setOpen(o => !o)}
-        className={`w-full px-3 py-2 border rounded-lg text-sm text-left flex items-center justify-between bg-white transition-all
-          ${open ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-300 hover:border-blue-400'}
-          ${!value ? 'text-gray-400' : 'text-gray-800'}`}>
-        <span className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
-          {value ? displayValue : 'Select date of birth'}
-        </span>
-        <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && (
-        <div className="absolute left-0 mt-2 z-[60] bg-white border border-gray-200 rounded-2xl shadow-2xl p-5"
-          style={{ minWidth: 300 }}
-          onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider text-center mb-3">Date of Birth</p>
-          <div className="flex items-start justify-center gap-2">
-            <ScrollColumn label="Day"   items={days}   selectedIndex={dayIdx}   onChange={(i) => emit(parsed.year, parsed.month, i)} />
-            <div className="w-px bg-gray-100 self-stretch" />
-            <ScrollColumn label="Month" items={MONTHS} selectedIndex={monthIdx} onChange={(i) => emit(parsed.year, i, dayIdx)} />
-            <div className="w-px bg-gray-100 self-stretch" />
-            <ScrollColumn label="Year"  items={years}  selectedIndex={yearIdx}  onChange={(i) => emit(years[i], parsed.month, dayIdx)} />
-          </div>
-          {value && (
-            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-              <p className="text-sm font-semibold text-blue-700">{displayValue}</p>
-              <button type="button" onClick={() => { onChange(''); setOpen(false); }}
-                className="text-xs text-gray-400 hover:text-red-500 transition-colors">Clear</button>
-            </div>
-          )}
-          <button type="button" onClick={() => setOpen(false)}
-            className="mt-3 w-full py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 active:bg-blue-800 transition-colors">
-            Done
-          </button>
-        </div>
-      )}
-    </div>
-  );
 };
 
 // ─── Camera Capture Component (Imported from CameraCapture.jsx) ─────────────
@@ -2006,9 +1853,12 @@ const MembershipSelector = ({
               <div><span className="font-medium">Price:</span> ₹{selectedPlan.discounted_price || selectedPlan.price}</div>
               <div>
                 <span className="font-medium">Expires:</span>{' '}
-                {formData.membership_start_date
-                  ? new Date(new Date(formData.membership_start_date).getTime() + selectedPlan.duration_days * 86400000)
-                      .toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                {formData.membership_start_date && selectedPlan?.duration_days
+                  ? (() => {
+                      const [y, m, d] = formData.membership_start_date.split('-').map(Number);
+                      const end = new Date(y, m - 1, d + Math.max(0, selectedPlan.duration_days - 1));
+                      return end.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                    })()
                   : '—'}
               </div>
             </div>
@@ -2372,6 +2222,9 @@ const MemberModal = ({ isOpen, onClose,
   const [showHistory, setShowHistory] = useState(true);
 
   const getPendingFileRef = useRef(null);
+  const [idProofFile, setIdProofFile] = useState(null);
+  const [idProofPreview, setIdProofPreview] = useState(null);
+  const idProofInputRef = useRef(null);
 
   // ===== FETCH ADD-ONS =====
   const fetchAddons = useCallback(async () => {
@@ -2466,13 +2319,48 @@ const MemberModal = ({ isOpen, onClose,
     console.log('📋 MemberModal - rawData:', rawData);
 
     if (member && member.id !== null) {
+      if (member.id_proof_image) {
+        const fullProofUrl = member.id_proof_image.startsWith('http')
+          ? member.id_proof_image
+          : `${API_BASE_URL}${member.id_proof_image}`;
+        setIdProofPreview(fullProofUrl);
+      } else {
+        setIdProofPreview(null);
+      }
+      setIdProofFile(null);
+
       setLoadingHistory(true);
       api.get(`/gym/members/${member.id}`)
         .then(res => {
+          const d = res.data;
           setMemberHistory({
-            memberships: res.data?.memberships || [],
-            payments: res.data?.payments || [],
+            memberships: d?.memberships || [],
+            payments: d?.payments || [],
           });
+          if (d) {
+            setFormData(prev => ({
+              ...prev,
+              full_name: d.full_name ?? prev.full_name,
+              email: d.email ?? prev.email,
+              phone: d.phone ?? prev.phone,
+              date_of_birth: d.date_of_birth ?? prev.date_of_birth,
+              gender: d.gender ?? prev.gender,
+              address: d.address ?? prev.address,
+              emergency_contact_name: d.emergency_contact_name ?? prev.emergency_contact_name,
+              emergency_contact_phone: d.emergency_contact_phone ?? prev.emergency_contact_phone,
+              medical_conditions: d.medical_conditions ?? prev.medical_conditions,
+              allergies: d.allergies ?? prev.allergies,
+              medications: d.medications ?? prev.medications,
+              id_proof_type: d.id_proof_type || prev.id_proof_type || 'aadhar',
+              id_proof_number: d.id_proof_number || prev.id_proof_number || '',
+            }));
+            if (d.id_proof_image) {
+              const fullProofUrl = d.id_proof_image.startsWith('http')
+                ? d.id_proof_image
+                : `${API_BASE_URL}${d.id_proof_image}`;
+              setIdProofPreview(fullProofUrl);
+            }
+          }
         })
         .catch(err => {
           console.warn('Could not load member history in modal:', err);
@@ -2569,6 +2457,8 @@ const MemberModal = ({ isOpen, onClose,
         console.log('📝 Lead budget:', rawData.budget);
       }
     } else {
+      setIdProofFile(null);
+      setIdProofPreview(null);
       setFormData({
         full_name: '', email: '', phone: '', date_of_birth: '', gender: 'male',
         address: '', emergency_contact_name: '', emergency_contact_phone: '',
@@ -2813,6 +2703,23 @@ const MemberModal = ({ isOpen, onClose,
       console.log('📤 Sending payload:', payload);
   
       const savedMember = await onSave(payload);
+
+      const targetMemberId = savedMember?.id || member?.id;
+      if (targetMemberId && idProofFile) {
+        try {
+          const fd = new FormData();
+          fd.append('file', idProofFile);
+          await api.post(
+            `/gym/members/${targetMemberId}/upload-id-proof`,
+            fd,
+            { headers: { 'Content-Type': 'multipart/form-data' } }
+          );
+          toast.success('ID proof uploaded successfully!');
+        } catch (uploadErr) {
+          console.error('Failed to upload ID proof:', uploadErr);
+          toast.error('Member saved, but ID proof upload failed.');
+        }
+      }
   
       if (!isEdit && savedMember?.id) {
         const pendingFile = getPendingFileRef.current?.();
@@ -2878,6 +2785,33 @@ const MemberModal = ({ isOpen, onClose,
 
   const set = (field) => (e) => setFormData(prev => ({ ...prev, [field]: e.target.value }));
 
+  const handleIdProofChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!allowed.includes(file.type)) {
+      toast.error('Please upload an image (JPEG, PNG, WebP) or PDF document');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File size must be under 10MB');
+      return;
+    }
+
+    setIdProofFile(file);
+    if (file.type === 'application/pdf') {
+      setIdProofPreview('pdf');
+    } else {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setIdProofPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const tabs = [
     { id: 'personal',   name: 'Personal',                                     icon: User      },
     { id: 'contact',    name: 'Contact',                                      icon: Phone     },
@@ -2898,6 +2832,7 @@ const MemberModal = ({ isOpen, onClose,
     { value: 'dl',       label: 'Driving License'   },
     { value: 'passport', label: 'Passport'          },
     { value: 'voter',    label: 'Voter ID'          },
+    { value: 'other',    label: 'Other'             },
   ];
 
   return (
@@ -2971,14 +2906,6 @@ const MemberModal = ({ isOpen, onClose,
                       onChange={(val) => setFormData(prev => ({ ...prev, date_of_birth: val }))}
                       maxDate={today}
                     />
-                    {formData.date_of_birth && (() => {
-                      const dob = new Date(formData.date_of_birth + 'T00:00:00');
-                      const now = new Date();
-                      let age = now.getFullYear() - dob.getFullYear();
-                      const mDiff = now.getMonth() - dob.getMonth();
-                      if (mDiff < 0 || (mDiff === 0 && now.getDate() < dob.getDate())) age--;
-                      return <p className="text-xs text-gray-400 mt-1.5">{age} years old</p>;
-                    })()}
                   </div>
                   <div>
                     <label className={labelCls}>Gender</label>
@@ -3044,20 +2971,100 @@ const MemberModal = ({ isOpen, onClose,
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className={labelCls}>ID Proof Type</label>
-                    <select value={formData.id_proof_type} onChange={set('id_proof_type')} className={inputCls}>
+                    <select value={formData.id_proof_type || 'aadhar'} onChange={set('id_proof_type')} className={inputCls}>
                       {idProofOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className={labelCls}>ID Proof Number</label>
-                    <input type="text" value={formData.id_proof_number} onChange={set('id_proof_number')}
-                      className={inputCls} placeholder="Enter ID number" />
+                    <label className={labelCls}>
+                      ID Proof Number {formData.id_proof_type === 'aadhar' ? '(Aadhar Card)' : ''}
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.id_proof_number || ''}
+                      onChange={set('id_proof_number')}
+                      className={inputCls}
+                      placeholder={
+                        formData.id_proof_type === 'aadhar'
+                          ? 'e.g. 1234 5678 9012'
+                          : formData.id_proof_type === 'pan'
+                            ? 'e.g. ABCDE1234F'
+                            : 'Enter ID proof number'
+                      }
+                    />
                   </div>
                 </div>
-                <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer bg-gray-50 hover:bg-blue-50">
-                  <Camera className="h-10 w-10 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-gray-600">Click to upload ID proof image</p>
-                  <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 5MB</p>
+
+                <div>
+                  <label className={labelCls}>ID Proof Document / Photo</label>
+                  <input
+                    type="file"
+                    ref={idProofInputRef}
+                    onChange={handleIdProofChange}
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    className="hidden"
+                  />
+                  {idProofPreview ? (
+                    <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        {idProofPreview === 'pdf' || (typeof idProofPreview === 'string' && idProofPreview.endsWith('.pdf')) ? (
+                          <div className="w-16 h-16 bg-red-50 text-red-600 rounded-lg flex flex-col items-center justify-center border border-red-200">
+                            <FileText className="h-8 w-8" />
+                            <span className="text-[10px] font-bold">PDF</span>
+                          </div>
+                        ) : (
+                          <img
+                            src={idProofPreview}
+                            alt="ID Proof Preview"
+                            className="w-16 h-16 object-cover rounded-lg border border-gray-300 shadow-sm"
+                          />
+                        )}
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">
+                            {idProofFile ? idProofFile.name : 'ID Proof Document'}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {idProofFile ? `${(idProofFile.size / 1024).toFixed(1)} KB` : 'Uploaded'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => idProofInputRef.current?.click()}
+                          className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-1.5"
+                        >
+                          <Upload className="h-3.5 w-3.5" />
+                          Change
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIdProofFile(null);
+                            setIdProofPreview(null);
+                            if (idProofInputRef.current) idProofInputRef.current.value = '';
+                          }}
+                          className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors flex items-center gap-1.5"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => idProofInputRef.current?.click()}
+                      className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-400 hover:bg-blue-50/50 transition-all cursor-pointer bg-gray-50 flex flex-col items-center justify-center group"
+                    >
+                      <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm mb-3 group-hover:scale-105 transition-transform">
+                        <Upload className="h-6 w-6 text-gray-400 group-hover:text-blue-500" />
+                      </div>
+                      <p className="text-sm font-semibold text-gray-700 group-hover:text-blue-600">
+                        Click to upload ID proof image or PDF
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">PNG, JPG, WebP, or PDF up to 10MB</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
