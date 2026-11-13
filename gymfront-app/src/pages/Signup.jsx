@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { Mail, Lock, User, UserCircle, LogIn, ArrowLeft, Dumbbell } from 'lucide-react';
+import { Mail, Lock, User, UserCircle, LogIn, ArrowLeft, Dumbbell, Phone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import InputField from '../components/InputField';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -34,6 +34,7 @@ const Signup = () => {
       email: data.email,
       username: data.username,
       full_name: data.fullName,
+      phone: data.phone,
       password: data.password
     });
 
@@ -135,6 +136,23 @@ const Signup = () => {
                 pattern: {
                   value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
                   message: 'Invalid email address'
+                }
+              }}
+            />
+
+            <InputField
+              label="Phone Number"
+              type="tel"
+              name="phone"
+              register={register}
+              error={errors.phone?.message}
+              icon={Phone}
+              placeholder="9876543210"
+              rules={{
+                required: 'Phone number is required',
+                pattern: {
+                  value: /^[0-9+\-\s]{10,15}$/,
+                  message: 'Please enter a valid phone number (at least 10 digits)'
                 }
               }}
             />

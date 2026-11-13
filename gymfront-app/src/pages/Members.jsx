@@ -897,7 +897,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         membershipId: member.current_membership?.id || null,
         membershipEndDate: member.current_membership?.end_date || null,
         membershipStatus: member.current_membership?.status || null,
-        status: member.is_active ? 'active' : 'inactive',
+        status: (member.is_active || member.status === 'active') ? 'active' : 'inactive',
         lastVisit: null,
         payments: member.memberships?.length || 0,
         avatar: avatarUrl,
@@ -1239,7 +1239,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           membershipId: activeMembership?.id || null,
           membershipEndDate: activeMembership?.end_date || null,
           membershipStatus: activeMembership?.status || null,
-          status: member.is_active ? 'active' : 'inactive',
+          status: (member.is_active || member.status === 'active') ? 'active' : 'inactive',
           lastVisit: member.last_visit || null,
           payments: paymentCount,
           avatar: avatarUrl,
@@ -1549,20 +1549,28 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   // HANDLE RESEND INVOICE VIA WHATSAPP
   // ============================================================
   const handleResendInvoiceWhatsApp = async (member) => {
-    if (!member.phone) {
-      toast.error('Member has no phone number to send invoice');
+    if (!member.phone && !member.email) {
+      toast.error('Member has neither phone number nor email to send invoice');
       return;
     }
 
     setResendingInvoice(member.id);
-    toast.loading(`Sending invoice to ${member.fullName} via WhatsApp...`, { id: 'resend-invoice' });
+    const targetChannel = member.phone && member.email ? 'WhatsApp & Email' : member.email ? 'Email' : 'WhatsApp';
+    toast.loading(`Sending invoice to ${member.fullName} via ${targetChannel}...`, { id: 'resend-invoice' });
 
     try {
       const result = await resendInvoiceWhatsApp(member.id);
       toast.dismiss('resend-invoice');
 
       if (result.success) {
-        const channelText = result.email_sent ? 'WhatsApp & Email' : 'WhatsApp';
+        const emailSent = Boolean(result.email_sent);
+        const whatsappSent = Boolean(result.whatsapp_sent);
+        let channelText = 'Email';
+        if (whatsappSent && emailSent) {
+          channelText = 'WhatsApp & Email';
+        } else if (whatsappSent) {
+          channelText = 'WhatsApp';
+        }
         toast.success(`✅ Invoice sent to ${member.fullName} via ${channelText}!`);
       } else {
         toast.error(result.error || 'Failed to send invoice');

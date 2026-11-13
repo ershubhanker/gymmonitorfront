@@ -2760,20 +2760,27 @@ const MemberModal = ({ isOpen, onClose,
           }
         }
 
-        // Send invoice via WhatsApp
+        // Send invoice via WhatsApp / Email
         if (formData.plan_id) {
           try {
             const invoiceResponse = await api.post(`/gym/members/${savedMember.id}/send-invoice`);
             if (invoiceResponse?.data?.success) {
-              const channelText = invoiceResponse?.data?.email_sent ? 'WhatsApp & Email' : 'WhatsApp';
+              const emailSent = Boolean(invoiceResponse?.data?.email_sent);
+              const whatsappSent = Boolean(invoiceResponse?.data?.whatsapp_sent);
+              let channelText = 'Email';
+              if (whatsappSent && emailSent) {
+                channelText = 'WhatsApp & Email';
+              } else if (whatsappSent) {
+                channelText = 'WhatsApp';
+              }
               toast.success(`Invoice sent via ${channelText}!`);
             } else {
-              console.warn('WhatsApp invoice not sent:', invoiceResponse?.data?.message);
-              toast('Member added. WhatsApp invoice could not be sent — check WhatsApp logs for details.', { icon: '⚠️' });
+              console.warn('Invoice delivery notice:', invoiceResponse?.data?.message);
+              toast('Member added. Invoice could not be delivered automatically.', { icon: '⚠️' });
             }
           } catch (invoiceError) {
             console.error('Error sending invoice:', invoiceError);
-            toast('Member added, but the invoice request failed. Check WhatsApp logs for details.', { icon: '⚠️' });
+            toast('Member added, but invoice delivery failed. Check logs for details.', { icon: '⚠️' });
           }
         }
       }

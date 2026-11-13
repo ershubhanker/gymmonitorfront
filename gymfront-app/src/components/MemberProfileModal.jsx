@@ -1446,13 +1446,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ===== MEMBERSHIP EDIT FUNCTIONS =====
   const handleEditMembershipClick = () => {
     if (member?.current_membership) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const curr = member.current_membership;
+      const isPastOrExpired = curr.status === 'expired' || curr.status === 'cancelled' ||
+                              (curr.end_date && curr.end_date < todayStr);
       setMembershipEditData({
-        plan_id: member.current_membership.plan_id?.toString() || '',
-        start_date: member.current_membership.start_date || '',
-        end_date: member.current_membership.end_date || '',
-        status: member.current_membership.status || 'active',
-        amount_paid: member.current_membership.amount_paid !== undefined ? member.current_membership.amount_paid.toString() : '',
-        discount_applied: member.current_membership.discount_applied !== undefined ? member.current_membership.discount_applied.toString() : '',
+        plan_id: curr.plan_id?.toString() || '',
+        start_date: isPastOrExpired ? todayStr : (curr.start_date || todayStr),
+        end_date: curr.end_date || '',
+        status: isPastOrExpired ? 'active' : (curr.status || 'active'),
+        amount_paid: curr.amount_paid !== undefined ? curr.amount_paid.toString() : '',
+        discount_applied: curr.discount_applied !== undefined ? curr.discount_applied.toString() : '',
       });
       setIsEditingMembership(true);
     } else {
@@ -1472,12 +1476,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         const dd = String(endDate.getDate()).padStart(2, '0');
         const endDateStr = `${yyyy}-${mm}-${dd}`;
         
-        if (endDateStr !== membershipEditData.end_date) {
-          setMembershipEditData(prev => ({
-            ...prev,
-            end_date: endDateStr
-          }));
-        }
+        const todayStr = new Date().toISOString().split('T')[0];
+        setMembershipEditData(prev => {
+          const updates = {};
+          if (endDateStr !== prev.end_date) {
+            updates.end_date = endDateStr;
+          }
+          if (endDateStr >= todayStr && (prev.status === 'expired' || prev.status === 'inactive')) {
+            updates.status = 'active';
+          }
+          return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
+        });
       }
     }
   }, [membershipEditData.plan_id, membershipEditData.start_date, plans]);
@@ -1548,8 +1557,24 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       }
       setIsEditingMembership(false);
       
+      const todayStr = new Date().toISOString().split('T')[0];
+      const isNowActive = payload.status === 'active' || (!payload.status && payload.end_date >= todayStr);
+      if (isNowActive) {
+        setMember(prev => prev ? ({
+          ...prev,
+          is_active: true,
+          status: 'active',
+          current_membership: {
+            ...prev.current_membership,
+            ...response.data,
+            status: 'active'
+          }
+        }) : prev);
+      }
+
       window.dispatchEvent(new CustomEvent('paymentUpdated'));
       window.dispatchEvent(new CustomEvent('paymentAdded'));
+      window.dispatchEvent(new CustomEvent('memberUpdated', { detail: { memberId } }));
 
       await Promise.all([
         fetchMemberDetails(),
@@ -1778,8 +1803,18 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ===== Get member status consistently =====
   const getMemberStatus = () => {
     if (!member) return 'inactive';
-    const isActive = member.is_active === true || member.is_active === 1 || member.is_active === 'true';
-    return isActive ? 'active' : 'inactive';
+    if (member.is_active === true || member.is_active === 1 || member.is_active === 'true') {
+      return 'active';
+    }
+    const curr = member.current_membership;
+    if (curr && curr.status === 'active') {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const endDateStr = typeof curr.end_date === 'string' ? curr.end_date.split('T')[0] : '';
+      if (!endDateStr || endDateStr >= todayStr) {
+        return 'active';
+      }
+    }
+    return 'inactive';
   };
 
   // ============================================================
@@ -2688,7 +2723,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       onChange={handleMembershipEditChange}
                       className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                     >
-                      {['active', 'inactive', 'expired', 'pending'].map((option) => (
+                      {['active', 'expired', 'pending', 'cancelled'].map((option) => (
                         <option key={option} value={option}>
                           {option.charAt(0).toUpperCase() + option.slice(1)}
                         </option>

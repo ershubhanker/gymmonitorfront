@@ -136,7 +136,7 @@ export const AuthProvider = ({ children }) => {
         full_name: userData.full_name,
         password: userData.password,
         role: 'gym_owner',
-        phone: userData.phone || null,
+        phone: userData.phone ? userData.phone.trim() : '',
         gym_id: null,
       };
       const response = await axios.post(`${API_BASE_URL}/signup`, payload);
