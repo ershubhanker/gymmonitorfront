@@ -5,7 +5,7 @@ import React, { useState, useRef } from 'react';
 import { 
   X, Upload, FileSpreadsheet, Loader2, CheckCircle, XCircle, 
   AlertCircle, FileText, Download, ArrowLeft, ArrowRight,
-  HelpCircle, ChevronDown, ChevronUp, Calendar, Phone, Mail, User, Tag, DollarSign
+  HelpCircle, ChevronDown, ChevronUp, Calendar, Phone, Mail, User, Tag, DollarSign, Clock
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
@@ -56,6 +56,14 @@ const DB_FIELDS = [
     icon: Tag,
     description: 'Membership plan name (will auto-create if missing)',
     example: 'Monthly, Yearly, Premium'
+  },
+  { 
+    key: 'duration', 
+    label: 'Plan Duration (Days)', 
+    required: false, 
+    icon: Clock,
+    description: 'Duration of the plan in days or months (e.g. 30, 90, 180, 365, 3 Months, 1 Year)',
+    example: '30, 90, 180, 365'
   },
   { 
     key: 'start_date', 
@@ -366,6 +374,63 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   // ============================================================
+  // ⏱️ DURATION PARSER (DAYS)
+  // ============================================================
+  const parseDuration = (val) => {
+    if (val === null || val === undefined || val === '') return null;
+    if (typeof val === 'number') {
+      const num = Math.round(val);
+      return num > 0 ? num : null;
+    }
+    const str = String(val).trim();
+    if (!str) return null;
+
+    // Direct clean integer: e.g. "30", "90", "365"
+    const pureNum = parseInt(str, 10);
+    if (!isNaN(pureNum) && String(pureNum) === str) {
+      return pureNum > 0 ? pureNum : null;
+    }
+
+    const lower = str.toLowerCase();
+
+    // Check for days: e.g. "30 days", "90d"
+    const dayMatch = str.match(/(\d+)\s*(?:day|days|d)/i);
+    if (dayMatch) {
+      const d = parseInt(dayMatch[1], 10);
+      return d > 0 ? d : null;
+    }
+
+    // Check for months: e.g. "3 months", "1 mon", "6m"
+    const monthMatch = str.match(/(\d+)\s*(?:month|months|mon|m)/i);
+    if (monthMatch) {
+      const m = parseInt(monthMatch[1], 10);
+      return m > 0 ? m * 30 : null;
+    }
+
+    // Check for years: e.g. "1 year", "2 yrs", "1y"
+    const yearMatch = str.match(/(\d+)\s*(?:year|years|yr|yrs|y)/i);
+    if (yearMatch) {
+      const y = parseInt(yearMatch[1], 10);
+      return y > 0 ? y * 365 : null;
+    }
+
+    // Word based durations
+    if (lower.includes('yearly') || lower.includes('annual')) return 365;
+    if (lower.includes('half') || lower.includes('6 month')) return 180;
+    if (lower.includes('quarter') || lower.includes('3 month')) return 90;
+    if (lower.includes('monthly') || lower.includes('1 month')) return 30;
+
+    // Any leading/standalone digits
+    const match = str.match(/(\d+)/);
+    if (match) {
+      const d = parseInt(match[1], 10);
+      return d > 0 ? d : null;
+    }
+
+    return null;
+  };
+
+  // ============================================================
   // 📱 PHONE & EMAIL VALIDATION (FIXED)
   // ============================================================
   const isValidEmail = (email) => {
@@ -518,6 +583,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           phone: ['phone', 'mobile', 'contact', 'phone number', 'mobile number', 'cell', 'whatsapp'],
           email: ['email', 'email address', 'mail'],
           plan_name: ['plan name', 'plan', 'membership', 'membership plan', 'package', 'type'],
+          duration: ['duration', 'plan duration', 'days', 'validity', 'validity days', 'months', 'period', 'plan period', 'term', 'plan validity', 'duration days', 'no of days', 'number of days'],
           start_date: ['start date', 'start', 'joining date', 'join date', 'admission date', 'from date', 'doj'],
           end_date: ['end date', 'end', 'expiry date', 'expiry', 'valid till', 'to date', 'due date'],
           base_cost: ['base cost', 'price', 'plan cost', 'original price', 'actual fee', 'mrp', 'fee'],
@@ -620,6 +686,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             }
           } else if (field.key === 'base_cost' || field.key === 'net_cost' || field.key === 'discount' || field.key === 'balance') {
             mapped[field.key] = parseCost(value);
+          } else if (field.key === 'duration') {
+            mapped[field.key] = parseDuration(value);
           } else {
             mapped[field.key] = safeString(value);
           }
@@ -724,9 +792,19 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   // ============================================================
-  // 🚀 EXTRACT DURATION FROM PLAN NAME
+  // 🚀 EXTRACT DURATION FROM PLAN NAME OR EXPLICIT DURATION
   // ============================================================
-  const extractDuration = (planName) => {
+  const extractDuration = (planName, explicitDuration = null) => {
+    // If an explicit duration was mapped from the file column, use it with highest priority
+    const parsedExplicit = parseDuration(explicitDuration);
+    if (parsedExplicit && parsedExplicit > 0) {
+      let planType = 'monthly';
+      if (parsedExplicit >= 365) planType = 'yearly';
+      else if (parsedExplicit >= 180) planType = 'half_yearly';
+      else if (parsedExplicit >= 90) planType = 'quarterly';
+      return { durationDays: parsedExplicit, planType };
+    }
+
     if (!planName || isEmpty(planName)) return { durationDays: 30, planType: 'monthly' };
     
     const safeName = safeString(planName);
@@ -852,7 +930,12 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           }
           
           try {
-            const { durationDays, planType } = extractDuration(planName);
+            // Find any row with this plan name that has an explicit duration mapped
+            const matchingRow = previewData.find(
+              m => safeString(m.plan_name).toLowerCase().trim() === planName.toLowerCase().trim() && m.duration
+            );
+            const explicitDuration = matchingRow ? matchingRow.duration : null;
+            const { durationDays, planType } = extractDuration(planName, explicitDuration);
             
             const planData = {
               name: planName,
@@ -1031,9 +1114,12 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
               
               if (!endDate) {
                 const plan = allPlans.find(p => p.id === planId);
-                if (plan) {
+                const durationDays = (member.duration && parseInt(member.duration, 10) > 0)
+                  ? parseInt(member.duration, 10)
+                  : (plan ? plan.duration_days : 30);
+                if (durationDays) {
                   const [y, m, d] = startDate.split('-').map(Number);
-                  const end = new Date(y, m - 1, d + Math.max(0, plan.duration_days - 1));
+                  const end = new Date(y, m - 1, d + Math.max(0, durationDays - 1));
                   const yyyy = end.getFullYear();
                   const mm = String(end.getMonth() + 1).padStart(2, '0');
                   const dd = String(end.getDate()).padStart(2, '0');
@@ -1215,6 +1301,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       'Phone Number',
       'Email',
       'Plan Name',
+      'Plan Duration (Days)',
       'Start Date',
       'End Date',
       'Base Cost',
@@ -1237,6 +1324,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         '9876543210',
         'rahul@example.com',
         'Monthly Plan',
+        '30',
         '2026-01-01',
         '2026-01-31',
         '1500',
@@ -1257,6 +1345,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         '9811223344',
         'pooja@example.com',
         '6 Months Plan',
+        '180',
         '2026-01-01',
         '2026-06-30',
         '6500',
@@ -1279,7 +1368,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     XLSX.utils.book_append_sheet(wb, ws, 'Template');
     XLSX.writeFile(wb, 'gym_members_import_template.xlsx');
-    toast.success('Sample template downloaded with Balance Due column!');
+    toast.success('Sample template downloaded with Duration & Balance Due columns!');
   };
 
   // ─── STEP 1: Upload ──────────────────────────────────────────
@@ -1584,6 +1673,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Start</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">End</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
@@ -1603,6 +1693,16 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                       <span className="font-medium text-blue-600">{member.plan_name}</span>
                     ) : (
                       <span className="text-red-400">⚠️ Missing</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500">
+                    {member.duration ? (
+                      <span className="inline-flex items-center gap-1 font-medium text-gray-700">
+                        <Clock className="w-3.5 h-3.5 text-gray-400" />
+                        {member.duration} days
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">{member.start_date || '—'}</td>
