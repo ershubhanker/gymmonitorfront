@@ -428,6 +428,18 @@ export const fetchWhatsAppUnreadCount = async () => {
   return response.data;
 };
 
+// ==================== SYSTEM NOTIFICATION SETTINGS ====================
+
+export const fetchEmailStatus = async () => {
+  const response = await api.get('/admin/settings/email-status');
+  return response.data;
+};
+
+export const updateEmailStatus = async (enabled) => {
+  const response = await api.put('/admin/settings/email-status', { enabled });
+  return response.data;
+};
+
 
 // ==================== MEMBERSHIP TRANSFER ====================
 

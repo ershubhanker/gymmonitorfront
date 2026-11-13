@@ -596,6 +596,10 @@ const AdminDashboard = ({ defaultTab }) => {
   const [whatsappEnabled, setWhatsappEnabled] = useState(true);
   const [togglingWhatsApp, setTogglingWhatsApp] = useState(false);
 
+  // Email toggle
+  const [emailEnabled, setEmailEnabled] = useState(true);
+  const [togglingEmail, setTogglingEmail] = useState(false);
+
   // Gym details view
   const [selectedGym, setSelectedGym] = useState(null);
   const [selectedGymId, setSelectedGymId] = useState(null);
@@ -642,6 +646,32 @@ const AdminDashboard = ({ defaultTab }) => {
     }
   };
 
+  // ─── Fetch Email status ─────────────────────────────────────────────
+  const fetchEmailStatus = useCallback(async () => {
+    try {
+      const response = await api.get('/admin/settings/email-status');
+      setEmailEnabled(response.data.email_enabled);
+    } catch (error) {
+      console.error('Error fetching Email status:', error);
+      setEmailEnabled(true);
+    }
+  }, []);
+
+  const toggleEmail = async () => {
+    setTogglingEmail(true);
+    try {
+      const newStatus = !emailEnabled;
+      await api.put('/admin/settings/email-status', { enabled: newStatus });
+      setEmailEnabled(newStatus);
+      toast.success(`Email service ${newStatus ? 'enabled' : 'disabled'} successfully!`);
+    } catch (error) {
+      console.error('Error toggling Email status:', error);
+      toast.error(error.response?.data?.detail || 'Failed to update Email status');
+    } finally {
+      setTogglingEmail(false);
+    }
+  };
+
   const fetchUnreadChats = useCallback(async () => {
     try {
       const data = await fetchWhatsAppUnreadCount();
@@ -658,6 +688,7 @@ const AdminDashboard = ({ defaultTab }) => {
   useEffect(() => {
     fetchAllData();
     fetchWhatsAppStatus();
+    fetchEmailStatus();
     fetchUnreadChats();
     const interval = setInterval(fetchUnreadChats, 15000);
     return () => clearInterval(interval);
@@ -691,7 +722,10 @@ const AdminDashboard = ({ defaultTab }) => {
       if (leadsR.data) setLeads(leadsR.data);
       if (expensesR.data) setExpenses(expensesR.data);
 
-      await fetchWhatsAppStatus();
+      await Promise.all([
+        fetchWhatsAppStatus(),
+        fetchEmailStatus(),
+      ]);
 
       if (showToast) toast.success('Data refreshed!');
     } catch (err) {
@@ -1006,10 +1040,26 @@ const AdminDashboard = ({ defaultTab }) => {
                     ? 'bg-green-900/40 hover:bg-green-900/60 text-green-400 border border-green-700/50'
                     : 'bg-red-900/40 hover:bg-red-900/60 text-red-400 border border-red-700/50'
                 } ${togglingWhatsApp ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title="Toggle WhatsApp messaging globally"
               >
                 {togglingWhatsApp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquare className="h-3.5 w-3.5" />}
                 <span className="hidden sm:block">WhatsApp {whatsappEnabled ? 'ON' : 'OFF'}</span>
                 <span className={`h-2 w-2 rounded-full ${whatsappEnabled ? 'bg-green-400' : 'bg-red-400'} flex-shrink-0`} />
+              </button>
+
+              <button
+                onClick={toggleEmail}
+                disabled={togglingEmail}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  emailEnabled
+                    ? 'bg-green-900/40 hover:bg-green-900/60 text-green-400 border border-green-700/50'
+                    : 'bg-red-900/40 hover:bg-red-900/60 text-red-400 border border-red-700/50'
+                } ${togglingEmail ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title="Toggle Email notification service globally"
+              >
+                {togglingEmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                <span className="hidden sm:block">Email {emailEnabled ? 'ON' : 'OFF'}</span>
+                <span className={`h-2 w-2 rounded-full ${emailEnabled ? 'bg-green-400' : 'bg-red-400'} flex-shrink-0`} />
               </button>
 
               <button
