@@ -2970,15 +2970,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                           >
                             <FileText className="h-4 w-4" />
                           </button>
-
-                          {/* ✅ NEW: Transfer Membership shortcut */}
-                          <button
-                            onClick={() => openProfileModal(member)}
-                            className="hidden sm:inline-flex p-1.5 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition-colors"
-                            title="Transfer Membership"
-                          >
-                            <ArrowRight className="h-4 w-4" />
-                          </button>
                           
                           <button 
                             onClick={() => {

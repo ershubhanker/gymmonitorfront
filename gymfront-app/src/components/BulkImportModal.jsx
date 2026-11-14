@@ -937,13 +937,19 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             const explicitDuration = matchingRow ? matchingRow.duration : null;
             const { durationDays, planType } = extractDuration(planName, explicitDuration);
             
+            // Find any row with this plan name that has a cost mapped
+            const costRow = previewData.find(
+              m => safeString(m.plan_name).toLowerCase().trim() === planName.toLowerCase().trim() && (m.base_cost > 0 || m.net_cost > 0)
+            );
+            const planPrice = costRow ? (costRow.base_cost || costRow.net_cost || 0) : 0;
+            
             const planData = {
               name: planName,
               description: `Imported plan: ${planName}`,
               plan_type: planType,
               duration_days: durationDays,
-              price: 0,
-              discounted_price: 0,
+              price: planPrice,
+              discounted_price: planPrice,
               is_active: true,
               features: JSON.stringify([`${durationDays} days membership`])
             };
@@ -982,6 +988,27 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       try {
         const plansResponse = await api.get('/gym/plans');
         allPlans = plansResponse.data || [];
+        
+        // If an existing plan in DB has 0 price but the imported file specifies a cost, update it
+        for (const p of allPlans) {
+          if ((!p.price || p.price === 0) && p.name) {
+            const costRow = previewData.find(
+              m => safeString(m.plan_name).toLowerCase().trim() === p.name.toLowerCase().trim() && (m.base_cost > 0 || m.net_cost > 0)
+            );
+            if (costRow) {
+              const priceToUpdate = costRow.base_cost || costRow.net_cost || 0;
+              if (priceToUpdate > 0) {
+                try {
+                  await api.put(`/gym/plans/${p.id}`, { price: priceToUpdate, discounted_price: priceToUpdate });
+                  p.price = priceToUpdate;
+                  p.discounted_price = priceToUpdate;
+                } catch (e) {
+                  console.warn(`Could not update zero price for plan ${p.name}:`, e);
+                }
+              }
+            }
+          }
+        }
       } catch (error) {
         console.warn('Could not fetch updated plans:', error);
       }
@@ -1147,6 +1174,8 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
                   if (!isNaN(b)) {
                     balanceDue = Math.max(0, b);
                   }
+                } else if (member.base_cost !== null && member.base_cost > 0 && amountPaid < member.base_cost) {
+                  balanceDue = Math.max(0, member.base_cost - (member.discount || 0) - amountPaid);
                 }
                 
                 const membershipPayload = {

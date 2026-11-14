@@ -28,6 +28,7 @@ import AdminRevenueGraph from '../components/admin/AdminRevenueGraph';
 import SoftwarePlanModal from '../components/admin/SoftwarePlanModal';
 import WhatsAppChatScreen from '../components/admin/WhatsAppChatScreen';
 import WhatsAppLogs from '../components/WhatsAppLogs';
+import ActiveUsersTracker from '../components/admin/ActiveUsersTracker';
 
 // ─── Field components ─────────────────────────────────────────────────
 
@@ -876,6 +877,7 @@ const AdminDashboard = ({ defaultTab }) => {
   // ─── Navigation ───────────────────────────────────────────────────────
   const navigation = [
     { id: 'overview', name: 'Overview', icon: Home, count: null },
+    { id: 'active-users', name: 'Active Users & IP', icon: Activity, count: null },
     { id: 'gyms', name: 'Gyms', icon: Building2, count: gyms.length },
     { id: 'users', name: 'Users', icon: Users, count: users.length },
     { id: 'members', name: 'Members', icon: User, count: members.length },
@@ -1027,7 +1029,7 @@ const AdminDashboard = ({ defaultTab }) => {
                 {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
               </button>
               <h1 className="text-sm font-semibold text-white capitalize">
-                {viewingGymDetails ? `${selectedGym?.name || 'Gym'} - Details` : selectedTab === 'overview' ? 'Dashboard Overview' : selectedTab}
+                {viewingGymDetails ? `${selectedGym?.name || 'Gym'} - Details` : selectedTab === 'overview' ? 'Dashboard Overview' : selectedTab === 'active-users' ? 'Active Users & IP Location' : selectedTab}
               </h1>
             </div>
 
@@ -1075,7 +1077,7 @@ const AdminDashboard = ({ defaultTab }) => {
         </nav>
 
         {/* Search / Filter Bar */}
-        {selectedTab !== 'overview' && !viewingGymDetails && selectedTab !== 'irregular-members' && selectedTab !== 'whatsapp-chat' && selectedTab !== 'whatsapp' && (
+        {selectedTab !== 'overview' && !viewingGymDetails && selectedTab !== 'irregular-members' && selectedTab !== 'whatsapp-chat' && selectedTab !== 'whatsapp' && selectedTab !== 'active-users' && (
           <div className="bg-gray-900/60 border-b border-gray-800 px-4 lg:px-8 py-3 flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
@@ -1275,6 +1277,9 @@ const AdminDashboard = ({ defaultTab }) => {
               )}
             </div>
           )}
+
+          {/* ACTIVE USERS & IP LOCATION TRACKER */}
+          {selectedTab === 'active-users' && <ActiveUsersTracker />}
 
           {/* GYMS TABLE / DETAILS */}
           {selectedTab === 'gyms' && !viewingGymDetails && (
