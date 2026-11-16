@@ -104,8 +104,8 @@ const GymList = ({
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
       {/* Header with Search and Bulk Actions */}
-      <div className="px-5 py-3 border-b border-gray-800 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3 flex-1 min-w-[200px]">
+      <div className="px-4 sm:px-5 py-3 border-b border-gray-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
             <input
@@ -118,7 +118,7 @@ const GymList = ({
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="bg-gray-800 border border-gray-700 text-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 w-full sm:w-auto"
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>
@@ -130,7 +130,7 @@ const GymList = ({
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between sm:justify-end gap-2 flex-wrap">
           {selectedGyms.length > 0 && (
             <button
               onClick={handleBulkDelete}
@@ -140,18 +140,18 @@ const GymList = ({
               Delete ({selectedGyms.length})
             </button>
           )}
-          <span className="text-xs text-gray-500">
-            {filteredGyms.length} gyms · Revenue: {formatCurrency(totalRevenue)}
+          <span className="text-xs text-gray-400 font-medium">
+            {filteredGyms.length} gyms · Revenue: <span className="text-emerald-400 font-semibold">{formatCurrency(totalRevenue)}</span>
           </span>
         </div>
       </div>
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="min-w-full">
+        <table className="min-w-[950px] w-full text-sm">
           <thead>
             <tr className="bg-gray-800/80 border-b border-gray-700">
-              <th className="px-4 py-3 text-left">
+              <th className="px-4 py-3 text-left w-10">
                 <input
                   type="checkbox"
                   checked={selectAll && filteredGyms.length > 0}
@@ -159,34 +159,34 @@ const GymList = ({
                   className="rounded border-gray-600 bg-gray-700 text-purple-600 focus:ring-purple-500"
                 />
               </th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                 Gym
               </th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                 Owner
               </th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                 Members
               </th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                 Staff
               </th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                 SaaS Plan
               </th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                 SaaS Status
               </th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                 Renews
               </th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                 Revenue
               </th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                 Created
               </th>
-              <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">
+              <th className="px-4 py-3 text-right text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                 Actions
               </th>
             </tr>

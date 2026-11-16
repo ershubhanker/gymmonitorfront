@@ -431,26 +431,26 @@ const ModalShell = ({ title, icon, children, onClose, onSave }) => {
     try { await onSave(); } finally { setSaving(false); }
   };
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-2xl my-8 shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-          <div className="flex items-center gap-3">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+      <div className="bg-gray-900 border border-gray-700 rounded-xl sm:rounded-2xl w-full max-w-2xl my-4 sm:my-8 shadow-2xl">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-700">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             {icon}
-            <h2 className="text-lg font-bold text-white">{title}</h2>
+            <h2 className="text-base sm:text-lg font-bold text-white truncate">{title}</h2>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors flex-shrink-0">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="px-6 py-5 max-h-[65vh] overflow-y-auto">{children}</div>
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-700 bg-gray-800/50 rounded-b-2xl">
-          <button onClick={onClose} className="px-5 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl text-sm font-medium transition-colors">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 max-h-[75vh] sm:max-h-[65vh] overflow-y-auto">{children}</div>
+        <div className="flex justify-end gap-2 sm:gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-700 bg-gray-800/50 rounded-b-xl sm:rounded-b-2xl">
+          <button onClick={onClose} className="px-4 sm:px-5 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl text-sm font-medium transition-colors">
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 sm:px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Save Changes
@@ -470,27 +470,27 @@ const DeleteConfirmModal = ({ target, onClose, onConfirm }) => {
     try { await onConfirm(); } finally { setDeleting(false); }
   };
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-gray-900 border border-red-800/50 rounded-2xl max-w-md w-full p-6 shadow-2xl">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50">
+      <div className="bg-gray-900 border border-red-800/50 rounded-xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl">
         <div className="flex items-center gap-3 mb-4">
           <div className="bg-red-900/50 p-2 rounded-xl">
             <AlertCircle className="h-6 w-6 text-red-400" />
           </div>
-          <h3 className="text-lg font-bold text-white">Confirm Delete</h3>
+          <h3 className="text-base sm:text-lg font-bold text-white">Confirm Delete</h3>
         </div>
-        <p className="text-gray-300 mb-2">
+        <p className="text-gray-300 mb-2 text-sm sm:text-base">
           Are you sure you want to delete this <span className="text-red-400 font-semibold">{target?.type}</span>?
         </p>
         {target?.name && (
-          <p className="text-gray-400 text-sm mb-4 bg-gray-800 px-3 py-2 rounded-lg">
+          <p className="text-gray-400 text-sm mb-4 bg-gray-800 px-3 py-2 rounded-lg break-all">
             <span className="text-white">{target.name}</span>
           </p>
         )}
         <p className="text-xs text-gray-500 mb-6">This action <span className="text-red-400">cannot be undone</span>. All related data may also be deleted.</p>
-        <div className="flex justify-end gap-3">
-          <button onClick={onClose} className="px-5 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl text-sm font-medium">Cancel</button>
+        <div className="flex justify-end gap-2 sm:gap-3">
+          <button onClick={onClose} className="px-4 sm:px-5 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl text-sm font-medium">Cancel</button>
           <button onClick={handleConfirm} disabled={deleting}
-            className="flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-sm font-medium disabled:opacity-50">
+            className="flex items-center gap-2 px-4 sm:px-5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-sm font-medium disabled:opacity-50">
             {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
             Delete
           </button>
@@ -506,7 +506,7 @@ const TableHeader = ({ cols }) => (
   <thead>
     <tr className="bg-gray-800/80 border-b border-gray-700">
       {cols.map((col, i) => (
-        <th key={i} className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
+        <th key={i} className="px-3 sm:px-4 py-2.5 sm:py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
           {col}
         </th>
       ))}
@@ -517,7 +517,7 @@ const TableHeader = ({ cols }) => (
 // ─── Action Buttons ───────────────────────────────────────────────────
 
 const ActionBtns = ({ onEdit, onDelete }) => (
-  <div className="flex items-center gap-1.5">
+  <div className="flex items-center gap-1.5 whitespace-nowrap">
     <button onClick={onEdit}
       className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-blue-900/40 hover:bg-blue-900/70 text-blue-300 rounded-lg border border-blue-800/50 transition-colors">
       <Edit className="h-3.5 w-3.5" /> Edit
@@ -548,13 +548,13 @@ const StatCard = ({ icon: Icon, label, value, sub, color = 'purple', onClick }) 
   };
   return (
     <div onClick={onClick}
-      className={`bg-gray-800 rounded-2xl p-5 border-l-4 ${colors[color]} ${onClick ? 'cursor-pointer hover:bg-gray-750 transition-colors' : ''}`}>
-      <div className={`inline-flex p-2.5 rounded-xl mb-3 ${colors[color]}`}>
-        <Icon className="h-5 w-5" />
+      className={`bg-gray-800 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 border-l-4 ${colors[color]} ${onClick ? 'cursor-pointer hover:bg-gray-750 transition-colors' : ''}`}>
+      <div className={`inline-flex p-2 sm:p-2.5 rounded-lg sm:rounded-xl mb-2 sm:mb-3 ${colors[color]}`}>
+        <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
       </div>
-      <p className="text-gray-400 text-xs font-medium">{label}</p>
-      <p className="text-2xl font-bold text-white mt-1">{value}</p>
-      {sub && <p className="text-xs text-gray-500 mt-2">{sub}</p>}
+      <p className="text-gray-400 text-xs font-medium truncate">{label}</p>
+      <p className="text-lg sm:text-2xl font-bold text-white mt-0.5 sm:mt-1 truncate">{value}</p>
+      {sub && <p className="text-[11px] sm:text-xs text-gray-500 mt-1.5 sm:mt-2 truncate">{sub}</p>}
     </div>
   );
 };
@@ -582,6 +582,7 @@ const AdminDashboard = ({ defaultTab }) => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterRole, setFilterRole] = useState('all');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
 
   // Modal states
@@ -910,24 +911,39 @@ const AdminDashboard = ({ defaultTab }) => {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex">
+      {/* Mobile Drawer Backdrop */}
+      {mobileMenuOpen && (
+        <div
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 lg:hidden transition-opacity"
+        />
+      )}
+
       {/* ── SIDEBAR ── */}
       <aside
-        className={`bg-gray-900 border-r border-gray-800 flex flex-col transition-all duration-300 ease-in-out ${
-          sidebarCollapsed ? 'w-16' : 'w-56'
-        } fixed h-full z-50`}
+        className={`bg-gray-900 border-r border-gray-800 flex flex-col transition-all duration-300 ease-in-out fixed inset-y-0 left-0 z-50 ${
+          mobileMenuOpen ? 'translate-x-0 w-64 shadow-2xl' : '-translate-x-full lg:translate-x-0'
+        } ${sidebarCollapsed ? 'lg:w-16' : 'lg:w-56'}`}
       >
-        <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} px-3 h-14 border-b border-gray-800 flex-shrink-0`}>
-          {!sidebarCollapsed && (
-            <div className="flex items-center gap-2">
-              <div className="bg-gradient-to-br from-purple-600 to-pink-600 p-1.5 rounded-lg">
-                <Database className="h-4 w-4 text-white" />
-              </div>
-              <span className="font-bold text-sm text-white">Admin Panel</span>
+        <div className={`flex items-center justify-between px-3 h-14 border-b border-gray-800 flex-shrink-0 ${sidebarCollapsed ? 'lg:justify-center' : ''}`}>
+          <div className="flex items-center gap-2">
+            <div className="bg-gradient-to-br from-purple-600 to-pink-600 p-1.5 rounded-lg">
+              <Database className="h-4 w-4 text-white" />
             </div>
-          )}
+            <span className={`font-bold text-sm text-white ${sidebarCollapsed ? 'lg:hidden' : ''}`}>Admin Panel</span>
+          </div>
+          {/* Close button on mobile */}
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors lg:hidden"
+            title="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* Collapse toggle on desktop */}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors hidden lg:block"
             title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -943,6 +959,7 @@ const AdminDashboard = ({ defaultTab }) => {
                 setSearchTerm('');
                 setFilterStatus('all');
                 setFilterRole('all');
+                setMobileMenuOpen(false);
                 if (item.id !== 'gyms') {
                   setViewingGymDetails(false);
                   setSelectedGym(null);
@@ -953,21 +970,17 @@ const AdminDashboard = ({ defaultTab }) => {
                 selectedTab === item.id
                   ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40'
                   : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              } ${sidebarCollapsed ? 'justify-center' : ''}`}
+              } ${sidebarCollapsed ? 'lg:justify-center' : ''}`}
               title={sidebarCollapsed ? item.name : ''}
             >
-              <item.icon className={`h-4 w-4 flex-shrink-0 ${sidebarCollapsed ? 'h-5 w-5' : ''}`} />
-              {!sidebarCollapsed && (
-                <>
-                  <span className="flex-1 text-left">{item.name}</span>
-                  {item.count !== null && (
-                    <span className={`px-1.5 py-0.5 rounded-full text-xs ${
-                      selectedTab === item.id ? 'bg-purple-500/50' : 'bg-gray-700 text-gray-400'
-                    }`}>
-                      {item.count}
-                    </span>
-                  )}
-                </>
+              <item.icon className={`h-4 w-4 flex-shrink-0 ${sidebarCollapsed ? 'lg:h-5 lg:w-5' : ''}`} />
+              <span className={`flex-1 text-left ${sidebarCollapsed ? 'lg:hidden' : ''}`}>{item.name}</span>
+              {item.count !== null && (
+                <span className={`px-1.5 py-0.5 rounded-full text-xs ${sidebarCollapsed ? 'lg:hidden' : ''} ${
+                  selectedTab === item.id ? 'bg-purple-500/50 text-white' : 'bg-gray-700 text-gray-400'
+                }`}>
+                  {item.count}
+                </span>
               )}
             </button>
           ))}
@@ -978,29 +991,25 @@ const AdminDashboard = ({ defaultTab }) => {
             <button
               onClick={() => setShowUserMenu((v) => !v)}
               className={`w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-800 transition-colors ${
-                sidebarCollapsed ? 'justify-center' : ''
+                sidebarCollapsed ? 'lg:justify-center' : ''
               }`}
               title={sidebarCollapsed ? user?.full_name || 'User' : ''}
             >
               <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                 {user?.full_name?.charAt(0) || 'A'}
               </div>
-              {!sidebarCollapsed && (
-                <>
-                  <div className="flex-1 text-left truncate">
-                    <p className="text-sm font-semibold text-white truncate">{user?.full_name}</p>
-                    <p className="text-xs text-gray-400 truncate">{user?.email}</p>
-                  </div>
-                  <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${showUserMenu ? 'rotate-180' : ''}`} />
-                </>
-              )}
+              <div className={`flex-1 text-left truncate ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
+                <p className="text-sm font-semibold text-white truncate">{user?.full_name}</p>
+                <p className="text-xs text-gray-400 truncate">{user?.email}</p>
+              </div>
+              <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${sidebarCollapsed ? 'lg:hidden' : ''} ${showUserMenu ? 'rotate-180' : ''}`} />
             </button>
 
             {showUserMenu && (
-              <div className={`absolute ${sidebarCollapsed ? 'left-full ml-2' : 'bottom-full mb-2 left-0'} w-52 bg-gray-800 border border-gray-700 rounded-xl shadow-xl py-2 z-50`}>
+              <div className="absolute bottom-full mb-2 left-0 w-52 bg-gray-800 border border-gray-700 rounded-xl shadow-xl py-2 z-50">
                 <div className="px-4 py-3 border-b border-gray-700">
                   <p className="text-sm font-semibold text-white">{user?.full_name}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{user?.email}</p>
+                  <p className="text-xs text-gray-400 mt-0.5 truncate">{user?.email}</p>
                   <span className="inline-flex items-center mt-2 px-2 py-0.5 rounded-full text-xs bg-purple-900/60 text-purple-300 border border-purple-700">
                     <Shield className="h-3 w-3 mr-1" /> Super Admin
                   </span>
@@ -1018,26 +1027,36 @@ const AdminDashboard = ({ defaultTab }) => {
       </aside>
 
       {/* ── MAIN CONTENT ── */}
-      <div className={`flex-1 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-56'}`}>
-        <nav className="bg-gray-900 border-b border-gray-800 sticky top-0 z-40">
-          <div className="px-4 lg:px-8 h-14 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+      <div className={`flex-1 min-w-0 transition-all duration-300 ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-56'}`}>
+        <nav className="bg-gray-900 border-b border-gray-800 sticky top-0 z-30">
+          <div className="px-3 sm:px-4 lg:px-8 h-14 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              {/* Mobile hamburger menu toggle */}
+              <button
+                onClick={() => setMobileMenuOpen(true)}
+                className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors lg:hidden flex-shrink-0"
+                title="Open menu"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              {/* Desktop collapse toggle */}
               <button
                 onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors lg:hidden"
+                className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors hidden lg:block flex-shrink-0"
+                title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               >
-                {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+                {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
               </button>
-              <h1 className="text-sm font-semibold text-white capitalize">
+              <h1 className="text-sm font-semibold text-white capitalize truncate max-w-[130px] xs:max-w-[180px] sm:max-w-none">
                 {viewingGymDetails ? `${selectedGym?.name || 'Gym'} - Details` : selectedTab === 'overview' ? 'Dashboard Overview' : selectedTab === 'active-users' ? 'Active Users & IP Location' : selectedTab}
               </h1>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
               <button
                 onClick={toggleWhatsApp}
                 disabled={togglingWhatsApp}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   whatsappEnabled
                     ? 'bg-green-900/40 hover:bg-green-900/60 text-green-400 border border-green-700/50'
                     : 'bg-red-900/40 hover:bg-red-900/60 text-red-400 border border-red-700/50'
@@ -1045,14 +1064,14 @@ const AdminDashboard = ({ defaultTab }) => {
                 title="Toggle WhatsApp messaging globally"
               >
                 {togglingWhatsApp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquare className="h-3.5 w-3.5" />}
-                <span className="hidden sm:block">WhatsApp {whatsappEnabled ? 'ON' : 'OFF'}</span>
+                <span className="hidden md:inline">WhatsApp {whatsappEnabled ? 'ON' : 'OFF'}</span>
                 <span className={`h-2 w-2 rounded-full ${whatsappEnabled ? 'bg-green-400' : 'bg-red-400'} flex-shrink-0`} />
               </button>
 
               <button
                 onClick={toggleEmail}
                 disabled={togglingEmail}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   emailEnabled
                     ? 'bg-green-900/40 hover:bg-green-900/60 text-green-400 border border-green-700/50'
                     : 'bg-red-900/40 hover:bg-red-900/60 text-red-400 border border-red-700/50'
@@ -1060,17 +1079,18 @@ const AdminDashboard = ({ defaultTab }) => {
                 title="Toggle Email notification service globally"
               >
                 {togglingEmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-                <span className="hidden sm:block">Email {emailEnabled ? 'ON' : 'OFF'}</span>
+                <span className="hidden md:inline">Email {emailEnabled ? 'ON' : 'OFF'}</span>
                 <span className={`h-2 w-2 rounded-full ${emailEnabled ? 'bg-green-400' : 'bg-red-400'} flex-shrink-0`} />
               </button>
 
               <button
                 onClick={() => fetchAllData(true)}
                 disabled={refreshing}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-medium transition-colors"
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-medium transition-colors"
+                title="Refresh"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:block">Refresh</span>
+                <span className="hidden sm:inline">Refresh</span>
               </button>
             </div>
           </div>
@@ -1078,8 +1098,8 @@ const AdminDashboard = ({ defaultTab }) => {
 
         {/* Search / Filter Bar */}
         {selectedTab !== 'overview' && !viewingGymDetails && selectedTab !== 'irregular-members' && selectedTab !== 'whatsapp-chat' && selectedTab !== 'whatsapp' && selectedTab !== 'active-users' && (
-          <div className="bg-gray-900/60 border-b border-gray-800 px-4 lg:px-8 py-3 flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[200px]">
+          <div className="bg-gray-900/60 border-b border-gray-800 px-3 sm:px-4 lg:px-8 py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
+            <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
               <input
                 value={searchTerm}
@@ -1092,7 +1112,7 @@ const AdminDashboard = ({ defaultTab }) => {
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="bg-gray-800 border border-gray-700 text-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="bg-gray-800 border border-gray-700 text-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 w-full sm:w-auto"
               >
                 <option value="all">All Status</option>
                 <option value="active">Active</option>
@@ -1106,7 +1126,7 @@ const AdminDashboard = ({ defaultTab }) => {
               <select
                 value={filterRole}
                 onChange={(e) => setFilterRole(e.target.value)}
-                className="bg-gray-800 border border-gray-700 text-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="bg-gray-800 border border-gray-700 text-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 w-full sm:w-auto"
               >
                 <option value="all">All Roles</option>
                 <option value="gym_owner">Gym Owners</option>
@@ -1117,11 +1137,11 @@ const AdminDashboard = ({ defaultTab }) => {
         )}
 
         {/* Main content */}
-        <main className="px-4 lg:px-8 py-6 space-y-6">
+        <main className="px-3 sm:px-4 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6">
           {/* OVERVIEW */}
           {selectedTab === 'overview' && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
                 <StatCard icon={Building2} label="Total Gyms" value={stats.total_gyms || 0}
                   sub={`${stats.active_gyms || 0} active`} color="purple"
                   onClick={() => setSelectedTab('gyms')} />
@@ -1328,7 +1348,7 @@ const AdminDashboard = ({ defaultTab }) => {
                 <p className="text-sm font-medium text-gray-300">{filteredUsers.length} users</p>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full">
+                <table className="min-w-[850px] w-full text-sm">
                   <TableHeader cols={['ID', 'User', 'Username', 'Email', 'Phone', 'Role', 'Gym', 'Last Login', 'Verified', 'Active', 'Joined', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
                     {filteredUsers.map((u) => (
@@ -1393,7 +1413,7 @@ const AdminDashboard = ({ defaultTab }) => {
                 <p className="text-sm font-medium text-gray-300">{filteredMembers.length} members</p>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full">
+                <table className="min-w-[950px] w-full text-sm">
                   <TableHeader cols={['ID', 'Member', 'Email', 'Phone', 'Gender', 'DOB', 'Gym', 'Current Plan', 'Total Paid', 'Status', 'Joined', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
                     {filteredMembers.map((m) => (
@@ -1439,7 +1459,7 @@ const AdminDashboard = ({ defaultTab }) => {
                 <p className="text-sm font-medium text-gray-300">{filteredStaff.length} staff members</p>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full">
+                <table className="min-w-[900px] w-full text-sm">
                   <TableHeader cols={['ID', 'Staff', 'Position', 'Email', 'Phone', 'Gym', 'Last Login', 'Hire Date', 'Salary', 'Status', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
                     {filteredStaff.map((s) => (
@@ -1487,7 +1507,7 @@ const AdminDashboard = ({ defaultTab }) => {
                 <p className="text-sm font-medium text-gray-300">{filteredPlans.length} plans</p>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full">
+                <table className="min-w-[900px] w-full text-sm">
                   <TableHeader cols={['ID', 'Plan Name', 'Gym', 'Type', 'Duration', 'Price', 'Disc. Price', 'Active Mbrs', 'Total Revenue', 'Status', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
                     {filteredPlans.map((p) => (
@@ -1537,7 +1557,7 @@ const AdminDashboard = ({ defaultTab }) => {
                 <p className="text-sm font-medium text-gray-300">{filteredMemberships.length} memberships</p>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full">
+                <table className="min-w-[950px] w-full text-sm">
                   <TableHeader cols={['ID', 'Member', 'Plan', 'Gym', 'Start', 'End', 'Days Left', 'Status', 'Payment', 'Amount Paid', 'Balance', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
                     {filteredMemberships.map((ms) => (
@@ -1594,7 +1614,7 @@ const AdminDashboard = ({ defaultTab }) => {
                 </p>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full">
+                <table className="min-w-[800px] w-full text-sm">
                   <TableHeader cols={['ID', 'Txn ID', 'Member', 'Gym', 'Amount', 'Method', 'Date', 'Status', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
                     {filteredPayments.map((p) => (
@@ -1634,7 +1654,7 @@ const AdminDashboard = ({ defaultTab }) => {
                 <p className="text-sm font-medium text-gray-300">{filteredLeads.length} leads</p>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full">
+                <table className="min-w-[850px] w-full text-sm">
                   <TableHeader cols={['ID', 'Name', 'Phone', 'Email', 'Source', 'Status', 'Interest', 'Gym', 'Created', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
                     {filteredLeads.map((l) => (
@@ -1679,7 +1699,7 @@ const AdminDashboard = ({ defaultTab }) => {
                 </p>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full">
+                <table className="min-w-[850px] w-full text-sm">
                   <TableHeader cols={['ID', 'Title', 'Amount', 'Category', 'Vendor', 'Gym', 'Date', 'Created By', 'Actions']} />
                   <tbody className="divide-y divide-gray-800">
                     {filteredExpenses.map((e) => (

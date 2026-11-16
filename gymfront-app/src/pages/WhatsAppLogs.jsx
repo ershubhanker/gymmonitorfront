@@ -82,41 +82,41 @@ const MessageDetailModal = ({ log, isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-fade-in">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-fade-in flex flex-col">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
           <div className="flex items-center gap-3">
             <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-2 rounded-lg">
               <MessageSquare className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-gray-900">Message Details</h3>
-              <p className="text-sm text-gray-500">Sent to {log.member_name || 'Unknown'}</p>
+              <h3 className="text-base sm:text-lg font-bold text-gray-900">Message Details</h3>
+              <p className="text-xs sm:text-sm text-gray-500">Sent to {log.member_name || 'Unknown'}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <X className="h-5 w-5 text-gray-500" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+        <div className="p-4 sm:p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
           {/* Gym Info */}
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 mb-6 border border-blue-100">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-3 sm:p-4 mb-4 sm:mb-6 border border-blue-100">
+            <div className="flex items-center gap-2 mb-1 sm:mb-2">
               <Building className="h-4 w-4 text-blue-600" />
-              <span className="text-sm font-semibold text-blue-600">Gym</span>
+              <span className="text-xs sm:text-sm font-semibold text-blue-600">Gym</span>
             </div>
-            <p className="text-lg font-bold text-gray-900">{gymName}</p>
+            <p className="text-base sm:text-lg font-bold text-gray-900">{gymName}</p>
           </div>
 
           {/* Sender Info */}
-          <div className="bg-gray-50 rounded-xl p-4 mb-6">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="bg-gray-50 rounded-xl p-3 sm:p-4 mb-4 sm:mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-gray-400" />
                 <span className="text-sm text-gray-600">Member:</span>
@@ -186,14 +186,14 @@ const MessageDetailModal = ({ log, isOpen, onClose }) => {
             </div>
 
             {/* Message Card */}
-            <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-100">
+            <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-4 sm:p-6 border border-blue-100">
               {/* Header */}
-              <div className="mb-4 pb-4 border-b border-blue-200">
+              <div className="mb-4 pb-3 sm:pb-4 border-b border-blue-200">
                 <div className="flex items-center gap-2">
                   <Send className="h-4 w-4 text-blue-600" />
                   <span className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Header</span>
                 </div>
-                <p className="text-lg font-bold text-gray-900 mt-1">{message.header}</p>
+                <p className="text-base sm:text-lg font-bold text-gray-900 mt-1">{message.header}</p>
               </div>
 
               {/* Body */}
@@ -202,9 +202,9 @@ const MessageDetailModal = ({ log, isOpen, onClose }) => {
                   <MessageSquare className="h-4 w-4 text-purple-600" />
                   <span className="text-xs font-semibold text-purple-600 uppercase tracking-wider">Body</span>
                 </div>
-                <div className="bg-white/60 rounded-lg p-4 space-y-1">
+                <div className="bg-white/60 rounded-lg p-3 sm:p-4 space-y-1">
                   {message.body.split('\n').map((line, index) => (
-                    <p key={index} className="text-sm text-gray-700">
+                    <p key={index} className="text-xs sm:text-sm text-gray-700">
                       {line}
                     </p>
                   ))}
@@ -212,27 +212,27 @@ const MessageDetailModal = ({ log, isOpen, onClose }) => {
               </div>
 
               {/* Footer */}
-              <div className="pt-4 border-t border-blue-200">
+              <div className="pt-3 sm:pt-4 border-t border-blue-200">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 text-gray-400" />
                   <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Footer</span>
                 </div>
-                <p className="text-sm text-gray-500 italic mt-1">{message.footer}</p>
+                <p className="text-xs sm:text-sm text-gray-500 italic mt-1">{message.footer}</p>
               </div>
             </div>
 
             {/* Message ID */}
             {log.message_id && (
-              <div className="bg-gray-50 rounded-lg px-4 py-2">
+              <div className="bg-gray-50 rounded-lg px-3 sm:px-4 py-2">
                 <span className="text-xs text-gray-400">Message ID:</span>
-                <span className="text-xs font-mono text-gray-600 ml-2">{log.message_id}</span>
+                <span className="text-xs font-mono text-gray-600 ml-2 break-all">{log.message_id}</span>
               </div>
             )}
           </div>
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 bg-gray-50">
           <button
             onClick={onClose}
             className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium py-2 rounded-lg hover:shadow-lg transition-all"
@@ -423,13 +423,13 @@ const WhatsAppLogs = () => {
     <>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <MessageSquare className="h-6 w-6 text-blue-600" />
-              WhatsApp Message Logs
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <MessageSquare className="h-6 w-6 text-blue-600 flex-shrink-0" />
+              <span>WhatsApp Message Logs</span>
             </h2>
-            <p className="text-sm text-gray-500 mt-1 flex items-center flex-wrap gap-2">
+            <p className="text-xs sm:text-sm text-gray-500 mt-1 flex items-center flex-wrap gap-2">
               View and manage all WhatsApp messages sent from your account
               <span className="inline-flex items-center gap-1 text-xs font-normal text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -442,11 +442,11 @@ const WhatsAppLogs = () => {
               )}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               onClick={exportLogs}
               disabled={exporting}
-              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+              className="flex-1 sm:flex-none justify-center flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm font-medium"
             >
               {exporting ? (
                 <Loader className="h-4 w-4 animate-spin" />
@@ -460,64 +460,64 @@ const WhatsAppLogs = () => {
 
         {/* Stats Cards */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-green-500">
-              <p className="text-sm text-gray-500">Total Sent</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.total_sent || 0}</p>
+              <p className="text-xs sm:text-sm text-gray-500">Total Sent</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total_sent || 0}</p>
             </div>
             <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-red-500">
-              <p className="text-sm text-gray-500">Failed</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.total_failed || 0}</p>
+              <p className="text-xs sm:text-sm text-gray-500">Failed</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total_failed || 0}</p>
             </div>
             <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-yellow-500">
-              <p className="text-sm text-gray-500">Success Rate</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.success_rate || 0}%</p>
+              <p className="text-xs sm:text-sm text-gray-500">Success Rate</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.success_rate || 0}%</p>
             </div>
             <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-blue-500">
-              <p className="text-sm text-gray-500">Total Messages</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.total_messages || 0}</p>
+              <p className="text-xs sm:text-sm text-gray-500">Total Messages</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total_messages || 0}</p>
             </div>
           </div>
         )}
 
         {/* Filters Section */}
         <div className="bg-white rounded-xl shadow-sm p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {/* Date From */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date From</label>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Date From</label>
               <div className="relative">
                 <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="date"
                   value={filters.startDate}
                   onChange={(e) => handleFilterChange('startDate', e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             </div>
 
             {/* Date To */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date To</label>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Date To</label>
               <div className="relative">
                 <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="date"
                   value={filters.endDate}
                   onChange={(e) => handleFilterChange('endDate', e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             </div>
 
             {/* Status Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Status</label>
               <select
                 value={filters.status}
                 onChange={(e) => handleFilterChange('status', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="all">All Status</option>
                 <option value="sent">Sent</option>
@@ -532,14 +532,14 @@ const WhatsAppLogs = () => {
             <div className="flex items-end gap-2">
               <button
                 onClick={applyFilters}
-                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex-1"
+                className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex-1 text-sm font-medium"
               >
                 <Filter className="h-4 w-4" />
                 Apply Filters
               </button>
               <button
                 onClick={resetFilters}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
               >
                 Reset
               </button>
@@ -557,17 +557,17 @@ const WhatsAppLogs = () => {
           ) : logs.length > 0 ? (
             <>
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="min-w-[850px] w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days Left</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sent At</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">#</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Member</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Phone</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Amount</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Days Left</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Sent At</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -640,17 +640,17 @@ const WhatsAppLogs = () => {
 
               {/* Pagination */}
               {pagination.totalPages > 1 && (
-                <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-                  <div className="text-sm text-gray-500">
+                <div className="px-4 sm:px-6 py-4 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="text-xs sm:text-sm text-gray-500">
                     Showing {((pagination.currentPage - 1) * pagination.itemsPerPage) + 1} to{' '}
                     {Math.min(pagination.currentPage * pagination.itemsPerPage, pagination.totalItems)} of{' '}
                     {pagination.totalItems} entries
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 sm:gap-2">
                     <button
                       onClick={() => handlePageChange(pagination.currentPage - 1)}
                       disabled={pagination.currentPage === 1}
-                      className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="p-1.5 sm:p-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </button>
@@ -672,7 +672,7 @@ const WhatsAppLogs = () => {
                           <button
                             key={pageNum}
                             onClick={() => handlePageChange(pageNum)}
-                            className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
+                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
                               pagination.currentPage === pageNum
                                 ? 'bg-blue-600 text-white'
                                 : 'hover:bg-gray-100 text-gray-700'
@@ -687,7 +687,7 @@ const WhatsAppLogs = () => {
                     <button
                       onClick={() => handlePageChange(pagination.currentPage + 1)}
                       disabled={pagination.currentPage === pagination.totalPages}
-                      className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="p-1.5 sm:p-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <ChevronRight className="h-4 w-4" />
                     </button>

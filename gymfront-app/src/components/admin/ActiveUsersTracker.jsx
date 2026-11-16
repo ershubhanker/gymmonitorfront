@@ -154,7 +154,7 @@ export default function ActiveUsersTracker() {
       </div>
 
       {/* ── FILTER & SEARCH BAR ── */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 sm:p-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
           <input
@@ -171,7 +171,7 @@ export default function ActiveUsersTracker() {
           <select
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 w-full sm:w-auto"
           >
             <option value="today">📅 Today</option>
             <option value="yesterday">Yesterday</option>
@@ -184,7 +184,7 @@ export default function ActiveUsersTracker() {
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 w-full sm:w-auto"
           >
             <option value="all">All Roles</option>
             <option value="gym_owner">👑 Gym Owners</option>
@@ -196,7 +196,7 @@ export default function ActiveUsersTracker() {
           <button
             onClick={fetchActiveUsers}
             disabled={loading}
-            className="p-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded-lg transition-colors"
+            className="p-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded-lg transition-colors ml-auto sm:ml-0"
             title="Refresh active users"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-purple-400' : ''}`} />
@@ -207,17 +207,17 @@ export default function ActiveUsersTracker() {
       {/* ── ACTIVE USERS TABLE ── */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-800">
+          <table className="min-w-[850px] w-full divide-y divide-gray-800 text-sm">
             <thead className="bg-gray-800/60">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">User</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Gym</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">IP Address</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Location</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">ISP / Network</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Device</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Active Time</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">User</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Gym</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">IP Address</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Location</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">ISP / Network</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Device</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Active Time</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800 bg-gray-900/50">

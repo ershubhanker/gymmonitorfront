@@ -39,6 +39,7 @@ import MembershipPlans from './MembershipPlans';
 import HistoricalInvoices from './HistoricalInvoices';
 import SearchBar from '../components/SearchBar';
 import FollowUpCard from '../components/FollowUpCard';
+import BirthdayCard from '../components/BirthdayCard';
 import WhatsAppLogs from './WhatsAppLogs';
 import TrainerSchedule from '../components/TrainerSchedule';
 import IrregularMembers from '../components/attendance/IrregularMembers';
@@ -183,7 +184,7 @@ const Dashboard = () => {
   const canViewLeadStats = isAdmin || hasPermission('dashboard_view_lead_stats') || hasPermission('view_leads');
   const canViewStaffStats = isAdmin || hasPermission('dashboard_view_staff_stats') || hasPermission('view_staff');
   const canViewClasses = isAdmin || hasPermission('dashboard_view_classes');
-  const canViewBirthdays = isAdmin || hasPermission('dashboard_view_birthdays');
+  const canViewBirthdays = isAdmin || hasPermission('dashboard_view_birthdays') || canViewMemberStats || canViewMembers;
   const canViewActivity = isAdmin || hasPermission('dashboard_view_activity');
   const canViewAlerts = isAdmin || hasPermission('dashboard_view_alerts');
   
@@ -315,7 +316,10 @@ const Dashboard = () => {
     expiringMembers: [],
     upcomingBirthdays: {
       members: [],
-      staff: []
+      staff: [],
+      all: [],
+      todayCount: 0,
+      totalCount: 0
     },
     totalRefunds: 0,
     refundCount: 0,
@@ -844,37 +848,69 @@ const Dashboard = () => {
         return acc;
       }, {});
   
-      const next7Days = new Date(todayDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+      // Calculate today at midnight for accurate today vs upcoming birthday comparison
+      const todayMidnight = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate(), 0, 0, 0, 0);
+      
+      const parseDob = (dobStr) => {
+        if (!dobStr) return null;
+        if (typeof dobStr === 'string') {
+          const cleanStr = dobStr.split('T')[0];
+          const parts = cleanStr.split('-');
+          if (parts.length === 3) {
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1; // 0-indexed
+            const day = parseInt(parts[2], 10);
+            if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+              return { year, month, day };
+            }
+          }
+        }
+        const d = new Date(dobStr);
+        if (isNaN(d.getTime())) return null;
+        return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate() };
+      };
+
       const upcomingBirthdays = {
         members: [],
-        staff: []
+        staff: [],
+        all: [],
+        todayCount: 0,
+        totalCount: 0
       };
   
       if (canSeeMembers) {
         members.forEach(member => {
           if (member.date_of_birth) {
-            const dob = new Date(member.date_of_birth);
-            const thisYearBirthday = new Date(todayDate.getFullYear(), dob.getMonth(), dob.getDate());
-            const nextYearBirthday = new Date(todayDate.getFullYear() + 1, dob.getMonth(), dob.getDate());
-            
-            let birthdayDate = thisYearBirthday;
-            if (thisYearBirthday < todayDate) {
-              birthdayDate = nextYearBirthday;
-            }
-            
-            if (birthdayDate <= next7Days) {
-              const daysUntil = Math.ceil((birthdayDate - todayDate) / (1000 * 60 * 60 * 24));
-              upcomingBirthdays.members.push({
-                id: member.id,
-                name: member.full_name,
-                date_of_birth: member.date_of_birth,
-                daysUntil,
-                birthdayDate: birthdayDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' }),
-                avatar: member.profile_image 
-                  ? (member.profile_image.startsWith('http') ? member.profile_image : `${API_BASE_URL}${member.profile_image}`)
-                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=0D9488&color=fff`,
-                type: 'member'
-              });
+            const dobParsed = parseDob(member.date_of_birth);
+            if (dobParsed) {
+              const thisYearBday = new Date(todayMidnight.getFullYear(), dobParsed.month, dobParsed.day, 0, 0, 0, 0);
+              let targetBday = thisYearBday;
+              if (thisYearBday.getTime() < todayMidnight.getTime()) {
+                targetBday = new Date(todayMidnight.getFullYear() + 1, dobParsed.month, dobParsed.day, 0, 0, 0, 0);
+              }
+              const diffTime = targetBday.getTime() - todayMidnight.getTime();
+              const daysUntil = Math.round(diffTime / (1000 * 60 * 60 * 24));
+              
+              if (daysUntil >= 0 && daysUntil <= 7) {
+                const age = targetBday.getFullYear() - dobParsed.year;
+                upcomingBirthdays.members.push({
+                  id: member.id,
+                  name: member.full_name,
+                  phone: member.phone || null,
+                  email: member.email || null,
+                  date_of_birth: member.date_of_birth,
+                  daysUntil,
+                  isToday: daysUntil === 0,
+                  isTomorrow: daysUntil === 1,
+                  age,
+                  birthdayDate: targetBday.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+                  avatar: member.profile_image 
+                    ? (member.profile_image.startsWith('http') ? member.profile_image : `${API_BASE_URL}${member.profile_image}`)
+                    : `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=EC4899&color=fff`,
+                  type: 'member',
+                  planName: member.plan_name || member.current_plan || null
+                });
+              }
             }
           }
         });
@@ -883,27 +919,36 @@ const Dashboard = () => {
       if (canSeeStaff) {
         staff.forEach(staffMember => {
           if (staffMember.date_of_birth) {
-            const dob = new Date(staffMember.date_of_birth);
-            const thisYearBirthday = new Date(todayDate.getFullYear(), dob.getMonth(), dob.getDate());
-            const nextYearBirthday = new Date(todayDate.getFullYear() + 1, dob.getMonth(), dob.getDate());
-            
-            let birthdayDate = thisYearBirthday;
-            if (thisYearBirthday < todayDate) {
-              birthdayDate = nextYearBirthday;
-            }
-            
-            if (birthdayDate <= next7Days) {
-              const daysUntil = Math.ceil((birthdayDate - todayDate) / (1000 * 60 * 60 * 24));
-              upcomingBirthdays.staff.push({
-                id: staffMember.id,
-                name: staffMember.user?.full_name || 'Staff Member',
-                position: staffMember.position,
-                date_of_birth: staffMember.date_of_birth,
-                daysUntil,
-                birthdayDate: birthdayDate.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' }),
-                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(staffMember.user?.full_name || 'S')}&background=8B5CF6&color=fff`,
-                type: 'staff'
-              });
+            const dobParsed = parseDob(staffMember.date_of_birth);
+            if (dobParsed) {
+              const thisYearBday = new Date(todayMidnight.getFullYear(), dobParsed.month, dobParsed.day, 0, 0, 0, 0);
+              let targetBday = thisYearBday;
+              if (thisYearBday.getTime() < todayMidnight.getTime()) {
+                targetBday = new Date(todayMidnight.getFullYear() + 1, dobParsed.month, dobParsed.day, 0, 0, 0, 0);
+              }
+              const diffTime = targetBday.getTime() - todayMidnight.getTime();
+              const daysUntil = Math.round(diffTime / (1000 * 60 * 60 * 24));
+              
+              if (daysUntil >= 0 && daysUntil <= 7) {
+                const age = targetBday.getFullYear() - dobParsed.year;
+                upcomingBirthdays.staff.push({
+                  id: staffMember.id,
+                  name: staffMember.user?.full_name || staffMember.name || 'Staff Member',
+                  position: staffMember.position || null,
+                  phone: staffMember.phone || staffMember.user?.phone || null,
+                  email: staffMember.email || staffMember.user?.email || null,
+                  date_of_birth: staffMember.date_of_birth,
+                  daysUntil,
+                  isToday: daysUntil === 0,
+                  isTomorrow: daysUntil === 1,
+                  age,
+                  birthdayDate: targetBday.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+                  avatar: staffMember.profile_image
+                    ? (staffMember.profile_image.startsWith('http') ? staffMember.profile_image : `${API_BASE_URL}${staffMember.profile_image}`)
+                    : `https://ui-avatars.com/api/?name=${encodeURIComponent(staffMember.user?.full_name || staffMember.name || 'Staff')}&background=8B5CF6&color=fff`,
+                  type: 'staff'
+                });
+              }
             }
           }
         });
@@ -911,6 +956,13 @@ const Dashboard = () => {
   
       upcomingBirthdays.members.sort((a, b) => a.daysUntil - b.daysUntil);
       upcomingBirthdays.staff.sort((a, b) => a.daysUntil - b.daysUntil);
+      const allBirthdays = [
+        ...upcomingBirthdays.members,
+        ...upcomingBirthdays.staff
+      ].sort((a, b) => a.daysUntil - b.daysUntil);
+      upcomingBirthdays.all = allBirthdays;
+      upcomingBirthdays.todayCount = allBirthdays.filter(b => b.isToday).length;
+      upcomingBirthdays.totalCount = allBirthdays.length;
   
       const monthlyExpenses = statsApiData.monthly_expenses || 0;
       const netProfit = monthlyRevenue - monthlyExpenses;
@@ -2056,126 +2108,49 @@ const Dashboard = () => {
         )}
       </div>
   
-      {/* Row 6: Follow-Up Card */}
-      {canViewLeadStats && (
-        <div id="followup-card-section" className="grid grid-cols-1 gap-4 transition-all duration-300 rounded-xl">
-          <FollowUpCard 
-            onFollowUpClick={(lead) => {
-              if (lead && lead.viewAll) {
-                setActiveTab('leads');
-              } else if (lead && lead.id) {
-                setActiveTab('leads');
-                setSelectedLeadId(lead.id);
-              }
-            }}
-            onRefresh={() => {
-              refreshDashboard();
-            }}
-          />
-        </div>
-      )}
-  
-      {/* Row 7: Birthday Notifications */}
-      {(stats.upcomingBirthdays?.members?.length > 0 || stats.upcomingBirthdays?.staff?.length > 0) && (
-        <div className="space-y-3">
-          <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <Gift className="h-4.5 w-4.5 text-pink-500" />
-            🎂 Upcoming Birthdays
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {canViewMemberStats && stats.upcomingBirthdays?.members?.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all border-l-4 border-pink-500">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="bg-pink-100 p-1.5 rounded-md">
-                      <Users className="h-4 w-4 text-pink-600" />
-                    </div>
-                    <h3 className="text-base font-bold text-gray-800">Member Birthdays</h3>
-                  </div>
-                  <span className="text-xs bg-pink-100 text-pink-700 px-2.5 py-0.5 rounded-full font-medium">
-                    {stats.upcomingBirthdays.members.length} this week
-                  </span>
-                </div>
-                
-                <div className="space-y-2">
-                  {stats.upcomingBirthdays.members.map((member) => (
-                    <div key={member.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-gradient-to-r from-pink-50 to-rose-50 hover:shadow-xs transition-all">
-                      <img 
-                        src={member.avatar} 
-                        alt={member.name} 
-                        className="w-9 h-9 rounded-full ring-2 ring-pink-200 object-cover flex-shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-gray-900 truncate">{member.name}</p>
-                        <p className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
-                          <Calendar className="h-3 w-3" />
-                          {member.birthdayDate}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                          member.daysUntil === 0 
-                            ? 'bg-red-500 text-white animate-pulse' 
-                            : member.daysUntil === 1
-                            ? 'bg-orange-500 text-white'
-                            : 'bg-pink-100 text-pink-700'
-                        }`}>
-                          {member.daysUntil === 0 ? 'Today! 🎉' : `${member.daysUntil}d`}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {canViewStaffStats && stats.upcomingBirthdays?.staff?.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all border-l-4 border-purple-500">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="bg-purple-100 p-1.5 rounded-md">
-                      <Briefcase className="h-4 w-4 text-purple-600" />
-                    </div>
-                    <h3 className="text-base font-bold text-gray-800">Staff Birthdays</h3>
-                  </div>
-                  <span className="text-xs bg-purple-100 text-purple-700 px-2.5 py-0.5 rounded-full font-medium">
-                    {stats.upcomingBirthdays.staff.length} this week
-                  </span>
-                </div>
-                
-                <div className="space-y-2">
-                  {stats.upcomingBirthdays.staff.map((staff) => (
-                    <div key={staff.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-gradient-to-r from-purple-50 to-indigo-50 hover:shadow-xs transition-all">
-                      <img 
-                        src={staff.avatar} 
-                        alt={staff.name} 
-                        className="w-9 h-9 rounded-full ring-2 ring-purple-200 object-cover flex-shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-gray-900 truncate">{staff.name}</p>
-                        <p className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5 truncate">
-                          <Briefcase className="h-3 w-3" />
-                          {staff.position || 'Staff Member'}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                          staff.daysUntil === 0 
-                            ? 'bg-red-500 text-white animate-pulse' 
-                            : staff.daysUntil === 1
-                            ? 'bg-orange-500 text-white'
-                            : 'bg-purple-100 text-purple-700'
-                        }`}>
-                          {staff.daysUntil === 0 ? 'Today! 🎉' : `${staff.daysUntil}d`}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+      {/* Row 6: Today's Follow-up & Birthday Card (Side-by-Side 50/50) */}
+      {(canViewLeadStats || canViewBirthdays) && (
+        <div 
+          id="followup-birthday-section" 
+          className={`grid grid-cols-1 ${canViewLeadStats && canViewBirthdays ? 'lg:grid-cols-2' : ''} gap-4 items-stretch transition-all duration-300`}
+        >
+          {/* Today's Follow-ups Card (Half Width) */}
+          {canViewLeadStats && (
+            <FollowUpCard 
+              onFollowUpClick={(lead) => {
+                if (lead && lead.viewAll) {
+                  setActiveTab('leads');
+                } else if (lead && lead.id) {
+                  setActiveTab('leads');
+                  setSelectedLeadId(lead.id);
+                }
+              }}
+              onRefresh={() => {
+                refreshDashboard();
+              }}
+            />
+          )}
+
+          {/* Birthday Card (Half Width) */}
+          {canViewBirthdays && (
+            <BirthdayCard 
+              birthdays={stats.upcomingBirthdays}
+              gymName={user?.gym_name || user?.gymName || ''}
+              onMemberClick={(memberId) => {
+                setSelectedMemberId(null);
+                setTimeout(() => {
+                  setSelectedMemberId(memberId);
+                  setActiveTab('members');
+                }, 0);
+              }}
+              onStaffClick={() => {
+                setActiveTab('staff');
+              }}
+              onRefresh={() => {
+                refreshDashboard();
+              }}
+            />
+          )}
         </div>
       )}
   

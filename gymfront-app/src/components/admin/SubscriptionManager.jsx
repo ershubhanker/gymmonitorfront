@@ -226,31 +226,31 @@ export default function SubscriptionManager({ gymId, gymName, onClose, onChanged
   const canRestart = sub && ['cancelled', 'halted', 'expired', 'completed'].includes(statusKey);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-3xl my-8 shadow-2xl">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-3xl my-4 sm:my-8 shadow-2xl overflow-hidden flex flex-col">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-700">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-2 rounded-xl">
+            <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-2 rounded-xl flex-shrink-0">
               <Crown className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Subscription Manager</h2>
+              <h2 className="text-base sm:text-lg font-bold text-white">Subscription Manager</h2>
               <p className="text-xs text-gray-400">{gymName}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={fetchState}
-              className="p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+              className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
               title="Refresh"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+              className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
@@ -258,7 +258,7 @@ export default function SubscriptionManager({ gymId, gymName, onClose, onChanged
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5 max-h-[75vh] overflow-y-auto">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 max-h-[75vh] overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
@@ -269,7 +269,7 @@ export default function SubscriptionManager({ gymId, gymName, onClose, onChanged
               <div className="inline-flex p-4 rounded-2xl bg-red-50 mb-4">
                 <AlertTriangle className="h-10 w-10 text-red-600" />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">{loadError.title}</h3>
+              <h3 className="text-lg sm:text-xl font-bold text-white mb-2">{loadError.title}</h3>
               <p className="text-gray-400 text-sm max-w-xl mx-auto mb-3">{loadError.message}</p>
               <p className="text-xs text-gray-500 font-mono break-all max-w-xl mx-auto mb-6">
                 GET {loadError.url}
@@ -277,7 +277,7 @@ export default function SubscriptionManager({ gymId, gymName, onClose, onChanged
               </p>
               <button
                 onClick={fetchState}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg transition-all"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg transition-all text-sm"
               >
                 <RefreshCw className="h-4 w-4" />
                 Retry
@@ -289,16 +289,16 @@ export default function SubscriptionManager({ gymId, gymName, onClose, onChanged
               <div className={`inline-flex p-4 rounded-2xl ${statusCfg.bg} mb-4`}>
                 <StatusIcon className={`h-10 w-10 ${statusCfg.text}`} />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">No subscription yet</h3>
+              <h3 className="text-lg sm:text-xl font-bold text-white mb-2">No subscription yet</h3>
               <p className="text-gray-400 text-sm mb-6">
                 This gym doesn't have any SaaS subscription. Start one below.
               </p>
-              <div className="flex items-center justify-center gap-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3">
                 <CyclePicker value={selectedCycle} onChange={setSelectedCycle} />
                 <button
                   onClick={handleStart}
                   disabled={actionLoading}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-60"
+                  className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-60 text-sm"
                 >
                   {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
                   Start Subscription
@@ -308,29 +308,29 @@ export default function SubscriptionManager({ gymId, gymName, onClose, onChanged
           ) : (
             <>
               {/* Status card */}
-              <div className={`rounded-2xl border ${statusCfg.border} ${statusCfg.bg} p-5 mb-5`}>
-                <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className={`rounded-2xl border ${statusCfg.border} ${statusCfg.bg} p-4 sm:p-5 mb-5`}>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <StatusIcon className={`h-7 w-7 ${statusCfg.text}`} />
                     <div>
                       <p className={`text-xs font-bold uppercase tracking-wider ${statusCfg.text}`}>
                         {statusCfg.label}
                       </p>
-                      <p className="text-lg font-bold text-gray-900 capitalize">
+                      <p className="text-base sm:text-lg font-bold text-gray-900 capitalize">
                         {sub.billing_cycle} plan
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-left sm:text-right">
                     <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total / cycle</p>
-                    <p className="text-2xl font-bold text-gray-900">{fmtINR(sub.total_amount)}</p>
+                    <p className="text-xl sm:text-2xl font-bold text-gray-900">{fmtINR(sub.total_amount)}</p>
                     <p className="text-xs text-gray-500">
                       Base {fmtINR(sub.base_amount)} + GST {fmtINR(sub.gst_amount)}
                     </p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-5 pt-5 border-t border-gray-300/40">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mt-5 pt-5 border-t border-gray-300/40">
                   <InfoBlock label="Current Period Start" value={fmtDate(sub.current_period_start)} />
                   <InfoBlock
                     label="Current Period End"
@@ -530,34 +530,36 @@ export default function SubscriptionManager({ gymId, gymName, onClose, onChanged
                     Payment History
                   </h4>
                   <div className="bg-gray-800/40 rounded-xl overflow-hidden border border-gray-700">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-800 text-left text-gray-400 text-xs uppercase">
-                          <th className="px-4 py-2 font-semibold">Date</th>
-                          <th className="px-4 py-2 font-semibold">Amount</th>
-                          <th className="px-4 py-2 font-semibold">Cycle</th>
-                          <th className="px-4 py-2 font-semibold">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-700">
-                        {state.recent_payments.map((p) => (
-                          <tr key={p.id}>
-                            <td className="px-4 py-2 text-gray-300 text-xs">{fmtDate(p.paid_at, true)}</td>
-                            <td className="px-4 py-2 text-white font-medium">{fmtINR(p.amount)}</td>
-                            <td className="px-4 py-2 text-gray-400 capitalize">{p.billing_cycle}</td>
-                            <td className="px-4 py-2">
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                p.status === 'success' ? 'bg-emerald-900/60 text-emerald-300'
-                                : p.status === 'failed' ? 'bg-red-900/60 text-red-300'
-                                : 'bg-gray-700 text-gray-300'
-                              }`}>
-                                {p.status}
-                              </span>
-                            </td>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[500px] w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-800 text-left text-gray-400 text-xs uppercase">
+                            <th className="px-4 py-2 font-semibold whitespace-nowrap">Date</th>
+                            <th className="px-4 py-2 font-semibold whitespace-nowrap">Amount</th>
+                            <th className="px-4 py-2 font-semibold whitespace-nowrap">Cycle</th>
+                            <th className="px-4 py-2 font-semibold whitespace-nowrap">Status</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-gray-700">
+                          {state.recent_payments.map((p) => (
+                            <tr key={p.id}>
+                              <td className="px-4 py-2 text-gray-300 text-xs whitespace-nowrap">{fmtDate(p.paid_at, true)}</td>
+                              <td className="px-4 py-2 text-white font-medium whitespace-nowrap">{fmtINR(p.amount)}</td>
+                              <td className="px-4 py-2 text-gray-400 capitalize whitespace-nowrap">{p.billing_cycle}</td>
+                              <td className="px-4 py-2 whitespace-nowrap">
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  p.status === 'success' ? 'bg-emerald-900/60 text-emerald-300'
+                                  : p.status === 'failed' ? 'bg-red-900/60 text-red-300'
+                                  : 'bg-gray-700 text-gray-300'
+                                }`}>
+                                  {p.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
@@ -566,10 +568,10 @@ export default function SubscriptionManager({ gymId, gymName, onClose, onChanged
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-700 flex justify-end">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-700 flex justify-end">
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl text-sm font-medium transition-colors"
+            className="w-full sm:w-auto px-5 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl text-sm font-medium transition-colors"
           >
             Close
           </button>

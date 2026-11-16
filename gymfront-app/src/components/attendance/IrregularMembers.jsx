@@ -172,22 +172,22 @@ const IrregularMembers = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap justify-between items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <AlertTriangle className="h-6 w-6 text-orange-500" />
-            Irregular Members
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <AlertTriangle className="h-6 w-6 text-orange-500 flex-shrink-0" />
+            <span>Irregular Members</span>
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-xs sm:text-sm text-gray-500 mt-1">
             Members who haven't checked in for {daysThreshold} or more days
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* ===== CLEANUP BUTTON ===== */}
           <button
             onClick={() => setShowCleanupModal(true)}
             disabled={cleanupLoading}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+            className="flex-1 sm:flex-none justify-center flex items-center gap-2 px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 text-xs sm:text-sm font-medium"
             title="Clean up old attendance records to save disk space"
           >
             <HardDrive className="h-4 w-4" />
@@ -200,7 +200,7 @@ const IrregularMembers = () => {
               setDaysThreshold(parseInt(e.target.value));
               fetchIrregularMembers();
             }}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-purple-500"
           >
             <option value={3}>3 days</option>
             <option value={5}>5 days</option>
@@ -211,7 +211,7 @@ const IrregularMembers = () => {
           <button
             onClick={() => fetchIrregularMembers(true)}
             disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+            className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 text-xs sm:text-sm font-medium"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing...' : 'Refresh'}
@@ -220,49 +220,51 @@ const IrregularMembers = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-purple-500">
           <p className="text-xs text-gray-500 uppercase font-medium">Total</p>
-          <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-red-500">
           <p className="text-xs text-gray-500 uppercase font-medium">Irregular</p>
-          <p className="text-2xl font-bold text-red-600">{stats.irregular}</p>
+          <p className="text-xl sm:text-2xl font-bold text-red-600">{stats.irregular}</p>
           <p className="text-xs text-gray-400 mt-1">7+ days absent</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-yellow-500">
           <p className="text-xs text-gray-500 uppercase font-medium">Warning</p>
-          <p className="text-2xl font-bold text-yellow-600">{stats.warning}</p>
+          <p className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.warning}</p>
           <p className="text-xs text-gray-400 mt-1">3-7 days absent</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-gray-400">
           <p className="text-xs text-gray-500 uppercase font-medium">Never Checked In</p>
-          <p className="text-2xl font-bold text-gray-600">{stats.neverCheckedIn}</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-600">{stats.neverCheckedIn}</p>
           <p className="text-xs text-gray-400 mt-1">No check-in history</p>
         </div>
       </div>
 
       {/* Disk Space Info */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3">
-        <Database className="h-5 w-5 text-blue-600" />
-        <div className="flex-1">
-          <p className="text-sm text-blue-800 font-medium">Disk Space Management</p>
-          <p className="text-xs text-blue-600">
-            Old attendance records can take up significant disk space. 
-            The cleanup will delete member check-in records older than 4 days 
-            while keeping the last check-in for irregular tracking.
-          </p>
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <div className="flex items-center gap-3 flex-1">
+          <Database className="h-5 w-5 text-blue-600 flex-shrink-0" />
+          <div>
+            <p className="text-sm text-blue-800 font-medium">Disk Space Management</p>
+            <p className="text-xs text-blue-600 mt-0.5">
+              Old attendance records can take up significant disk space. 
+              The cleanup will delete member check-in records older than 4 days 
+              while keeping the last check-in for irregular tracking.
+            </p>
+          </div>
         </div>
         <button
           onClick={() => setShowCleanupModal(true)}
-          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors"
+          className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors text-center"
         >
           Cleanup Now
         </button>
       </div>
 
       {/* Search and Filter */}
-      <div className="bg-white rounded-xl shadow-sm p-4 flex flex-wrap gap-3 items-center">
+      <div className="bg-white rounded-xl shadow-sm p-3 sm:p-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
@@ -273,27 +275,29 @@ const IrregularMembers = () => {
             className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           />
         </div>
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-        >
-          <option value="all">All Status</option>
-          <option value="irregular">Irregular</option>
-          <option value="warning">Warning</option>
-          <option value="never_checked_in">Never Checked In</option>
-        </select>
-        {(searchTerm || filterStatus !== 'all') && (
-          <button
-            onClick={() => {
-              setSearchTerm('');
-              setFilterStatus('all');
-            }}
-            className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700"
+        <div className="flex items-center gap-2">
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="flex-1 sm:flex-none px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
           >
-            <X className="h-4 w-4" /> Clear
-          </button>
-        )}
+            <option value="all">All Status</option>
+            <option value="irregular">Irregular</option>
+            <option value="warning">Warning</option>
+            <option value="never_checked_in">Never Checked In</option>
+          </select>
+          {(searchTerm || filterStatus !== 'all') && (
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setFilterStatus('all');
+              }}
+              className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700 font-medium px-2 py-1"
+            >
+              <X className="h-4 w-4" /> Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Members Table */}
@@ -310,16 +314,16 @@ const IrregularMembers = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-[850px] w-full text-sm divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Check-in</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days Absent</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Membership</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Member</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Contact</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Last Check-in</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Days Absent</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Membership</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -408,66 +412,66 @@ const IrregularMembers = () => {
 
       {/* ===== CLEANUP CONFIRMATION MODAL ===== */}
       {showCleanupModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md my-4 overflow-hidden">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="bg-red-100 p-2 rounded-lg">
+                <div className="bg-red-100 p-2 rounded-lg flex-shrink-0">
                   <HardDrive className="h-5 w-5 text-red-600" />
                 </div>
-                <h2 className="text-xl font-bold text-gray-900">Cleanup Attendance Records</h2>
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900">Cleanup Attendance Records</h2>
               </div>
               <button
                 onClick={() => setShowCleanupModal(false)}
-                className="p-2 rounded-lg hover:bg-gray-100"
+                className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100"
               >
                 <X className="h-5 w-5 text-gray-500" />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="p-4 sm:p-6 space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 sm:p-4">
                 <p className="text-sm text-red-800 font-medium flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                   What will be deleted:
                 </p>
-                <ul className="mt-2 space-y-1 text-sm text-red-700">
+                <ul className="mt-2 space-y-1 text-xs sm:text-sm text-red-700">
                   <li className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 bg-red-400 rounded-full"></span>
+                    <span className="w-1.5 h-1.5 bg-red-400 rounded-full flex-shrink-0"></span>
                     Member check-in records older than 4 days
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 bg-red-400 rounded-full"></span>
+                    <span className="w-1.5 h-1.5 bg-red-400 rounded-full flex-shrink-0"></span>
                     Old records for expired members (keeps only the last one)
                   </li>
                 </ul>
               </div>
 
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+              <div className="bg-green-50 border border-green-200 rounded-xl p-3 sm:p-4">
                 <p className="text-sm text-green-800 font-medium flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4" />
+                  <CheckCircle className="h-4 w-4 flex-shrink-0" />
                   What will be preserved:
                 </p>
-                <ul className="mt-2 space-y-1 text-sm text-green-700">
+                <ul className="mt-2 space-y-1 text-xs sm:text-sm text-green-700">
                   <li className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full flex-shrink-0"></span>
                     All staff attendance records (for salary)
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full flex-shrink-0"></span>
                     The last check-in record for each member
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full flex-shrink-0"></span>
                     All records for irregular member tracking
                   </li>
                 </ul>
               </div>
 
               {cleanupStats && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 sm:p-4">
                   <p className="text-sm text-blue-800 font-medium">Previous Cleanup Results:</p>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
                     <div>
                       <span className="text-gray-500">Records Deleted:</span>
                       <span className="font-bold text-blue-700 ml-2">{cleanupStats.total_records_deleted}</span>
@@ -480,11 +484,11 @@ const IrregularMembers = () => {
                 </div>
               )}
 
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 pt-2">
                 <button
                   onClick={handleCleanup}
                   disabled={cleanupLoading}
-                  className="flex items-center justify-center gap-2 w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-semibold transition-colors disabled:opacity-50"
+                  className="flex items-center justify-center gap-2 w-full bg-red-600 hover:bg-red-700 text-white py-2.5 sm:py-3 rounded-xl font-semibold transition-colors disabled:opacity-50 text-sm"
                 >
                   {cleanupLoading ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
@@ -497,7 +501,7 @@ const IrregularMembers = () => {
                 <button
                   onClick={handleCleanupExpired}
                   disabled={cleanupLoading}
-                  className="flex items-center justify-center gap-2 w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-xl font-semibold transition-colors disabled:opacity-50"
+                  className="flex items-center justify-center gap-2 w-full bg-orange-600 hover:bg-orange-700 text-white py-2.5 sm:py-3 rounded-xl font-semibold transition-colors disabled:opacity-50 text-sm"
                 >
                   {cleanupLoading ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
@@ -508,7 +512,7 @@ const IrregularMembers = () => {
                 </button>
               </div>
 
-              <p className="text-xs text-gray-400 text-center">
+              <p className="text-[11px] sm:text-xs text-gray-400 text-center">
                 This action cannot be undone. Staff attendance records are never deleted.
               </p>
             </div>
@@ -518,43 +522,43 @@ const IrregularMembers = () => {
 
       {/* Member Details Modal */}
       {showMemberDetails && selectedMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto my-4 flex flex-col">
+            <div className="sticky top-0 bg-white border-b border-gray-100 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between z-10">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-base sm:text-lg flex-shrink-0">
                   {selectedMember.member_name?.charAt(0) || 'M'}
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">{selectedMember.member_name}</h2>
-                  <p className="text-sm text-gray-500">Member ID: {selectedMember.member_id}</p>
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-900">{selectedMember.member_name}</h2>
+                  <p className="text-xs sm:text-sm text-gray-500">Member ID: {selectedMember.member_id}</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowMemberDetails(false)}
-                className="p-2 rounded-lg hover:bg-gray-100"
+                className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100"
               >
                 <X className="h-5 w-5 text-gray-500" />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-4 sm:p-6 space-y-5 sm:space-y-6">
               {/* Member Info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 rounded-xl p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div className="bg-gray-50 rounded-xl p-3 sm:p-4">
                   <p className="text-xs text-gray-500 uppercase font-medium">Contact</p>
                   <p className="text-sm font-medium text-gray-900 mt-1 flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-gray-400" />
-                    {selectedMember.phone || '—'}
+                    <Phone className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                    <span>{selectedMember.phone || '—'}</span>
                   </p>
                   {selectedMember.email && (
-                    <p className="text-sm text-gray-600 mt-1 flex items-center gap-2">
-                      <Mail className="h-4 w-4 text-gray-400" />
-                      {selectedMember.email}
+                    <p className="text-xs sm:text-sm text-gray-600 mt-1 flex items-center gap-2 truncate">
+                      <Mail className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      <span className="truncate">{selectedMember.email}</span>
                     </p>
                   )}
                 </div>
-                <div className="bg-gray-50 rounded-xl p-4">
+                <div className="bg-gray-50 rounded-xl p-3 sm:p-4">
                   <p className="text-xs text-gray-500 uppercase font-medium">Attendance</p>
                   <p className="text-sm font-medium text-gray-900 mt-1">
                     Last check-in: {selectedMember.last_checkin ? formatDateTime(selectedMember.last_checkin) : 'Never'}
@@ -567,7 +571,7 @@ const IrregularMembers = () => {
 
               {/* Recent Check-ins */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
                   <Clock className="h-5 w-5 text-purple-600" />
                   Recent Check-in History
                 </h3>
@@ -578,13 +582,13 @@ const IrregularMembers = () => {
                 ) : recentCheckins.length > 0 ? (
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {recentCheckins.map((checkin) => (
-                      <div key={checkin.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
+                      <div key={checkin.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-gray-50 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 gap-1 sm:gap-4">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm text-gray-700">
+                          <span className="text-xs sm:text-sm text-gray-700">
                             {formatDateTime(checkin.checkin_time)}
                           </span>
                         </div>
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-3 sm:gap-4">
                           <span className="text-xs text-gray-500">
                             Device: {checkin.device_serial || 'N/A'}
                           </span>
@@ -598,19 +602,19 @@ const IrregularMembers = () => {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-gray-500 text-sm">
                     <p>No check-in history found</p>
                   </div>
                 )}
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-3 border-t border-gray-100 pt-4">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 border-t border-gray-100 pt-4">
                 <button
                   onClick={() => {
                     setShowMemberDetails(false);
                   }}
-                  className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                  className="w-full sm:flex-1 bg-purple-600 text-white px-4 py-2.5 rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
                 >
                   View Full Profile
                 </button>
@@ -618,7 +622,7 @@ const IrregularMembers = () => {
                   onClick={() => {
                     setShowMemberDetails(false);
                   }}
-                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                  className="w-full sm:flex-1 bg-green-600 text-white px-4 py-2.5 rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
                 >
                   Mark Check-in
                 </button>

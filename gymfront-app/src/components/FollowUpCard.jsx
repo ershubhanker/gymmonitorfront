@@ -191,7 +191,7 @@ const FollowUpCard = ({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-6">
+      <div className="bg-white rounded-2xl shadow-lg p-6 h-full flex flex-col justify-between">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <div className="bg-purple-100 p-2 rounded-lg">
@@ -209,7 +209,7 @@ const FollowUpCard = ({
 
   if (followups.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
+      <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all h-full flex flex-col justify-between">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <div className="bg-purple-100 p-2 rounded-lg">
@@ -226,7 +226,7 @@ const FollowUpCard = ({
           </button>
         </div>
         
-        <div className="text-center py-8">
+        <div className="text-center py-8 my-auto">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-4">
             <CheckCircle className="h-8 w-8 text-purple-600" />
           </div>
@@ -238,7 +238,7 @@ const FollowUpCard = ({
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all overflow-hidden">
+    <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all overflow-hidden h-full flex flex-col">
       {/* Header */}
       <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -366,7 +366,7 @@ const FollowUpCard = ({
                 </div>
                 
                 {/* Action Buttons */}
-                <div className="flex items-center gap-2 mt-2 ml-14">
+                <div className="flex flex-wrap items-center gap-2 mt-2 ml-0 sm:ml-14">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

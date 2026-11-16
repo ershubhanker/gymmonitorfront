@@ -231,7 +231,7 @@ export default function AdminRevenueGraph() {
       <div className="relative pt-2">
         {/* Peak Callout Badge */}
         {peakItem && (
-          <div className="flex items-center justify-between mb-3 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 text-xs gap-2">
             <span className="text-gray-400 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               Peak Period: <strong className="text-white">{peakItem.label}</strong> with{' '}
@@ -239,7 +239,7 @@ export default function AdminRevenueGraph() {
                 {fmtINR(revenueMetric === 'software' ? peakItem.software_revenue : peakItem.total_revenue)}
               </span>
             </span>
-            <div className="flex items-center gap-3 text-[11px] text-gray-400">
+            <div className="flex items-center gap-3 text-[11px] text-gray-400 flex-wrap">
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded bg-gradient-to-t from-purple-600 to-indigo-500" />
                 <span>Software SaaS Plan Revenue</span>
@@ -254,8 +254,11 @@ export default function AdminRevenueGraph() {
           </div>
         )}
 
-        {/* SVG/HTML Chart Container */}
-        <div className="h-64 w-full flex items-end gap-2 pt-6 pb-2 px-1 border-b border-gray-800 relative select-none">
+        {/* Scrollable Chart & X-Axis container on mobile/tablet */}
+        <div className="overflow-x-auto pb-2">
+          <div className="min-w-[500px]">
+            {/* SVG/HTML Chart Container */}
+            <div className="h-64 w-full flex items-end gap-2 pt-6 pb-2 px-1 border-b border-gray-800 relative select-none">
           {/* Horizontal Grid Guidelines */}
           <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20">
             <div className="border-b border-gray-600 w-full" />
@@ -335,19 +338,21 @@ export default function AdminRevenueGraph() {
           })}
         </div>
 
-        {/* X-Axis Labels */}
-        <div className="flex items-center justify-between gap-2 pt-2 px-1">
-          {chartItems.map((item, index) => (
-            <div key={item.label || index} className="flex-1 text-center">
-              <span
-                className={`text-[11px] font-medium transition-colors block truncate ${
-                  hoveredItem === index ? 'text-purple-400 font-bold' : 'text-gray-400'
-                }`}
-              >
-                {item.short_label || item.label}
-              </span>
+            {/* X-Axis Labels */}
+            <div className="flex items-center justify-between gap-2 pt-2 px-1">
+              {chartItems.map((item, index) => (
+                <div key={item.label || index} className="flex-1 text-center">
+                  <span
+                    className={`text-[11px] font-medium transition-colors block truncate ${
+                      hoveredItem === index ? 'text-purple-400 font-bold' : 'text-gray-400'
+                    }`}
+                  >
+                    {item.short_label || item.label}
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
       </div>
     </div>

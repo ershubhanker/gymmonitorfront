@@ -3,7 +3,7 @@ import {
   MessageCircle, MessageSquare, Send, Check, CheckCheck,
   Clock, Search, Filter, User, Building2, Copy, ExternalLink,
   RefreshCw, AlertCircle, Phone, Calendar, ArrowDown, ChevronRight,
-  Sparkles, Shield, UserCheck, CheckCircle2, AlertTriangle, Loader2
+  Sparkles, Shield, UserCheck, CheckCircle2, AlertTriangle, Loader2, ArrowLeft
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
@@ -225,18 +225,18 @@ const WhatsAppChatScreen = ({ onSelectMember }) => {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[calc(100vh-8.5rem)] min-h-[550px]">
       {/* ── Top Bar / Webhook Status Banner ── */}
-      <div className="bg-gray-950/80 border-b border-gray-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2">
-          <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1.5 font-medium">
+      <div className="bg-gray-950/80 border-b border-gray-800 px-3 sm:px-4 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 sm:gap-3 text-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1.5 font-medium flex-shrink-0">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             Meta Webhook Live
           </div>
-          <span className="text-gray-400 hidden sm:inline">Listening for incoming replies at:</span>
-          <code className="text-gray-300 bg-gray-900 px-2 py-0.5 rounded border border-gray-800 font-mono text-[11px] select-all">
+          <span className="text-gray-400 hidden sm:inline">Listening at:</span>
+          <code className="text-gray-300 bg-gray-900 px-2 py-0.5 rounded border border-gray-800 font-mono text-[11px] select-all max-w-[200px] xs:max-w-[260px] sm:max-w-none truncate">
             {WEBHOOK_URL}
           </code>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-3">
           {unreadTotal > 0 && (
             <span className="bg-emerald-500 text-white font-semibold px-2 py-0.5 rounded-full text-[11px]">
               {unreadTotal} Unread {unreadTotal === 1 ? 'Reply' : 'Replies'}
@@ -247,7 +247,7 @@ const WhatsAppChatScreen = ({ onSelectMember }) => {
               loadConversations();
               if (selectedPhone) loadMessages(selectedPhone);
             }}
-            className="text-gray-400 hover:text-white flex items-center gap-1 transition-colors"
+            className="text-gray-400 hover:text-white flex items-center gap-1 transition-colors ml-auto sm:ml-0"
             title="Refresh chats"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loadingConversations ? 'animate-spin' : ''}`} />
@@ -257,9 +257,11 @@ const WhatsAppChatScreen = ({ onSelectMember }) => {
       </div>
 
       {/* ── Main Chat Screen Split Layout ── */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* ── Left Pane: Conversation List ── */}
-        <div className="w-full md:w-80 lg:w-96 border-r border-gray-800 flex flex-col bg-gray-900/50 flex-shrink-0">
+        <div className={`w-full md:w-80 lg:w-96 border-r border-gray-800 flex flex-col bg-gray-900/50 flex-shrink-0 ${
+          selectedPhone ? 'hidden md:flex' : 'flex'
+        }`}>
           {/* Search & Filter */}
           <div className="p-3 border-b border-gray-800 space-y-2">
             <div className="relative">
@@ -403,7 +405,9 @@ const WhatsAppChatScreen = ({ onSelectMember }) => {
         </div>
 
         {/* ── Right Pane: Chat History & Reply ── */}
-        <div className="flex-1 flex flex-col bg-gray-950/70 overflow-hidden">
+        <div className={`flex-1 flex flex-col bg-gray-950/70 overflow-hidden ${
+          !selectedPhone ? 'hidden md:flex' : 'flex'
+        }`}>
           {!selectedPhone ? (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-500">
               <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4 shadow-lg shadow-emerald-950/50">
@@ -425,8 +429,16 @@ const WhatsAppChatScreen = ({ onSelectMember }) => {
           ) : (
             <>
               {/* Chat Header */}
-              <div className="bg-gray-900/90 border-b border-gray-800 px-4 py-3 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 min-w-0">
+              <div className="bg-gray-900/90 border-b border-gray-800 px-3 sm:px-4 py-3 flex items-center justify-between gap-2 sm:gap-4">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                  {/* Mobile Back Button */}
+                  <button
+                    onClick={() => setSelectedPhone(null)}
+                    className="md:hidden p-1.5 -ml-1 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800 transition-colors flex-shrink-0"
+                    title="Back to conversations"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </button>
                   {currentContact?.profile_image ? (
                     <img
                       src={currentContact.profile_image}

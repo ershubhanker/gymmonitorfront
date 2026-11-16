@@ -77,6 +77,97 @@ const Payments = () => {
     netRevenue: 0,
   });
 
+  // ✅ NEW: Today's collection summary
+  const [todaySummary, setTodaySummary] = useState({
+    grossRevenue: 0,
+    netRevenue: 0,
+    totalRefunds: 0,
+    count: 0,
+    refundCount: 0,
+    cash: 0,
+    upi: 0,
+    card: 0,
+    other: 0,
+  });
+
+  // Helper to extract local YYYY-MM-DD from payment date
+  const getPaymentLocalDateStr = (paymentDate: any) => {
+    if (!paymentDate) return '';
+    try {
+      const d = new Date(paymentDate);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-CA');
+      }
+    } catch (e) {}
+    return String(paymentDate).split('T')[0].split(' ')[0];
+  };
+
+  // Helper to check if a payment happened today
+  const isPaymentToday = (payment: any) => {
+    if (!payment || !payment.payment_date) return false;
+    const todayLocal = new Date().toLocaleDateString('en-CA');
+    const todayUtc = new Date().toISOString().split('T')[0];
+    const pLocal = getPaymentLocalDateStr(payment.payment_date);
+    const pRaw = String(payment.payment_date).split('T')[0].split(' ')[0];
+    return pLocal === todayLocal || pRaw === todayLocal || pRaw === todayUtc;
+  };
+
+  // Helper to calculate today's collection from master payment list
+  const calculateTodaySummary = (allPayments: any[]) => {
+    if (!Array.isArray(allPayments) || allPayments.length === 0) {
+      return {
+        grossRevenue: 0,
+        netRevenue: 0,
+        totalRefunds: 0,
+        count: 0,
+        refundCount: 0,
+        cash: 0,
+        upi: 0,
+        card: 0,
+        other: 0,
+      };
+    }
+
+    const todayPayments = allPayments.filter(p => isPaymentToday(p));
+    
+    const positiveToday = todayPayments.filter(p => !p.is_refund && Number(p.amount) > 0);
+    const refundToday = todayPayments.filter(p => p.is_refund || Number(p.amount) < 0);
+    
+    const grossRevenue = positiveToday.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const totalRefunds = refundToday.reduce((sum, p) => sum + Math.abs(Number(p.amount) || 0), 0);
+    const netRevenue = grossRevenue - totalRefunds;
+    const count = positiveToday.length;
+    const refundCount = refundToday.length;
+
+    const cash = positiveToday
+      .filter(p => p.payment_method?.toLowerCase() === 'cash')
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    const upi = positiveToday
+      .filter(p => p.payment_method?.toLowerCase() === 'upi')
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    const card = positiveToday
+      .filter(p => p.payment_method?.toLowerCase() === 'card')
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    const other = positiveToday
+      .filter(p => !['cash', 'card', 'upi'].includes(p.payment_method?.toLowerCase()))
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    return {
+      grossRevenue,
+      netRevenue,
+      totalRefunds,
+      count,
+      refundCount,
+      cash,
+      upi,
+      card,
+      other,
+    };
+  };
+
   const currencySymbol = user?.currency_symbol || '₹';
   const gymGST = user?.gym_gst_number || user?.gst_number || 'Not Available';
   const gymName = user?.gym_name || 'Gym Management System';
@@ -223,6 +314,7 @@ const Payments = () => {
       console.log('✅ Processed payments:', paymentsData.length);
       console.log('💰 Refunds found:', paymentsData.filter(p => p.is_refund).length);
       setPayments(paymentsData);
+      setTodaySummary(calculateTodaySummary(paymentsData));
     } catch (error) {
       console.error('❌ Error fetching payments:', error);
       setError('Failed to load payments. Please try again.');
@@ -235,13 +327,18 @@ const Payments = () => {
 
   const filterPayments = useCallback(() => {
     try {
+      // Keep today's sales summary synchronized with all available payments
+      setTodaySummary(calculateTodaySummary(payments));
+
       let filtered = [...payments];
 
-      // ✅ Filter by date range
+      // ✅ Filter by date range (supporting both UTC and local date formats)
       if (startDate && endDate && filtered.length > 0) {
         filtered = filtered.filter(payment => {
-          const paymentDate = payment.payment_date?.split('T')[0];
-          return paymentDate && paymentDate >= startDate && paymentDate <= endDate;
+          const rawDate = String(payment.payment_date || '').split('T')[0].split(' ')[0];
+          const localDate = getPaymentLocalDateStr(payment.payment_date);
+          return (rawDate && rawDate >= startDate && rawDate <= endDate) ||
+                 (localDate && localDate >= startDate && localDate <= endDate);
         });
       }
 
@@ -981,65 +1078,107 @@ const Payments = () => {
     );
   };
 
-  // ===== RENDER SUMMARY CARDS WITH REFUNDS =====
-  const renderSummaryCards = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      {/* ✅ Total Revenue Card */}
-      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
-        <div className="flex items-center justify-between mb-2">
-          <Wallet className="h-6 w-6 opacity-80" />
-          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-            summary.growth >= 0 ? 'bg-green-400/30' : 'bg-red-400/30'
-          }`}>
-            {summary.growth >= 0 ? '↑' : '↓'} {Math.abs(summary.growth).toFixed(1)}%
-          </span>
-        </div>
-        <p className="text-xs opacity-80 mb-0.5">Total Revenue</p>
-        <p className="text-xl font-bold">{formatCurrency(summary.totalRevenue)}</p>
-        <p className="text-xs opacity-70 mt-1">{summary.totalCount} transactions</p>
-      </div>
+  // ===== RENDER SUMMARY CARDS WITH TODAY'S COLLECTION & REFUNDS =====
+  const renderSummaryCards = () => {
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const isTodayFiltered = startDate === todayStr && endDate === todayStr;
 
-      {/* ✅ Net Revenue Card (Revenue - Refunds) */}
-      <div className="bg-gradient-to-r from-emerald-500 to-green-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
-        <div className="flex items-center justify-between mb-2">
-          <TrendingUp className="h-6 w-6 opacity-80" />
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/20">
-            Net
-          </span>
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        {/* 🔥 Today's Collection Card (Highlighted for Daily Sales Tracking) */}
+        <div 
+          onClick={() => {
+            setStartDate(todayStr);
+            setEndDate(todayStr);
+          }}
+          className={`relative overflow-hidden bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-700 rounded-2xl p-4 text-white shadow-lg hover:shadow-2xl hover:scale-[1.01] transition-all cursor-pointer group border-2 ${
+            isTodayFiltered ? 'border-white ring-2 ring-emerald-300' : 'border-transparent'
+          }`}
+          title="Click to view only today's transactions"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm group-hover:bg-white/30 transition-all">
+              <DollarSign className="h-5 w-5 text-white" />
+            </div>
+            <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-white/25 backdrop-blur-sm text-white shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-emerald-200 animate-pulse"></span>
+              Today's Sales
+            </span>
+          </div>
+          <p className="text-xs text-emerald-100 font-medium mb-0.5">Today's Collection</p>
+          <p className="text-2xl font-extrabold tracking-tight">
+            {formatCurrency(todaySummary.netRevenue)}
+          </p>
+          <div className="mt-2 pt-2 border-t border-white/20 flex flex-wrap items-center justify-between text-xs text-emerald-50 gap-1">
+            <span className="font-medium">{todaySummary.count} payment{todaySummary.count !== 1 ? 's' : ''}</span>
+            <span className="opacity-95">
+              Cash: {formatCurrency(todaySummary.cash)} | UPI: {formatCurrency(todaySummary.upi)}
+            </span>
+          </div>
+          {todaySummary.totalRefunds > 0 && (
+            <p className="text-[11px] text-amber-200 mt-1">
+              Refunds today: {formatCurrency(todaySummary.totalRefunds)} ({todaySummary.refundCount})
+            </p>
+          )}
         </div>
-        <p className="text-xs opacity-80 mb-0.5">Net Revenue</p>
-        <p className="text-xl font-bold">{formatCurrency(summary.netRevenue)}</p>
-        <p className="text-xs opacity-70 mt-1">
-          {summary.refundCount} refund{summary.refundCount !== 1 ? 's' : ''} deducted
-        </p>
-      </div>
 
-      {/* ✅ Total Refunds Card */}
-      <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
-        <div className="flex items-center justify-between mb-2">
-          <TrendingDown className="h-6 w-6 opacity-80" />
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/20">
-            {summary.refundCount} refunds
-          </span>
+        {/* ✅ Total Revenue Card (Current Period) */}
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+          <div className="flex items-center justify-between mb-2">
+            <Wallet className="h-6 w-6 opacity-80" />
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+              summary.growth >= 0 ? 'bg-green-400/30' : 'bg-red-400/30'
+            }`}>
+              {summary.growth >= 0 ? '↑' : '↓'} {Math.abs(summary.growth).toFixed(1)}%
+            </span>
+          </div>
+          <p className="text-xs opacity-80 mb-0.5">Total Revenue</p>
+          <p className="text-xl font-bold">{formatCurrency(summary.totalRevenue)}</p>
+          <p className="text-xs opacity-70 mt-1">{summary.totalCount} transactions</p>
         </div>
-        <p className="text-xs opacity-80 mb-0.5">Total Refunds</p>
-        <p className="text-xl font-bold">{formatCurrency(summary.totalRefunds)}</p>
-        <p className="text-xs opacity-70 mt-1">
-          {summary.totalCount > 0 ? ((summary.totalRefunds / (summary.totalRevenue + summary.totalRefunds)) * 100).toFixed(1) : 0}% of gross
-        </p>
-      </div>
 
-      {/* ✅ GST Card */}
-      <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
-        <div className="flex items-center justify-between mb-2">
-          <Building className="h-6 w-6 opacity-80" />
+        {/* ✅ Net Revenue Card (Revenue - Refunds) */}
+        <div className="bg-gradient-to-r from-emerald-600 to-green-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+          <div className="flex items-center justify-between mb-2">
+            <TrendingUp className="h-6 w-6 opacity-80" />
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/20">
+              Net
+            </span>
+          </div>
+          <p className="text-xs opacity-80 mb-0.5">Net Revenue</p>
+          <p className="text-xl font-bold">{formatCurrency(summary.netRevenue)}</p>
+          <p className="text-xs opacity-70 mt-1">
+            {summary.refundCount} refund{summary.refundCount !== 1 ? 's' : ''} deducted
+          </p>
         </div>
-        <p className="text-xs opacity-80 mb-0.5">GST Collected</p>
-        <p className="text-xl font-bold">{formatCurrency(summary.totalGST)}</p>
-        <p className="text-xs opacity-70 mt-1">CGST + SGST</p>
+
+        {/* ✅ Total Refunds Card */}
+        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+          <div className="flex items-center justify-between mb-2">
+            <TrendingDown className="h-6 w-6 opacity-80" />
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/20">
+              {summary.refundCount} refunds
+            </span>
+          </div>
+          <p className="text-xs opacity-80 mb-0.5">Total Refunds</p>
+          <p className="text-xl font-bold">{formatCurrency(summary.totalRefunds)}</p>
+          <p className="text-xs opacity-70 mt-1">
+            {summary.totalCount > 0 ? ((summary.totalRefunds / (summary.totalRevenue + summary.totalRefunds)) * 100).toFixed(1) : 0}% of gross
+          </p>
+        </div>
+
+        {/* ✅ GST Card */}
+        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+          <div className="flex items-center justify-between mb-2">
+            <Building className="h-6 w-6 opacity-80" />
+          </div>
+          <p className="text-xs opacity-80 mb-0.5">GST Collected</p>
+          <p className="text-xl font-bold">{formatCurrency(summary.totalGST)}</p>
+          <p className="text-xs opacity-70 mt-1">CGST + SGST</p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredPayments.length / itemsPerPage);
@@ -1082,14 +1221,41 @@ const Payments = () => {
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-6 text-white shadow-xl">
         <div className="flex flex-wrap justify-between items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <CreditCard className="h-8 w-8" />
-              Payment Transactions
-            </h1>
-            <p className="text-blue-100 mt-2">
-              GST: {gymGST} ({gstRate === 0 ? '0% — Exempt' : `${gstRate}% — CGST ${gstRate/2}% + SGST ${gstRate/2}%`}) | {gymName}
-            </p>
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+            <div>
+              <h1 className="text-3xl font-bold flex items-center gap-2">
+                <CreditCard className="h-8 w-8" />
+                Payment Transactions
+              </h1>
+              <p className="text-blue-100 mt-2">
+                GST: {gymGST} ({gstRate === 0 ? '0% — Exempt' : `${gstRate}% — CGST ${gstRate/2}% + SGST ${gstRate/2}%`}) | {gymName}
+              </p>
+            </div>
+
+            {/* Quick Today's Sales Badge in Header */}
+            <button
+              onClick={() => {
+                const todayStr = new Date().toLocaleDateString('en-CA');
+                setStartDate(todayStr);
+                setEndDate(todayStr);
+              }}
+              className="text-left bg-white/15 hover:bg-white/25 border border-white/25 rounded-xl px-4 py-2 flex items-center gap-3 backdrop-blur-sm transition-all shadow-inner"
+              title="Click to filter transactions for today"
+            >
+              <div className="w-10 h-10 rounded-lg bg-emerald-500 flex items-center justify-center text-white shadow-md">
+                <DollarSign className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-emerald-200 uppercase tracking-wider">Today's Collection</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-xl font-extrabold text-white">{formatCurrency(todaySummary.netRevenue)}</span>
+                  <span className="text-xs text-blue-100">({todaySummary.count} {todaySummary.count === 1 ? 'trans' : 'trans'})</span>
+                </div>
+              </div>
+            </button>
           </div>
           <div className="flex gap-2">
             <button
@@ -1223,7 +1389,22 @@ const Payments = () => {
             </div>
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                const todayStr = new Date().toLocaleDateString('en-CA');
+                setStartDate(todayStr);
+                setEndDate(todayStr);
+              }}
+              className={`px-4 py-2 rounded-lg transition-colors font-medium text-sm flex items-center gap-1.5 ${
+                startDate === new Date().toLocaleDateString('en-CA') && endDate === new Date().toLocaleDateString('en-CA')
+                  ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300'
+                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              Today
+            </button>
             <button
               onClick={() => {
                 const today = new Date();
@@ -1232,7 +1413,7 @@ const Payments = () => {
                 setStartDate(startOfWeek.toISOString().split('T')[0]);
                 setEndDate(today.toISOString().split('T')[0]);
               }}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
             >
               This Week
             </button>
@@ -1243,7 +1424,7 @@ const Payments = () => {
                 setStartDate(startOfMonth.toISOString().split('T')[0]);
                 setEndDate(today.toISOString().split('T')[0]);
               }}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
             >
               This Month
             </button>
@@ -1254,7 +1435,7 @@ const Payments = () => {
                 setStartDate(startOfYear.toISOString().split('T')[0]);
                 setEndDate(today.toISOString().split('T')[0]);
               }}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
             >
               This Year
             </button>

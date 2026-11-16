@@ -1,13 +1,13 @@
 // src/pages/Leads.jsx - Updated with date field in form
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Search, Phone, Mail, User, Calendar,
   MoreVertical, Edit2, Trash2, X, ChevronDown, RefreshCw,
   UserCheck, Clock, AlertCircle, Star, Zap,
   MessageCircle, Instagram, Facebook, Globe, Users, Share2, Copy, LinkIcon, Download, CheckCircle as CheckCircleIcon,
   Flame, Sun, Snowflake, MessageSquare, History, ArrowLeft, Target, DollarSign, Building, Tag, UserPlus, TrendingUp, Award,
-  Shield, Filter, Calendar as CalendarIcon, FileSpreadsheet
+  Shield, Filter, Calendar as CalendarIcon, FileSpreadsheet, Loader2
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -27,29 +27,29 @@ try {
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG = {
-  new:             { label: 'New',            color: 'bg-blue-100 text-blue-700 border-blue-200' },
-  contacted:       { label: 'Contacted',      color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-  interested:      { label: 'Interested',     color: 'bg-green-100 text-green-700 border-green-200' },
-  not_interested:  { label: 'Not Interested', color: 'bg-red-100 text-red-700 border-red-200' },
-  converted:       { label: 'Converted',      color: 'bg-purple-100 text-purple-700 border-purple-200' },
-  lost:            { label: 'Lost',           color: 'bg-gray-100 text-gray-500 border-gray-200' },
+  new: { label: 'New', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+  contacted: { label: 'Contacted', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  interested: { label: 'Interested', color: 'bg-green-100 text-green-700 border-green-200' },
+  not_interested: { label: 'Not Interested', color: 'bg-red-100 text-red-700 border-red-200' },
+  converted: { label: 'Converted', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+  lost: { label: 'Lost', color: 'bg-gray-100 text-gray-500 border-gray-200' },
 };
 
 const SOURCE_CONFIG = {
-  walk_in:    { label: 'Walk-in',    icon: User },
-  phone_call: { label: 'Phone',      icon: Phone },
-  whatsapp:   { label: 'WhatsApp',   icon: MessageCircle },
-  instagram:  { label: 'Instagram',  icon: Instagram },
-  facebook:   { label: 'Facebook',   icon: Facebook },
-  google:     { label: 'Google',     icon: Globe },
-  referral:   { label: 'Referral',   icon: Users },
-  website:    { label: 'Website',    icon: Globe },
-  public_form:{ label: 'Public Form', icon: LinkIcon },
-  other:      { label: 'Other',      icon: Star },
+  walk_in: { label: 'Walk-in', icon: User },
+  phone_call: { label: 'Phone', icon: Phone },
+  whatsapp: { label: 'WhatsApp', icon: MessageCircle },
+  instagram: { label: 'Instagram', icon: Instagram },
+  facebook: { label: 'Facebook', icon: Facebook },
+  google: { label: 'Google', icon: Globe },
+  referral: { label: 'Referral', icon: Users },
+  website: { label: 'Website', icon: Globe },
+  public_form: { label: 'Public Form', icon: LinkIcon },
+  other: { label: 'Other', icon: Star },
 };
 
 const LEAD_QUALITY_CONFIG = {
-  hot:  { label: 'Hot',  color: 'bg-red-100 text-red-700', icon: Flame, priority: 1 },
+  hot: { label: 'Hot', color: 'bg-red-100 text-red-700', icon: Flame, priority: 1 },
   warm: { label: 'Warm', color: 'bg-orange-100 text-orange-700', icon: Sun, priority: 2 },
   cold: { label: 'Cold', color: 'bg-blue-100 text-blue-700', icon: Snowflake, priority: 3 },
 };
@@ -80,9 +80,9 @@ const formatDate = (dt) => {
 
 const formatDateTime = (dt) => {
   if (!dt) return '—';
-  return new Date(dt).toLocaleString('en-IN', { 
-    day: 'numeric', 
-    month: 'short', 
+  return new Date(dt).toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
@@ -102,28 +102,72 @@ const formatFollowUp = (dt) => {
 
 // ── Lead Quality Badge ──────────────────────────────────────────────────────
 const LeadQualityBadge = ({ quality, onChange }) => {
-  const config = LEAD_QUALITY_CONFIG[quality];
-  if (!config) return null;
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  const config = LEAD_QUALITY_CONFIG[quality] || LEAD_QUALITY_CONFIG.warm;
   const Icon = config.icon;
-  
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isOpen]);
+
   return (
-    <div className="group relative">
-      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${config.color} cursor-pointer hover:opacity-80 transition-opacity`}>
+    <div className="relative inline-block" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (onChange) setIsOpen(prev => !prev);
+        }}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${config.color} transition-all ${onChange ? 'cursor-pointer hover:opacity-85 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400' : ''
+          }`}
+      >
         <Icon className="h-3.5 w-3.5" />
-        {config.label}
-      </span>
-      {onChange && (
-        <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-10 hidden group-hover:block min-w-[100px]">
-          {Object.entries(LEAD_QUALITY_CONFIG).map(([q, cfg]) => (
-            <button
-              key={q}
-              onClick={() => onChange(q)}
-              className={`flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-gray-50 transition-colors ${quality === q ? 'bg-gray-50' : ''}`}
-            >
-              <cfg.icon className="h-3 w-3" />
-              <span className={cfg.color.split(' ')[1]}>{cfg.label}</span>
-            </button>
-          ))}
+        <span>{config.label}</span>
+        {onChange && (
+          <ChevronDown className={`h-3 w-3 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+
+      {onChange && isOpen && (
+        <div
+          className="absolute left-0 top-full mt-1.5 bg-white rounded-xl shadow-xl border border-gray-100 z-50 py-1 min-w-[110px]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {Object.entries(LEAD_QUALITY_CONFIG).map(([q, cfg]) => {
+            const QIcon = cfg.icon;
+            const isSelected = quality === q;
+            return (
+              <button
+                key={q}
+                type="button"
+                onClick={() => {
+                  onChange(q);
+                  setIsOpen(false);
+                }}
+                className={`flex items-center gap-2 w-full px-3 py-1.5 text-xs transition-colors text-left ${isSelected ? 'bg-gray-100 font-bold' : 'hover:bg-gray-50 text-gray-700'
+                  }`}
+              >
+                <QIcon className="h-3 w-3" />
+                <span className={cfg.color.split(' ')[1]}>{cfg.label}</span>
+                {isSelected && <span className="ml-auto text-blue-600 font-bold">✓</span>}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -345,16 +389,16 @@ const ConvertToMemberModal = ({ lead, onClose, onConverted }) => {
 const LeadModal = ({ lead, onClose, onSave }) => {
   const [form, setForm] = useState(lead
     ? {
-        ...lead,
-        age: lead.age ?? '',
-        budget: lead.budget ?? '',
-        lead_quality: lead.lead_quality ?? 'warm',
-        assigned_to: lead.assigned_to ?? '',
-        created_date: lead.created_date || lead.created_at?.split('T')[0] || '',  // ✅ ADD THIS
-        next_follow_up: lead.next_follow_up
-          ? new Date(lead.next_follow_up).toISOString().slice(0, 16)
-          : '',
-      }
+      ...lead,
+      age: lead.age ?? '',
+      budget: lead.budget ?? '',
+      lead_quality: lead.lead_quality ?? 'warm',
+      assigned_to: lead.assigned_to ?? '',
+      created_date: lead.created_date || lead.created_at?.split('T')[0] || '',  // ✅ ADD THIS
+      next_follow_up: lead.next_follow_up
+        ? new Date(lead.next_follow_up).toISOString().slice(0, 16)
+        : '',
+    }
     : { ...EMPTY_FORM }
   );
   const [saving, setSaving] = useState(false);
@@ -370,10 +414,10 @@ const LeadModal = ({ lead, onClose, onSave }) => {
     try {
       setLoadingStaff(true);
       setStaffError(null);
-      
+
       const response = await api.get('/gym/leads/staff-list');
       console.log('Staff list response:', response.data);
-      
+
       if (response.data && Array.isArray(response.data)) {
         if (response.data.length === 0) {
           setStaffError('No staff members found. Please add staff members first.');
@@ -440,7 +484,7 @@ const LeadModal = ({ lead, onClose, onSave }) => {
   };
 
   const phoneKeyDown = (e) => {
-    const allowed = new Set(['Backspace','Delete','Tab','Escape','Enter','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End']);
+    const allowed = new Set(['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
     if (!e.ctrlKey && !e.metaKey && !allowed.has(e.key) && !/^[0-9+\- ]$/.test(e.key)) e.preventDefault();
   };
 
@@ -494,11 +538,11 @@ const LeadModal = ({ lead, onClose, onSave }) => {
           {field('Email', 'email', 'email', { placeholder: 'john@example.com' })}
           {field('Age', 'age', 'number', { min: 10, max: 100, placeholder: '25' })}
           {select('Gender', 'gender', GENDER_OPTIONS)}
-          
+
           {/* ✅ CREATED DATE FIELD - Allows back-dating */}
-          {field('Lead Date', 'created_date', 'date', { 
+          {field('Lead Date', 'created_date', 'date', {
             max: new Date().toISOString().split('T')[0],
-            title: 'Set the date when this lead was created. Can be back-dated.' 
+            title: 'Set the date when this lead was created. Can be back-dated.'
           })}
 
           <div>
@@ -513,9 +557,9 @@ const LeadModal = ({ lead, onClose, onSave }) => {
               <option value="cold">❄️ Cold - Low interest, nurture slowly</option>
             </select>
           </div>
-          
+
           {select('Lead Source', 'source', Object.entries(SOURCE_CONFIG).map(([v, c]) => ({ value: v, label: c.label })))}
-          
+
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">
               Assigned Staff (Who took this enquiry?)
@@ -548,7 +592,7 @@ const LeadModal = ({ lead, onClose, onSave }) => {
               </p>
             )}
           </div>
-          
+
           {select('Interest', 'interest', INTEREST_OPTIONS)}
           {select('Preferred Plan', 'preferred_plan', PLAN_OPTIONS)}
           {field('Budget (approx.)', 'budget', 'number', { min: 0, placeholder: '2000' })}
@@ -640,7 +684,7 @@ const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange, onConvert, onQual
               <Edit2 className="h-4 w-4" /> Edit Lead
             </button>
           )}
-          
+
           <div className="border-t border-gray-100 my-1" />
           <p className="px-4 py-1 text-xs text-gray-400 font-semibold uppercase tracking-wide">Change Quality</p>
           {quickQualities.map(q => {
@@ -657,7 +701,7 @@ const ActionsMenu = ({ lead, onEdit, onDelete, onStatusChange, onConvert, onQual
               </button>
             );
           })}
-          
+
           <div className="border-t border-gray-100 my-1" />
           <p className="px-4 py-1 text-xs text-gray-400 font-semibold uppercase tracking-wide">Quick Status</p>
           {quickStatuses.map(s => (
@@ -710,12 +754,12 @@ const Leads = () => {
   const [filterSource, setFilterSource] = useState('');
   const [filterQuality, setFilterQuality] = useState('');
   const [filterStaff, setFilterStaff] = useState('');
-  
+
   // ===== DATE RANGE FILTERS =====
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [showDateFilter, setShowDateFilter] = useState(false);
-  
+
   const [showModal, setShowModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [editLead, setEditLead] = useState(null);
@@ -728,6 +772,11 @@ const Leads = () => {
   const [showBulkImportModal, setShowBulkImportModal] = useState(false);
   const [staffList, setStaffList] = useState([]);
   const [staffStats, setStaffStats] = useState([]);
+
+  // Bulk selection state
+  const [selectedLeads, setSelectedLeads] = useState([]);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [deletingBulk, setDeletingBulk] = useState(false);
 
   // Permission checks
   const canViewLeads = hasPermission('view_leads');
@@ -745,7 +794,7 @@ const Leads = () => {
       if (filterQuality) params.append('lead_quality', filterQuality);
       if (filterStaff) params.append('assigned_to', filterStaff);
       if (search) params.append('search', search);
-      
+
       // ===== ADD DATE RANGE PARAMS =====
       if (filterDateFrom) params.append('date_from', filterDateFrom);
       if (filterDateTo) params.append('date_to', filterDateTo);
@@ -754,7 +803,9 @@ const Leads = () => {
         api.get(`/gym/leads?${params}`),
         api.get('/gym/leads/stats/summary'),
       ]);
-      setLeads(leadsRes.data || []);
+      const fetchedLeads = leadsRes.data || [];
+      setLeads(fetchedLeads);
+      setSelectedLeads(prev => prev.filter(id => fetchedLeads.some(l => l.id === id)));
       setStats(statsRes.data || {});
     } catch (err) {
       console.error('Failed to load leads:', err);
@@ -883,6 +934,7 @@ const Leads = () => {
     try {
       await api.delete(`/gym/leads/${id}`);
       toast.success('Lead deleted');
+      setSelectedLeads(prev => prev.filter(leadId => leadId !== id));
       setDeleteConfirm(null);
       fetchLeads();
       fetchStaffStats();
@@ -894,6 +946,54 @@ const Leads = () => {
         toast.error('Failed to delete lead');
       }
     }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!canDeleteLead) {
+      toast.error('You don\'t have permission to delete leads');
+      return;
+    }
+    if (selectedLeads.length === 0) return;
+
+    setDeletingBulk(true);
+    try {
+      await api.post('/gym/leads/bulk-delete', { lead_ids: selectedLeads });
+      toast.success(`${selectedLeads.length} lead${selectedLeads.length > 1 ? 's' : ''} deleted successfully`);
+      setSelectedLeads([]);
+      setShowBulkDeleteConfirm(false);
+      fetchLeads();
+      fetchStaffStats();
+    } catch (error) {
+      console.error('Bulk delete error:', error);
+      // Fallback: delete leads individually if bulk route fails
+      try {
+        await Promise.all(selectedLeads.map(id => api.delete(`/gym/leads/${id}`)));
+        toast.success(`${selectedLeads.length} lead${selectedLeads.length > 1 ? 's' : ''} deleted successfully`);
+        setSelectedLeads([]);
+        setShowBulkDeleteConfirm(false);
+        fetchLeads();
+        fetchStaffStats();
+      } catch (fallbackError) {
+        console.error('Fallback delete error:', fallbackError);
+        toast.error(error.response?.data?.detail || 'Failed to delete selected leads');
+      }
+    } finally {
+      setDeletingBulk(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedLeads.length === leads.length && leads.length > 0) {
+      setSelectedLeads([]);
+    } else {
+      setSelectedLeads(leads.map(l => l.id));
+    }
+  };
+
+  const toggleSelectLead = (id) => {
+    setSelectedLeads(prev =>
+      prev.includes(id) ? prev.filter(lId => lId !== id) : [...prev, id]
+    );
   };
 
   const handleStatusChange = async (lead, newStatus) => {
@@ -1000,6 +1100,25 @@ const Leads = () => {
           <p className="text-sm text-gray-500 mt-0.5">Track and manage incoming gym inquiries</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {selectedLeads.length > 0 && canDeleteLead && (
+            <button
+              onClick={() => setShowBulkDeleteConfirm(true)}
+              className="flex items-center gap-1.5 bg-red-600 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold hover:bg-red-700 transition-all shadow-sm"
+              title={`Delete ${selectedLeads.length} selected leads`}
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>Delete ({selectedLeads.length})</span>
+            </button>
+          )}
+          {selectedLeads.length > 0 && (
+            <button
+              onClick={() => setSelectedLeads([])}
+              className="p-2 rounded-xl border border-gray-200 hover:bg-gray-100 text-gray-600 transition-colors"
+              title="Clear selection"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={() => { setLoading(true); fetchLeads(); fetchStaffStats(); }}
             className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-600"
@@ -1046,9 +1165,8 @@ const Leads = () => {
       <div className="grid grid-cols-3 gap-4">
         <button
           onClick={() => setFilterQuality(filterQuality === 'hot' ? '' : 'hot')}
-          className={`bg-gradient-to-r from-red-50 to-red-100 rounded-2xl p-4 border transition-all ${
-            filterQuality === 'hot' ? 'border-red-500 ring-2 ring-red-200' : 'border-red-200 hover:shadow-md'
-          }`}
+          className={`bg-gradient-to-r from-red-50 to-red-100 rounded-2xl p-4 border transition-all ${filterQuality === 'hot' ? 'border-red-500 ring-2 ring-red-200' : 'border-red-200 hover:shadow-md'
+            }`}
         >
           <div className="flex items-center justify-between">
             <div>
@@ -1059,12 +1177,11 @@ const Leads = () => {
           </div>
           <p className="text-xs text-red-600 mt-1">Ready to join, high priority</p>
         </button>
-        
+
         <button
           onClick={() => setFilterQuality(filterQuality === 'warm' ? '' : 'warm')}
-          className={`bg-gradient-to-r from-orange-50 to-orange-100 rounded-2xl p-4 border transition-all ${
-            filterQuality === 'warm' ? 'border-orange-500 ring-2 ring-orange-200' : 'border-orange-200 hover:shadow-md'
-          }`}
+          className={`bg-gradient-to-r from-orange-50 to-orange-100 rounded-2xl p-4 border transition-all ${filterQuality === 'warm' ? 'border-orange-500 ring-2 ring-orange-200' : 'border-orange-200 hover:shadow-md'
+            }`}
         >
           <div className="flex items-center justify-between">
             <div>
@@ -1075,12 +1192,11 @@ const Leads = () => {
           </div>
           <p className="text-xs text-orange-600 mt-1">Interested, need follow-up</p>
         </button>
-        
+
         <button
           onClick={() => setFilterQuality(filterQuality === 'cold' ? '' : 'cold')}
-          className={`bg-gradient-to-r from-blue-50 to-blue-100 rounded-2xl p-4 border transition-all ${
-            filterQuality === 'cold' ? 'border-blue-500 ring-2 ring-blue-200' : 'border-blue-200 hover:shadow-md'
-          }`}
+          className={`bg-gradient-to-r from-blue-50 to-blue-100 rounded-2xl p-4 border transition-all ${filterQuality === 'cold' ? 'border-blue-500 ring-2 ring-blue-200' : 'border-blue-200 hover:shadow-md'
+            }`}
         >
           <div className="flex items-center justify-between">
             <div>
@@ -1102,12 +1218,11 @@ const Leads = () => {
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {staffStats.map(staff => (
-              <div 
+              <div
                 key={staff.staff_id}
                 onClick={() => setFilterStaff(filterStaff === staff.user_id ? '' : staff.user_id)}
-                className={`p-3 rounded-xl cursor-pointer transition-all ${
-                  filterStaff === staff.user_id ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 hover:bg-gray-100'
-                }`}
+                className={`p-3 rounded-xl cursor-pointer transition-all ${filterStaff === staff.user_id ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 hover:bg-gray-100'
+                  }`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-medium text-gray-900 text-sm">{staff.staff_name}</p>
@@ -1145,7 +1260,7 @@ const Leads = () => {
             className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
           />
         </div>
-        
+
         <select
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
@@ -1156,7 +1271,7 @@ const Leads = () => {
             <option key={v} value={v}>{c.label}</option>
           ))}
         </select>
-        
+
         <select
           value={filterSource}
           onChange={e => setFilterSource(e.target.value)}
@@ -1167,7 +1282,7 @@ const Leads = () => {
             <option key={v} value={v}>{c.label}</option>
           ))}
         </select>
-        
+
         <select
           value={filterStaff}
           onChange={e => setFilterStaff(e.target.value)}
@@ -1183,11 +1298,10 @@ const Leads = () => {
         {/* ===== DATE FILTER BUTTON ===== */}
         <button
           onClick={() => setShowDateFilter(!showDateFilter)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm border transition-all ${
-            isDateFilterActive
-              ? 'bg-blue-50 border-blue-300 text-blue-700'
-              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-          }`}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm border transition-all ${isDateFilterActive
+            ? 'bg-blue-50 border-blue-300 text-blue-700'
+            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
         >
           <CalendarIcon className="h-4 w-4" />
           <span>Date</span>
@@ -1231,7 +1345,7 @@ const Leads = () => {
             )}
           </div>
         )}
-        
+
         {(filterQuality || filterStatus || filterSource || filterStaff || search || isDateFilterActive) && (
           <button
             onClick={() => {
@@ -1268,6 +1382,42 @@ const Leads = () => {
         </div>
       )}
 
+      {/* Bulk Selection Toolbar */}
+      {selectedLeads.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 flex items-center justify-between flex-wrap gap-2 animate-fadeIn shadow-sm">
+          <div className="flex items-center gap-2 text-sm text-blue-900 font-medium">
+            <span className="inline-flex items-center justify-center bg-blue-600 text-white text-xs font-bold rounded-full h-5 w-5">
+              {selectedLeads.length}
+            </span>
+            <span>of {leads.length} leads selected</span>
+            <span className="text-blue-300">|</span>
+            <button
+              onClick={toggleSelectAll}
+              className="text-blue-700 hover:text-blue-900 underline text-xs font-semibold cursor-pointer"
+            >
+              {selectedLeads.length === leads.length ? 'Deselect all' : 'Select all'}
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            {canDeleteLead && (
+              <button
+                onClick={() => setShowBulkDeleteConfirm(true)}
+                className="flex items-center gap-1.5 bg-red-600 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold hover:bg-red-700 transition-all shadow-sm"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete Selected ({selectedLeads.length})
+              </button>
+            )}
+            <button
+              onClick={() => setSelectedLeads([])}
+              className="px-2.5 py-1.5 text-xs text-gray-600 hover:text-gray-900 hover:bg-blue-100/70 rounded-lg transition-colors font-medium flex items-center gap-1"
+            >
+              <X className="h-3.5 w-3.5" /> Clear selection
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
@@ -1295,6 +1445,15 @@ const Leads = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100 text-xs uppercase tracking-wide text-gray-500">
+                  <th className="px-4 py-3 w-10 text-left">
+                    <input
+                      type="checkbox"
+                      checked={selectedLeads.length === leads.length && leads.length > 0}
+                      onChange={toggleSelectAll}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-4 w-4"
+                      title={selectedLeads.length === leads.length ? 'Deselect all' : 'Select all'}
+                    />
+                  </th>
                   <th className="text-left px-5 py-3 font-semibold">Lead</th>
                   <th className="text-left px-4 py-3 font-semibold">Contact</th>
                   <th className="text-left px-4 py-3 font-semibold">Quality</th>
@@ -1311,19 +1470,27 @@ const Leads = () => {
                 {leads.map(lead => {
                   const followUp = formatFollowUp(lead.next_follow_up);
                   const SrcIcon = SOURCE_CONFIG[lead.source]?.icon || Star;
-                  
+                  const isSelected = selectedLeads.includes(lead.id);
+
                   return (
-                    <tr key={lead.id} className="hover:bg-gray-50/60 transition-colors group">
+                    <tr key={lead.id} className={`hover:bg-gray-50/60 transition-colors group ${isSelected ? 'bg-blue-50/40' : ''}`}>
+                      <td className="px-4 py-3 w-10">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectLead(lead.id)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-4 w-4"
+                        />
+                      </td>
                       <td className="px-5 py-3">
-                        <div 
+                        <div
                           className="flex items-center gap-3 cursor-pointer"
                           onClick={() => handleViewProfile(lead)}
                         >
-                          <div className={`h-9 w-9 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${
-                            lead.lead_quality === 'hot' ? 'bg-gradient-to-br from-red-500 to-orange-500' :
+                          <div className={`h-9 w-9 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${lead.lead_quality === 'hot' ? 'bg-gradient-to-br from-red-500 to-orange-500' :
                             lead.lead_quality === 'warm' ? 'bg-gradient-to-br from-orange-400 to-yellow-500' :
-                            'bg-gradient-to-br from-blue-400 to-cyan-500'
-                          }`}>
+                              'bg-gradient-to-br from-blue-400 to-cyan-500'
+                            }`}>
                             {lead.full_name.charAt(0).toUpperCase()}
                           </div>
                           <div>
@@ -1358,8 +1525,8 @@ const Leads = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <LeadQualityBadge 
-                          quality={lead.lead_quality || 'warm'} 
+                        <LeadQualityBadge
+                          quality={lead.lead_quality || 'warm'}
                           onChange={canEditLead ? (newQuality) => handleQualityChange(lead, newQuality) : null}
                         />
                       </td>
@@ -1507,6 +1674,60 @@ const Leads = () => {
                 className="flex-1 bg-red-600 text-white rounded-xl py-2 text-sm font-semibold hover:bg-red-700"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full animate-fadeIn">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-11 w-11 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <AlertCircle className="h-6 w-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">Delete Selected Leads?</h3>
+                <p className="text-sm text-gray-500">
+                  {selectedLeads.length} lead{selectedLeads.length !== 1 ? 's' : ''} selected
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-700 mb-5 leading-relaxed">
+              Are you sure you want to permanently delete <strong>{selectedLeads.length}</strong> selected lead{selectedLeads.length !== 1 ? 's' : ''}?
+              All associated comments, follow-up history, and notes will also be permanently removed.
+              <span className="block mt-2 text-xs font-semibold text-red-600">
+                ⚠️ This action cannot be undone.
+              </span>
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                disabled={deletingBulk}
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingBulk}
+                onClick={handleBulkDelete}
+                className="flex-1 bg-red-600 text-white rounded-xl py-2.5 text-sm font-semibold hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+              >
+                {deletingBulk ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    Delete {selectedLeads.length} Lead{selectedLeads.length !== 1 ? 's' : ''}
+                  </>
+                )}
               </button>
             </div>
           </div>

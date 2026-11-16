@@ -35,13 +35,13 @@ const StatCard = ({ icon: Icon, label, value, sub, color = 'green' }) => {
     purple: 'border-purple-500 bg-purple-900/20 text-purple-400',
   };
   return (
-    <div className={`bg-gray-800 rounded-2xl p-5 border-l-4 ${colors[color]}`}>
-      <div className={`inline-flex p-2.5 rounded-xl mb-3 ${colors[color]}`}>
-        <Icon className="h-5 w-5" />
+    <div className={`bg-gray-800 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 border-l-4 ${colors[color]}`}>
+      <div className={`inline-flex p-2 sm:p-2.5 rounded-lg sm:rounded-xl mb-2 sm:mb-3 ${colors[color]}`}>
+        <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
       </div>
-      <p className="text-gray-400 text-sm">{label}</p>
-      <p className="text-3xl font-bold text-white mt-1">{value}</p>
-      {sub && <p className="text-xs text-gray-500 mt-2">{sub}</p>}
+      <p className="text-gray-400 text-xs sm:text-sm truncate">{label}</p>
+      <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mt-0.5 sm:mt-1 truncate">{value}</p>
+      {sub && <p className="text-[11px] sm:text-xs text-gray-500 mt-1.5 sm:mt-2 truncate">{sub}</p>}
     </div>
   );
 };
@@ -90,15 +90,15 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
       </button>
 
       {/* Gym Header */}
-      <div className="bg-gradient-to-r from-purple-900/40 to-indigo-900/40 border border-purple-800/50 rounded-2xl p-6">
+      <div className="bg-gradient-to-r from-purple-900/40 to-indigo-900/40 border border-purple-800/50 rounded-xl sm:rounded-2xl p-4 sm:p-6">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
+          <div className="flex items-start gap-3 sm:gap-4 min-w-0">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white text-xl sm:text-2xl font-bold flex-shrink-0">
               {gym.name?.charAt(0)}
             </div>
-            <div>
-              <h2 className="text-2xl font-bold text-white">{gym.name}</h2>
-              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+            <div className="min-w-0">
+              <h2 className="text-xl sm:text-2xl font-bold text-white truncate">{gym.name}</h2>
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1.5">
                 <span className={`px-2.5 py-0.5 text-xs rounded-full ${statusBadge(gym.subscription_status)}`}>
                   {gym.subscription_status}
                 </span>
@@ -120,7 +120,7 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
             <button
               onClick={() => onSoftwarePlanEdit && onSoftwarePlanEdit(gym)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-600 to-purple-600 hover:from-amber-500 hover:to-purple-500 text-white rounded-lg text-xs font-semibold transition-all shadow-md shadow-purple-900/40"
@@ -302,7 +302,7 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
       <DetailSection title="Staff Members" icon={<Shield className="h-4 w-4 text-orange-400" />}>
         {gym.staff && gym.staff.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[600px] text-sm">
               <thead>
                 <tr className="text-left text-gray-400 border-b border-gray-700">
                   <th className="pb-2 pr-4 font-medium">Name</th>
@@ -345,7 +345,7 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
       <DetailSection title="Membership Plans" icon={<Award className="h-4 w-4 text-yellow-400" />}>
         {gym.plans && gym.plans.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[600px] text-sm">
               <thead>
                 <tr className="text-left text-gray-400 border-b border-gray-700">
                   <th className="pb-2 pr-4 font-medium">Plan Name</th>
@@ -409,7 +409,7 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
 
         {filteredMembers.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[700px] text-sm">
               <thead>
                 <tr className="text-left text-gray-400 border-b border-gray-700">
                   <th className="pb-2 pr-4 font-medium">Name</th>
@@ -461,7 +461,7 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
       <DetailSection title="Recent Payments" icon={<DollarSign className="h-4 w-4 text-emerald-400" />}>
         {gym.recent_payments && gym.recent_payments.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[550px] text-sm">
               <thead>
                 <tr className="text-left text-gray-400 border-b border-gray-700">
                   <th className="pb-2 pr-4 font-medium">Member</th>

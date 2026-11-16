@@ -145,17 +145,17 @@ export default function SoftwarePlanModal({ gym, onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-gray-900 border border-gray-700/80 rounded-2xl w-full max-w-2xl my-8 shadow-2xl overflow-hidden animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-gray-900 border border-gray-700/80 rounded-2xl w-full max-w-2xl my-4 sm:my-8 shadow-2xl overflow-hidden animate-in fade-in duration-200 flex flex-col max-h-[90vh]">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-900/90">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-800 bg-gray-900/90">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-purple-900/30">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-purple-900/30 flex-shrink-0">
               <Crown className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2 flex-wrap">
                 Manage Software Plan
                 <span className="text-xs font-normal text-purple-400 bg-purple-950/60 px-2.5 py-0.5 rounded-full border border-purple-800/50">
                   Gym Owner SaaS
@@ -176,7 +176,7 @@ export default function SoftwarePlanModal({ gym, onClose, onSaved }) {
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-5 sm:space-y-6 overflow-y-auto">
           
           {/* 1. Plan Type Selector (Free, Monthly, Yearly) */}
           <div>
@@ -477,19 +477,19 @@ export default function SoftwarePlanModal({ gym, onClose, onSaved }) {
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-800">
+          <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-2 sm:gap-3 pt-4 border-t border-gray-800">
             <button
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="px-4 py-2 text-sm text-gray-400 hover:text-white rounded-xl hover:bg-gray-800 transition-colors font-medium"
+              className="w-full sm:w-auto px-4 py-2 text-sm text-gray-400 hover:text-white rounded-xl hover:bg-gray-800 transition-colors font-medium text-center"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-sm font-semibold rounded-xl shadow-lg shadow-purple-900/40 transition-all disabled:opacity-50"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-sm font-semibold rounded-xl shadow-lg shadow-purple-900/40 transition-all disabled:opacity-50"
             >
               {saving ? (
                 <>

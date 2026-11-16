@@ -131,27 +131,27 @@ const WhatsAppLogs = () => {
   };
 
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-4 lg:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <MessageSquare className="h-6 w-6 text-green-600" />
-            WhatsApp Message Logs
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <MessageSquare className="h-6 w-6 text-green-600 flex-shrink-0" />
+            <span>WhatsApp Message Logs</span>
           </h1>
-          <p className="text-gray-500 mt-1">Track all WhatsApp messages sent to members</p>
+          <p className="text-sm text-gray-500 mt-1">Track all WhatsApp messages sent to members</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={fetchLogs}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            className="flex-1 sm:flex-none justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 text-sm font-medium"
           >
             <RefreshCw className="h-4 w-4" />
             Refresh
           </button>
           <button
             onClick={handleExport}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+            className="flex-1 sm:flex-none justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm font-medium"
           >
             <Download className="h-4 w-4" />
             Export CSV
@@ -160,32 +160,32 @@ const WhatsAppLogs = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-blue-500">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Total Messages</p>
-          <p className="text-2xl font-bold text-gray-900">{stats.total_messages || 0}</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total_messages || 0}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-green-500">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Delivered</p>
-          <p className="text-2xl font-bold text-green-600">{stats.total_sent || 0}</p>
+          <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.total_sent || 0}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-red-500">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Failed</p>
-          <p className="text-2xl font-bold text-red-600">{stats.total_failed || 0}</p>
+          <p className="text-xl sm:text-2xl font-bold text-red-600">{stats.total_failed || 0}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-yellow-500">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Pending</p>
-          <p className="text-2xl font-bold text-yellow-600">{stats.total_pending || 0}</p>
+          <p className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.total_pending || 0}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-purple-500">
+        <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-purple-500 col-span-2 sm:col-span-1">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Success Rate</p>
-          <p className="text-2xl font-bold text-purple-600">{stats.success_rate || 0}%</p>
+          <p className="text-xl sm:text-2xl font-bold text-purple-600">{stats.success_rate || 0}%</p>
         </div>
       </div>
 
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
@@ -193,14 +193,14 @@ const WhatsAppLogs = () => {
               placeholder="Search by member name, phone..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div className="flex gap-2">
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Status</option>
               <option value="sent">Delivered</option>
@@ -214,16 +214,16 @@ const WhatsAppLogs = () => {
       {/* Logs Table */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+          <table className="min-w-[800px] w-full text-sm divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days Left</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sent At</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Member</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Phone</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Type</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Amount</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Days Left</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Sent At</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -306,8 +306,8 @@ const WhatsAppLogs = () => {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="px-6 py-4 border-t flex items-center justify-between">
-            <div className="text-sm text-gray-700">
+          <div className="px-4 sm:px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs sm:text-sm text-gray-700">
               Showing {startIndex + 1} to {endIndex} of {filteredLogs.length} logs
             </div>
             <div className="flex items-center gap-2">
@@ -318,7 +318,7 @@ const WhatsAppLogs = () => {
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="text-sm text-gray-700">
+              <span className="text-xs sm:text-sm text-gray-700">
                 Page {currentPage} of {totalPages}
               </span>
               <button
