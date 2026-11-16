@@ -46,10 +46,18 @@ export default function ActiveUsersTracker() {
     setTimeout(() => setCopiedIp(null), 2000);
   };
 
+  const parseIST = (isoString) => {
+    if (!isoString) return null;
+    const str = (isoString.includes('+') || isoString.endsWith('Z')) ? isoString : `${isoString}Z`;
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   const formatTimeAgo = (isoString) => {
-    if (!isoString) return '—';
+    const d = parseIST(isoString);
+    if (!d) return '—';
     try {
-      const diffMs = Date.now() - new Date(isoString).getTime();
+      const diffMs = Date.now() - d.getTime();
       const mins = Math.floor(diffMs / 60000);
       if (mins < 1) return 'Just now';
       if (mins < 60) return `${mins}m ago`;
@@ -63,9 +71,11 @@ export default function ActiveUsersTracker() {
   };
 
   const formatClockTime = (isoString) => {
-    if (!isoString) return '—';
+    const d = parseIST(isoString);
+    if (!d) return '—';
     try {
-      return new Date(isoString).toLocaleTimeString('en-IN', {
+      return d.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
         hour: '2-digit',
         minute: '2-digit',
         hour12: true

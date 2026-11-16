@@ -7,12 +7,13 @@ import {
   UserCheck, Clock, AlertCircle, Star, Zap,
   MessageCircle, Instagram, Facebook, Globe, Users, Share2, Copy, LinkIcon, Download, CheckCircle as CheckCircleIcon,
   Flame, Sun, Snowflake, MessageSquare, History, ArrowLeft, Target, DollarSign, Building, Tag, UserPlus, TrendingUp, Award,
-  Shield, Filter, Calendar as CalendarIcon
+  Shield, Filter, Calendar as CalendarIcon, FileSpreadsheet
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import MemberModal from '../components/MemberModal';
 import LeadProfileModal from '../components/LeadProfileModal';
+import LeadBulkImportModal from '../components/LeadBulkImportModal';
 import { usePermissions } from '../hooks/usePermissions';
 
 // Try to import QRCode, but don't fail if not available
@@ -724,6 +725,7 @@ const Leads = () => {
   const [gymSlug, setGymSlug] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showBulkImportModal, setShowBulkImportModal] = useState(false);
   const [staffList, setStaffList] = useState([]);
   const [staffStats, setStaffStats] = useState([]);
 
@@ -1011,6 +1013,15 @@ const Leads = () => {
           >
             <Share2 className="h-4 w-4" /> Share Lead Form
           </button>
+          {canAddLead && (
+            <button
+              onClick={() => setShowBulkImportModal(true)}
+              className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-all shadow-sm"
+              title="Bulk Import Leads from Excel or CSV"
+            >
+              <FileSpreadsheet className="h-4 w-4" /> Import
+            </button>
+          )}
           {canAddLead && (
             <button
               onClick={() => { setEditLead(null); setShowModal(true); }}
@@ -1453,6 +1464,21 @@ const Leads = () => {
           onUpdate={() => { fetchLeads(); fetchStaffStats(); }}
         />
       )}
+
+      {/* Bulk Import Modal */}
+      <LeadBulkImportModal
+        isOpen={showBulkImportModal}
+        onClose={() => {
+          setShowBulkImportModal(false);
+          fetchLeads();
+          fetchStaffStats();
+        }}
+        onImportComplete={() => {
+          fetchLeads();
+          fetchStaffStats();
+        }}
+        staffList={staffList}
+      />
 
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
