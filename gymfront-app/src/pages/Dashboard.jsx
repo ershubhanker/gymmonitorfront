@@ -172,22 +172,12 @@ const Dashboard = () => {
   const notifMenuRef = useRef(null);
   const notifButtonRef = useRef(null);
 
-  // ─── PERMISSION CHECKS FOR DASHBOARD CARDS ──────────────────────────────
+  // ─── PERMISSION CHECKS ──────────────────────────────
   const canViewDashboard = hasPermission('view_dashboard');
   const effectiveRole = user?.role || userRole;
   const isAdmin = effectiveRole === 'gym_owner' || effectiveRole === 'super_admin';
   
-  const canViewMemberStats = isAdmin || hasPermission('dashboard_view_member_stats') || hasPermission('view_members');
-  const canViewRevenueStats = isAdmin || hasPermission('dashboard_view_revenue_stats') || hasPermission('view_payments');
-  const canViewExpenseStats = isAdmin || hasPermission('dashboard_view_expense_stats') || hasPermission('view_expenses');
-  const canViewBalanceStats = isAdmin || hasPermission('dashboard_view_balance_stats') || hasPermission('view_balances');
-  const canViewLeadStats = isAdmin || hasPermission('dashboard_view_lead_stats') || hasPermission('view_leads');
-  const canViewStaffStats = isAdmin || hasPermission('dashboard_view_staff_stats') || hasPermission('view_staff');
-  const canViewClasses = isAdmin || hasPermission('dashboard_view_classes');
-  const canViewBirthdays = isAdmin || hasPermission('dashboard_view_birthdays') || canViewMemberStats || canViewMembers;
-  const canViewActivity = isAdmin || hasPermission('dashboard_view_activity');
-  const canViewAlerts = isAdmin || hasPermission('dashboard_view_alerts');
-  
+  // Base section permissions (declared first)
   const canViewMembers = isAdmin || hasPermission('view_members');
   const canViewPayments = isAdmin || hasPermission('view_payments');
   const canViewMemberships = isAdmin || hasPermission('view_memberships');
@@ -197,10 +187,22 @@ const Dashboard = () => {
   const canViewAttendance = isAdmin || hasPermission('view_attendance');
   const canViewDevices = isAdmin || hasPermission('view_devices');
   const canViewLeads = isAdmin || hasPermission('view_leads');
-  
   const canViewWhatsApp = isAdmin || hasPermission('view_whatsapp') || hasPermission('manage_whatsapp');
 
-  const canSeeDashboard = isAdmin || canViewDashboard || hasPermission('view_members') || hasPermission('view_payments') || hasPermission('view_attendance');
+  // Dashboard card stats permissions
+  const canViewMemberStats = isAdmin || hasPermission('dashboard_view_member_stats') || canViewMembers;
+  const canViewRevenueStats = isAdmin || hasPermission('dashboard_view_revenue_stats') || canViewPayments;
+  const canViewExpenseStats = isAdmin || hasPermission('dashboard_view_expense_stats') || canViewExpenses;
+  const canViewBalanceStats = isAdmin || hasPermission('dashboard_view_balance_stats') || canViewBalances;
+  const canViewLeadStats = isAdmin || hasPermission('dashboard_view_lead_stats') || canViewLeads;
+  const canViewStaffStats = isAdmin || hasPermission('dashboard_view_staff_stats') || canViewStaff;
+  const canViewClasses = isAdmin || hasPermission('dashboard_view_classes');
+  const canViewBirthdays = isAdmin || hasPermission('dashboard_view_birthdays') || canViewMemberStats || canViewMembers;
+  const canViewActivity = isAdmin || hasPermission('dashboard_view_activity');
+  const canViewAlerts = isAdmin || hasPermission('dashboard_view_alerts');
+
+  // Tab & navigation permissions
+  const canSeeDashboard = isAdmin || canViewDashboard || canViewMembers || canViewPayments || canViewAttendance;
   const canSeeMembers = isAdmin || canViewMembers;
   const canSeePayments = isAdmin || canViewPayments;
   const canSeeMemberships = isAdmin || canViewMemberships;
@@ -226,18 +228,6 @@ const Dashboard = () => {
       }
     }
   }, [user]);
-
-  useEffect(() => {
-    const handleRefresh = () => {
-        fetchDashboardStats();
-    };
-    
-    window.addEventListener('refreshDashboard', handleRefresh);
-    
-    return () => {
-        window.removeEventListener('refreshDashboard', handleRefresh);
-    };
-  }, []);
 
   // Fetch admin notifications (SaaS plan expiry + security alerts)
   const fetchNotifications = useCallback(async () => {
@@ -1057,6 +1047,7 @@ const Dashboard = () => {
     window.addEventListener('dataChanged', handleDataChanged);
     window.addEventListener('leadAdded', handleDataChange);
     window.addEventListener('leadUpdated', handleDataChange);
+    window.addEventListener('refreshDashboard', handleDataChange);
     
     return () => {
       window.removeEventListener('memberAdded', handleDataChange);
@@ -1068,6 +1059,7 @@ const Dashboard = () => {
       window.removeEventListener('dataChanged', handleDataChanged);
       window.removeEventListener('leadAdded', handleDataChange);
       window.removeEventListener('leadUpdated', handleDataChange);
+      window.removeEventListener('refreshDashboard', handleDataChange);
     };
   }, [refreshDashboard]);
 

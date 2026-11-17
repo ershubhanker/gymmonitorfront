@@ -2179,6 +2179,7 @@ const MemberModal = ({ isOpen, onClose,
     address: '', emergency_contact_name: '', emergency_contact_phone: '',
     medical_conditions: '', allergies: '', medications: '',
     id_proof_type: 'aadhar', id_proof_number: '',
+    member_app_id: '',
     plan_id: '', membership_start_date: today, payment_method: 'cash', amount_paid: '',
     discount_applied: '',
     renew_membership: false,
@@ -2353,6 +2354,7 @@ const MemberModal = ({ isOpen, onClose,
               medications: d.medications ?? prev.medications,
               id_proof_type: d.id_proof_type || prev.id_proof_type || 'aadhar',
               id_proof_number: d.id_proof_number || prev.id_proof_number || '',
+              member_app_id: d.member_app_id || prev.member_app_id || '',
             }));
             if (d.id_proof_image) {
               const fullProofUrl = d.id_proof_image.startsWith('http')
@@ -2388,6 +2390,7 @@ const MemberModal = ({ isOpen, onClose,
         medications: member.medications || '',
         id_proof_type: member.id_proof_type || 'aadhar',
         id_proof_number: member.id_proof_number || '',
+        member_app_id: member.member_app_id || '',
         plan_id: (activeMem?.plan_id || member.plan_id || '')?.toString(), 
         membership_start_date: activeMem?.start_date || member.joined_date || today, 
         payment_method: activeMem?.payment_method || 'cash', 
@@ -2614,6 +2617,7 @@ const MemberModal = ({ isOpen, onClose,
         medications: formData.medications?.trim() || null,
         id_proof_type: formData.id_proof_type || null,
         id_proof_number: formData.id_proof_number?.trim() || null,
+        member_app_id: formData.member_app_id?.trim() || null,
       };
   
       console.log('🔍 FORM DATA DEBUG:');
@@ -2923,6 +2927,11 @@ const MemberModal = ({ isOpen, onClose,
                       <option value="other">Other</option>
                       <option value="prefer_not_to_say">Prefer not to say</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Member App ID (Optional)</label>
+                    <input type="text" value={formData.member_app_id} onChange={set('member_app_id')}
+                      className={`${inputCls} font-mono uppercase`} placeholder="e.g. GM-1002" />
                   </div>
                   <div className="md:col-span-2">
                     <label className={labelCls}>Address</label>
