@@ -24,7 +24,9 @@ import {
   Tag, 
   Dumbbell,
   ChevronLeft,
-  ChevronRight, Clock, XCircle, RefreshCw, TrendingDown
+  ChevronRight, Clock, XCircle, RefreshCw, TrendingDown,
+  Receipt,
+  Filter
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
@@ -90,26 +92,57 @@ const Payments = () => {
     other: 0,
   });
 
-  // Helper to extract local YYYY-MM-DD from payment date
-  const getPaymentLocalDateStr = (paymentDate: any) => {
+  // Helper to extract strictly local YYYY-MM-DD (Asia/Kolkata) from payment date
+  const getPaymentLocalDateStr = (paymentDate: any): string => {
     if (!paymentDate) return '';
     try {
       const d = new Date(paymentDate);
       if (!isNaN(d.getTime())) {
-        return d.toLocaleDateString('en-CA');
+        return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
       }
     } catch (e) {}
     return String(paymentDate).split('T')[0].split(' ')[0];
   };
 
-  // Helper to check if a payment happened today
-  const isPaymentToday = (payment: any) => {
+  // Helper to get today's YYYY-MM-DD in Asia/Kolkata
+  const getTodayDateStr = (): string => {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  };
+
+  // Helper to get yesterday's YYYY-MM-DD in Asia/Kolkata
+  const getYesterdayDateStr = (): string => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  };
+
+  // Helper to get start of current week (Monday) in Asia/Kolkata
+  const getStartOfWeekStr = (): string => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(d.setDate(diff));
+    return monday.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  };
+
+  // Helper to get last month start & end dates in Asia/Kolkata
+  const getLastMonthRange = (): { start: string; end: string } => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = d.getMonth();
+    const firstDay = new Date(year, month - 1, 1);
+    const lastDay = new Date(year, month, 0);
+    return {
+      start: firstDay.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }),
+      end: lastDay.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+    };
+  };
+
+  // Helper to check if a payment happened today in Asia/Kolkata
+  const isPaymentToday = (payment: any): boolean => {
     if (!payment || !payment.payment_date) return false;
-    const todayLocal = new Date().toLocaleDateString('en-CA');
-    const todayUtc = new Date().toISOString().split('T')[0];
     const pLocal = getPaymentLocalDateStr(payment.payment_date);
-    const pRaw = String(payment.payment_date).split('T')[0].split(' ')[0];
-    return pLocal === todayLocal || pRaw === todayLocal || pRaw === todayUtc;
+    return pLocal === getTodayDateStr();
   };
 
   // Helper to calculate today's collection from master payment list
@@ -184,12 +217,13 @@ const Payments = () => {
     }
   }, [user?.gst_rate]);
 
-  // ✅ Set initial date range to current month
+  // ✅ Set initial date range to current month in Asia/Kolkata
   useEffect(() => {
-    const today = new Date();
-    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    setStartDate(firstDayOfMonth.toISOString().split('T')[0]);
-    setEndDate(today.toISOString().split('T')[0]);
+    const todayStr = getTodayDateStr();
+    const [year, month] = todayStr.split('-');
+    const firstDayOfMonth = `${year}-${month}-01`;
+    setStartDate(firstDayOfMonth);
+    setEndDate(todayStr);
     fetchPayments();
   }, []);
 
@@ -332,14 +366,24 @@ const Payments = () => {
 
       let filtered = [...payments];
 
-      // ✅ Filter by date range (supporting both UTC and local date formats)
-      if (startDate && endDate && filtered.length > 0) {
-        filtered = filtered.filter(payment => {
-          const rawDate = String(payment.payment_date || '').split('T')[0].split(' ')[0];
-          const localDate = getPaymentLocalDateStr(payment.payment_date);
-          return (rawDate && rawDate >= startDate && rawDate <= endDate) ||
-                 (localDate && localDate >= startDate && localDate <= endDate);
-        });
+      // ✅ Filter strictly by date range using Asia/Kolkata local date
+      if (filtered.length > 0) {
+        if (startDate && endDate) {
+          filtered = filtered.filter(payment => {
+            const pDate = getPaymentLocalDateStr(payment.payment_date);
+            return pDate && pDate >= startDate && pDate <= endDate;
+          });
+        } else if (startDate) {
+          filtered = filtered.filter(payment => {
+            const pDate = getPaymentLocalDateStr(payment.payment_date);
+            return pDate && pDate >= startDate;
+          });
+        } else if (endDate) {
+          filtered = filtered.filter(payment => {
+            const pDate = getPaymentLocalDateStr(payment.payment_date);
+            return pDate && pDate <= endDate;
+          });
+        }
       }
 
       // ✅ Filter by search term
@@ -380,86 +424,90 @@ const Payments = () => {
       // ✅ CALCULATE SUMMARY WITH REFUNDS PROPERLY HANDLED
       // ============================================================
       
-      // Separate positive and negative payments
-      const positivePayments = filtered.filter(p => p.amount > 0 && !p.is_refund);
-      const refundPayments = filtered.filter(p => p.amount < 0 || p.is_refund);
+      // Separate positive and negative payments for the filtered date range
+      const positivePayments = filtered.filter(p => Number(p.amount) > 0 && !p.is_refund);
+      const refundPayments = filtered.filter(p => Number(p.amount) < 0 || p.is_refund);
       
-      // Total revenue = sum of all positive amounts
-      const totalRevenue = positivePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      // Total revenue = sum of all positive amounts in the filtered date range
+      const totalRevenue = positivePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
       
-      // Total refunds = sum of absolute values of refund payments
-      const totalRefunds = refundPayments.reduce((sum, p) => sum + Math.abs(p.amount || 0), 0);
+      // Total refunds = sum of absolute values of refund payments in the filtered date range
+      const totalRefunds = refundPayments.reduce((sum, p) => sum + Math.abs(Number(p.amount) || 0), 0);
       const refundCount = refundPayments.length;
       
       // Net revenue = totalRevenue - totalRefunds
       const netRevenue = totalRevenue - totalRefunds;
       
       const totalCount = filtered.length;
-      const averagePayment = totalCount > 0 ? netRevenue / positivePayments.length : 0;
+      const averagePayment = positivePayments.length > 0 ? totalRevenue / positivePayments.length : 0;
       
       // Payment method breakdown (only positive payments)
       const cashPayments = positivePayments
         .filter(p => p.payment_method?.toLowerCase() === 'cash')
-        .reduce((sum, p) => sum + (p.amount || 0), 0);
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
       
       const cardPayments = positivePayments
         .filter(p => p.payment_method?.toLowerCase() === 'card')
-        .reduce((sum, p) => sum + (p.amount || 0), 0);
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
       
       const upiPayments = positivePayments
         .filter(p => p.payment_method?.toLowerCase() === 'upi')
-        .reduce((sum, p) => sum + (p.amount || 0), 0);
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
       
       const otherPayments = positivePayments
         .filter(p => !['cash', 'card', 'upi'].includes(p.payment_method?.toLowerCase()))
-        .reduce((sum, p) => sum + (p.amount || 0), 0);
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
-      const totalGST = positivePayments.reduce((sum, p) => sum + (p.gst_amount || 0), 0);
+      const totalGST = positivePayments.reduce((sum, p) => sum + (Number(p.gst_amount) || 0), 0);
       
       const totalBalancePayments = positivePayments
         .filter(p => p.is_balance_payment === true)
-        .reduce((sum, p) => sum + (p.amount || 0), 0);
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
       const addonPayments = positivePayments
         .filter(p => p.payment_type === 'addon')
-        .reduce((sum, p) => sum + (p.amount || 0), 0);
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
       const addonPaymentCount = positivePayments.filter(p => p.payment_type === 'addon').length;
 
       // ✅ Calculate renewal payments
       const renewalPayments = positivePayments
         .filter(p => p.is_renewal === true)
-        .reduce((sum, p) => sum + (p.amount || 0), 0);
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
       const renewalCount = positivePayments.filter(p => p.is_renewal === true).length;
 
       // ✅ Calculate growth based on net revenue
       let growth = 0;
       if (payments.length > 0 && startDate && endDate) {
-        const daysDiff = Math.max(1, Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)));
-        const previousPeriodStart = new Date(startDate);
-        previousPeriodStart.setDate(previousPeriodStart.getDate() - daysDiff);
-        const previousPeriodEnd = new Date(startDate);
-        previousPeriodEnd.setDate(previousPeriodEnd.getDate() - 1);
+        const startD = new Date(startDate);
+        const endD = new Date(endDate);
+        const daysDiff = Math.max(1, Math.ceil((endD.getTime() - startD.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+        const prevStart = new Date(startD);
+        prevStart.setDate(prevStart.getDate() - daysDiff);
+        const prevEnd = new Date(startD);
+        prevEnd.setDate(prevEnd.getDate() - 1);
+        const prevStartStr = prevStart.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        const prevEndStr = prevEnd.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
         
         const previousPositive = payments
           .filter(p => {
-            const paymentDate = p.payment_date?.split('T')[0];
-            return paymentDate && 
-                   paymentDate >= previousPeriodStart.toISOString().split('T')[0] && 
-                   paymentDate <= previousPeriodEnd.toISOString().split('T')[0] &&
-                   p.amount > 0 &&
+            const pDate = getPaymentLocalDateStr(p.payment_date);
+            return pDate && 
+                   pDate >= prevStartStr && 
+                   pDate <= prevEndStr &&
+                   Number(p.amount) > 0 &&
                    !p.is_refund;
           })
-          .reduce((sum, p) => sum + (p.amount || 0), 0);
+          .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
         
         const previousRefunds = payments
           .filter(p => {
-            const paymentDate = p.payment_date?.split('T')[0];
-            return paymentDate && 
-                   paymentDate >= previousPeriodStart.toISOString().split('T')[0] && 
-                   paymentDate <= previousPeriodEnd.toISOString().split('T')[0] &&
-                   (p.amount < 0 || p.is_refund);
+            const pDate = getPaymentLocalDateStr(p.payment_date);
+            return pDate && 
+                   pDate >= prevStartStr && 
+                   pDate <= prevEndStr &&
+                   (Number(p.amount) < 0 || p.is_refund);
           })
-          .reduce((sum, p) => sum + Math.abs(p.amount || 0), 0);
+          .reduce((sum, p) => sum + Math.abs(Number(p.amount) || 0), 0);
         
         const previousNetRevenue = previousPositive - previousRefunds;
         
@@ -517,10 +565,16 @@ const Payments = () => {
     return `${currencySymbol} ${formatted}`;
   };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: any) => {
     if (!dateString) return '';
     try {
-      const date = new Date(dateString);
+      let date: Date;
+      if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString.trim())) {
+        const [y, m, d] = dateString.trim().split('-').map(Number);
+        date = new Date(y, m - 1, d, 12, 0, 0);
+      } else {
+        date = new Date(dateString);
+      }
       if (isNaN(date.getTime())) return '';
       return date.toLocaleDateString('en-IN', {
         timeZone: 'Asia/Kolkata',
@@ -699,9 +753,9 @@ const Payments = () => {
     }
 
     try {
-      const startDateFormatted = startDate ? new Date(startDate).toLocaleDateString('en-IN') : 'N/A';
-      const endDateFormatted = endDate ? new Date(endDate).toLocaleDateString('en-IN') : 'N/A';
-      const exportDate = new Date().toLocaleString('en-IN');
+      const startDateFormatted = startDate ? formatDate(startDate) : 'All Records';
+      const endDateFormatted = endDate ? formatDate(endDate) : 'All Records';
+      const exportDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
       
       const totalRevenue = summary.totalRevenue;
       const totalRefunds = summary.totalRefunds;
@@ -798,9 +852,8 @@ const Payments = () => {
       ]);
       
       filteredPayments.forEach(payment => {
-        const paymentDate = payment.payment_date ? new Date(payment.payment_date) : null;
-        const dateStr = paymentDate ? paymentDate.toLocaleDateString('en-IN') : 'N/A';
-        const timeStr = paymentDate ? paymentDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+        const dateStr = formatDate(payment.payment_date) || 'N/A';
+        const timeStr = payment.payment_date ? new Date(payment.payment_date).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A';
         
         const typeLabel = payment.is_refund ? 'REFUND' : 
           payment.is_renewal ? 'Renewal' : 
@@ -929,7 +982,7 @@ const Payments = () => {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-bold text-gray-900">
-            Select {datePickerType === 'start' ? 'Start' : 'End'} Date
+            Select {datePickerType === 'start' ? 'From' : 'To'} Date
           </h3>
           <button 
             onClick={() => setShowDatePicker(false)}
@@ -941,41 +994,43 @@ const Payments = () => {
         
         <input
           type="date"
-          className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
           value={datePickerType === 'start' ? startDate : endDate}
           onChange={(e) => {
+            const val = e.target.value;
             if (datePickerType === 'start') {
-              setStartDate(e.target.value);
+              setStartDate(val);
+              if (val && endDate && val > endDate) setEndDate(val);
             } else {
-              setEndDate(e.target.value);
+              setEndDate(val);
+              if (val && startDate && val < startDate) setStartDate(val);
             }
             setShowDatePicker(false);
           }}
-          max={datePickerType === 'start' ? endDate : undefined}
-          min={datePickerType === 'end' ? startDate : undefined}
         />
         
         <div className="mt-6 flex gap-3">
           <button
             onClick={() => {
-              const today = new Date();
-              const date = today.toISOString().split('T')[0];
+              const today = getTodayDateStr();
               if (datePickerType === 'start') {
-                setStartDate(date);
+                setStartDate(today);
+                if (endDate && today > endDate) setEndDate(today);
               } else {
-                setEndDate(date);
+                setEndDate(today);
+                if (startDate && today < startDate) setStartDate(today);
               }
               setShowDatePicker(false);
             }}
-            className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
+            className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-sm font-medium"
           >
             Today
           </button>
           <button
             onClick={() => {
-              const lastWeek = new Date();
-              lastWeek.setDate(lastWeek.getDate() - 7);
-              const date = lastWeek.toISOString().split('T')[0];
+              const d = new Date();
+              d.setDate(d.getDate() - 7);
+              const date = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
               if (datePickerType === 'start') {
                 setStartDate(date);
               } else {
@@ -983,15 +1038,15 @@ const Payments = () => {
               }
               setShowDatePicker(false);
             }}
-            className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
+            className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-sm font-medium"
           >
             Last 7 Days
           </button>
           <button
             onClick={() => {
-              const lastMonth = new Date();
-              lastMonth.setMonth(lastMonth.getMonth() - 1);
-              const date = lastMonth.toISOString().split('T')[0];
+              const d = new Date();
+              d.setDate(d.getDate() - 30);
+              const date = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
               if (datePickerType === 'start') {
                 setStartDate(date);
               } else {
@@ -999,7 +1054,7 @@ const Payments = () => {
               }
               setShowDatePicker(false);
             }}
-            className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
+            className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-sm font-medium"
           >
             Last 30 Days
           </button>
@@ -1080,7 +1135,7 @@ const Payments = () => {
 
   // ===== RENDER SUMMARY CARDS WITH TODAY'S COLLECTION & REFUNDS =====
   const renderSummaryCards = () => {
-    const todayStr = new Date().toLocaleDateString('en-CA');
+    const todayStr = getTodayDateStr();
     const isTodayFiltered = startDate === todayStr && endDate === todayStr;
 
     return (
@@ -1122,19 +1177,42 @@ const Payments = () => {
           )}
         </div>
 
-        {/* ✅ Total Revenue Card (Current Period) */}
+        {/* ✅ Total Revenue Card (Filtered Date Range) */}
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
           <div className="flex items-center justify-between mb-2">
             <Wallet className="h-6 w-6 opacity-80" />
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-              summary.growth >= 0 ? 'bg-green-400/30' : 'bg-red-400/30'
-            }`}>
-              {summary.growth >= 0 ? '↑' : '↓'} {Math.abs(summary.growth).toFixed(1)}%
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/20">
+              {startDate && endDate && startDate === endDate
+                ? 'Selected Day'
+                : startDate || endDate
+                ? 'Filtered Range'
+                : 'All Time'}
             </span>
           </div>
-          <p className="text-xs opacity-80 mb-0.5">Total Revenue</p>
-          <p className="text-xl font-bold">{formatCurrency(summary.totalRevenue)}</p>
-          <p className="text-xs opacity-70 mt-1">{summary.totalCount} transactions</p>
+          <p className="text-xs opacity-90 mb-0.5 font-medium truncate" title={
+            startDate && endDate
+              ? (startDate === endDate ? `Total Revenue (${formatDate(startDate)})` : `Total Revenue (${formatDate(startDate)} - ${formatDate(endDate)})`)
+              : startDate
+              ? `Total Revenue (From ${formatDate(startDate)})`
+              : endDate
+              ? `Total Revenue (Up to ${formatDate(endDate)})`
+              : 'Total Revenue (All Time)'
+          }>
+            {startDate && endDate
+              ? (startDate === endDate ? `Total Revenue (${formatDate(startDate)})` : `Total Revenue (${formatDate(startDate)} - ${formatDate(endDate)})`)
+              : startDate
+              ? `Total Revenue (From ${formatDate(startDate)})`
+              : endDate
+              ? `Total Revenue (Up to ${formatDate(endDate)})`
+              : 'Total Revenue (All Time)'}
+          </p>
+          <p className="text-2xl font-black tracking-tight">{formatCurrency(summary.totalRevenue)}</p>
+          <div className="mt-1 flex items-center justify-between text-xs opacity-85">
+            <span>{summary.totalCount} transaction{summary.totalCount !== 1 ? 's' : ''}</span>
+            {summary.totalRefunds > 0 && (
+              <span className="font-semibold text-blue-100">Net: {formatCurrency(summary.netRevenue)}</span>
+            )}
+          </div>
         </div>
 
         {/* ✅ Net Revenue Card (Revenue - Refunds) */}
@@ -1355,90 +1433,195 @@ const Payments = () => {
       )}
 
       {/* Date Range Selector */}
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-4">
+      <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          {/* Direct Date Inputs */}
+          <div className="flex flex-wrap items-center gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
-              <button
-                onClick={() => {
-                  setDatePickerType('start');
-                  setShowDatePicker(true);
-                }}
-                className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:border-blue-500 transition-colors"
-              >
-                <Calendar className="h-4 w-4 text-gray-500" />
-                <span>{startDate ? new Date(startDate).toLocaleDateString('en-IN') : 'Select date'}</span>
-                <ChevronDown className="h-4 w-4 text-gray-500" />
-              </button>
+              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+                From Date
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setStartDate(val);
+                    if (val && endDate && val > endDate) {
+                      setEndDate(val);
+                    }
+                  }}
+                  className="px-3 py-2 border border-gray-300 rounded-xl text-sm font-medium text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm bg-white"
+                />
+              </div>
             </div>
-            <ArrowRight className="h-5 w-5 text-gray-400 mt-6" />
+
+            <div className="flex items-center pt-5 text-gray-400">
+              <ArrowRight className="h-4 w-4" />
+            </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
-              <button
-                onClick={() => {
-                  setDatePickerType('end');
-                  setShowDatePicker(true);
-                }}
-                className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:border-blue-500 transition-colors"
-              >
-                <Calendar className="h-4 w-4 text-gray-500" />
-                <span>{endDate ? new Date(endDate).toLocaleDateString('en-IN') : 'Select date'}</span>
-                <ChevronDown className="h-4 w-4 text-gray-500" />
-              </button>
+              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+                To Date
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEndDate(val);
+                    if (val && startDate && val < startDate) {
+                      setStartDate(val);
+                    }
+                  }}
+                  className="px-3 py-2 border border-gray-300 rounded-xl text-sm font-medium text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm bg-white"
+                />
+              </div>
             </div>
+
+            {(startDate || endDate) && (
+              <div className="pt-5">
+                <button
+                  onClick={() => {
+                    setStartDate('');
+                    setEndDate('');
+                  }}
+                  className="px-3 py-2 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors flex items-center gap-1"
+                  title="Clear date filter to view all records"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Clear Date
+                </button>
+              </div>
+            )}
           </div>
           
-          <div className="flex flex-wrap gap-2">
+          {/* Quick Preset Buttons */}
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => {
-                const todayStr = new Date().toLocaleDateString('en-CA');
+                const todayStr = getTodayDateStr();
                 setStartDate(todayStr);
                 setEndDate(todayStr);
               }}
-              className={`px-4 py-2 rounded-lg transition-colors font-medium text-sm flex items-center gap-1.5 ${
-                startDate === new Date().toLocaleDateString('en-CA') && endDate === new Date().toLocaleDateString('en-CA')
-                  ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300'
+              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs flex items-center gap-1.5 ${
+                startDate === getTodayDateStr() && endDate === getTodayDateStr()
+                  ? 'bg-emerald-600 text-white shadow-md ring-2 ring-emerald-300'
                   : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
               Today
             </button>
             <button
               onClick={() => {
-                const today = new Date();
-                const startOfWeek = new Date(today);
-                startOfWeek.setDate(today.getDate() - today.getDay());
-                setStartDate(startOfWeek.toISOString().split('T')[0]);
-                setEndDate(today.toISOString().split('T')[0]);
+                const yesterdayStr = getYesterdayDateStr();
+                setStartDate(yesterdayStr);
+                setEndDate(yesterdayStr);
               }}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${
+                startDate === getYesterdayDateStr() && endDate === getYesterdayDateStr()
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Yesterday
+            </button>
+            <button
+              onClick={() => {
+                const todayStr = getTodayDateStr();
+                const startOfWeek = getStartOfWeekStr();
+                setStartDate(startOfWeek);
+                setEndDate(todayStr);
+              }}
+              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${
+                startDate === getStartOfWeekStr() && endDate === getTodayDateStr()
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
             >
               This Week
             </button>
             <button
               onClick={() => {
-                const today = new Date();
-                const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-                setStartDate(startOfMonth.toISOString().split('T')[0]);
-                setEndDate(today.toISOString().split('T')[0]);
+                const todayStr = getTodayDateStr();
+                const [year, month] = todayStr.split('-');
+                setStartDate(`${year}-${month}-01`);
+                setEndDate(todayStr);
               }}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${
+                startDate === `${getTodayDateStr().split('-')[0]}-${getTodayDateStr().split('-')[1]}-01` && endDate === getTodayDateStr()
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
             >
               This Month
             </button>
             <button
               onClick={() => {
-                const today = new Date();
-                const startOfYear = new Date(today.getFullYear(), 0, 1);
-                setStartDate(startOfYear.toISOString().split('T')[0]);
-                setEndDate(today.toISOString().split('T')[0]);
+                const lastMonth = getLastMonthRange();
+                setStartDate(lastMonth.start);
+                setEndDate(lastMonth.end);
               }}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${
+                startDate === getLastMonthRange().start && endDate === getLastMonthRange().end
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
             >
-              This Year
+              Last Month
             </button>
+            <button
+              onClick={() => {
+                setStartDate('');
+                setEndDate('');
+              }}
+              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${
+                !startDate && !endDate
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              All Time
+            </button>
+          </div>
+        </div>
+
+        {/* Selected Date Range Total Revenue Pill */}
+        <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3 text-sm">
+          <div className="flex items-center gap-2 text-gray-600">
+            <Calendar className="h-4 w-4 text-blue-600" />
+            <span className="font-medium text-gray-900">
+              {startDate && endDate
+                ? (startDate === endDate ? formatDate(startDate) : `${formatDate(startDate)} to ${formatDate(endDate)}`)
+                : startDate
+                ? `From ${formatDate(startDate)} onwards`
+                : endDate
+                ? `Up to ${formatDate(endDate)}`
+                : 'All Recorded Dates'}
+            </span>
+            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+              {filteredPayments.length} payment{filteredPayments.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Total Revenue (Sum):</span>
+              <span className="text-base font-extrabold text-blue-700">{formatCurrency(summary.totalRevenue)}</span>
+            </div>
+            {summary.totalRefunds > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-red-500 uppercase tracking-wider font-semibold">Refunds:</span>
+                <span className="text-sm font-bold text-red-600">-{formatCurrency(summary.totalRefunds)}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-1.5 border-l border-gray-200 pl-3">
+              <span className="text-xs text-emerald-600 uppercase tracking-wider font-semibold">Net Revenue:</span>
+              <span className="text-base font-extrabold text-emerald-700">{formatCurrency(summary.netRevenue)}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1673,6 +1856,36 @@ const Payments = () => {
                 })
               )}
             </tbody>
+            {filteredPayments.length > 0 && (
+              <tfoot className="bg-slate-50 border-t-2 border-slate-300">
+                <tr>
+                  {selectionMode && <td></td>}
+                  <td className="px-6 py-4 font-bold text-slate-800 text-sm" colSpan={2}>
+                    <div className="flex items-center gap-2">
+                      <Receipt className="h-4 w-4 text-blue-600" />
+                      <span>
+                        Total for Selected Date Range ({filteredPayments.length} transaction{filteredPayments.length !== 1 ? 's' : ''})
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <p className="text-sm font-black text-green-700">
+                      {formatCurrency(summary.totalRevenue)}
+                    </p>
+                    {summary.totalRefunds > 0 && (
+                      <p className="text-xs font-semibold text-slate-600">
+                        Net: {formatCurrency(summary.netRevenue)}
+                      </p>
+                    )}
+                  </td>
+                  <td colSpan={selectionMode ? 4 : 4} className="px-6 py-4 text-xs text-slate-600 text-right">
+                    <span className="font-semibold text-slate-700">Cash:</span> {formatCurrency(summary.cashPayments)} |{' '}
+                    <span className="font-semibold text-slate-700">UPI:</span> {formatCurrency(summary.upiPayments)} |{' '}
+                    <span className="font-semibold text-slate-700">Card:</span> {formatCurrency(summary.cardPayments)}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
 
