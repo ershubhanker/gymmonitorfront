@@ -847,6 +847,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
           amount_paid: amountPaid.toString(),
           discount_applied: discountApplied.toString(),
           payment_method: 'cash',
+          payment_date: toDateInputValue(memberData.current_membership.payment_date || memberData.current_membership.last_payment_date),
           notes: memberData.current_membership.notes || '',
         });
         
@@ -1377,10 +1378,13 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ===== PAYMENT EDIT FUNCTIONS =====
   const toDateInputValue = (value) => {
     if (!value) return '';
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+      return value.trim();
+    }
     try {
       const d = new Date(value);
       if (isNaN(d.getTime())) return '';
-      return d.toISOString().split('T')[0];
+      return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     } catch {
       return '';
     }
@@ -1388,16 +1392,19 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   const handleEditPaymentClick = () => {
     if (member?.current_membership) {
-      const amountPaid = member.current_membership.amount_paid || 0;
-      const discountApplied = member.current_membership.discount_applied || 0;
+      const curr = member.current_membership;
+      const amountPaid = curr.amount_paid || 0;
+      const discountApplied = curr.discount_applied || 0;
+      
+      const memPayment = payments?.find(p => p.membership_id === curr.id) || payments?.[0];
+      const activePayDate = curr.payment_date || curr.last_payment_date || memPayment?.payment_date;
       
       setPaymentEditData({
         amount_paid: amountPaid.toString(),
         discount_applied: discountApplied.toString(),
-        payment_method: 'cash',
-        payment_date: toDateInputValue(member.current_membership.last_payment_date) ||
-          new Date().toISOString().split('T')[0],
-        notes: member.current_membership.notes || '',
+        payment_method: memPayment?.payment_method || 'cash',
+        payment_date: toDateInputValue(activePayDate) || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }),
+        notes: curr.notes || '',
       });
       setPaymentError(null);
       setIsEditingPayment(true);
@@ -1438,11 +1445,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       setPaymentError('Please select a payment date');
       return false;
     }
-    const today = new Date().toISOString().split('T')[0];
-    if (paymentEditData.payment_date > today) {
-      setPaymentError('Payment date cannot be in the future');
-      return false;
-    }
     return true;
   };
 
@@ -1463,22 +1465,65 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       const membershipId = member.current_membership.id;
       const discountApplied = parseFloat(paymentEditData.discount_applied) || 0;
       const amountPaid = parseFloat(paymentEditData.amount_paid) || 0;
+      const chosenPaymentDate = paymentEditData.payment_date;
 
       const payload = {
         amount_paid: amountPaid,
         discount_applied: discountApplied,
         notes: paymentEditData.notes || '',
         payment_method: paymentEditData.payment_method || 'cash',
-        payment_date: paymentEditData.payment_date || undefined,
+        payment_date: chosenPaymentDate || undefined,
       };
       
-      await api.put(`/gym/memberships/${membershipId}/payment`, payload);
+      const res = await api.put(`/gym/memberships/${membershipId}/payment`, payload);
 
       toast.success('Payment details updated successfully!');
       setIsEditingPayment(false);
-      await fetchMemberDetails();
-      await fetchPayments();
-      await fetchBalanceDetails();
+
+      const returnedPayDate = chosenPaymentDate || res.data?.payment_date || res.data?.last_payment_date;
+
+      // Update local member state immediately so that the edited payment date shows right away
+      setMember(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          current_membership: prev.current_membership ? {
+            ...prev.current_membership,
+            amount_paid: amountPaid,
+            discount_applied: discountApplied,
+            payment_date: returnedPayDate,
+            last_payment_date: returnedPayDate,
+            payment_status: res.data?.payment_status || prev.current_membership.payment_status,
+            balance_due: res.data?.balance_due !== undefined ? res.data.balance_due : prev.current_membership.balance_due
+          } : prev.current_membership
+        };
+      });
+
+      // Update matching payment in payments state
+      setPayments(prev => {
+        if (!Array.isArray(prev) || prev.length === 0) return prev;
+        return prev.map(p => {
+          if (p.membership_id === membershipId) {
+            return {
+              ...p,
+              amount: amountPaid,
+              payment_method: payload.payment_method,
+              payment_date: returnedPayDate,
+              notes: payload.notes
+            };
+          }
+          return p;
+        });
+      });
+
+      await Promise.all([
+        fetchMemberDetails(),
+        fetchPayments(),
+        fetchBalanceDetails(),
+      ]);
+
+      window.dispatchEvent(new CustomEvent('paymentUpdated'));
+      window.dispatchEvent(new CustomEvent('paymentAdded'));
       if (onUpdate) onUpdate();
       
     } catch (error) {
@@ -1768,11 +1813,24 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   const formatDate = (dt) => {
     if (!dt) return '—';
-    return new Date(dt).toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    });
+    try {
+      let date;
+      if (typeof dt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dt.trim())) {
+        const [y, m, d] = dt.trim().split('-').map(Number);
+        date = new Date(y, m - 1, d, 12, 0, 0);
+      } else {
+        date = new Date(dt);
+      }
+      if (isNaN(date.getTime())) return '—';
+      return date.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch {
+      return '—';
+    }
   };
 
   const getStatusBadge = (status) => {
@@ -2677,7 +2735,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       name="payment_date"
                       value={paymentEditData.payment_date}
                       onChange={handlePaymentEditChange}
-                      max={new Date().toISOString().split('T')[0]}
                       className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white"
                     />
                   </div>
@@ -2728,6 +2785,10 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                         <div className="flex justify-between">
                           <span className="text-gray-500">Paid:</span>
                           <span className="font-medium text-blue-600">{formatCurrency(paid)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Payment Date:</span>
+                          <span className="font-semibold text-purple-700">{formatDate(paymentEditData.payment_date)}</span>
                         </div>
                         <div className="flex justify-between pt-0.5 border-t border-gray-200">
                           <span className="text-gray-700 font-semibold">Balance:</span>
@@ -3298,6 +3359,17 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     <span className="text-gray-500">Paid:</span>
                     <span className="font-medium text-green-600">{formatCurrency(currentMembership.amount_paid || 0)}</span>
                   </div>
+                  <div className="flex justify-between items-center py-0.5 px-1.5 bg-purple-50/70 rounded border border-purple-100">
+                    <span className="text-purple-800 font-medium">Payment Date:</span>
+                    <span className="font-bold text-purple-900">
+                      {formatDate(
+                        currentMembership.payment_date ||
+                        currentMembership.last_payment_date ||
+                        (payments?.find(p => p.membership_id === currentMembership.id)?.payment_date) ||
+                        payments?.[0]?.payment_date
+                      ) || 'N/A'}
+                    </span>
+                  </div>
                   {paymentSummary && paymentSummary.balanceDue > 0 && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">Balance:</span>
@@ -3768,15 +3840,37 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                       <th className="text-left px-2 py-1.5">Amount</th>
                       <th className="text-left px-2 py-1.5">Method</th>
                       <th className="text-left px-2 py-1.5">Status</th>
+                      <th className="text-right px-2 py-1.5">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {payments.map((payment) => (
                       <tr key={payment.id} className="hover:bg-gray-50">
-                        <td className="px-2 py-1.5">{formatDate(payment.payment_date)}</td>
+                        <td className="px-2 py-1.5 font-medium text-gray-900">{formatDate(payment.payment_date)}</td>
                         <td className="px-2 py-1.5 font-medium text-green-600">{formatCurrency(payment.amount)}</td>
                         <td className="px-2 py-1.5 capitalize">{payment.payment_method}</td>
                         <td className="px-2 py-1.5">{getPaymentStatusBadge(payment.status)}</td>
+                        <td className="px-2 py-1.5 text-right">
+                          {currentMembership && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleEditPaymentClick();
+                                setPaymentEditData(prev => ({
+                                  ...prev,
+                                  payment_date: toDateInputValue(payment.payment_date) || prev.payment_date,
+                                  amount_paid: (payment.amount !== undefined && payment.amount !== null ? payment.amount : prev.amount_paid).toString(),
+                                  payment_method: payment.payment_method || prev.payment_method,
+                                  notes: payment.notes || prev.notes
+                                }));
+                              }}
+                              className="text-purple-600 hover:text-purple-800 p-0.5 rounded hover:bg-purple-50 transition-colors"
+                              title="Edit this payment"
+                            >
+                              <Pencil className="h-3 w-3 inline" />
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
