@@ -34,6 +34,61 @@ import api from '../services/api';
 import toast from 'react-hot-toast';
 import { parseUtcDate } from '../utils/dateUtils';
 
+// Helper to extract strictly local YYYY-MM-DD (Asia/Kolkata) from payment date
+const getPaymentLocalDateStr = (paymentDate: any): string => {
+  if (!paymentDate) return '';
+  if (typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate.trim())) {
+    return paymentDate.trim();
+  }
+  try {
+    const d = parseUtcDate(paymentDate);
+    if (d && !isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    }
+  } catch (e) {}
+  return String(paymentDate).split('T')[0].split(' ')[0];
+};
+
+// Helper to get today's YYYY-MM-DD in Asia/Kolkata
+const getTodayDateStr = (): string => {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+};
+
+// Helper to get yesterday's YYYY-MM-DD in Asia/Kolkata
+const getYesterdayDateStr = (): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+};
+
+// Helper to get start of current week (Monday) in Asia/Kolkata
+const getStartOfWeekStr = (): string => {
+  const d = new Date();
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(d.setDate(diff));
+  return monday.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+};
+
+// Helper to get last month start & end dates in Asia/Kolkata
+const getLastMonthRange = (): { start: string; end: string } => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = d.getMonth();
+  const firstDay = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0);
+  return {
+    start: firstDay.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }),
+    end: lastDay.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+  };
+};
+
+// Helper to check if a payment happened today in Asia/Kolkata
+const isPaymentToday = (payment: any): boolean => {
+  if (!payment || !payment.payment_date) return false;
+  const pLocal = getPaymentLocalDateStr(payment.payment_date);
+  return Boolean(pLocal && pLocal === getTodayDateStr());
+};
 
 const Payments = () => {
   const { user, setUser } = useAuth();
@@ -97,62 +152,6 @@ const Payments = () => {
     card: 0,
     other: 0,
   });
-
-  // Helper to extract strictly local YYYY-MM-DD (Asia/Kolkata) from payment date
-  const getPaymentLocalDateStr = (paymentDate: any): string => {
-    if (!paymentDate) return '';
-    if (typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate.trim())) {
-      return paymentDate.trim();
-    }
-    try {
-      const d = parseUtcDate(paymentDate);
-      if (d && !isNaN(d.getTime())) {
-        return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      }
-    } catch (e) {}
-    return String(paymentDate).split('T')[0].split(' ')[0];
-  };
-
-  // Helper to get today's YYYY-MM-DD in Asia/Kolkata
-  const getTodayDateStr = (): string => {
-    return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-  };
-
-  // Helper to get yesterday's YYYY-MM-DD in Asia/Kolkata
-  const getYesterdayDateStr = (): string => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-  };
-
-  // Helper to get start of current week (Monday) in Asia/Kolkata
-  const getStartOfWeekStr = (): string => {
-    const d = new Date();
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(d.setDate(diff));
-    return monday.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-  };
-
-  // Helper to get last month start & end dates in Asia/Kolkata
-  const getLastMonthRange = (): { start: string; end: string } => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = d.getMonth();
-    const firstDay = new Date(year, month - 1, 1);
-    const lastDay = new Date(year, month, 0);
-    return {
-      start: firstDay.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }),
-      end: lastDay.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
-    };
-  };
-
-  // Helper to check if a payment happened today in Asia/Kolkata
-  const isPaymentToday = (payment: any): boolean => {
-    if (!payment || !payment.payment_date) return false;
-    const pLocal = getPaymentLocalDateStr(payment.payment_date);
-    return Boolean(pLocal && pLocal === getTodayDateStr());
-  };
 
   // Helper to calculate today's collection from master payment list
   const calculateTodaySummary = (allPayments: any[]) => {
