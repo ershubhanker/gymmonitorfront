@@ -526,6 +526,81 @@ const Dashboard = () => {
       let leadsData = { data: [] };
   
       if (canSeeDashboard) {
+        // 🚀 High-performance unified summary endpoint with Redis backend caching
+        try {
+          const isForceRefresh = !silent && sessionStorage.getItem('dashboard_cache_invalidated') === 'true';
+          if (isForceRefresh) {
+            sessionStorage.removeItem('dashboard_cache_invalidated');
+          }
+          const summaryUrl = `/gym/dashboard/summary${isForceRefresh ? '?force_refresh=true' : ''}`;
+          const summaryRes = await fetchSilently(summaryUrl);
+          
+          if (summaryRes?.success && summaryRes.data && summaryRes.data.stats) {
+            const s = summaryRes.data;
+            const updatedStats = {
+              ...s.stats,
+              membersByGender: s.membersByGender || { male: 0, female: 0, other: 0 },
+              membershipDistribution: s.membershipDistribution || {},
+              recentMembers: (s.recentMembers || []).map(m => ({
+                id: m.id,
+                name: m.name,
+                joinedDate: m.joinedDate,
+                avatar: m.avatar 
+                  ? (m.avatar.startsWith('http') ? m.avatar : `${API_BASE_URL}${m.avatar}`)
+                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=0D9488&color=fff`
+              })),
+              recentPayments: (s.recentPayments || []).map(p => ({
+                id: p.id,
+                memberName: p.memberName,
+                amount: p.amount,
+                date: p.date,
+                method: p.method,
+                isRefund: p.isRefund
+              })),
+              expiringMembers: (s.expiringMembers || []).map(m => ({
+                id: m.id,
+                memberId: m.memberId,
+                memberName: m.memberName,
+                endDate: m.endDate,
+                daysLeft: m.daysLeft,
+                planName: m.planName,
+                avatar: m.avatar 
+                  ? (m.avatar.startsWith('http') ? m.avatar : `${API_BASE_URL}${m.avatar}`)
+                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(m.memberName)}&background=0D9488&color=fff`
+              })),
+              upcomingBirthdays: s.upcomingBirthdays || { members: [], staff: [], all: [], todayCount: 0, totalCount: 0 }
+            };
+
+            setStats(prev => ({ ...prev, ...updatedStats }));
+
+            if (s.membersWithBalanceList) {
+              setMembersWithBalanceList(s.membersWithBalanceList.map(m => ({
+                ...m,
+                avatar: m.avatar 
+                  ? (m.avatar.startsWith('http') ? m.avatar : `${API_BASE_URL}${m.avatar}`)
+                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=EF4444&color=fff`
+              })));
+            }
+            if (s.recentLeads) {
+              setRecentLeads(s.recentLeads.map(l => ({
+                ...l,
+                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(l.name)}&background=8B5CF6&color=fff`
+              })));
+            }
+            if (s.recentActivities && s.recentActivities.length > 0) {
+              setRecentActivities(s.recentActivities);
+            }
+            if (s.upcomingClasses) {
+              setUpcomingClasses(s.upcomingClasses);
+            }
+
+            setCache(CACHE_KEYS.DASHBOARD_STATS, updatedStats, 3 * 60 * 1000);
+            return; // ✅ Successfully loaded entire dashboard in 1 fast Redis request!
+          }
+        } catch (err) {
+          console.warn('Dashboard summary endpoint unavailable, falling back to multi-fetch:', err);
+        }
+
         try {
           const statsResult = await fetchMemberStatsOptimized();
           
