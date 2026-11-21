@@ -16,6 +16,7 @@ import api, { API_BASE_URL, getMemberTransfers } from '../services/api';
 import toast from 'react-hot-toast';
 import MembershipTransferModal from './MembershipTransferModal';
 import CameraCapture from './CameraCapture';
+import { parseUtcDate } from '../utils/dateUtils';
 
 // ============================================================
 // HELPER: Properly format currency (ALL AMOUNTS IN RUPEES)
@@ -1713,8 +1714,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
     setSubmitting(true);
     try {
-      const categoryLabel = COMMENT_CATEGORIES[selectedCategory]?.label || 'General';
-      const commentWithCategory = `[${categoryLabel}] ${newComment.trim()}`;
+      const activeCategory = selectedCategory || commentFilter || 'general';
+      const categoryLabel = COMMENT_CATEGORIES[activeCategory]?.label || 'General';
+      const trimmedText = newComment.trim();
+      const commentWithCategory = /^\[[^\]]+\]\s*/.test(trimmedText)
+        ? trimmedText
+        : `[${categoryLabel}] ${trimmedText}`;
       
       const response = await api.post(`/gym/members/${memberId}/comments`, { 
         comment: commentWithCategory 
@@ -1722,7 +1727,11 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       
       toast.success(`Comment added in "${categoryLabel}" category!`);
       setNewComment('');
-      setSelectedCategory('general');
+      if (commentFilter) {
+        setSelectedCategory(commentFilter);
+      } else {
+        setSelectedCategory('general');
+      }
       setComments(prev => [response.data, ...prev]);
       if (onUpdate) onUpdate();
     } catch (error) {
@@ -1738,14 +1747,11 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     
     const match = commentText.match(/^\[([^\]]+)\]\s*/);
     if (match) {
-      const label = match[1].trim();
+      const raw = match[1].trim().toLowerCase().replace(/[\s-_]+/g, '');
       for (const [key, config] of Object.entries(COMMENT_CATEGORIES)) {
-        if (config.label === label) {
-          return key;
-        }
-      }
-      for (const [key, config] of Object.entries(COMMENT_CATEGORIES)) {
-        if (config.label.toLowerCase() === label.toLowerCase()) {
+        const normKey = key.toLowerCase().replace(/[\s-_]+/g, '');
+        const normLabel = (config.label || '').toLowerCase().replace(/[\s-_]+/g, '');
+        if (normKey === raw || normLabel === raw) {
           return key;
         }
       }
@@ -1757,7 +1763,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     if (!commentText) return '';
     const match = commentText.match(/^\[[^\]]+\]\s*/);
     if (match) {
-      return commentText.substring(match[0].length);
+      return commentText.substring(match[0].length) || commentText;
     }
     return commentText;
   };
@@ -1801,13 +1807,16 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   const commentCounts = getCommentCounts();
 
   const formatDateTime = (dt) => {
-    if (!dt) return '—';
-    return new Date(dt).toLocaleString('en-IN', {
+    const d = parseUtcDate(dt);
+    if (!d || isNaN(d.getTime())) return '—';
+    return d.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
       day: 'numeric',
       month: 'short',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: true
     });
   };
 
@@ -4000,7 +4009,12 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
             <CategoryFilter 
               selectedCategory={commentFilter}
-              onSelect={setCommentFilter}
+              onSelect={(categoryKey) => {
+                setCommentFilter(categoryKey);
+                if (categoryKey) {
+                  setSelectedCategory(categoryKey);
+                }
+              }}
               countMap={commentCounts}
             />
 
@@ -4009,7 +4023,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                 <textarea
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Add a comment..."
+                  placeholder={`Add a comment in ${COMMENT_CATEGORIES[selectedCategory]?.label || 'General'} category...`}
                   rows={2}
                   className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
                 />
@@ -4024,61 +4038,27 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               </div>
               
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] font-medium text-gray-500">Tag:</span>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all ${
-                      COMMENT_CATEGORIES[selectedCategory]?.color || 'bg-gray-100 text-gray-700 border-gray-200'
-                    }`}
-                  >
-                    {selectedCategory && COMMENT_CATEGORIES[selectedCategory]?.icon && (
-                      <CommentCategoryBadge category={selectedCategory} size="sm" />
-                    )}
-                    <ChevronDown className="h-2.5 w-2.5" />
-                  </button>
-                  
-                  {showCategoryDropdown && (
-                    <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[140px] py-1">
-                      {Object.entries(COMMENT_CATEGORIES).map(([key, config]) => {
-                        const Icon = config.icon;
-                        const isSelected = selectedCategory === key;
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            onClick={() => {
-                              setSelectedCategory(key);
-                              setShowCategoryDropdown(false);
-                            }}
-                            className={`w-full text-left px-2.5 py-1.5 text-[10px] transition-colors flex items-center gap-1.5 ${
-                              isSelected ? 'bg-gray-100' : 'hover:bg-gray-50'
-                            }`}
-                          >
-                            <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${config.color}`}>
-                              <Icon className="h-2.5 w-2.5" />
-                              {config.label}
-                            </span>
-                            {isSelected && <CheckCircle className="h-2.5 w-2.5 text-blue-500 ml-auto" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-                {selectedCategory && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCategory('general')}
-                    className="text-[10px] text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                )}
-                <span className="text-[10px] text-gray-400 ml-1">
-                  <span className="font-medium">{COMMENT_CATEGORIES[selectedCategory]?.label || 'General'}</span>
-                </span>
+                <span className="text-[10px] font-semibold text-gray-500">Post in:</span>
+                {Object.entries(COMMENT_CATEGORIES).map(([key, config]) => {
+                  const Icon = config.icon;
+                  const isSelected = selectedCategory === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSelectedCategory(key)}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-all ${
+                        isSelected
+                          ? `${config.color} ring-2 ring-blue-500 ring-offset-1 font-bold shadow-xs`
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-transparent'
+                      }`}
+                    >
+                      <Icon className="h-2.5 w-2.5" />
+                      {config.label}
+                      {isSelected && <CheckCircle className="h-2.5 w-2.5 ml-0.5 text-blue-600" />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

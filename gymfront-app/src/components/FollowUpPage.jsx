@@ -14,6 +14,7 @@ import api from '../services/api';
 import toast from 'react-hot-toast';
 import { useCache, CACHE_KEYS } from '../context/CacheContext';
 import { useNavigate } from 'react-router-dom';
+import { parseUtcDate } from '../utils/dateUtils';
 
 // ─── Status Badge Component ───────────────────────────────────────────────
 const StatusBadge = ({ status }) => {
@@ -507,9 +508,11 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
 
   // ─── Format Date Helpers ───────────────────────────────────────────────
   const formatDate = (dateStr) => {
-    if (!dateStr) return 'N/A';
+    const d = parseUtcDate(dateStr);
+    if (!d || isNaN(d.getTime())) return 'N/A';
     try {
-      return new Date(dateStr).toLocaleDateString('en-IN', {
+      return d.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
         day: 'numeric',
         month: 'short',
         year: 'numeric'
@@ -520,14 +523,16 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
   };
 
   const formatDateTime = (dateStr) => {
-    if (!dateStr) return 'N/A';
+    const d = parseUtcDate(dateStr);
+    if (!d || isNaN(d.getTime())) return 'N/A';
     try {
-      return new Date(dateStr).toLocaleString('en-IN', {
+      return d.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
         day: 'numeric',
         month: 'short',
         year: 'numeric',
-        hour: 'numeric',
-        minute: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
         hour12: true
       });
     } catch {
@@ -1495,14 +1500,16 @@ const LeadDetailModal = ({
   ];
 
   const formatFullDateTime = (dateStr) => {
-    if (!dateStr) return 'N/A';
+    const d = parseUtcDate(dateStr);
+    if (!d || isNaN(d.getTime())) return 'N/A';
     try {
-      return new Date(dateStr).toLocaleString('en-IN', {
+      return d.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
         day: 'numeric',
         month: 'short',
         year: 'numeric',
-        hour: 'numeric',
-        minute: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
         hour12: true
       });
     } catch {

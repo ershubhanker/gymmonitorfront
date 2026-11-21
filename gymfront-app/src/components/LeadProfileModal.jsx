@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { parseUtcDate, formatDateTime, formatDate, toDatetimeLocal } from '../utils/dateUtils';
 
 const SOURCE_CONFIG = {
   walk_in:    { label: 'Walk-in',    icon: User },
@@ -36,13 +37,7 @@ const LEAD_QUALITY_CONFIG = {
   cold: { label: 'Cold', color: 'bg-blue-100 text-blue-700', icon: Snowflake },
 };
 
-const toDatetimeLocal = (dt) => {
-  if (!dt) return '';
-  const d = new Date(dt);
-  if (isNaN(d.getTime())) return '';
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
+
 
 const LeadProfileModal = ({ lead, onClose, onUpdate }) => {
   const [leadDetail, setLeadDetail] = useState(lead || null);
@@ -177,25 +172,7 @@ const LeadProfileModal = ({ lead, onClose, onUpdate }) => {
     }
   };
 
-  const formatDateTime = (dt) => {
-    if (!dt) return '—';
-    return new Date(dt).toLocaleString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
 
-  const formatDate = (dt) => {
-    if (!dt) return '—';
-    return new Date(dt).toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    });
-  };
 
   if (!leadDetail && loading) {
     return (
