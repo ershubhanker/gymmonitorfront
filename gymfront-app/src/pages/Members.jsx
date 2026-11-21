@@ -1976,54 +1976,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         hasError = true;
         toast.error(`Details saved but membership renewal failed. Please assign membership manually.`);
       }
-    } else if (!renew_membership && plan_id) {
-      try {
-        const paidAmount = amount_paid !== undefined && amount_paid !== '' ? parseFloat(amount_paid) : 0;
-        const discount = discount_applied !== undefined && discount_applied !== '' ? parseFloat(discount_applied) : 0;
-
-        let targetMembershipId = current_membership_id || selectedMember?.current_membership?.id || selectedMember?.membershipId || selectedMember?.membershipData?.id;
-
-        if (!targetMembershipId && memberId) {
-          try {
-            const memberDetailsRes = await api.get(`/gym/members/${memberId}`);
-            targetMembershipId = memberDetailsRes.data?.current_membership?.id || memberDetailsRes.data?.memberships?.[0]?.id;
-          } catch (fetchErr) {
-            console.warn('Could not query member details for membership ID:', fetchErr);
-          }
-        }
-
-        const membershipPayload = {
-          plan_id: parseInt(plan_id),
-          start_date: membership_start_date,
-          amount_paid: paidAmount,
-          discount_applied: discount,
-          payment_method: payment_method || 'cash',
-        };
-        // Only include payment_date if renewing or creating a new membership
-        if ((renew_membership || !targetMembershipId) && payment_date) {
-          membershipPayload.payment_date = payment_date;
-        }
-
-        if (targetMembershipId) {
-          console.log(`📤 Updating existing membership ${targetMembershipId}:`, membershipPayload);
-          await api.put(`/gym/memberships/${targetMembershipId}`, membershipPayload);
-          toast.success('Membership updated successfully!');
-        } else {
-          console.log('📤 Creating membership for member:', memberId, membershipPayload);
-          await api.post('/gym/memberships', {
-            member_id: memberId,
-            ...membershipPayload,
-          });
-          toast.success('Membership assigned successfully!');
-        }
-
-        window.dispatchEvent(new CustomEvent('paymentAdded'));
-        window.dispatchEvent(new CustomEvent('paymentUpdated'));
-      } catch (err) {
-        console.error('Membership update error:', err);
-        hasError = true;
-        toast.error(err.response?.data?.detail || 'Failed to update membership details.');
-      }
     }
 
     if (pt_data && pt_data.trainer_id) {
