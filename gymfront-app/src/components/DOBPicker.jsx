@@ -1,27 +1,201 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, X, CalendarDays } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Calendar, X, CalendarDays, ChevronDown, Check, Search } from 'lucide-react';
 
 const MONTHS = [
-  { value: 1, label: '01 - Jan', short: 'Jan', name: 'January' },
-  { value: 2, label: '02 - Feb', short: 'Feb', name: 'February' },
-  { value: 3, label: '03 - Mar', short: 'Mar', name: 'March' },
-  { value: 4, label: '04 - Apr', short: 'Apr', name: 'April' },
-  { value: 5, label: '05 - May', short: 'May', name: 'May' },
-  { value: 6, label: '06 - Jun', short: 'Jun', name: 'June' },
-  { value: 7, label: '07 - Jul', short: 'Jul', name: 'July' },
-  { value: 8, label: '08 - Aug', short: 'Aug', name: 'August' },
-  { value: 9, label: '09 - Sep', short: 'Sep', name: 'September' },
-  { value: 10, label: '10 - Oct', short: 'Oct', name: 'October' },
-  { value: 11, label: '11 - Nov', short: 'Nov', name: 'November' },
-  { value: 12, label: '12 - Dec', short: 'Dec', name: 'December' },
+  { value: '1', short: 'Jan', name: 'January' },
+  { value: '2', short: 'Feb', name: 'February' },
+  { value: '3', short: 'Mar', name: 'March' },
+  { value: '4', short: 'Apr', name: 'April' },
+  { value: '5', short: 'May', name: 'May' },
+  { value: '6', short: 'Jun', name: 'June' },
+  { value: '7', short: 'Jul', name: 'July' },
+  { value: '8', short: 'Aug', name: 'August' },
+  { value: '9', short: 'Sep', name: 'September' },
+  { value: '10', short: 'Oct', name: 'October' },
+  { value: '11', short: 'Nov', name: 'November' },
+  { value: '12', short: 'Dec', name: 'December' },
 ];
 
 const pad = (n) => String(n).padStart(2, '0');
 
 /**
- * DOBPicker - A robust, accessible Date of Birth selector.
- * Provides clean Day, Month, and Year dropdowns (never clips or hides 1 or 31)
- * with an optional toggle to switch to native calendar input.
+ * CustomScrollDropdown - A professional, scrollable dropdown menu.
+ * Supports auto-scrolling to selected/default values, search filtering,
+ * checkmarks, smooth animations, and click-outside dismissal.
+ */
+const CustomScrollDropdown = ({
+  isOpen,
+  onToggle,
+  onClose,
+  selectedValue,
+  onSelect,
+  placeholder,
+  displayLabel,
+  options,
+  widthClass = 'flex-1',
+  menuWidthClass = 'w-full min-w-full',
+  menuAlign = 'left',
+  defaultScrollValue,
+  showSearch = false,
+  searchPlaceholder = 'Search...',
+  ariaLabel
+}) => {
+  const listRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Auto-scroll to selected or default value when dropdown opens
+  useEffect(() => {
+    if (isOpen) {
+      setSearchQuery('');
+      const timer = setTimeout(() => {
+        if (showSearch && searchInputRef.current) {
+          searchInputRef.current.focus();
+        }
+        if (listRef.current) {
+          const target = String(selectedValue || defaultScrollValue || '');
+          if (target) {
+            const el = listRef.current.querySelector(`[data-val="${target}"]`);
+            if (el) {
+              el.scrollIntoView({ block: 'nearest' });
+            }
+          }
+        }
+      }, 30);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, selectedValue, defaultScrollValue, showSearch]);
+
+  const filteredOptions = useMemo(() => {
+    if (!showSearch || !searchQuery.trim()) return options;
+    const q = searchQuery.toLowerCase().trim();
+    return options.filter((opt) => 
+      String(opt.label).toLowerCase().includes(q) || 
+      (opt.subLabel && String(opt.subLabel).toLowerCase().includes(q))
+    );
+  }, [options, showSearch, searchQuery]);
+
+  return (
+    <div className={`relative ${widthClass}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={ariaLabel || placeholder}
+        aria-expanded={isOpen}
+        className={`w-full py-2 px-2.5 bg-white border rounded-lg text-sm transition-all duration-150 flex items-center justify-between text-left cursor-pointer outline-none ${
+          isOpen
+            ? 'border-blue-500 ring-2 ring-blue-100 shadow-sm'
+            : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50/50'
+        } ${selectedValue ? 'text-gray-900 font-medium' : 'text-gray-400 font-normal'}`}
+      >
+        <span className="truncate pr-1">
+          {displayLabel || (selectedValue ? selectedValue : placeholder)}
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform duration-200 ${
+            isOpen ? 'rotate-180 text-blue-600' : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          className={`absolute top-full mt-1.5 z-[75] bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden ${menuWidthClass} ${
+            menuAlign === 'right'
+              ? 'right-0'
+              : menuAlign === 'center'
+              ? 'left-1/2 -translate-x-1/2'
+              : 'left-0'
+          }`}
+          style={{ minWidth: '100%' }}
+        >
+          {showSearch && (
+            <div className="p-2 border-b border-gray-100 bg-gray-50/80 sticky top-0 z-10 flex items-center gap-1.5">
+              <Search className="h-3.5 w-3.5 text-gray-400 flex-shrink-0 ml-1" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={searchPlaceholder}
+                className="w-full text-xs px-2 py-1 bg-white border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 outline-none text-gray-700"
+                onClick={(e) => e.stopPropagation()}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSearchQuery('');
+                  }}
+                  className="p-1 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
+
+          <div
+            ref={listRef}
+            className="max-h-56 overflow-y-auto py-1 divide-y divide-gray-50"
+            style={{
+              scrollbarWidth: 'thin',
+              scrollbarColor: '#cbd5e1 transparent'
+            }}
+          >
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-4 text-xs text-center text-gray-400">
+                No matching options
+              </div>
+            ) : (
+              filteredOptions.map((opt) => {
+                const isSelected = String(selectedValue) === String(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    data-val={String(opt.value)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelect(opt.value);
+                      onClose();
+                    }}
+                    className={`w-full px-3 py-2 text-sm flex items-center justify-between text-left cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-blue-50 text-blue-700 font-semibold'
+                        : 'text-gray-700 hover:bg-blue-50/60 hover:text-blue-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate flex-1 pr-1">
+                      <span className="truncate">{opt.label}</span>
+                      {opt.subLabel && (
+                        <span
+                          className={`text-xs ${
+                            isSelected ? 'text-blue-500 font-medium' : 'text-gray-400'
+                          }`}
+                        >
+                          {opt.subLabel}
+                        </span>
+                      )}
+                    </div>
+                    {isSelected && (
+                      <Check className="h-4 w-4 text-blue-600 flex-shrink-0 ml-1.5" />
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * DOBPicker - A robust, accessible Date of Birth selector with custom scrollable dropdowns.
+ * Provides Day, Month (displaying clear month names), and Year scrollable dropdowns.
  */
 const DOBPicker = ({ 
   value = '', 
@@ -34,7 +208,29 @@ const DOBPicker = ({
   const [day, setDay] = useState('');
   const [month, setMonth] = useState('');
   const [year, setYear] = useState('');
+  const [openDropdown, setOpenDropdown] = useState(null); // 'day' | 'month' | 'year' | null
   const [inputMode, setInputMode] = useState('dropdowns'); // 'dropdowns' | 'calendar'
+  const containerRef = useRef(null);
+
+  // Close dropdowns on click outside or Escape key
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpenDropdown(null);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   // Calculate maximum allowed year (defaults to current year)
   const currentYear = useMemo(() => {
@@ -80,7 +276,7 @@ const DOBPicker = ({
 
   // Dynamically compute days in month depending on selected year and month
   const maxDays = useMemo(() => {
-    const y = year ? parseInt(year, 10) : 2024; // 2024 is leap year as safe default
+    const y = year ? parseInt(year, 10) : 2024; // 2024 is safe leap year default
     const m = month ? parseInt(month, 10) : 1;
     return new Date(y, m, 0).getDate();
   }, [year, month]);
@@ -96,24 +292,26 @@ const DOBPicker = ({
   // Helper to emit date when day, month, and year are set
   const tryEmit = (newDay, newMonth, newYear) => {
     if (!newDay || !newMonth || !newYear) {
-      // Incomplete date, don't emit a full ISO date yet
       return;
     }
-    const safeDay = Math.min(parseInt(newDay, 10), new Date(parseInt(newYear, 10), parseInt(newMonth, 10), 0).getDate());
+    const safeDay = Math.min(
+      parseInt(newDay, 10),
+      new Date(parseInt(newYear, 10), parseInt(newMonth, 10), 0).getDate()
+    );
     const formattedDate = `${newYear}-${pad(newMonth)}-${pad(safeDay)}`;
     if (formattedDate !== value && onChange) {
       onChange(formattedDate);
     }
   };
 
-  const handleDayChange = (e) => {
-    const newDay = e.target.value;
+  const handleDaySelect = (selectedDayVal) => {
+    const newDay = String(selectedDayVal);
     setDay(newDay);
     tryEmit(newDay, month, year);
   };
 
-  const handleMonthChange = (e) => {
-    const newMonth = e.target.value;
+  const handleMonthSelect = (selectedMonthVal) => {
+    const newMonth = String(selectedMonthVal);
     setMonth(newMonth);
     // If existing day exceeds the new month's max days (e.g. 31 in Feb), clamp it
     let adjustedDay = day;
@@ -128,8 +326,8 @@ const DOBPicker = ({
     tryEmit(adjustedDay, newMonth, year);
   };
 
-  const handleYearChange = (e) => {
-    const newYear = e.target.value;
+  const handleYearSelect = (selectedYearVal) => {
+    const newYear = String(selectedYearVal);
     setYear(newYear);
     // Handle leap year adjustment if February 29 is selected
     let adjustedDay = day;
@@ -147,6 +345,7 @@ const DOBPicker = ({
     setDay('');
     setMonth('');
     setYear('');
+    setOpenDropdown(null);
     if (onChange) {
       onChange('');
     }
@@ -181,77 +380,99 @@ const DOBPicker = ({
     }
   }, [value]);
 
-  const selectCls = "w-full py-2 px-2.5 bg-white border border-gray-300 rounded-lg text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition appearance-none cursor-pointer hover:border-gray-400";
+  // Options formatting
+  const dayOptions = useMemo(() => {
+    return days.map((d) => ({
+      value: String(d),
+      label: pad(d),
+      subLabel: null
+    }));
+  }, [days]);
+
+  const monthOptions = useMemo(() => {
+    return MONTHS.map((m) => ({
+      value: m.value,
+      label: m.name,
+      subLabel: `(${m.short})`
+    }));
+  }, []);
+
+  const selectedMonthObj = useMemo(() => {
+    return MONTHS.find((m) => String(m.value) === String(month));
+  }, [month]);
+
+  const monthDisplayLabel = useMemo(() => {
+    if (!selectedMonthObj) return null;
+    return (
+      <span className="truncate">
+        <span className="hidden sm:inline">{selectedMonthObj.name}</span>
+        <span className="sm:hidden">{selectedMonthObj.short}</span>
+      </span>
+    );
+  }, [selectedMonthObj]);
+
+  const yearOptions = useMemo(() => {
+    return years.map((y) => ({
+      value: String(y),
+      label: String(y),
+      subLabel: null
+    }));
+  }, [years]);
 
   return (
-    <div className={`space-y-1 ${className}`}>
+    <div ref={containerRef} className={`space-y-1 ${className}`}>
       {inputMode === 'dropdowns' ? (
         <div className="flex items-center gap-1.5 w-full">
           {/* Day Dropdown */}
-          <div className="relative flex-1 min-w-[72px]">
-            <select
-              value={day}
-              onChange={handleDayChange}
-              aria-label="Date of Birth Day"
-              className={`${selectCls} ${!day ? 'text-gray-400 font-normal' : 'font-medium'}`}
-            >
-              <option value="" disabled className="text-gray-400">Day</option>
-              {days.map((d) => (
-                <option key={d} value={d} className="text-gray-900">
-                  {pad(d)}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-gray-400">
-              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
-                <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-              </svg>
-            </div>
-          </div>
+          <CustomScrollDropdown
+            isOpen={openDropdown === 'day'}
+            onToggle={() => setOpenDropdown((prev) => (prev === 'day' ? null : 'day'))}
+            onClose={() => setOpenDropdown(null)}
+            selectedValue={day ? pad(day) : ''}
+            onSelect={handleDaySelect}
+            placeholder="Day"
+            displayLabel={day ? pad(day) : null}
+            options={dayOptions}
+            widthClass="flex-1 min-w-[68px]"
+            menuWidthClass="w-24 sm:w-28"
+            menuAlign="left"
+            ariaLabel="Date of Birth Day"
+          />
 
-          {/* Month Dropdown */}
-          <div className="relative flex-[1.3] min-w-[100px]">
-            <select
-              value={month}
-              onChange={handleMonthChange}
-              aria-label="Date of Birth Month"
-              className={`${selectCls} ${!month ? 'text-gray-400 font-normal' : 'font-medium'}`}
-            >
-              <option value="" disabled className="text-gray-400">Month</option>
-              {MONTHS.map((m) => (
-                <option key={m.value} value={m.value} className="text-gray-900">
-                  {m.label}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-gray-400">
-              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
-                <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-              </svg>
-            </div>
-          </div>
+          {/* Month Dropdown (Shows names like January, February, etc.) */}
+          <CustomScrollDropdown
+            isOpen={openDropdown === 'month'}
+            onToggle={() => setOpenDropdown((prev) => (prev === 'month' ? null : 'month'))}
+            onClose={() => setOpenDropdown(null)}
+            selectedValue={month}
+            onSelect={handleMonthSelect}
+            placeholder="Month"
+            displayLabel={monthDisplayLabel}
+            options={monthOptions}
+            widthClass="flex-[1.4] min-w-[105px]"
+            menuWidthClass="w-44 sm:w-48"
+            menuAlign="center"
+            ariaLabel="Date of Birth Month"
+          />
 
           {/* Year Dropdown */}
-          <div className="relative flex-1 min-w-[82px]">
-            <select
-              value={year}
-              onChange={handleYearChange}
-              aria-label="Date of Birth Year"
-              className={`${selectCls} ${!year ? 'text-gray-400 font-normal' : 'font-medium'}`}
-            >
-              <option value="" disabled className="text-gray-400">Year</option>
-              {years.map((y) => (
-                <option key={y} value={y} className="text-gray-900">
-                  {y}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-gray-400">
-              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
-                <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-              </svg>
-            </div>
-          </div>
+          <CustomScrollDropdown
+            isOpen={openDropdown === 'year'}
+            onToggle={() => setOpenDropdown((prev) => (prev === 'year' ? null : 'year'))}
+            onClose={() => setOpenDropdown(null)}
+            selectedValue={year}
+            onSelect={handleYearSelect}
+            placeholder="Year"
+            displayLabel={year || null}
+            options={yearOptions}
+            widthClass="flex-1 min-w-[78px]"
+            menuWidthClass="w-36"
+            menuAlign="right"
+            defaultScrollValue={String(Math.max(minYear, currentYear - 25))}
+            showSearch={true}
+            searchPlaceholder="Type year..."
+            ariaLabel="Date of Birth Year"
+          />
 
           {/* Clear Button (only shown if something is selected) */}
           {(day || month || year || value) && (
@@ -268,7 +489,10 @@ const DOBPicker = ({
           {/* Toggle to Calendar View */}
           <button
             type="button"
-            onClick={() => setInputMode('calendar')}
+            onClick={() => {
+              setOpenDropdown(null);
+              setInputMode('calendar');
+            }}
             title="Switch to calendar / date picker"
             className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex-shrink-0"
           >
@@ -288,7 +512,7 @@ const DOBPicker = ({
             />
           </div>
 
-          {(value) && (
+          {value && (
             <button
               type="button"
               onClick={handleClear}
@@ -327,4 +551,3 @@ const DOBPicker = ({
 };
 
 export default DOBPicker;
-
