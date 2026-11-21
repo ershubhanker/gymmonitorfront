@@ -2386,18 +2386,27 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       discount_applied: member.raw?.membership?.discount_applied,
     } : null);
 
+    const planNameStr = typeof member.membership === 'string'
+      ? (member.membership !== 'No Plan' ? member.membership : '')
+      : (member.membership?.plan_name || member.current_membership?.plan?.name || member.current_membership?.plan_name || '');
+
+    const endDate = member.membershipEndDate || 
+      (typeof member.membership === 'object' ? member.membership?.end_date : null) || 
+      member.current_membership?.end_date || 
+      null;
+
     setSelectedMember({
+      ...member.raw,
       id: member.id,
-      full_name: member.fullName,
+      full_name: member.fullName || member.full_name,
       email: member.email,
       phone: member.phone,
       gender: member.gender,
-      joined_date: member.joinDate,
-      membership: member.membership,
-      membershipEndDate: member.membershipEndDate,
+      joined_date: member.joinDate || member.joined_date,
+      membership: planNameStr || 'No Plan',
+      membershipEndDate: endDate,
       current_membership: initialMembership,
       membershipData: initialMembership,
-      ...member.raw,
     });
     setIsModalOpen(true);
 
@@ -2405,9 +2414,18 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       const res = await api.get(`/gym/members/${member.id}`);
       if (res.data) {
         const freshMem = res.data.current_membership || res.data.active_membership || (res.data.memberships && res.data.memberships[0]);
+        const freshPlanName = typeof res.data.membership === 'string'
+          ? res.data.membership
+          : (res.data.membership?.plan_name || freshMem?.plan?.name || freshMem?.plan_name || planNameStr || 'No Plan');
+        const freshEndDate = res.data.membershipEndDate || 
+          (typeof res.data.membership === 'object' ? res.data.membership?.end_date : null) || 
+          freshMem?.end_date || 
+          endDate;
         setSelectedMember(prev => ({
           ...prev,
           ...res.data,
+          membership: freshPlanName,
+          membershipEndDate: freshEndDate,
           current_membership: freshMem,
           membershipData: freshMem,
         }));
@@ -2891,7 +2909,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                         <div className="text-xs text-gray-500">{member.phone}</div>
                       </td>
                       <td className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4">
-                        <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[100px]">{member.membership}</div>
+                        <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[100px]">
+                          {typeof member.membership === 'string' ? member.membership : (member.membership?.plan_name || 'No Plan')}
+                        </div>
                         <div className="text-[10px] sm:text-xs text-gray-500 truncate">
                           {member.membershipEndDate ? (
                             <span>

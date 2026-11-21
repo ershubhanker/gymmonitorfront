@@ -3092,34 +3092,65 @@ const MemberModal = ({ isOpen, onClose,
                   <div className="space-y-4">
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Current Membership</p>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-gray-800">
-                            {member?.membership && member.membership !== 'No Plan'
-                              ? member.membership
-                              : <span className="text-gray-400 italic">No active plan</span>}
-                          </p>
-                          {member?.membershipEndDate && (
-                            <p className="text-sm text-gray-500 mt-0.5">
-                              Expires: {new Date(member.membershipEndDate).toLocaleDateString('en-IN', {
-                                day: 'numeric', month: 'long', year: 'numeric'
-                              })}
-                            </p>
-                          )}
-                        </div>
-                        {member?.membershipEndDate && (
-                          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                            new Date(member.membershipEndDate) < new Date()
-                              ? 'bg-red-100 text-red-700'
-                              : new Date(member.membershipEndDate) < new Date(Date.now() + 7 * 86400000)
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-green-100 text-green-700'
-                          }`}>
-                            {new Date(member.membershipEndDate) < new Date() ? 'Expired' :
-                             new Date(member.membershipEndDate) < new Date(Date.now() + 7 * 86400000) ? 'Expiring soon' : 'Active'}
-                          </span>
-                        )}
-                      </div>
+                      {(() => {
+                        const currentPlanName = (() => {
+                          const mem = member?.membership;
+                          if (typeof mem === 'string') {
+                            return mem !== 'No Plan' ? mem : null;
+                          }
+                          if (mem && typeof mem === 'object') {
+                            return mem.plan_name || mem.name || mem.plan?.name || null;
+                          }
+                          return member?.current_membership?.plan_name || member?.current_membership?.plan?.name || member?.membershipPlanName || null;
+                        })();
+
+                        const expiryRaw = member?.membershipEndDate || 
+                          (typeof member?.membership === 'object' ? member.membership?.end_date : null) || 
+                          member?.current_membership?.end_date || 
+                          null;
+                        
+                        let parsedDate = null;
+                        if (expiryRaw) {
+                          const d = new Date(expiryRaw);
+                          if (!isNaN(d.getTime())) parsedDate = d;
+                        }
+
+                        const now = new Date();
+                        const isExpired = parsedDate ? parsedDate < now : false;
+                        const isExpiringSoon = parsedDate && !isExpired ? parsedDate < new Date(Date.now() + 7 * 86400000) : false;
+
+                        return (
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-semibold text-gray-800">
+                                {currentPlanName ? (
+                                  <span>{currentPlanName}</span>
+                                ) : (
+                                  <span className="text-gray-400 italic">No active plan</span>
+                                )}
+                              </p>
+                              {parsedDate && (
+                                <p className="text-sm text-gray-500 mt-0.5">
+                                  Expires: {parsedDate.toLocaleDateString('en-IN', {
+                                    day: 'numeric', month: 'long', year: 'numeric'
+                                  })}
+                                </p>
+                              )}
+                            </div>
+                            {parsedDate && (
+                              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                                isExpired
+                                  ? 'bg-red-100 text-red-700'
+                                  : isExpiringSoon
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-green-100 text-green-700'
+                              }`}>
+                                {isExpired ? 'Expired' : isExpiringSoon ? 'Expiring soon' : 'Active'}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div className="flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-xl">
