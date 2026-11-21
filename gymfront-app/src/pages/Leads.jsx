@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Search, Phone, Mail, User, Calendar,
-  MoreVertical, Edit2, Trash2, X, ChevronDown, RefreshCw,
+  MoreVertical, Edit2, Trash2, X, ChevronDown, ChevronLeft, ChevronRight, RefreshCw,
   UserCheck, Clock, AlertCircle, Star, Zap,
   MessageCircle, Instagram, Facebook, Globe, Users, Share2, Copy, LinkIcon, Download, CheckCircle as CheckCircleIcon,
   Flame, Sun, Snowflake, MessageSquare, History, ArrowLeft, Target, DollarSign, Building, Tag, UserPlus, TrendingUp, Award,
@@ -778,6 +778,21 @@ const Leads = () => {
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [deletingBulk, setDeletingBulk] = useState(false);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+
+  // Reset page to 1 when filters or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterStatus, filterSource, filterQuality, filterStaff, search, filterDateFrom, filterDateTo]);
+
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(leads.length / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, leads.length);
+  const paginatedLeads = leads.slice(startIndex, endIndex);
+
   // Permission checks
   const canViewLeads = hasPermission('view_leads');
   const canAddLead = hasPermission('add_lead');
@@ -983,10 +998,12 @@ const Leads = () => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedLeads.length === leads.length && leads.length > 0) {
-      setSelectedLeads([]);
+    const pageIds = paginatedLeads.map(l => l.id);
+    const allSelectedOnPage = pageIds.length > 0 && pageIds.every(id => selectedLeads.includes(id));
+    if (allSelectedOnPage) {
+      setSelectedLeads(prev => prev.filter(id => !pageIds.includes(id)));
     } else {
-      setSelectedLeads(leads.map(l => l.id));
+      setSelectedLeads(prev => Array.from(new Set([...prev, ...pageIds])));
     }
   };
 
@@ -1448,10 +1465,10 @@ const Leads = () => {
                   <th className="px-4 py-3 w-10 text-left">
                     <input
                       type="checkbox"
-                      checked={selectedLeads.length === leads.length && leads.length > 0}
+                      checked={paginatedLeads.length > 0 && paginatedLeads.every(l => selectedLeads.includes(l.id))}
                       onChange={toggleSelectAll}
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-4 w-4"
-                      title={selectedLeads.length === leads.length ? 'Deselect all' : 'Select all'}
+                      title={paginatedLeads.length > 0 && paginatedLeads.every(l => selectedLeads.includes(l.id)) ? 'Deselect all on this page' : 'Select all on this page'}
                     />
                   </th>
                   <th className="text-left px-5 py-3 font-semibold">Lead</th>
@@ -1467,7 +1484,7 @@ const Leads = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {leads.map(lead => {
+                {paginatedLeads.map(lead => {
                   const followUp = formatFollowUp(lead.next_follow_up);
                   const SrcIcon = SOURCE_CONFIG[lead.source]?.icon || Star;
                   const isSelected = selectedLeads.includes(lead.id);
@@ -1593,6 +1610,62 @@ const Leads = () => {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination Footer */}
+        {!loading && leads.length > 0 && (
+          <div className="px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-50/50">
+            <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+              <span>
+                Showing <span className="font-semibold text-gray-900">{startIndex + 1}</span> to{' '}
+                <span className="font-semibold text-gray-900">{endIndex}</span> of{' '}
+                <span className="font-semibold text-gray-900">{leads.length}</span> leads
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-500">Per page:</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value={15}>15</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="p-2 border border-gray-200 rounded-xl hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-gray-600"
+                title="Previous page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+
+              <div className="flex items-center gap-1 px-2">
+                <span className="text-sm font-medium text-gray-700">
+                  Page <span className="font-semibold text-blue-600">{currentPage}</span> of{' '}
+                  <span className="font-semibold text-gray-900">{totalPages}</span>
+                </span>
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="p-2 border border-gray-200 rounded-xl hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-gray-600"
+                title="Next page"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>
