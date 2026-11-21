@@ -14,7 +14,9 @@ import { API_BASE_URL as CONFIGURED_API_URL } from '../services/api';
 const API_BASE_URL = import.meta.env.VITE_API_URL || CONFIGURED_API_URL || 'https://api.gymmonitor.in';
 
 const LeadCaptureForm = () => {
-  const { gymSlug } = useParams();
+  const params = useParams();
+  const rawGymSlug = params.gymSlug;
+  const gymSlug = rawGymSlug ? decodeURIComponent(rawGymSlug).trim() : '';
   const navigate = useNavigate();
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -37,29 +39,56 @@ const LeadCaptureForm = () => {
   // Debug logging
   useEffect(() => {
     console.log('LeadCaptureForm mounted with gymSlug:', gymSlug);
+    if (!gymSlug) return;
+
     // Try to fetch gym info
     const fetchGymInfo = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/gym/public/gym-info/${gymSlug}`);
+        const response = await axios.get(`${API_BASE_URL}/gym/public/gym-info/${encodeURIComponent(gymSlug)}`);
         if (response.data && response.data.name) {
           setGymName(response.data.name);
+          return;
+        }
+      } catch (err) {
+        console.warn('Could not fetch gym info via public/gym-info, trying fallback...');
+      }
+
+      try {
+        const fallbackRes = await axios.get(`${API_BASE_URL}/gym/lead-form-link/${encodeURIComponent(gymSlug)}`);
+        if (fallbackRes.data && fallbackRes.data.name) {
+          setGymName(fallbackRes.data.name);
         }
       } catch (error) {
-        console.log('Could not fetch gym info, using default');
+        console.warn('Could not fetch gym info, using default');
       }
     };
-    if (gymSlug) {
-      fetchGymInfo();
-    }
+
+    fetchGymInfo();
   }, [gymSlug]);
 
   const validateForm = () => {
     const newErrors = {};
-    if (!formData.full_name.trim()) newErrors.full_name = 'Name is required';
-    if (!formData.phone.trim()) newErrors.phone = 'Phone number is required';
-    else if (!/^[+]?[\d\s\-]{7,15}$/.test(formData.phone)) newErrors.phone = 'Enter a valid phone number';
-    if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Enter a valid email';
-    if (formData.age && (formData.age < 10 || formData.age > 100)) newErrors.age = 'Age must be between 10 and 100';
+    if (!formData.full_name || !formData.full_name.trim()) {
+      newErrors.full_name = 'Name is required';
+    } else if (formData.full_name.trim().length < 2) {
+      newErrors.full_name = 'Name must be at least 2 characters';
+    }
+
+    const trimmedPhone = formData.phone ? formData.phone.trim() : '';
+    const digitsOnly = trimmedPhone.replace(/\D/g, '');
+    if (!trimmedPhone) {
+      newErrors.phone = 'Phone number is required';
+    } else if (digitsOnly.length < 7 || digitsOnly.length > 15) {
+      newErrors.phone = 'Enter a valid phone number (7-15 digits)';
+    }
+
+    if (formData.email && formData.email.trim() && !/\S+@\S+\.\S+/.test(formData.email.trim())) {
+      newErrors.email = 'Enter a valid email';
+    }
+
+    if (formData.age && (parseInt(formData.age, 10) < 10 || parseInt(formData.age, 10) > 100)) {
+      newErrors.age = 'Age must be between 10 and 100';
+    }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -78,22 +107,22 @@ const LeadCaptureForm = () => {
     setLoading(true);
     try {
       const payload = {
-        full_name: formData.full_name,
-        phone: formData.phone,
-        email: formData.email || null,
-        age: formData.age ? parseInt(formData.age) : null,
+        full_name: formData.full_name.trim(),
+        phone: formData.phone.trim(),
+        email: formData.email?.trim() || null,
+        age: formData.age ? parseInt(formData.age, 10) : null,
         gender: formData.gender || null,
         interest: formData.interest || null,
         preferred_plan: formData.preferred_plan || null,
         budget: formData.budget ? parseFloat(formData.budget) : null,
-        message: formData.message || null,
+        message: formData.message?.trim() || null,
       };
       
-      console.log('Submitting lead to:', `${API_BASE_URL}/gym/public/lead-capture/${gymSlug}`);
+      console.log('Submitting lead to:', `${API_BASE_URL}/gym/public/lead-capture/${encodeURIComponent(gymSlug)}`);
       console.log('Payload:', payload);
       
       const response = await axios.post(
-        `${API_BASE_URL}/gym/public/lead-capture/${gymSlug}`,
+        `${API_BASE_URL}/gym/public/lead-capture/${encodeURIComponent(gymSlug)}`,
         payload,
         {
           headers: {
@@ -105,11 +134,11 @@ const LeadCaptureForm = () => {
       
       console.log('Response:', response.data);
       
-      if (response.data.success) {
+      if (response.data && response.data.success) {
         setSubmitted(true);
         toast.success('Thank you! We will contact you soon.');
       } else {
-        throw new Error(response.data.message || 'Submission failed');
+        throw new Error(response.data?.message || 'Submission failed');
       }
     } catch (error) {
       console.error('Submission error:', error);
@@ -119,16 +148,26 @@ const LeadCaptureForm = () => {
         console.error('Error response:', error.response.data);
         console.error('Status:', error.response.status);
         
+        const rawDetail = error.response.data?.detail;
+        let parsedDetail = null;
+        if (typeof rawDetail === 'string') {
+          parsedDetail = rawDetail;
+        } else if (Array.isArray(rawDetail)) {
+          parsedDetail = rawDetail.map(d => (typeof d === 'object' ? d.msg || JSON.stringify(d) : String(d))).join(', ');
+        } else if (rawDetail && typeof rawDetail === 'object') {
+          parsedDetail = rawDetail.msg || rawDetail.message || JSON.stringify(rawDetail);
+        }
+
         if (error.response.status === 404) {
-          errorMsg = 'Invalid gym link. Please contact the gym directly.';
-        } else if (error.response.status === 400) {
-          errorMsg = error.response.data.detail || 'Invalid form data. Please check your inputs.';
+          errorMsg = parsedDetail || 'Invalid gym link. Please contact the gym directly.';
+        } else if (error.response.status === 400 || error.response.status === 422) {
+          errorMsg = parsedDetail || 'Invalid form data. Please check your inputs.';
         } else if (error.response.status === 403) {
-          errorMsg = 'This gym is not accepting new leads at the moment.';
-        } else if (error.response.data?.detail) {
-          errorMsg = error.response.data.detail;
+          errorMsg = parsedDetail || 'This gym is not accepting new leads at the moment.';
+        } else if (parsedDetail) {
+          errorMsg = parsedDetail;
         } else if (error.response.data?.message) {
-          errorMsg = error.response.data.message;
+          errorMsg = typeof error.response.data.message === 'string' ? error.response.data.message : JSON.stringify(error.response.data.message);
         }
       } else if (error.message) {
         errorMsg = error.message;
