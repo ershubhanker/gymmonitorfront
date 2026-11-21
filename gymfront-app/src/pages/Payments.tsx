@@ -1,6 +1,6 @@
 // src/pages/Payments.tsx - Complete updated with refund handling and proper revenue calculation
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   CreditCard, 
   Calendar, 
@@ -41,8 +41,13 @@ const Payments = () => {
   const [filteredPayments, setFilteredPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(() => {
+    const todayStr = getTodayDateStr();
+    const [year, month] = todayStr.split('-');
+    return `${year}-${month}-01`;
+  });
+  const [endDate, setEndDate] = useState(() => getTodayDateStr());
+  const isInitialMount = useRef(true);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [datePickerType, setDatePickerType] = useState('start');
   const [searchTerm, setSearchTerm] = useState('');
@@ -226,15 +231,22 @@ const Payments = () => {
     }
   }, [user?.gst_rate]);
 
-  // ✅ Set initial date range to current month in Asia/Kolkata
+  // ✅ Load current month payments on initial mount
   useEffect(() => {
-    const todayStr = getTodayDateStr();
-    const [year, month] = todayStr.split('-');
-    const firstDayOfMonth = `${year}-${month}-01`;
-    setStartDate(firstDayOfMonth);
-    setEndDate(todayStr);
-    fetchPayments();
+    fetchPayments(startDate, endDate);
   }, []);
+
+  // ✅ Fetch payments whenever startDate or endDate changes
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      fetchPayments(startDate, endDate);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [startDate, endDate]);
 
   // ✅ Refresh when date range or filters change
   useEffect(() => {
@@ -253,7 +265,7 @@ const Payments = () => {
   useEffect(() => {
     const handlePaymentAdded = () => {
       console.log('🔄 Payment added event received, refreshing...');
-      fetchPayments();
+      fetchPayments(startDate, endDate);
     };
 
     window.addEventListener('paymentAdded', handlePaymentAdded);
@@ -263,15 +275,27 @@ const Payments = () => {
       window.removeEventListener('paymentAdded', handlePaymentAdded);
       window.removeEventListener('paymentUpdated', handlePaymentAdded);
     };
-  }, []);
+  }, [startDate, endDate]);
 
-  const fetchPayments = useCallback(async () => {
+  const fetchPayments = useCallback(async (sDate?: string, eDate?: string) => {
     try {
       setLoading(true);
       setError(null);
       
-      // ✅ Fetch payments with limit to get all recent payments
-      const response = await api.get('/gym/payments?limit=10000');
+      const queryStart = sDate !== undefined ? sDate : startDate;
+      const queryEnd = eDate !== undefined ? eDate : endDate;
+
+      const params = new URLSearchParams();
+      if (queryStart) params.append('start_date', queryStart);
+      if (queryEnd) params.append('end_date', queryEnd);
+      if (!queryStart && !queryEnd) {
+        params.append('limit', '2000');
+      } else {
+        params.append('limit', '1000');
+      }
+      
+      // ✅ Fetch payments with date range parameters
+      const response = await api.get(`/gym/payments?${params.toString()}`);
       console.log('📊 Payments response:', response.data);
       
       let paymentsData = Array.isArray(response.data) ? response.data : [];
@@ -357,7 +381,11 @@ const Payments = () => {
       console.log('✅ Processed payments:', paymentsData.length);
       console.log('💰 Refunds found:', paymentsData.filter(p => p.is_refund).length);
       setPayments(paymentsData);
-      setTodaySummary(calculateTodaySummary(paymentsData));
+      const todaySummaryData = calculateTodaySummary(paymentsData);
+      const todayDateStr = getTodayDateStr();
+      if (todaySummaryData.count > 0 || (queryStart && queryEnd && queryStart <= todayDateStr && todayDateStr <= queryEnd) || (!queryStart && !queryEnd)) {
+        setTodaySummary(todaySummaryData);
+      }
     } catch (error) {
       console.error('❌ Error fetching payments:', error);
       setError('Failed to load payments. Please try again.');
@@ -366,12 +394,16 @@ const Payments = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [startDate, endDate]);
 
   const filterPayments = useCallback(() => {
     try {
       // Keep today's sales summary synchronized with all available payments
-      setTodaySummary(calculateTodaySummary(payments));
+      const todaySummaryData = calculateTodaySummary(payments);
+      const todayDateStr = getTodayDateStr();
+      if (todaySummaryData.count > 0 || (startDate && endDate && startDate <= todayDateStr && todayDateStr <= endDate) || (!startDate && !endDate)) {
+        setTodaySummary(todaySummaryData);
+      }
 
       let filtered = [...payments];
 
