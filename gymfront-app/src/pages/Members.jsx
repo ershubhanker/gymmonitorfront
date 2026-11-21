@@ -1998,8 +1998,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           amount_paid: paidAmount,
           discount_applied: discount,
           payment_method: payment_method || 'cash',
-          payment_date: payment_date || undefined,
         };
+        // Only include payment_date if renewing or creating a new membership
+        if ((renew_membership || !targetMembershipId) && payment_date) {
+          membershipPayload.payment_date = payment_date;
+        }
 
         if (targetMembershipId) {
           console.log(`📤 Updating existing membership ${targetMembershipId}:`, membershipPayload);

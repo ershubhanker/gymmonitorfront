@@ -32,6 +32,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { parseUtcDate } from '../utils/dateUtils';
 
 
 const Payments = () => {
@@ -95,9 +96,12 @@ const Payments = () => {
   // Helper to extract strictly local YYYY-MM-DD (Asia/Kolkata) from payment date
   const getPaymentLocalDateStr = (paymentDate: any): string => {
     if (!paymentDate) return '';
+    if (typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate.trim())) {
+      return paymentDate.trim();
+    }
     try {
-      const d = new Date(paymentDate);
-      if (!isNaN(d.getTime())) {
+      const d = parseUtcDate(paymentDate);
+      if (d && !isNaN(d.getTime())) {
         return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
       }
     } catch (e) {}
@@ -142,7 +146,7 @@ const Payments = () => {
   const isPaymentToday = (payment: any): boolean => {
     if (!payment || !payment.payment_date) return false;
     const pLocal = getPaymentLocalDateStr(payment.payment_date);
-    return pLocal === getTodayDateStr();
+    return Boolean(pLocal && pLocal === getTodayDateStr());
   };
 
   // Helper to calculate today's collection from master payment list
@@ -161,7 +165,12 @@ const Payments = () => {
       };
     }
 
-    const todayPayments = allPayments.filter(p => isPaymentToday(p));
+    const todayDateStr = getTodayDateStr();
+    const todayPayments = allPayments.filter(p => {
+      if (!p || !p.payment_date) return false;
+      const pDate = getPaymentLocalDateStr(p.payment_date);
+      return Boolean(pDate && pDate === todayDateStr);
+    });
     
     const positiveToday = todayPayments.filter(p => !p.is_refund && Number(p.amount) > 0);
     const refundToday = todayPayments.filter(p => p.is_refund || Number(p.amount) < 0);
@@ -568,15 +577,19 @@ const Payments = () => {
   const formatDate = (dateString: any) => {
     if (!dateString) return '';
     try {
-      let date: Date;
-      if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString.trim())) {
-        const [y, m, d] = dateString.trim().split('-').map(Number);
-        date = new Date(y, m - 1, d, 12, 0, 0);
-      } else {
-        date = new Date(dateString);
+      const str = String(dateString).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        const [y, m, d] = str.split('-').map(Number);
+        const date = new Date(y, m - 1, d, 12, 0, 0);
+        return date.toLocaleDateString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        });
       }
-      if (isNaN(date.getTime())) return '';
-      return date.toLocaleDateString('en-IN', {
+      const d = parseUtcDate(dateString);
+      if (!d || isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('en-IN', {
         timeZone: 'Asia/Kolkata',
         day: 'numeric',
         month: 'short',
@@ -587,12 +600,31 @@ const Payments = () => {
     }
   };
 
-  const formatDateTime = (dateString) => {
+  const formatTimeOnly = (dateString: any) => {
     if (!dateString) return '';
     try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return '';
-      return date.toLocaleString('en-IN', {
+      const str = String(dateString).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return '';
+      if (str.includes('T00:00:00') || str.endsWith(' 00:00:00')) return '';
+      const d = parseUtcDate(dateString);
+      if (!d || isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      return '';
+    }
+  };
+
+  const formatDateTime = (dateString: any) => {
+    if (!dateString) return '';
+    try {
+      const d = parseUtcDate(dateString);
+      if (!d || isNaN(d.getTime())) return '';
+      return d.toLocaleString('en-IN', {
         timeZone: 'Asia/Kolkata',
         day: 'numeric',
         month: 'short',
@@ -1793,8 +1825,10 @@ const Payments = () => {
                       )}
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
-                          <p className="text-sm text-gray-900">{formatDate(payment.payment_date)}</p>
-                          <p className="text-xs text-gray-400">{formatDateTime(payment.payment_date)}</p>
+                          <p className="text-sm font-medium text-gray-900">{formatDate(payment.payment_date)}</p>
+                          {formatTimeOnly(payment.payment_date) ? (
+                            <p className="text-xs text-gray-400">{formatTimeOnly(payment.payment_date)}</p>
+                          ) : null}
                         </div>
                       </td>
                       <td className="px-6 py-4">
