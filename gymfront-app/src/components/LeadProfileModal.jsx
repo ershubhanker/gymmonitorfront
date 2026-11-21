@@ -36,16 +36,31 @@ const LEAD_QUALITY_CONFIG = {
   cold: { label: 'Cold', color: 'bg-blue-100 text-blue-700', icon: Snowflake },
 };
 
+const toDatetimeLocal = (dt) => {
+  if (!dt) return '';
+  const d = new Date(dt);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 const LeadProfileModal = ({ lead, onClose, onUpdate }) => {
   const [leadDetail, setLeadDetail] = useState(lead || null);
   const [loading, setLoading] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
 
   useEffect(() => {
     if (lead) {
       setLeadDetail(lead);
+      if (lead.next_follow_up) {
+        setFollowUpDate(toDatetimeLocal(lead.next_follow_up));
+      } else {
+        setFollowUpDate('');
+      }
       fetchLeadDetail();
     }
   }, [lead?.id]);
@@ -61,12 +76,41 @@ const LeadProfileModal = ({ lead, onClose, onUpdate }) => {
       }
       if (response && response.data) {
         setLeadDetail(response.data);
+        if (response.data.next_follow_up) {
+          setFollowUpDate(toDatetimeLocal(response.data.next_follow_up));
+        } else {
+          setFollowUpDate('');
+        }
       }
     } catch (error) {
       console.error('Error fetching lead details:', error);
       if (!leadDetail) {
         toast.error('Failed to load lead details');
       }
+    }
+  };
+
+  const handleUpdateFollowUp = async (customDate) => {
+    const valueToUse = customDate !== undefined ? customDate : followUpDate;
+    setSavingFollowUp(true);
+    try {
+      let isoValue = null;
+      if (valueToUse) {
+        const parsed = new Date(valueToUse);
+        if (!isNaN(parsed.getTime())) {
+          isoValue = parsed.toISOString();
+        }
+      }
+      await api.put(`/gym/leads/${lead.id}`, { next_follow_up: isoValue });
+      toast.success(isoValue ? 'Next follow-up scheduled!' : 'Next follow-up cleared');
+      setLeadDetail(prev => prev ? { ...prev, next_follow_up: isoValue } : prev);
+      fetchLeadDetail();
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error updating follow-up:', error);
+      toast.error('Failed to update follow-up date and time');
+    } finally {
+      setSavingFollowUp(false);
     }
   };
 
@@ -79,6 +123,16 @@ const LeadProfileModal = ({ lead, onClose, onUpdate }) => {
     setSubmitting(true);
     try {
       await api.post(`/gym/leads/${lead.id}/comments`, { comment: newComment });
+      
+      // If user also changed follow-up date
+      const currentIso = leadDetail?.next_follow_up ? toDatetimeLocal(leadDetail.next_follow_up) : '';
+      if (followUpDate && followUpDate !== currentIso) {
+        const parsed = new Date(followUpDate);
+        if (!isNaN(parsed.getTime())) {
+          await api.put(`/gym/leads/${lead.id}`, { next_follow_up: parsed.toISOString() });
+        }
+      }
+
       toast.success('Comment added successfully');
       setNewComment('');
       fetchLeadDetail();
@@ -223,6 +277,114 @@ const LeadProfileModal = ({ lead, onClose, onUpdate }) => {
             </div>
           </div>
 
+          {/* Next Follow-up Scheduler */}
+          <div className="bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl p-4 border border-orange-200/80 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-xs">
+                  <Calendar className="h-4 w-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900">Next Follow-up</h4>
+                  <p className="text-xs text-gray-500">
+                    {leadDetail.next_follow_up ? (
+                      <span className="text-orange-700 font-semibold">
+                        Scheduled: {formatDateTime(leadDetail.next_follow_up)}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 italic">No follow-up scheduled yet</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* Quick shortcut buttons */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 1);
+                    d.setHours(10, 0, 0, 0);
+                    setFollowUpDate(toDatetimeLocal(d));
+                    handleUpdateFollowUp(d.toISOString());
+                  }}
+                  disabled={savingFollowUp}
+                  className="px-2.5 py-1 text-xs bg-white hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-lg transition-colors font-medium shadow-2xs"
+                >
+                  Tomorrow
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 2);
+                    d.setHours(10, 0, 0, 0);
+                    setFollowUpDate(toDatetimeLocal(d));
+                    handleUpdateFollowUp(d.toISOString());
+                  }}
+                  disabled={savingFollowUp}
+                  className="px-2.5 py-1 text-xs bg-white hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-lg transition-colors font-medium shadow-2xs"
+                >
+                  In 2 Days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 7);
+                    d.setHours(10, 0, 0, 0);
+                    setFollowUpDate(toDatetimeLocal(d));
+                    handleUpdateFollowUp(d.toISOString());
+                  }}
+                  disabled={savingFollowUp}
+                  className="px-2.5 py-1 text-xs bg-white hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-lg transition-colors font-medium shadow-2xs"
+                >
+                  In 1 Week
+                </button>
+                {leadDetail.next_follow_up && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFollowUpDate('');
+                      handleUpdateFollowUp(null);
+                    }}
+                    disabled={savingFollowUp}
+                    className="px-2.5 py-1 text-xs bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-lg transition-colors font-medium shadow-2xs"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Date Time Picker & Save Button */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2 border-t border-orange-200/60">
+              <div className="relative flex-1">
+                <input
+                  type="datetime-local"
+                  value={followUpDate}
+                  onChange={(e) => setFollowUpDate(e.target.value)}
+                  disabled={savingFollowUp}
+                  className="w-full px-3 py-2 text-xs sm:text-sm bg-white border border-orange-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-400 font-medium text-gray-800 shadow-2xs"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => handleUpdateFollowUp()}
+                disabled={savingFollowUp}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm font-semibold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                {savingFollowUp ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <CheckCircle className="h-4 w-4" />
+                )}
+                <span>Set Follow-up</span>
+              </button>
+            </div>
+          </div>
+
           {/* Lead Information Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Basic Info */}
@@ -324,12 +486,12 @@ const LeadProfileModal = ({ lead, onClose, onUpdate }) => {
                   <span className="text-gray-500">Last Activity:</span>
                   <span className="font-medium text-gray-900">{formatDateTime(leadDetail.last_activity || leadDetail.updated_at)}</span>
                 </div>
-                {leadDetail.next_follow_up && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Next Follow-up:</span>
-                    <span className="font-medium text-orange-600">{formatDateTime(leadDetail.next_follow_up)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">Next Follow-up:</span>
+                  <span className={`font-medium ${leadDetail.next_follow_up ? 'text-orange-600 font-semibold' : 'text-gray-400 italic'}`}>
+                    {leadDetail.next_follow_up ? formatDateTime(leadDetail.next_follow_up) : 'Not scheduled'}
+                  </span>
+                </div>
                 {leadDetail.conversion_days && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Time to Convert:</span>
