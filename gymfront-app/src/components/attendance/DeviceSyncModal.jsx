@@ -195,14 +195,12 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
       const memberName = member.full_name || member.fullName || 'Unknown Member';
       const memberPhone = member.phone || '';
       const memberId = member.id || member.member_id;
+      const existingDeviceId = member.device_user_id || member.deviceUserId;
       const cleanPhone = memberPhone.replace(/\D/g, '');
-      const deviceUserId = cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone;
+      const phonePin = cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone;
       
-      if (!deviceUserId || deviceUserId.length < 10) {
-        toast.error('Invalid phone number for device sync. Please ensure member has a valid 10-digit phone number.');
-        setSyncing(false);
-        return;
-      }
+      // If member already exists on device with an assigned ID (e.g. member ID 148 or phone), keep and edit that ID!
+      const deviceUserId = existingDeviceId || phonePin || String(memberId);
 
       console.log(`📤 Syncing member "${memberName}" (ID: ${memberId}) to device "${selectedDevice.device_name}" with device ID: ${deviceUserId}`);
 
@@ -260,7 +258,7 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
       return;
     }
     const cleanPhone = (member?.phone || '').replace(/\D/g, '');
-    const pin = assignedDeviceId || (cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone) || String(member?.id);
+    const pin = assignedDeviceId || member?.device_user_id || member?.deviceUserId || (cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone) || String(member?.id);
     setRetryingEnroll(true);
     try {
       const response = await api.post(`/attendance/devices/${selectedDevice.id}/enroll-finger`, {
@@ -734,13 +732,16 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
 
                   <div className="bg-purple-50 border border-purple-100 rounded-lg p-3 mb-4">
                     <p className="text-xs text-purple-900">
-                      <strong>Automatic Enrollment:</strong> Syncing will create the member on the machine and immediately prompt them to place their finger for biometric registration.
+                      <strong>Automatic Enrollment:</strong> Syncing will create or edit the member on the machine and immediately prompt them to place their finger for biometric registration.
                     </p>
-                    {member?.phone && (
-                      <p className="text-xs text-purple-800 mt-1">
-                        Device User ID (PIN): <span className="font-mono font-bold">{member.phone.replace(/\D/g, '').slice(-10)}</span>
-                      </p>
-                    )}
+                    <p className="text-xs text-purple-800 mt-1">
+                      Device User ID (PIN): <span className="font-mono font-bold">{member?.device_user_id || member?.deviceUserId || (member?.phone?.replace(/\D/g, '').slice(-10)) || member?.id}</span>
+                      {(member?.device_user_id || member?.deviceUserId) && (
+                        <span className="ml-1.5 text-[11px] text-green-700 font-semibold bg-green-100 px-1.5 py-0.5 rounded">
+                          Existing on Device (Will Edit)
+                        </span>
+                      )}
+                    </p>
                   </div>
 
                   <div className="flex gap-3">
