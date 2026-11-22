@@ -1,7 +1,7 @@
 // src/components/attendance/DeviceSyncModal.jsx - COMPLETE WITH ZK SUPPORT
 
 import React, { useState, useEffect } from 'react';
-import { X, Wifi, CheckCircle, XCircle, Loader2, WifiOff, Search, User, UserPlus, Link, AlertCircle, Zap } from 'lucide-react';
+import { X, Wifi, CheckCircle, XCircle, Loader2, WifiOff, Search, User, UserPlus, Link, AlertCircle, Zap, Fingerprint } from 'lucide-react';
 import { useAttendance } from '../../context/AttendanceContext';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -18,6 +18,8 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
   const [selectedMatchMember, setSelectedMatchMember] = useState(null);
   const [loadingDeviceUsers, setLoadingDeviceUsers] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [enrollingFinger, setEnrollingFinger] = useState(false);
+  const [enrollDone, setEnrollDone] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -229,6 +231,38 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
     }
   };
 
+  const handleEnrollFingerprint = async () => {
+    if (!selectedDevice) {
+      toast.error('Please select an active device');
+      return;
+    }
+    const pin = assignedDeviceId || member?.device_user_id || member?.phone?.replace(/\D/g, '') || member?.id?.toString();
+    setEnrollingFinger(true);
+    const toastId = toast.loading(`Triggering enrollment on ${selectedDevice.device_name}...`);
+    try {
+      const response = await api.post(`/attendance/devices/${selectedDevice.id}/enroll-finger`, {
+        member_id: member?.id,
+        pin: pin,
+        finger_id: 0,
+        retry: 3,
+      });
+
+      if (response.data.success) {
+        toast.success(
+          `Machine Ready! Ask member to place their finger on ${selectedDevice.device_name} (press 3 times)`,
+          { id: toastId, duration: 8000 }
+        );
+        setEnrollDone(true);
+      } else {
+        toast.error(response.data.message || 'Failed to trigger enrollment', { id: toastId });
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to trigger enrollment on machine', { id: toastId });
+    } finally {
+      setEnrollingFinger(false);
+    }
+  };
+
   const handleSyncToExistingMember = async (existingMember) => {
     if (!selectedDevice) {
       toast.error('Please select a device');
@@ -332,12 +366,37 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
                 </p>
               </div>
               
-              <button
-                onClick={handleClose}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Close
-              </button>
+              <div className="flex gap-2 justify-center">
+                <button
+                  type="button"
+                  onClick={handleEnrollFingerprint}
+                  disabled={enrollingFinger || enrollDone}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 shadow-sm disabled:opacity-50 transition-colors"
+                >
+                  {enrollingFinger ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Queuing on Machine...
+                    </>
+                  ) : enrollDone ? (
+                    <>
+                      <CheckCircle className="h-4 w-4 text-green-300" />
+                      Fingerprint Enrolled!
+                    </>
+                  ) : (
+                    <>
+                      <Fingerprint className="h-4 w-4" />
+                      Enroll Fingerprint Now
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleClose}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           ) : showMatchView && matchingMembers.length > 0 ? (
             <div>

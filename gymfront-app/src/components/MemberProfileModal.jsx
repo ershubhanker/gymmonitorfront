@@ -10,7 +10,7 @@ import {
   Dumbbell, Pencil, Maximize2, Hash, Snowflake,
   Heart, AlertTriangle, Filter, Plus, ChevronDown,
   Percent, Camera, Wifi, Lock, Unlock,
-  ArrowRight, ArrowLeftRight, Upload, Smartphone, Key
+  ArrowRight, ArrowLeftRight, Upload, Smartphone, Key, Fingerprint
 } from 'lucide-react';
 import api, { API_BASE_URL, getMemberTransfers } from '../services/api';
 import toast from 'react-hot-toast';
@@ -769,6 +769,14 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ===== DEVICE ACCESS TOGGLE STATE =====
   const [togglingAccess, setTogglingAccess] = useState(false);
 
+  // ===== REMOTE FINGERPRINT ENROLLMENT STATE =====
+  const [enrollingFinger, setEnrollingFinger] = useState(false);
+  const [enrollModalOpen, setEnrollModalOpen] = useState(false);
+  const [enrollStatus, setEnrollStatus] = useState('idle'); // 'idle' | 'waiting' | 'completed' | 'failed'
+  const [enrollMessage, setEnrollMessage] = useState('');
+  const [enrollDeviceName, setEnrollDeviceName] = useState('');
+  const enrollPollRef = useRef(null);
+
   // ===== ID PROOF STATE & UPLOAD =====
   const idProofInputRef = useRef(null);
   const [uploadingIdProof, setUploadingIdProof] = useState(false);
@@ -1191,6 +1199,86 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     } finally {
       setTogglingAccess(false);
     }
+  };
+
+  // Clean up remote enrollment polling interval on unmount
+  useEffect(() => {
+    return () => {
+      if (enrollPollRef.current) clearInterval(enrollPollRef.current);
+    };
+  }, []);
+
+  const handleStartFingerEnrollment = async () => {
+    setEnrollingFinger(true);
+    setEnrollStatus('waiting');
+    setEnrollMessage('Connecting to biometric machine...');
+    setEnrollModalOpen(true);
+
+    try {
+      const response = await api.post(`/gym/members/${memberId}/enroll-fingerprint`, {
+        device_user_id: member?.device_user_id,
+        finger_id: 0,
+        retry: 3,
+      });
+
+      if (response.data.success) {
+        const cmdId = response.data.command_id;
+        const devName = response.data.device_name || 'Biometric Machine';
+        setEnrollDeviceName(devName);
+        setEnrollMessage(`Machine ready! Ask member to place finger on ${devName} (press 3 times).`);
+
+        if (enrollPollRef.current) clearInterval(enrollPollRef.current);
+        const startTime = Date.now();
+
+        enrollPollRef.current = setInterval(async () => {
+          if (Date.now() - startTime > 90000) {
+            clearInterval(enrollPollRef.current);
+            setEnrollStatus('failed');
+            setEnrollMessage('Enrollment timed out after 90 seconds. Please try again.');
+            setEnrollingFinger(false);
+            return;
+          }
+
+          try {
+            const statusRes = await api.get(`/attendance/commands/${cmdId}/status`);
+            const cmdStatus = (statusRes.data.status || '').toLowerCase();
+
+            if (cmdStatus === 'completed') {
+              clearInterval(enrollPollRef.current);
+              setEnrollStatus('completed');
+              setEnrollMessage(`✅ Fingerprint enrolled successfully on ${devName}!`);
+              setEnrollingFinger(false);
+              toast.success('Fingerprint enrolled successfully!');
+              fetchMemberDetails();
+            } else if (cmdStatus === 'failed') {
+              clearInterval(enrollPollRef.current);
+              setEnrollStatus('failed');
+              setEnrollMessage('Enrollment was cancelled or failed on the machine. Please try again.');
+              setEnrollingFinger(false);
+            }
+          } catch (pollErr) {
+            console.warn('Status poll error:', pollErr);
+          }
+        }, 2000);
+      } else {
+        setEnrollStatus('failed');
+        setEnrollMessage(response.data.message || 'Failed to trigger enrollment');
+        setEnrollingFinger(false);
+      }
+    } catch (err) {
+      console.error('Error starting finger enrollment:', err);
+      setEnrollStatus('failed');
+      setEnrollMessage(err.response?.data?.detail || 'Failed to connect to device');
+      setEnrollingFinger(false);
+      toast.error(err.response?.data?.detail || 'Failed to trigger enrollment');
+    }
+  };
+
+  const handleCloseEnrollModal = () => {
+    if (enrollPollRef.current) clearInterval(enrollPollRef.current);
+    setEnrollModalOpen(false);
+    setEnrollStatus('idle');
+    setEnrollingFinger(false);
   };
 
   // ===== FREEZE FUNCTIONS =====
@@ -2404,6 +2492,22 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                     Allow
                   </>
                 )}
+              </button>
+            )}
+
+            {member?.device_user_id && (
+              <button
+                onClick={handleStartFingerEnrollment}
+                disabled={enrollingFinger}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-[10px] font-medium disabled:opacity-50 shadow-sm"
+                title="Trigger remote fingerprint enrollment on biometric device"
+              >
+                {enrollingFinger ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Fingerprint className="h-3 w-3" />
+                )}
+                Enroll Finger
               </button>
             )}
 
@@ -4422,6 +4526,107 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Remote Fingerprint Enrollment Modal */}
+        {enrollModalOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                  <Fingerprint className="h-4 w-4 text-purple-600" />
+                  Fingerprint Enrollment
+                </h4>
+                <button
+                  onClick={handleCloseEnrollModal}
+                  className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="py-3">
+                {enrollStatus === 'waiting' && (
+                  <div className="space-y-4">
+                    <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+                      <span className="absolute inset-0 rounded-full bg-purple-100 animate-ping opacity-75" />
+                      <div className="relative w-16 h-16 bg-purple-600 rounded-full flex items-center justify-center text-white shadow-lg">
+                        <Fingerprint className="h-9 w-9 animate-pulse" />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm">
+                        Waiting for Member's Finger
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Device: <span className="font-medium text-gray-800">{enrollDeviceName}</span>
+                      </p>
+                      <p className="text-xs text-purple-700 font-mono mt-0.5">
+                        User ID: {member?.device_user_id || member?.phone}
+                      </p>
+                    </div>
+                    <div className="bg-purple-50 rounded-xl p-3 text-[11px] text-purple-900 text-left space-y-1.5 border border-purple-100">
+                      <p className="font-semibold text-purple-950">Instructions:</p>
+                      <p>1. Member steps up to the <strong>{enrollDeviceName}</strong>.</p>
+                      <p>2. The machine screen says <em>"Place Finger"</em>.</p>
+                      <p>3. Member presses the same finger firmly <strong>3 times</strong>.</p>
+                    </div>
+                  </div>
+                )}
+
+                {enrollStatus === 'completed' && (
+                  <div className="space-y-3 py-2">
+                    <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-md">
+                      <CheckCircle className="h-9 w-9" />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-gray-900 text-base">Enrolled Successfully!</h5>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Member's fingerprint is now stored on {enrollDeviceName}.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {enrollStatus === 'failed' && (
+                  <div className="space-y-3 py-2">
+                    <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto shadow-md">
+                      <XCircle className="h-9 w-9" />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-gray-900 text-sm">Enrollment Incomplete</h5>
+                      <p className="text-xs text-red-600 mt-1">
+                        {enrollMessage || 'Device timed out or member pressed Cancel.'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-3 flex gap-2">
+                {enrollStatus === 'failed' && (
+                  <button
+                    type="button"
+                    onClick={handleStartFingerEnrollment}
+                    className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium transition-colors"
+                  >
+                    Retry Enrollment
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleCloseEnrollModal}
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                    enrollStatus === 'completed'
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  {enrollStatus === 'completed' ? 'Done' : 'Cancel'}
+                </button>
+              </div>
             </div>
           </div>
         )}
