@@ -3074,6 +3074,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       {showProfileModal && selectedMemberForProfile && (
         <MemberProfileModal
           memberId={selectedMemberForProfile.id}
+          initialMember={selectedMemberForProfile.raw || selectedMemberForProfile}
+          initialPlans={membershipPlans}
           onClose={() => {
             setShowProfileModal(false);
             setSelectedMemberForProfile(null);

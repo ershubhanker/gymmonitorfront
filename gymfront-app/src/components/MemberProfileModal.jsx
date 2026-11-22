@@ -92,6 +92,23 @@ const getImageUrl = (profileImage, fullName, size = 512) => {
 const getThumbnailUrl = (profileImage, fullName) => getImageUrl(profileImage, fullName, 128);
 
 // ============================================================
+// DATE INPUT HELPER
+// ============================================================
+const toDateInputValue = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    return value.trim();
+  }
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  } catch {
+    return '';
+  }
+};
+
+// ============================================================
 // PT STATUS HELPER - Check if session is active based on dates
 // ============================================================
 const getPtStatus = (session) => {
@@ -615,17 +632,22 @@ const CategoryFilter = ({ selectedCategory, onSelect, countMap = {} }) => {
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
-const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
-  const [member, setMember] = useState(null);
-  const [loading, setLoading] = useState(true);
+const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [], onClose, onUpdate }) => {
+  const normalizedInitial = initialMember ? {
+    ...initialMember,
+    current_membership: initialMember.current_membership || initialMember.activeMembership || null
+  } : null;
+
+  const [member, setMember] = useState(normalizedInitial);
+  const [loading, setLoading] = useState(!normalizedInitial);
   const [newComment, setNewComment] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('general');
   const [submitting, setSubmitting] = useState(false);
   const [comments, setComments] = useState([]);
   const [loadingComments, setLoadingComments] = useState(false);
-  const [payments, setPayments] = useState([]);
+  const [payments, setPayments] = useState(normalizedInitial?.payments || []);
   const [loadingPayments, setLoadingPayments] = useState(false);
-  const [membershipHistory, setMembershipHistory] = useState([]);
+  const [membershipHistory, setMembershipHistory] = useState(normalizedInitial?.memberships || []);
   const [attendanceHistory, setAttendanceHistory] = useState([]);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [deletingComment, setDeletingComment] = useState(null);
@@ -657,22 +679,36 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ===== EDIT STATE =====
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState({
-    full_name: '',
-    email: '',
-    phone: '',
-    address: '',
-    date_of_birth: '',
-    gender: '',
-    emergency_contact_name: '',
-    emergency_contact_phone: '',
-    medical_conditions: '',
-    allergies: '',
-    medications: '',
-    id_proof_type: '',
-    id_proof_number: '',
-    member_app_id: '',
+    full_name: normalizedInitial?.full_name || '',
+    email: normalizedInitial?.email || '',
+    phone: normalizedInitial?.phone || '',
+    address: normalizedInitial?.address || '',
+    date_of_birth: normalizedInitial?.date_of_birth || '',
+    gender: normalizedInitial?.gender || 'male',
+    emergency_contact_name: normalizedInitial?.emergency_contact_name || '',
+    emergency_contact_phone: normalizedInitial?.emergency_contact_phone || '',
+    medical_conditions: normalizedInitial?.medical_conditions || '',
+    allergies: normalizedInitial?.allergies || '',
+    medications: normalizedInitial?.medications || '',
+    id_proof_type: normalizedInitial?.id_proof_type || 'aadhar',
+    id_proof_number: normalizedInitial?.id_proof_number || '',
+    member_app_id: normalizedInitial?.member_app_id || '',
   });
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // Sync if initialMember changes
+  useEffect(() => {
+    if (initialMember && (!member || member.id !== initialMember.id)) {
+      const norm = {
+        ...initialMember,
+        current_membership: initialMember.current_membership || initialMember.activeMembership || null
+      };
+      setMember(norm);
+      setLoading(false);
+      if (norm.memberships?.length) setMembershipHistory(norm.memberships);
+      if (norm.payments?.length) setPayments(norm.payments);
+    }
+  }, [initialMember]);
 
   // ===== MEMBER APP CONNECTION STATE =====
   const [showConnectAppModal, setShowConnectAppModal] = useState(false);
@@ -725,28 +761,34 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   // ===== PAYMENT EDIT STATE =====
   const [isEditingPayment, setIsEditingPayment] = useState(false);
-  const [paymentEditData, setPaymentEditData] = useState({
-    amount_paid: '',
-    discount_applied: '',
-    payment_method: 'cash',
-    payment_date: '',
-    notes: '',
+  const [paymentEditData, setPaymentEditData] = useState(() => {
+    const curr = normalizedInitial?.current_membership;
+    return {
+      amount_paid: curr?.amount_paid !== undefined ? curr.amount_paid.toString() : '',
+      discount_applied: curr?.discount_applied !== undefined ? curr.discount_applied.toString() : '',
+      payment_method: 'cash',
+      payment_date: toDateInputValue(curr?.payment_date || curr?.last_payment_date),
+      notes: curr?.notes || '',
+    };
   });
   const [savingPayment, setSavingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
 
   // ===== MEMBERSHIP EDIT STATE =====
   const [isEditingMembership, setIsEditingMembership] = useState(false);
-  const [membershipEditData, setMembershipEditData] = useState({
-    plan_id: '',
-    start_date: '',
-    end_date: '',
-    status: 'active',
-    amount_paid: '',
-    discount_applied: '',
+  const [membershipEditData, setMembershipEditData] = useState(() => {
+    const curr = normalizedInitial?.current_membership;
+    return {
+      plan_id: curr?.plan_id?.toString() || '',
+      start_date: curr?.start_date || '',
+      end_date: curr?.end_date || '',
+      status: curr?.status || 'active',
+      amount_paid: curr?.amount_paid !== undefined ? curr.amount_paid.toString() : '',
+      discount_applied: curr?.discount_applied !== undefined ? curr.discount_applied.toString() : '',
+    };
   });
   const [savingMembership, setSavingMembership] = useState(false);
-  const [plans, setPlans] = useState([]);
+  const [plans, setPlans] = useState(Array.isArray(initialPlans) && initialPlans.length > 0 ? initialPlans : []);
   const [loadingPlans, setLoadingPlans] = useState(false);
 
   // ===== FREEZE STATE =====
@@ -815,14 +857,22 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
   // ============================================================
   // FETCH FUNCTIONS
   // ============================================================
-  const fetchMemberDetails = useCallback(async () => {
+  const fetchMemberDetails = useCallback(async (showLoading = false) => {
     if (!memberId || memberId === 'undefined') return;
     try {
-      setLoading(true);
+      if (showLoading || !member) {
+        setLoading(true);
+      }
       const response = await api.get(`/gym/members/${memberId}`);
       const memberData = response.data;
       
       setMember(memberData);
+      if (memberData.memberships?.length) {
+        setMembershipHistory(memberData.memberships);
+      }
+      if (memberData.payments?.length) {
+        setPayments(memberData.payments);
+      }
 
       setEditFormData({
         full_name: memberData.full_name || '',
@@ -838,6 +888,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
         medications: memberData.medications || '',
         id_proof_type: memberData.id_proof_type || 'aadhar',
         id_proof_number: memberData.id_proof_number || '',
+        member_app_id: memberData.member_app_id || '',
       });
       
       if (memberData.current_membership) {
@@ -866,13 +917,13 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       if (error.response?.status === 404) {
         toast.error('Member not found');
         onClose();
-      } else {
+      } else if (!member) {
         toast.error('Failed to load member details');
       }
     } finally {
       setLoading(false);
     }
-  }, [memberId, onClose]);
+  }, [memberId, member, onClose]);
 
   const fetchPlans = useCallback(async () => {
     try {
@@ -966,8 +1017,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
-      const updatePromises = [];
-      
       for (const session of sessions) {
         if (session.status !== 'cancelled' && session.status !== 'completed') {
           const endDate = session.end_date ? new Date(session.end_date) : null;
@@ -984,24 +1033,15 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
           }
           
           if (newStatus && newStatus !== session.status) {
-            try {
-              const updatePromise = api.post(`/gym/pt/personal-training/${session.id}/update-status`, {
-                status: newStatus
-              }).then(() => {
-                session.status = newStatus;
-                console.log(`🔄 Updated PT session ${session.id} status to: ${newStatus}`);
-              }).catch((err) => {
-                console.error(`Failed to update PT session ${session.id}:`, err);
-              });
-              updatePromises.push(updatePromise);
-            } catch (updateError) {
-              console.error(`Failed to update PT session ${session.id}:`, updateError);
-            }
+            session.status = newStatus;
+            api.post(`/gym/pt/personal-training/${session.id}/update-status`, {
+              status: newStatus
+            }).catch((err) => {
+              console.error(`Failed to update PT session ${session.id}:`, err);
+            });
           }
         }
       }
-      
-      await Promise.allSettled(updatePromises);
       
       setPtSessions(sessions);
     } catch (error) {
@@ -1376,21 +1416,6 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
     }
   };
 
-  // ===== PAYMENT EDIT FUNCTIONS =====
-  const toDateInputValue = (value) => {
-    if (!value) return '';
-    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
-      return value.trim();
-    }
-    try {
-      const d = new Date(value);
-      if (isNaN(d.getTime())) return '';
-      return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    } catch {
-      return '';
-    }
-  };
-
   const handleEditPaymentClick = () => {
     if (member?.current_membership) {
       const curr = member.current_membership;
@@ -1543,6 +1568,9 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
 
   // ===== MEMBERSHIP EDIT FUNCTIONS =====
   const handleEditMembershipClick = () => {
+    if (plans.length === 0) {
+      fetchPlans();
+    }
     if (member?.current_membership) {
       const todayStr = new Date().toISOString().split('T')[0];
       const curr = member.current_membership;
@@ -2010,22 +2038,14 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
       return;
     }
 
-    const fetchAll = async () => {
-      await Promise.all([
-        fetchMemberDetails(),
-        fetchComments(),
-        fetchPayments(),
-        fetchMembershipHistory(),
-        fetchAttendanceHistory(),
-        fetchBalanceDetails(),
-        fetchPtSessions(),
-        fetchPlans(),
-        fetchFreezeHistory(),
-        fetchMemberAddons(),
-        fetchTransfers(),
-      ]);
-    };
-    fetchAll();
+    // Fetch detailed member record and secondary data in parallel without blocking UI
+    fetchMemberDetails();
+    fetchComments();
+    fetchAttendanceHistory();
+    fetchPtSessions();
+    fetchFreezeHistory();
+    fetchMemberAddons();
+    fetchTransfers();
   }, [memberId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -2250,10 +2270,7 @@ const MemberProfileModal = ({ memberId, onClose, onUpdate }) => {
               onClick={() => {
                 fetchMemberDetails();
                 fetchComments();
-                fetchPayments();
-                fetchMembershipHistory();
                 fetchAttendanceHistory();
-                fetchBalanceDetails();
                 fetchPtSessions();
                 fetchFreezeHistory();
                 fetchMemberAddons();
