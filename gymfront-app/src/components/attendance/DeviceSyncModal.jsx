@@ -1,7 +1,7 @@
 // src/components/attendance/DeviceSyncModal.jsx - COMPLETE WITH ZK SUPPORT
 
-import React, { useState, useEffect } from 'react';
-import { X, Wifi, CheckCircle, XCircle, Loader2, WifiOff, Search, User, UserPlus, Link, AlertCircle, Zap, Fingerprint } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Wifi, CheckCircle, XCircle, Loader2, WifiOff, Search, User, UserPlus, Link, AlertCircle, Zap, Fingerprint, Copy, Check } from 'lucide-react';
 import { useAttendance } from '../../context/AttendanceContext';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -18,8 +18,54 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
   const [selectedMatchMember, setSelectedMatchMember] = useState(null);
   const [loadingDeviceUsers, setLoadingDeviceUsers] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [enrollingFinger, setEnrollingFinger] = useState(false);
-  const [enrollDone, setEnrollDone] = useState(false);
+  const [enrollStatus, setEnrollStatus] = useState('idle'); // 'idle' | 'waiting' | 'completed' | 'failed'
+  const [enrollMessage, setEnrollMessage] = useState('');
+  const [retryingEnroll, setRetryingEnroll] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const enrollPollRef = useRef(null);
+
+  const stopPolling = () => {
+    if (enrollPollRef.current) {
+      clearInterval(enrollPollRef.current);
+      enrollPollRef.current = null;
+    }
+  };
+
+  const startEnrollmentPolling = (cmdId, deviceName) => {
+    stopPolling();
+    setEnrollStatus('waiting');
+    setEnrollMessage(`Machine ready! Ask member to place finger on ${deviceName || 'the machine'} (press 3 times).`);
+
+    const startTime = Date.now();
+    enrollPollRef.current = setInterval(async () => {
+      // 90 seconds timeout
+      if (Date.now() - startTime > 90000) {
+        stopPolling();
+        setEnrollStatus('failed');
+        setEnrollMessage('Fingerprint enrollment timed out after 90 seconds. You can retry below.');
+        return;
+      }
+
+      try {
+        const res = await api.get(`/attendance/commands/${cmdId}/status`);
+        const status = (res.data?.status || '').toLowerCase();
+        if (status === 'completed') {
+          stopPolling();
+          setEnrollStatus('completed');
+          setEnrollMessage('Fingerprint enrolled successfully!');
+          toast.success('Fingerprint enrolled successfully on device!');
+          if (refreshMemberList) refreshMemberList();
+          refreshAllData();
+        } else if (status === 'failed') {
+          stopPolling();
+          setEnrollStatus('failed');
+          setEnrollMessage('Enrollment was cancelled or failed on the device. Please try again.');
+        }
+      } catch (err) {
+        console.warn('Enrollment poll error:', err);
+      }
+    }, 2000);
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -41,6 +87,7 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
 
   useEffect(() => {
     if (!isOpen) {
+      stopPolling();
       setSelectedDevice(null);
       setSyncing(false);
       setSyncSuccess(false);
@@ -50,8 +97,18 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
       setMatchingMembers([]);
       setSelectedMatchMember(null);
       setSearchTerm('');
+      setEnrollStatus('idle');
+      setEnrollMessage('');
+      setRetryingEnroll(false);
+      setCopied(false);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    return () => {
+      stopPolling();
+    };
+  }, []);
 
   useEffect(() => {
     if (selectedDevice && isOpen) {
@@ -133,19 +190,13 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
       return;
     }
 
-    console.log('🔄 Syncing member:', {
-      id: member.id,
-      full_name: member.full_name || member.fullName,
-      phone: member.phone,
-      email: member.email
-    });
-
     setSyncing(true);
     try {
       const memberName = member.full_name || member.fullName || 'Unknown Member';
       const memberPhone = member.phone || '';
       const memberId = member.id || member.member_id;
-      const deviceUserId = memberPhone.replace(/\D/g, '');
+      const cleanPhone = memberPhone.replace(/\D/g, '');
+      const deviceUserId = cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone;
       
       if (!deviceUserId || deviceUserId.length < 10) {
         toast.error('Invalid phone number for device sync. Please ensure member has a valid 10-digit phone number.');
@@ -168,48 +219,20 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
 
       if (response.data.success) {
         setSyncSuccess(true);
-        setAssignedDeviceId(deviceUserId);
-        
-        if (response.data.direct) {
-          if (response.data.method === 'zk') {
-            toast.success(`✅ Member "${memberName}" synced directly via ZK to ${selectedDevice.device_name} with ID: ${deviceUserId}`);
-          } else {
-            toast.success(`✅ Member "${memberName}" synced directly to ${selectedDevice.device_name} with ID: ${deviceUserId}`);
-          }
+        const resolvedPin = response.data.device_user_id || deviceUserId;
+        setAssignedDeviceId(resolvedPin);
+
+        const enrollCmdId = response.data.enroll_command_id;
+        if (enrollCmdId) {
+          startEnrollmentPolling(enrollCmdId, selectedDevice.device_name);
         } else {
-          toast.success(`✅ Member "${memberName}" queued for sync to ${selectedDevice.device_name} with ID: ${deviceUserId}`);
-          toast.custom(
-            (t) => (
-              <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-blue-50 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5`}>
-                <div className="flex-1 w-0 p-4">
-                  <div className="flex items-start">
-                    <div className="flex-shrink-0 pt-0.5">
-                      <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                        <Zap className="h-5 w-5 text-blue-600" />
-                      </div>
-                    </div>
-                    <div className="ml-3 flex-1">
-                      <p className="text-sm font-medium text-gray-900">📱 Device Sync Queued</p>
-                      <p className="mt-1 text-sm text-gray-500">Device will sync within a few seconds.</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex border-l border-blue-200">
-                  <button
-                    onClick={() => toast.dismiss(t.id)}
-                    className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-blue-600 hover:text-blue-500 focus:outline-none"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            ),
-            { duration: 4000 }
-          );
+          setEnrollStatus('idle');
         }
 
+        toast.success(`✅ Member "${memberName}" synced to ${selectedDevice.device_name} with ID: ${resolvedPin}`);
+
         if (onSyncComplete) {
-          onSyncComplete(deviceUserId, memberId);
+          onSyncComplete(resolvedPin, memberId);
         }
 
         if (refreshMemberList) {
@@ -231,14 +254,14 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
     }
   };
 
-  const handleEnrollFingerprint = async () => {
+  const handleRetryEnroll = async () => {
     if (!selectedDevice) {
       toast.error('Please select an active device');
       return;
     }
-    const pin = assignedDeviceId || member?.device_user_id || member?.phone?.replace(/\D/g, '') || member?.id?.toString();
-    setEnrollingFinger(true);
-    const toastId = toast.loading(`Triggering enrollment on ${selectedDevice.device_name}...`);
+    const cleanPhone = (member?.phone || '').replace(/\D/g, '');
+    const pin = assignedDeviceId || (cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone) || String(member?.id);
+    setRetryingEnroll(true);
     try {
       const response = await api.post(`/attendance/devices/${selectedDevice.id}/enroll-finger`, {
         member_id: member?.id,
@@ -247,19 +270,19 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
         retry: 3,
       });
 
-      if (response.data.success) {
-        toast.success(
-          `Machine Ready! Ask member to place their finger on ${selectedDevice.device_name} (press 3 times)`,
-          { id: toastId, duration: 8000 }
-        );
-        setEnrollDone(true);
+      if (response.data.success && response.data.command_id) {
+        toast.success(`Enrollment queued on ${selectedDevice.device_name}!`);
+        startEnrollmentPolling(response.data.command_id, selectedDevice.device_name);
       } else {
-        toast.error(response.data.message || 'Failed to trigger enrollment', { id: toastId });
+        toast.error(response.data?.message || 'Failed to trigger enrollment');
+        setEnrollStatus('failed');
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed to trigger enrollment on machine', { id: toastId });
+      console.error('Error retrying fingerprint enrollment:', err);
+      toast.error(err.response?.data?.detail || 'Failed to trigger fingerprint enrollment on device');
+      setEnrollStatus('failed');
     } finally {
-      setEnrollingFinger(false);
+      setRetryingEnroll(false);
     }
   };
 
@@ -277,7 +300,16 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
 
       if (response.data.success) {
         setSyncSuccess(true);
-        setAssignedDeviceId(response.data.device_user_id);
+        const resolvedPin = response.data.device_user_id || existingMember.device_user_id;
+        setAssignedDeviceId(resolvedPin);
+        
+        const enrollCmdId = response.data.enroll_command_id;
+        if (enrollCmdId) {
+          startEnrollmentPolling(enrollCmdId, selectedDevice.device_name);
+        } else {
+          setEnrollStatus('idle');
+        }
+
         toast.success(`Linked to existing member: ${existingMember.full_name}`);
         
         if (selectedDevice.device_serial) {
@@ -285,7 +317,7 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
         }
         
         if (onSyncComplete) {
-          onSyncComplete(response.data.device_user_id, existingMember.id);
+          onSyncComplete(resolvedPin, existingMember.id);
         }
         
         if (refreshMemberList) {
@@ -309,12 +341,15 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
   };
 
   const handleClose = () => {
+    stopPolling();
     onClose();
   };
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
+    setCopied(true);
     toast.success('Device User ID copied to clipboard!');
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const filteredMatches = matchingMembers.filter(m => 
@@ -343,58 +378,211 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
 
         <div className="p-4">
           {syncSuccess ? (
-            <div className="text-center py-6">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle className="h-8 w-8 text-green-600" />
-              </div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-2">Sync Successful!</h4>
-              <p className="text-sm text-gray-600 mb-4">
-                {displayName} has been synced to {selectedDevice?.device_name}
-              </p>
-              
-              <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                <p className="text-xs text-gray-500 mb-1">Device User ID</p>
-                <div 
-                  onClick={() => copyToClipboard(assignedDeviceId || member?.id?.toString())}
-                  className="font-mono text-lg font-bold text-blue-600 bg-blue-50 px-3 py-2 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors inline-flex items-center gap-2"
-                >
-                  {assignedDeviceId || member?.id?.toString() || 'Unknown'}
-                  <span className="text-xs text-gray-500 font-normal">(click to copy)</span>
+            <div className="py-2 space-y-4">
+              {/* Header */}
+              <div className="text-center">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2 shadow-sm">
+                  <CheckCircle className="h-6 w-6 text-green-600" />
                 </div>
-                <p className="text-xs text-gray-400 mt-2">
-                  This ID is used by the attendance device to identify this member.
+                <h4 className="text-base font-bold text-gray-900">Member Synced to Device</h4>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Target Device: <span className="font-semibold text-gray-800">{selectedDevice?.device_name}</span>
                 </p>
               </div>
-              
-              <div className="flex gap-2 justify-center">
+
+              {/* Step 1: Member Profile Synced */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                      <CheckCircle className="h-3.5 w-3.5" />
+                    </div>
+                    <span className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                      Step 1: Profile Synced
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                    Completed
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
+                  <div className="bg-white p-2.5 rounded-lg border border-gray-100 shadow-xs">
+                    <span className="text-gray-400 block text-[10px]">Member</span>
+                    <span className="font-semibold text-gray-800 truncate block mt-0.5">{displayName}</span>
+                  </div>
+                  <div 
+                    onClick={() => copyToClipboard(assignedDeviceId || member?.phone?.replace(/\D/g, '')?.slice(-10) || String(member?.id))}
+                    className="bg-white p-2.5 rounded-lg border border-gray-100 shadow-xs cursor-pointer hover:border-purple-300 transition-colors group"
+                    title="Click to copy"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400 block text-[10px]">Device User ID (PIN)</span>
+                      {copied ? (
+                        <Check className="h-3 w-3 text-green-600" />
+                      ) : (
+                        <Copy className="h-3 w-3 text-gray-400 group-hover:text-purple-600 transition-colors" />
+                      )}
+                    </div>
+                    <span className="font-mono font-bold text-purple-700 truncate block mt-0.5">
+                      {assignedDeviceId || member?.phone?.replace(/\D/g, '')?.slice(-10) || String(member?.id)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Step 2: Fingerprint Registration */}
+              <div className={`border rounded-xl p-4 transition-all ${
+                enrollStatus === 'completed'
+                  ? 'bg-green-50/70 border-green-200'
+                  : enrollStatus === 'failed'
+                  ? 'bg-red-50/70 border-red-200'
+                  : 'bg-purple-50/70 border-purple-200'
+              }`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                      enrollStatus === 'completed'
+                        ? 'bg-green-600 text-white'
+                        : enrollStatus === 'failed'
+                        ? 'bg-red-600 text-white'
+                        : 'bg-purple-600 text-white'
+                    }`}>
+                      <Fingerprint className="h-3 w-3" />
+                    </div>
+                    <span className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                      Step 2: Fingerprint Enrollment
+                    </span>
+                  </div>
+
+                  {enrollStatus === 'waiting' && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full animate-pulse">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Device Ready
+                    </span>
+                  )}
+                  {enrollStatus === 'completed' && (
+                    <span className="text-[11px] font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                      Enrolled
+                    </span>
+                  )}
+                  {enrollStatus === 'failed' && (
+                    <span className="text-[11px] font-semibold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">
+                      Action Needed
+                    </span>
+                  )}
+                </div>
+
+                {/* State: WAITING FOR FINGER */}
+                {enrollStatus === 'waiting' && (
+                  <div className="text-center py-2 space-y-3">
+                    <div className="relative mx-auto w-16 h-16 flex items-center justify-center">
+                      <span className="absolute inset-0 rounded-full bg-purple-200 animate-ping opacity-60" />
+                      <div className="relative w-14 h-14 bg-purple-600 rounded-full flex items-center justify-center text-white shadow-md">
+                        <Fingerprint className="h-8 w-8 animate-pulse" />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm">Place Finger on Machine Screen</p>
+                      <p className="text-xs text-gray-600 mt-1 max-w-xs mx-auto">
+                        Ask member to step up to <strong className="text-gray-900">{selectedDevice?.device_name}</strong> and press finger firmly <span className="text-purple-700 font-semibold">3 times</span> when prompted.
+                      </p>
+                    </div>
+                    <div className="inline-flex items-center gap-2 text-[11px] text-purple-800 bg-purple-100/70 border border-purple-200 px-3 py-1.5 rounded-lg">
+                      <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
+                      <span>Listening for biometric machine...</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* State: COMPLETED */}
+                {enrollStatus === 'completed' && (
+                  <div className="text-center py-2 space-y-2">
+                    <div className="w-14 h-14 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                      <CheckCircle className="h-8 w-8" />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-gray-900 text-sm">Fingerprint Registered Successfully!</h5>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Member can now punch attendance directly on {selectedDevice?.device_name}.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* State: FAILED / TIMED OUT */}
+                {enrollStatus === 'failed' && (
+                  <div className="text-center py-2 space-y-2">
+                    <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                      <XCircle className="h-7 w-7" />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-gray-900 text-sm">Enrollment Incomplete</h5>
+                      <p className="text-xs text-red-600 mt-1">
+                        {enrollMessage || 'Timed out or cancelled on the device.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRetryEnroll}
+                      disabled={retryingEnroll}
+                      className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
+                    >
+                      {retryingEnroll ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Retrying...
+                        </>
+                      ) : (
+                        <>
+                          <Fingerprint className="h-3.5 w-3.5" />
+                          Retry Fingerprint Prompt
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* State: IDLE */}
+                {enrollStatus === 'idle' && (
+                  <div className="text-center py-2 space-y-2">
+                    <p className="text-xs text-gray-600">
+                      Profile is synced! Click below to trigger the fingerprint enrollment prompt on the device screen.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleRetryEnroll}
+                      disabled={retryingEnroll}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
+                    >
+                      {retryingEnroll ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Sending to machine...
+                        </>
+                      ) : (
+                        <>
+                          <Fingerprint className="h-3.5 w-3.5" />
+                          Enroll Fingerprint on Machine
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Close Button */}
+              <div className="pt-2">
                 <button
                   type="button"
-                  onClick={handleEnrollFingerprint}
-                  disabled={enrollingFinger || enrollDone}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 shadow-sm disabled:opacity-50 transition-colors"
-                >
-                  {enrollingFinger ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Queuing on Machine...
-                    </>
-                  ) : enrollDone ? (
-                    <>
-                      <CheckCircle className="h-4 w-4 text-green-300" />
-                      Fingerprint Enrolled!
-                    </>
-                  ) : (
-                    <>
-                      <Fingerprint className="h-4 w-4" />
-                      Enroll Fingerprint Now
-                    </>
-                  )}
-                </button>
-                <button
                   onClick={handleClose}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                  className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                    enrollStatus === 'completed'
+                      ? 'bg-green-600 hover:bg-green-700 text-white shadow-sm'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
+                  }`}
                 >
-                  Close
+                  {enrollStatus === 'completed' ? 'Done' : 'Close'}
                 </button>
               </div>
             </div>
@@ -544,13 +732,13 @@ const DeviceSyncModal = ({ isOpen, onClose, member, onSyncComplete, refreshMembe
                     ))}
                   </div>
 
-                  <div className="bg-blue-50 rounded-lg p-3 mb-4">
-                    <p className="text-xs text-blue-800">
-                      <strong>Note:</strong> The system will use the member's phone number as the device ID.
+                  <div className="bg-purple-50 border border-purple-100 rounded-lg p-3 mb-4">
+                    <p className="text-xs text-purple-900">
+                      <strong>Automatic Enrollment:</strong> Syncing will create the member on the machine and immediately prompt them to place their finger for biometric registration.
                     </p>
                     {member?.phone && (
-                      <p className="text-xs text-blue-800 mt-1">
-                        Device ID: <span className="font-mono font-bold">{member.phone.replace(/\D/g, '')}</span>
+                      <p className="text-xs text-purple-800 mt-1">
+                        Device User ID (PIN): <span className="font-mono font-bold">{member.phone.replace(/\D/g, '').slice(-10)}</span>
                       </p>
                     )}
                   </div>
