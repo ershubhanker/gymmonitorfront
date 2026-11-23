@@ -1315,8 +1315,8 @@ const Dashboard = () => {
         </div>
       </div>
   
-      {/* Row 1: Key Stats Cards - Total Members & New Members */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Row 1: Key Stats Cards - Members & Total Balance */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {canViewMemberStats && (
           <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-blue-500">
             <div className="flex items-center justify-between mb-2">
@@ -1368,27 +1368,43 @@ const Dashboard = () => {
             </div>
           </div>
         )}
+
+        {canViewBalanceStats && (
+          <div 
+            className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-amber-500 cursor-pointer group"
+            onClick={() => setActiveTab('balance')}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="bg-amber-100 p-2 rounded-lg group-hover:bg-amber-200 transition-colors">
+                <Wallet className="h-4.5 w-4.5 text-amber-600" />
+              </div>
+              <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                {formatNumberMasked(stats.membersWithBalance, 'membersWithBalance')} members
+              </span>
+            </div>
+            <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wider">Total Balance Due</h3>
+            <p className="text-2xl sm:text-3xl font-bold text-amber-600 mt-0.5">{formatCurrencyMasked(stats.totalBalanceDue, 'totalBalanceDue')}</p>
+            <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-100">
+              <span className="text-red-600 font-medium text-xs flex items-center">
+                <AlertCircle className="h-3.5 w-3.5 mr-1" />
+                {formatNumberMasked(stats.overdueCount, 'overdueCount')} overdue
+              </span>
+              <span className="text-blue-600 font-medium text-xs flex items-center">
+                <Calendar className="h-3.5 w-3.5 mr-1" />
+                {formatNumberMasked(stats.upcomingPayments, 'upcomingPayments')} upcoming
+              </span>
+            </div>
+          </div>
+        )}
       </div>
   
       {/* Balance Overview Cards */}
       {canViewBalanceStats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Total Balance Due</p>
-                <p className="text-2xl sm:text-3xl font-bold text-white mt-0.5">{formatCurrencyMasked(stats.totalBalanceDue, 'totalBalanceDue')}</p>
-              </div>
-              <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
-                <Wallet className="h-5 w-5 text-white" />
-              </div>
-            </div>
-            <div className="mt-2 flex items-center gap-1.5 text-white/80 text-xs">
-              <span>{formatNumberMasked(stats.membersWithBalance, 'membersWithBalance')} members have dues</span>
-            </div>
-          </div>
-  
-          <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div 
+            className="bg-gradient-to-r from-orange-500 to-red-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 cursor-pointer"
+            onClick={() => setActiveTab('balance')}
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Members with Balance</p>
@@ -1405,7 +1421,10 @@ const Dashboard = () => {
             </div>
           </div>
   
-          <div className="bg-gradient-to-r from-red-500 to-pink-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
+          <div 
+            className="bg-gradient-to-r from-red-500 to-pink-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 cursor-pointer"
+            onClick={() => setActiveTab('balance')}
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Overdue Payments</p>
@@ -1420,7 +1439,10 @@ const Dashboard = () => {
             </div>
           </div>
   
-          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
+          <div 
+            className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 cursor-pointer"
+            onClick={() => setActiveTab('balance')}
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Upcoming Payments</p>
@@ -1439,7 +1461,7 @@ const Dashboard = () => {
   
       {/* Row 3: Expense and Profit Cards */}
       {canViewExpenseStats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-red-500">
             <div className="flex items-center justify-between mb-2">
               <div className="bg-red-100 p-2 rounded-lg">
@@ -1519,42 +1541,6 @@ const Dashboard = () => {
               </button>
             </div>
           </div>
-          
-          {(canViewExpenseStats && canViewRevenueStats) && (
-            <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
-              <div className="flex items-center justify-between mb-2">
-                <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
-                  <DollarSign className="h-4.5 w-4.5 text-white" />
-                </div>
-                <span className="text-xs font-medium bg-white/20 text-white px-2 py-0.5 rounded-full backdrop-blur-sm">
-                  Financial Health
-                </span>
-              </div>
-              <h3 className="text-white/80 text-xs font-semibold uppercase tracking-wider">Profit vs Expenses</h3>
-              <div className="mt-2 space-y-1.5">
-                <div className="flex justify-between text-xs text-white">
-                  <span>Profit Margin</span>
-                  <span className="font-semibold">{hideValues ? '**' : stats.profitMargin || 0}%</span>
-                </div>
-                <div className="w-full bg-white/30 rounded-full h-1.5 overflow-hidden">
-                  <div 
-                    className="bg-green-400 rounded-full h-1.5 transition-all duration-500" 
-                    style={{ width: `${hideValues ? 50 : Math.min(Math.max(stats.profitMargin || 0, 0), 100)}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-[11px] text-white/80 mt-1.5">
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
-                    Rev: {formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue')}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-red-400 rounded-full"></span>
-                    Exp: {formatCurrencyMasked(stats.monthlyExpenses, 'monthlyExpenses')}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
   
