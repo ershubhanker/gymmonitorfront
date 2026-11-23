@@ -1980,7 +1980,8 @@ const Staff = () => {
       return onlineDevices.length > 0;
     } catch (error) {
       console.error('Error checking devices:', error);
-      toast.error('Failed to check device status');
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to check device status';
+      toast.error(`❌ ${errorMsg}`);
       return false;
     }
   };
