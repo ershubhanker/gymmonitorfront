@@ -87,6 +87,7 @@ const FollowUpCard = ({
       await api.put(`/gym/followups/${leadId}/complete`);
       toast.success('Follow-up marked as completed!');
       fetchFollowups();
+      window.dispatchEvent(new CustomEvent('followupCompleted', { detail: { leadId } }));
       if (onRefresh) onRefresh();
     } catch (error) {
       console.error('Error completing follow-up:', error);
@@ -104,6 +105,7 @@ const FollowUpCard = ({
       });
       toast.success('Follow-up rescheduled!');
       fetchFollowups();
+      window.dispatchEvent(new CustomEvent('followupCompleted', { detail: { leadId } }));
       if (onRefresh) onRefresh();
     } catch (error) {
       console.error('Error rescheduling follow-up:', error);

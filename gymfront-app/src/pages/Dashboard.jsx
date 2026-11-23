@@ -39,6 +39,7 @@ import MembershipPlans from './MembershipPlans';
 import HistoricalInvoices from './HistoricalInvoices';
 import SearchBar from '../components/SearchBar';
 import FollowUpCard from '../components/FollowUpCard';
+import DoneFollowUpCard from '../components/DoneFollowUpCard';
 import BirthdayCard from '../components/BirthdayCard';
 import WhatsAppLogs from './WhatsAppLogs';
 import TrainerSchedule from '../components/TrainerSchedule';
@@ -2175,13 +2176,19 @@ const Dashboard = () => {
         )}
       </div>
   
-      {/* Row 6: Today's Follow-up & Birthday Card (Side-by-Side 50/50) */}
+      {/* Row 6: Today's Follow-up, Done Follow-ups & Birthday Section */}
       {(canViewLeadStats || canViewBirthdays) && (
         <div 
           id="followup-birthday-section" 
-          className={`grid grid-cols-1 ${canViewLeadStats && canViewBirthdays ? 'lg:grid-cols-2' : ''} gap-4 items-stretch transition-all duration-300`}
+          className={`grid grid-cols-1 ${
+            canViewLeadStats && canViewBirthdays 
+              ? 'lg:grid-cols-2 xl:grid-cols-3' 
+              : canViewLeadStats 
+                ? 'lg:grid-cols-2' 
+                : 'lg:grid-cols-1'
+          } gap-4 items-stretch transition-all duration-300`}
         >
-          {/* Today's Follow-ups Card (Half Width) */}
+          {/* Today's Follow-ups Card */}
           {canViewLeadStats && (
             <FollowUpCard 
               onFollowUpClick={(lead) => {
@@ -2198,25 +2205,44 @@ const Dashboard = () => {
             />
           )}
 
-          {/* Birthday Card (Half Width) */}
-          {canViewBirthdays && (
-            <BirthdayCard 
-              birthdays={stats.upcomingBirthdays}
-              gymName={user?.gym_name || user?.gymName || ''}
-              onMemberClick={(memberId) => {
-                setSelectedMemberId(null);
-                setTimeout(() => {
-                  setSelectedMemberId(memberId);
-                  setActiveTab('members');
-                }, 0);
-              }}
-              onStaffClick={() => {
-                setActiveTab('staff');
+          {/* Done Follow-ups Card (Completed Today) */}
+          {canViewLeadStats && (
+            <DoneFollowUpCard 
+              onFollowUpClick={(lead) => {
+                if (lead && lead.viewAll) {
+                  setActiveTab('leads');
+                } else if (lead && lead.id) {
+                  setActiveTab('leads');
+                  setSelectedLeadId(lead.id);
+                }
               }}
               onRefresh={() => {
                 refreshDashboard();
               }}
             />
+          )}
+
+          {/* Birthday Card */}
+          {canViewBirthdays && (
+            <div className={canViewLeadStats ? 'col-span-1 lg:col-span-2 xl:col-span-1' : 'col-span-1'}>
+              <BirthdayCard 
+                birthdays={stats.upcomingBirthdays}
+                gymName={user?.gym_name || user?.gymName || ''}
+                onMemberClick={(memberId) => {
+                  setSelectedMemberId(null);
+                  setTimeout(() => {
+                    setSelectedMemberId(memberId);
+                    setActiveTab('members');
+                  }, 0);
+                }}
+                onStaffClick={() => {
+                  setActiveTab('staff');
+                }}
+                onRefresh={() => {
+                  refreshDashboard();
+                }}
+              />
+            </div>
           )}
         </div>
       )}
