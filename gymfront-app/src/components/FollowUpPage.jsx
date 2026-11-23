@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Calendar, Users, Phone, Mail, ChevronRight, CheckCircle,
+  Calendar, Users, Phone, Mail, ChevronRight, CheckCircle, CheckCircle2,
   XCircle, Clock, AlertCircle, Filter, Search, X, RefreshCw,
   User, MessageCircle, Star, Target, TrendingUp, Download,
   ChevronDown, ChevronUp, Loader2, FileText, Trash2, Edit,
@@ -103,11 +103,15 @@ const getQuickDateString = (type) => {
 // ─── Main FollowUpPage Component ──────────────────────────────────────────
 const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
   const navigate = useNavigate();
-  const { getCache, setCache, clearCache, invalidateCache } = useCache();
+  const { getCache, setCache, clearCache, clearCachePattern, invalidateCache } = useCache();
 
   // ─── State ──────────────────────────────────────────────────────────────
+  const [activeMainTab, setActiveMainTab] = useState('pending'); // 'pending' | 'done'
   const [followups, setFollowups] = useState([]);
+  const [doneFollowups, setDoneFollowups] = useState([]);
+  const [doneCount, setDoneCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingDone, setLoadingDone] = useState(false);
   const [error, setError] = useState(null);
   const [staffList, setStaffList] = useState([]);
 
@@ -227,8 +231,8 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
     setDateRangePreset('custom');
   };
 
-  // ─── Fetch Followups ────────────────────────────────────────────────────
-  const fetchFollowups = useCallback(async () => {
+  // ─── Fetch Followups (Pending) ──────────────────────────────────────────
+  const fetchFollowups = useCallback(async (bypassCache = false) => {
     setLoading(true);
     setError(null);
 
@@ -242,12 +246,14 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
       if (filters.search) params.append('search', filters.search);
 
       const cacheKey = `followups_${params.toString()}`;
-      const cached = getCache(cacheKey);
-      if (cached) {
-        setFollowups(cached.items || []);
-        setStats(cached.stats || {});
-        setLoading(false);
-        return;
+      if (!bypassCache) {
+        const cached = getCache(cacheKey);
+        if (cached) {
+          setFollowups(cached.items || []);
+          setStats(cached.stats || {});
+          setLoading(false);
+          return;
+        }
       }
 
       const response = await api.get(`/gym/followups?${params.toString()}`);
@@ -262,6 +268,38 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
       toast.error('Failed to load followups');
     } finally {
       setLoading(false);
+    }
+  }, [filters, getCache, setCache]);
+
+  // ─── Fetch Done Followups ───────────────────────────────────────────────
+  const fetchDoneFollowups = useCallback(async (bypassCache = false) => {
+    setLoadingDone(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters.startDate) params.append('start_date', filters.startDate);
+      if (filters.endDate) params.append('end_date', filters.endDate);
+      if (filters.search) params.append('search', filters.search);
+
+      const cacheKey = `done_followups_${params.toString()}`;
+      if (!bypassCache) {
+        const cached = getCache(cacheKey);
+        if (cached) {
+          setDoneFollowups(cached.done_followups || []);
+          setDoneCount(cached.count || (cached.done_followups ? cached.done_followups.length : 0));
+          setLoadingDone(false);
+          return;
+        }
+      }
+
+      const res = await api.get(`/gym/followups/done-today?${params.toString()}`);
+      const data = res.data || { done_followups: [], count: 0 };
+      setDoneFollowups(data.done_followups || []);
+      setDoneCount(data.count || (data.done_followups ? data.done_followups.length : 0));
+      setCache(cacheKey, data, 2 * 60 * 1000);
+    } catch (err) {
+      console.error('Error fetching done followups:', err);
+    } finally {
+      setLoadingDone(false);
     }
   }, [filters, getCache, setCache]);
 
@@ -284,7 +322,11 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
       await api.put(`/gym/leads/${leadId}`, { status });
       toast.success(`Status updated to ${status}`);
 
-      fetchFollowups();
+      clearCachePattern('followups_');
+      clearCachePattern('done_followups_');
+      fetchFollowups(true);
+      fetchDoneFollowups(true);
+
       if (selectedLead && selectedLead.id === leadId) {
         const updated = await fetchLeadDetails(leadId);
         if (updated) setSelectedLead(updated);
@@ -296,7 +338,7 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
     } finally {
       setUpdatingStatus(false);
     }
-  }, [fetchFollowups, fetchLeadDetails, selectedLead, invalidateCache]);
+  }, [fetchFollowups, fetchDoneFollowups, fetchLeadDetails, selectedLead, invalidateCache, clearCachePattern]);
 
   // ─── Save Full Edit Follow-up Details ──────────────────────────────────
   const handleSaveEditFollowUp = async (leadId, formData) => {
@@ -318,7 +360,10 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
       await api.put(`/gym/leads/${leadId}`, payload);
       toast.success('Follow-up details updated and logged to history!');
 
-      fetchFollowups();
+      clearCachePattern('followups_');
+      clearCachePattern('done_followups_');
+      fetchFollowups(true);
+      fetchDoneFollowups(true);
 
       if (selectedLead && selectedLead.id === leadId) {
         const refreshed = await fetchLeadDetails(leadId);
@@ -344,9 +389,16 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
         next_follow_up: isoDate,
         note: note.trim() || 'Follow-up rescheduled'
       });
-      toast.success('Next follow-up date updated and logged to history!');
+      toast.success('Next follow-up date updated and scheduled!');
 
-      fetchFollowups();
+      clearCachePattern('followups_');
+      clearCachePattern('done_followups_');
+      invalidateCache();
+
+      window.dispatchEvent(new CustomEvent('leadUpdated', { detail: { leadId } }));
+
+      fetchFollowups(true);
+      fetchDoneFollowups(true);
 
       if (selectedLead && selectedLead.id === leadId) {
         const refreshed = await fetchLeadDetails(leadId);
@@ -355,7 +407,6 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
 
       setShowRescheduleModal(false);
       setLeadToReschedule(null);
-      invalidateCache();
       if (onRefresh) onRefresh();
     } catch (err) {
       console.error('Error rescheduling follow-up:', err);
@@ -366,21 +417,62 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
 
   // ─── Quick Complete Follow-up ──────────────────────────────────────────
   const handleCompleteFollowUp = async (leadId) => {
+    // 1. Locate lead to complete
+    const lead = followups.find(f => f.id === leadId);
+
+    // 2. Optimistically remove from pending followups list immediately
+    setFollowups(prev => prev.filter(f => f.id !== leadId));
+    setStats(prev => ({
+      ...prev,
+      total: Math.max(0, (prev.total || 1) - 1),
+      contacted: (prev.contacted || 0) + 1
+    }));
+
+    // 3. Optimistically add to doneFollowups list immediately
+    if (lead) {
+      const nowIso = new Date().toISOString();
+      const doneItem = {
+        ...lead,
+        lead_name: lead.full_name,
+        lead_phone: lead.phone,
+        lead_email: lead.email,
+        done_at: nowIso,
+        done_by_name: 'You',
+        comment: '✅ Follow-up marked as completed',
+        status: lead.status === 'new' ? 'contacted' : lead.status
+      };
+      setDoneFollowups(prev => [doneItem, ...prev.filter(d => d.id !== leadId)]);
+      setDoneCount(prev => prev + 1);
+    }
+
     try {
       await api.put(`/gym/followups/${leadId}/complete`);
-      toast.success('Follow-up marked as completed!');
-      fetchFollowups();
+      toast.success('Follow-up marked as completed and moved to Done Follow-ups!');
+
+      // Clear follow-up caches so stale data isn't loaded on subsequent queries
+      clearCachePattern('followups_');
+      clearCachePattern('done_followups_');
+      invalidateCache();
+
+      // Dispatch real-time events for other components/dashboard cards
+      window.dispatchEvent(new CustomEvent('followupCompleted', { detail: { leadId } }));
+      window.dispatchEvent(new CustomEvent('leadUpdated', { detail: { leadId } }));
 
       if (selectedLead && selectedLead.id === leadId) {
         const refreshed = await fetchLeadDetails(leadId);
         if (refreshed) setSelectedLead(refreshed);
       }
 
-      invalidateCache();
       if (onRefresh) onRefresh();
+
+      // Synchronize in background
+      fetchFollowups(true);
+      fetchDoneFollowups(true);
     } catch (err) {
       console.error('Error completing follow-up:', err);
       toast.error('Failed to mark follow-up as completed');
+      fetchFollowups(true);
+      fetchDoneFollowups(true);
     }
   };
 
@@ -406,7 +498,10 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
       }
 
       toast.success('Follow-up activity recorded in history!');
-      fetchFollowups();
+      clearCachePattern('followups_');
+      clearCachePattern('done_followups_');
+      fetchFollowups(true);
+      fetchDoneFollowups(true);
 
       const refreshed = await fetchLeadDetails(leadId);
       if (refreshed) setSelectedLead(refreshed);
@@ -418,14 +513,35 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
     }
   };
 
-  // ─── Initial Load ──────────────────────────────────────────────────────
+  // ─── Initial Load & Event Listeners ────────────────────────────────────
   useEffect(() => {
     applyDatePreset('today');
   }, [applyDatePreset]);
 
   useEffect(() => {
     fetchFollowups();
-  }, [fetchFollowups]);
+    fetchDoneFollowups();
+  }, [fetchFollowups, fetchDoneFollowups]);
+
+  // Real-time synchronization when follow-ups are completed or leads are added/updated anywhere
+  useEffect(() => {
+    const handleGlobalUpdate = () => {
+      clearCachePattern('followups_');
+      clearCachePattern('done_followups_');
+      fetchFollowups(true);
+      fetchDoneFollowups(true);
+    };
+
+    window.addEventListener('followupCompleted', handleGlobalUpdate);
+    window.addEventListener('leadUpdated', handleGlobalUpdate);
+    window.addEventListener('leadAdded', handleGlobalUpdate);
+
+    return () => {
+      window.removeEventListener('followupCompleted', handleGlobalUpdate);
+      window.removeEventListener('leadUpdated', handleGlobalUpdate);
+      window.removeEventListener('leadAdded', handleGlobalUpdate);
+    };
+  }, [fetchFollowups, fetchDoneFollowups, clearCachePattern]);
 
   // ─── Handle Row Click ──────────────────────────────────────────────────
   const handleOpenLeadDetail = async (lead, tab = 'overview') => {
@@ -466,45 +582,84 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
 
   // ─── Export CSV ────────────────────────────────────────────────────────
   const exportCSV = useCallback(() => {
-    if (followups.length === 0) {
-      toast.error('No data to export');
-      return;
+    if (activeMainTab === 'pending') {
+      if (followups.length === 0) {
+        toast.error('No pending follow-ups to export');
+        return;
+      }
+
+      const headers = [
+        'Lead ID', 'Name', 'Phone', 'Email', 'Status', 'Quality',
+        'Next Follow-up', 'Assigned Staff', 'Interest', 'Source', 'Notes', 'Created At'
+      ];
+
+      const rows = followups.map(lead => [
+        lead.id,
+        lead.full_name,
+        lead.phone,
+        lead.email || '',
+        lead.status,
+        lead.lead_quality || 'warm',
+        lead.next_follow_up ? new Date(lead.next_follow_up).toLocaleString() : '',
+        lead.assigned_staff_name || '',
+        lead.interest || '',
+        lead.source,
+        (lead.notes || '').replace(/,/g, ';'),
+        new Date(lead.created_at).toLocaleString()
+      ]);
+
+      const csv = [headers, ...rows]
+        .map(row => row.map(cell => `"${cell}"`).join(','))
+        .join('\n');
+
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pending_followups_${filters.startDate}_to_${filters.endDate}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`Exported ${followups.length} pending followups`);
+    } else {
+      if (doneFollowups.length === 0) {
+        toast.error('No completed follow-ups to export');
+        return;
+      }
+
+      const headers = [
+        'Lead ID', 'Name', 'Phone', 'Email', 'Status', 'Quality',
+        'Done At', 'Done By', 'Activity Note', 'Assigned Staff'
+      ];
+
+      const rows = doneFollowups.map(item => [
+        item.id,
+        item.full_name || item.lead_name,
+        item.phone || item.lead_phone,
+        item.email || item.lead_email || '',
+        item.status,
+        item.lead_quality || 'warm',
+        item.done_at ? new Date(item.done_at).toLocaleString() : '',
+        item.done_by_name || 'Staff',
+        (item.comment || item.notes || '').replace(/,/g, ';'),
+        item.assigned_staff_name || ''
+      ]);
+
+      const csv = [headers, ...rows]
+        .map(row => row.map(cell => `"${cell}"`).join(','))
+        .join('\n');
+
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `done_followups_${filters.startDate}_to_${filters.endDate}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`Exported ${doneFollowups.length} completed followups`);
     }
-
-    const headers = [
-      'Lead ID', 'Name', 'Phone', 'Email', 'Status', 'Quality',
-      'Next Follow-up', 'Assigned Staff', 'Interest', 'Source', 'Notes', 'Created At'
-    ];
-
-    const rows = followups.map(lead => [
-      lead.id,
-      lead.full_name,
-      lead.phone,
-      lead.email || '',
-      lead.status,
-      lead.lead_quality || 'warm',
-      lead.next_follow_up ? new Date(lead.next_follow_up).toLocaleString() : '',
-      lead.assigned_staff_name || '',
-      lead.interest || '',
-      lead.source,
-      (lead.notes || '').replace(/,/g, ';'),
-      new Date(lead.created_at).toLocaleString()
-    ]);
-
-    const csv = [headers, ...rows]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
-      .join('\n');
-
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `followups_${filters.startDate}_to_${filters.endDate}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-
-    toast.success(`Exported ${followups.length} followups`);
-  }, [followups, filters]);
+  }, [activeMainTab, followups, doneFollowups, filters]);
 
   // ─── Format Date Helpers ───────────────────────────────────────────────
   const formatDate = (dateStr) => {
@@ -583,7 +738,11 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
             </div>
             Follow-ups Management
             <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full">
-              {followups.length} scheduled
+              {followups.length} pending
+            </span>
+            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3" />
+              {doneFollowups.length} done
             </span>
           </h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -593,7 +752,10 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => {
-              fetchFollowups();
+              clearCachePattern('followups_');
+              clearCachePattern('done_followups_');
+              fetchFollowups(true);
+              fetchDoneFollowups(true);
               toast.success('Refreshed follow-ups');
             }}
             className="p-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-600"
@@ -619,10 +781,29 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
       </div>
 
       {/* ─── Stats Overview ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-        <div className="bg-white rounded-xl shadow-xs p-3.5 border-l-4 border-blue-500">
-          <p className="text-xs text-gray-500 font-medium">Total Due</p>
-          <p className="text-xl font-bold text-gray-900">{stats.total || 0}</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div
+          onClick={() => setActiveMainTab('pending')}
+          className={`bg-white rounded-xl shadow-xs p-3.5 border-l-4 border-blue-500 cursor-pointer transition-all hover:shadow-md ${
+            activeMainTab === 'pending' ? 'ring-2 ring-blue-500' : ''
+          }`}
+          title="Click to view pending follow-ups"
+        >
+          <p className="text-xs text-gray-500 font-medium">Pending Due</p>
+          <p className="text-xl font-bold text-gray-900">{stats.total || followups.length}</p>
+        </div>
+        <div
+          onClick={() => setActiveMainTab('done')}
+          className={`bg-white rounded-xl shadow-xs p-3.5 border-l-4 border-emerald-500 cursor-pointer transition-all hover:shadow-md ${
+            activeMainTab === 'done' ? 'ring-2 ring-emerald-500' : ''
+          }`}
+          title="Click to view done follow-ups"
+        >
+          <p className="text-xs text-emerald-700 font-medium flex items-center gap-1">
+            <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+            Done Follow-ups
+          </p>
+          <p className="text-xl font-bold text-emerald-600">{doneFollowups.length}</p>
         </div>
         <div className="bg-white rounded-xl shadow-xs p-3.5 border-l-4 border-blue-400">
           <p className="text-xs text-gray-500 font-medium">New</p>
@@ -766,13 +947,64 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
         </div>
       </div>
 
-      {/* ─── Follow-ups Table ──────────────────────────────────────────── */}
+      {/* ─── Main Tabs & Follow-ups Table ─────────────────────────────── */}
       <div className="bg-white rounded-xl shadow-xs overflow-hidden border border-gray-100">
-        {loading ? (
-          renderLoadingState()
-        ) : followups.length === 0 ? (
-          renderEmptyState()
-        ) : (
+        {/* Tab Headers */}
+        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50/70 px-4 pt-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveMainTab('pending')}
+              className={`pb-3 px-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+                activeMainTab === 'pending'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <Clock className="h-4 w-4" />
+              Pending Follow-ups
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                activeMainTab === 'pending'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-200/80 text-gray-600'
+              }`}>
+                {followups.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveMainTab('done')}
+              className={`pb-3 px-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+                activeMainTab === 'done'
+                  ? 'border-emerald-600 text-emerald-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              Done Follow-ups
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                activeMainTab === 'done'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-gray-200/80 text-gray-600'
+              }`}>
+                {doneFollowups.length}
+              </span>
+            </button>
+          </div>
+
+          <span className="text-xs text-gray-400 hidden sm:inline-block pb-3">
+            {activeMainTab === 'pending'
+              ? `${followups.length} follow-up${followups.length === 1 ? '' : 's'} pending`
+              : `${doneFollowups.length} follow-up${doneFollowups.length === 1 ? '' : 's'} completed`}
+          </span>
+        </div>
+
+        {/* Tab 1: Pending Follow-ups Table */}
+        {activeMainTab === 'pending' && (
+          loading ? (
+            renderLoadingState()
+          ) : followups.length === 0 ? (
+            renderEmptyState()
+          ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -955,6 +1187,171 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
               </tbody>
             </table>
           </div>
+        ))}
+
+        {/* Tab 2: Done Follow-ups Table */}
+        {activeMainTab === 'done' && (
+          loadingDone ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <Loader2 className="h-10 w-10 text-emerald-500 animate-spin mb-4" />
+              <p className="text-gray-500 text-sm font-medium">Loading completed follow-ups...</p>
+            </div>
+          ) : doneFollowups.length === 0 ? (
+            <div className="text-center py-16 bg-white rounded-b-xl shadow-xs">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-emerald-50 rounded-full mb-4">
+                <CheckCircle2 className="h-10 w-10 text-emerald-500" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">No Completed Follow-ups Found</h3>
+              <p className="text-gray-500 mb-4 max-w-md mx-auto text-sm">
+                Follow-ups marked as completed for the selected date range will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Lead</th>
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status & Quality</th>
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Completed At & By</th>
+                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Activity / Comment</th>
+                    <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100">
+                  {doneFollowups.map((item) => {
+                    const leadName = item.full_name || item.lead_name || 'Lead';
+                    const leadPhone = item.phone || item.lead_phone;
+                    const leadEmail = item.email || item.lead_email;
+
+                    return (
+                      <tr
+                        key={item.id}
+                        className="hover:bg-emerald-50/40 transition-colors group cursor-pointer"
+                        onClick={() => handleOpenLeadDetail(item, 'history')}
+                      >
+                        {/* Lead Name & ID */}
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-emerald-600 to-teal-600 flex items-center justify-center text-white font-bold text-sm shadow-xs flex-shrink-0">
+                              {leadName.charAt(0)?.toUpperCase() || 'L'}
+                            </div>
+                            <div className="ml-3">
+                              <p className="text-sm font-semibold text-gray-900 group-hover:text-emerald-600 transition-colors">
+                                {leadName}
+                              </p>
+                              <span className="text-xs text-gray-400">ID #{item.id}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Contact */}
+                        <td className="px-5 py-3.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex flex-col gap-0.5">
+                            {leadPhone ? (
+                              <a
+                                href={`tel:${leadPhone}`}
+                                className="text-sm font-medium text-gray-900 hover:text-emerald-600 flex items-center gap-1.5 transition-colors"
+                              >
+                                <Phone className="h-3.5 w-3.5 text-gray-400" />
+                                {leadPhone}
+                              </a>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">No phone</span>
+                            )}
+                            {leadEmail ? (
+                              <a
+                                href={`mailto:${leadEmail}`}
+                                className="text-xs text-gray-500 hover:text-emerald-600 truncate max-w-[180px] transition-colors"
+                              >
+                                {leadEmail}
+                              </a>
+                            ) : null}
+                          </div>
+                        </td>
+
+                        {/* Status & Quality */}
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <div className="flex flex-col gap-1 items-start">
+                            <StatusBadge status={item.status} />
+                            <QualityBadge quality={item.lead_quality} />
+                          </div>
+                        </td>
+
+                        {/* Completed At & By */}
+                        <td className="px-5 py-3.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="space-y-1">
+                            <div className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
+                              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                              {item.done_at ? formatDateTime(item.done_at) : 'Today'}
+                            </div>
+                            <div className="text-xs text-gray-500 flex items-center gap-1">
+                              <User className="h-3 w-3 text-gray-400" />
+                              By: <span className="font-medium text-gray-700">{item.done_by_name || 'Staff'}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Activity / Comment */}
+                        <td className="px-5 py-3.5">
+                          <div className="text-xs text-gray-700 bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-100 max-w-xs truncate" title={item.comment || item.notes || ''}>
+                            {item.comment || item.notes || 'Follow-up completed'}
+                          </div>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-5 py-3.5 whitespace-nowrap text-right text-sm" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {/* ✏️ Edit Details */}
+                            <button
+                              onClick={() => handleOpenEdit(item)}
+                              className="p-1.5 rounded-lg border border-gray-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 transition-all"
+                              title="Edit Follow-up Details"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+
+                            {/* 📅 Reschedule New Follow-up */}
+                            <button
+                              onClick={() => handleOpenReschedule(item)}
+                              className="px-2 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-medium text-xs flex items-center gap-1 transition-all"
+                              title="Schedule Next Follow-up"
+                            >
+                              <Calendar className="h-3.5 w-3.5" />
+                              <span>Schedule Next</span>
+                            </button>
+
+                            {/* 📜 View History */}
+                            <button
+                              onClick={() => handleOpenLeadDetail(item, 'history')}
+                              className="p-1.5 rounded-lg border border-gray-200 text-purple-600 hover:bg-purple-50 hover:border-purple-300 transition-all"
+                              title="View History"
+                            >
+                              <History className="h-4 w-4" />
+                            </button>
+
+                            {/* WhatsApp Link */}
+                            {leadPhone && (
+                              <a
+                                href={`https://wa.me/${leadPhone.replace(/[^0-9]/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1.5 rounded-lg border border-gray-200 text-green-600 hover:bg-green-50 hover:border-green-300 transition-all"
+                                title="Message on WhatsApp"
+                              >
+                                <MessageCircle className="h-4 w-4" />
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
         )}
       </div>
 
@@ -1004,10 +1401,12 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
             handleOpenReschedule(selectedLead);
           }}
           onRefresh={async () => {
-            fetchFollowups();
+            fetchFollowups(true);
+            fetchDoneFollowups(true);
             const refreshed = await fetchLeadDetails(selectedLead.id);
             if (refreshed) setSelectedLead(refreshed);
           }}
+          onCompleteFollowUp={handleCompleteFollowUp}
           updatingStatus={updatingStatus}
         />
       )}
@@ -1461,6 +1860,7 @@ const LeadDetailModal = ({
   onOpenEdit,
   onOpenReschedule,
   onRefresh,
+  onCompleteFollowUp,
   updatingStatus
 }) => {
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -1563,6 +1963,19 @@ const LeadDetailModal = ({
               >
                 <MessageCircle className="h-4 w-4" />
               </a>
+            )}
+            {lead.next_follow_up && onCompleteFollowUp && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onCompleteFollowUp(lead.id);
+                }}
+                className="px-2.5 py-1.5 border border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50 rounded-lg text-emerald-700 transition-colors flex items-center gap-1.5 text-xs font-semibold"
+                title="Mark Follow-up as Completed"
+              >
+                <CheckCircle className="h-4 w-4 text-emerald-600" />
+                <span className="hidden sm:inline">Mark Completed</span>
+              </button>
             )}
             <button
               onClick={onClose}

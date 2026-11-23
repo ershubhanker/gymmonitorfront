@@ -165,6 +165,9 @@ export const CacheProvider = ({ children }) => {
       CACHE_KEYS.DASHBOARD_BALANCE_OVERVIEW,
       CACHE_KEYS.DASHBOARD_REVENUE,
       CACHE_KEYS.PAYMENTS_LIST,
+      'followups_',
+      CACHE_KEYS.FOLLOWUPS_TODAY,
+      CACHE_KEYS.LEADS_LIST,
     ];
     patternsToClear.forEach(pattern => {
       dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern });
@@ -172,6 +175,11 @@ export const CacheProvider = ({ children }) => {
   }, []);
 
   // ✅ Invalidate specific data types
+  const invalidateFollowupsCache = useCallback(() => {
+    dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: 'followups_' });
+    dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: CACHE_KEYS.FOLLOWUPS_TODAY });
+  }, []);
+
   const invalidateMembersCache = useCallback(() => {
     dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: CACHE_KEYS.MEMBERS_LIST });
     dispatch({ type: CACHE_ACTIONS.CLEAR_PATTERN, pattern: CACHE_KEYS.MEMBER_STATS });
@@ -197,10 +205,11 @@ export const CacheProvider = ({ children }) => {
     clearCachePattern,
     clearAllCache,
     invalidateCache,
+    invalidateFollowupsCache,
     invalidateMembersCache,
     invalidatePaymentsCache,
     CACHE_KEYS, // ✅ Expose CACHE_KEYS through context
-  }), [cache, setCache, getCache, clearCache, clearCachePattern, clearAllCache, invalidateCache, invalidateMembersCache, invalidatePaymentsCache]);
+  }), [cache, setCache, getCache, clearCache, clearCachePattern, clearAllCache, invalidateCache, invalidateFollowupsCache, invalidateMembersCache, invalidatePaymentsCache]);
 
   return <CacheContext.Provider value={value}>{children}</CacheContext.Provider>;
 };
