@@ -46,9 +46,26 @@ const StatCard = ({ icon: Icon, label, value, sub, color = 'green' }) => {
   );
 };
 
-const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdit, onStaffEdit, onPlanEdit, onSoftwarePlanEdit }) => {
+const GymDetails = ({ 
+  gymId, 
+  gym, 
+  loading, 
+  onBack, 
+  onEdit, 
+  onDelete, 
+  onMemberEdit, 
+  onMemberDelete,
+  onMemberBulkDelete,
+  onStaffEdit, 
+  onStaffDelete,
+  onPlanEdit, 
+  onPlanDelete,
+  onSoftwarePlanEdit 
+}) => {
   const [memberSearch, setMemberSearch] = useState('');
   const [filteredMembers, setFilteredMembers] = useState([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState([]);
+  const [showAllMembers, setShowAllMembers] = useState(false);
 
   useEffect(() => {
     if (gym?.members) {
@@ -64,8 +81,28 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
       } else {
         setFilteredMembers(gym.members);
       }
+    } else {
+      setFilteredMembers([]);
     }
   }, [memberSearch, gym]);
+
+  const visibleMembers = showAllMembers ? filteredMembers : filteredMembers.slice(0, 50);
+
+  const toggleSelectMember = (id) => {
+    setSelectedMemberIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    const visibleIds = visibleMembers.map(m => m.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedMemberIds.includes(id));
+    if (allSelected) {
+      setSelectedMemberIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      setSelectedMemberIds(prev => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
 
   if (loading) {
     return (
@@ -324,12 +361,24 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
                       </span>
                     </td>
                     <td className="py-2">
-                      <button
-                        onClick={() => onStaffEdit(s)}
-                        className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                      >
-                        Edit
-                      </button>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        {onStaffEdit && (
+                          <button
+                            onClick={() => onStaffEdit(s)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-blue-900/40 hover:bg-blue-900/70 text-blue-300 rounded-lg border border-blue-800/50 transition-colors"
+                          >
+                            <Edit className="h-3 w-3" /> Edit
+                          </button>
+                        )}
+                        {onStaffDelete && (
+                          <button
+                            onClick={() => onStaffDelete(s)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-red-900/40 hover:bg-red-900/70 text-red-300 rounded-lg border border-red-800/50 transition-colors"
+                          >
+                            <Trash2 className="h-3 w-3" /> Del
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -369,12 +418,24 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
                       </span>
                     </td>
                     <td className="py-2">
-                      <button
-                        onClick={() => onPlanEdit(p)}
-                        className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                      >
-                        Edit
-                      </button>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        {onPlanEdit && (
+                          <button
+                            onClick={() => onPlanEdit(p)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-blue-900/40 hover:bg-blue-900/70 text-blue-300 rounded-lg border border-blue-800/50 transition-colors"
+                          >
+                            <Edit className="h-3 w-3" /> Edit
+                          </button>
+                        )}
+                        {onPlanDelete && (
+                          <button
+                            onClick={() => onPlanDelete(p)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-red-900/40 hover:bg-red-900/70 text-red-300 rounded-lg border border-red-800/50 transition-colors"
+                          >
+                            <Trash2 className="h-3 w-3" /> Del
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -388,30 +449,65 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
 
       {/* Members Section */}
       <DetailSection title="Members" icon={<Users className="h-4 w-4 text-green-400" />}>
-        {/* Member Search */}
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-          <input
-            value={memberSearch}
-            onChange={e => setMemberSearch(e.target.value)}
-            placeholder="Search members..."
-            className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500"
-          />
-          {memberSearch && (
-            <button
-              onClick={() => setMemberSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-            >
-              <X className="h-4 w-4" />
-            </button>
+        {/* Member Search & Selection Toolbar */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-4 items-stretch sm:items-center justify-between">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+            <input
+              value={memberSearch}
+              onChange={e => setMemberSearch(e.target.value)}
+              placeholder="Search members by name, email, or phone..."
+              className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500"
+            />
+            {memberSearch && (
+              <button
+                onClick={() => setMemberSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          {selectedMemberIds.length > 0 && (
+            <div className="flex items-center gap-2 bg-purple-900/30 border border-purple-800/60 px-3 py-1.5 rounded-xl self-start sm:self-auto">
+              <span className="text-xs text-purple-200">
+                <strong className="text-white font-semibold">{selectedMemberIds.length}</strong> selected
+              </span>
+              <button
+                onClick={() => setSelectedMemberIds([])}
+                className="text-xs text-gray-400 hover:text-white px-2 py-0.5 rounded bg-gray-800"
+              >
+                Clear
+              </button>
+              {onMemberBulkDelete && (
+                <button
+                  onClick={() => {
+                    onMemberBulkDelete(selectedMemberIds);
+                    setSelectedMemberIds([]);
+                  }}
+                  className="flex items-center gap-1 text-xs text-white bg-red-600 hover:bg-red-500 px-2.5 py-1 rounded-lg font-medium transition-colors"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Delete Selected
+                </button>
+              )}
+            </div>
           )}
         </div>
 
         {filteredMembers.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] text-sm">
+            <table className="w-full min-w-[750px] text-sm">
               <thead>
                 <tr className="text-left text-gray-400 border-b border-gray-700">
+                  <th className="pb-2 pr-3 w-8">
+                    <input
+                      type="checkbox"
+                      checked={visibleMembers.length > 0 && visibleMembers.every(m => selectedMemberIds.includes(m.id))}
+                      onChange={toggleSelectAll}
+                      className="rounded border-gray-600 text-purple-600 focus:ring-purple-500 bg-gray-700 cursor-pointer"
+                    />
+                  </th>
                   <th className="pb-2 pr-4 font-medium">Name</th>
                   <th className="pb-2 pr-4 font-medium">Phone</th>
                   <th className="pb-2 pr-4 font-medium">Email</th>
@@ -422,9 +518,17 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-700/50">
-                {filteredMembers.slice(0, 50).map(m => (
-                  <tr key={m.id} className="hover:bg-gray-800/30 transition-colors">
-                    <td className="py-2 pr-4 text-white">{m.full_name}</td>
+                {visibleMembers.map(m => (
+                  <tr key={m.id} className={`hover:bg-gray-800/30 transition-colors ${selectedMemberIds.includes(m.id) ? 'bg-purple-950/20' : ''}`}>
+                    <td className="py-2 pr-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedMemberIds.includes(m.id)}
+                        onChange={() => toggleSelectMember(m.id)}
+                        className="rounded border-gray-600 text-purple-600 focus:ring-purple-500 bg-gray-700 cursor-pointer"
+                      />
+                    </td>
+                    <td className="py-2 pr-4 text-white font-medium">{m.full_name}</td>
                     <td className="py-2 pr-4 text-gray-300">{m.phone}</td>
                     <td className="py-2 pr-4 text-gray-400">{m.email || '—'}</td>
                     <td className="py-2 pr-4 text-gray-300">{m.current_plan || '—'}</td>
@@ -435,19 +539,43 @@ const GymDetails = ({ gymId, gym, loading, onBack, onEdit, onDelete, onMemberEdi
                     </td>
                     <td className="py-2 pr-4 text-xs text-gray-500 whitespace-nowrap">{formatDate(m.joined_date)}</td>
                     <td className="py-2">
-                      <button
-                        onClick={() => onMemberEdit(m)}
-                        className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                      >
-                        Edit
-                      </button>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        {onMemberEdit && (
+                          <button
+                            onClick={() => onMemberEdit(m)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-blue-900/40 hover:bg-blue-900/70 text-blue-300 rounded-lg border border-blue-800/50 transition-colors"
+                            title="Edit Member"
+                          >
+                            <Edit className="h-3 w-3" /> Edit
+                          </button>
+                        )}
+                        {onMemberDelete && (
+                          <button
+                            onClick={() => onMemberDelete(m)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-red-900/40 hover:bg-red-900/70 text-red-300 rounded-lg border border-red-800/50 transition-colors"
+                            title="Delete Member"
+                          >
+                            <Trash2 className="h-3 w-3" /> Del
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {filteredMembers.length > 50 && (
-              <p className="text-xs text-gray-500 mt-2">Showing first 50 of {filteredMembers.length} members</p>
+              <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
+                <p>
+                  Showing {visibleMembers.length} of {filteredMembers.length} members
+                </p>
+                <button
+                  onClick={() => setShowAllMembers(!showAllMembers)}
+                  className="text-purple-400 hover:text-purple-300 font-medium transition-colors"
+                >
+                  {showAllMembers ? 'Show first 50 members' : `Show all ${filteredMembers.length} members`}
+                </button>
+              </div>
             )}
           </div>
         ) : (

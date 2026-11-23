@@ -744,11 +744,11 @@ const AdminDashboard = ({ defaultTab }) => {
   };
 
   // ─── Gym details ──────────────────────────────────────────────────────
-  const fetchGymDetails = async (gymId, gymName) => {
-    setLoadingGymDetails(true);
+  const fetchGymDetails = async (gymId, gymName, showLoading = true) => {
+    if (showLoading) setLoadingGymDetails(true);
     setSelectedGymId(gymId);
     setViewingGymDetails(true);
-    setGymMemberSearch('');
+    if (showLoading) setGymMemberSearch('');
 
     try {
       const response = await api.get(`/admin/gyms/${gymId}`);
@@ -762,9 +762,9 @@ const AdminDashboard = ({ defaultTab }) => {
     } catch (error) {
       console.error('Error fetching gym details:', error);
       toast.error('Failed to load gym details');
-      setSelectedGym(null);
+      if (showLoading) setSelectedGym(null);
     } finally {
-      setLoadingGymDetails(false);
+      if (showLoading) setLoadingGymDetails(false);
     }
   };
 
@@ -802,24 +802,91 @@ const AdminDashboard = ({ defaultTab }) => {
   const closeDelete = () => setDeleteTarget(null);
 
   const handleUpdate = async (endpoint, formData) => {
-    await api.put(`/${endpoint}`, formData);
-    toast.success('Updated successfully!');
-    closeEdit();
-    if (viewingGymDetails && selectedGymId) {
-      fetchGymDetails(selectedGymId, selectedGym?.name);
-    } else {
-      fetchAllData();
+    try {
+      await api.put(`/${endpoint}`, formData);
+      toast.success('Updated successfully!');
+      closeEdit();
+      if (viewingGymDetails && selectedGymId) {
+        fetchGymDetails(selectedGymId, selectedGym?.name, false);
+      } else {
+        fetchAllData();
+      }
+    } catch (err) {
+      console.error('Update error:', err);
+      const msg = err.response?.data?.detail?.message || err.response?.data?.detail || 'Failed to update';
+      toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg));
     }
   };
 
   const handleDelete = async () => {
-    await api.delete(`/${deleteTarget.endpoint}`);
-    toast.success('Deleted successfully!');
-    closeDelete();
-    if (viewingGymDetails && selectedGymId) {
-      fetchGymDetails(selectedGymId, selectedGym?.name);
-    } else {
-      fetchAllData();
+    if (!deleteTarget) return;
+    try {
+      await api.delete(`/${deleteTarget.endpoint}`);
+      toast.success('Deleted successfully!');
+      const currentTarget = { ...deleteTarget };
+      closeDelete();
+      if (viewingGymDetails && selectedGymId) {
+        if (currentTarget.type === 'member') {
+          setSelectedGym((prev) =>
+            prev ? { ...prev, members: (prev.members || []).filter((m) => m.id !== currentTarget.id) } : prev
+          );
+        } else if (currentTarget.type === 'staff') {
+          setSelectedGym((prev) =>
+            prev ? { ...prev, staff: (prev.staff || []).filter((s) => s.id !== currentTarget.id) } : prev
+          );
+        } else if (currentTarget.type === 'plan') {
+          setSelectedGym((prev) =>
+            prev ? { ...prev, plans: (prev.plans || []).filter((p) => p.id !== currentTarget.id) } : prev
+          );
+        }
+        fetchGymDetails(selectedGymId, selectedGym?.name, false);
+      } else {
+        fetchAllData();
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      const msg = err.response?.data?.detail?.message || err.response?.data?.detail || 'Failed to delete';
+      toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
+  };
+
+  const handleMemberBulkDelete = async (ids) => {
+    if (!ids || ids.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${ids.length} selected member(s)? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const results = await Promise.allSettled(ids.map((id) => api.delete(`/admin/members/${id}`)));
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+
+      if (succeeded > 0) {
+        toast.success(`${succeeded} member(s) deleted successfully!`);
+        const deletedSet = new Set(
+          ids.filter((_, idx) => results[idx].status === 'fulfilled')
+        );
+        setSelectedGym((prev) =>
+          prev
+            ? {
+                ...prev,
+                members: (prev.members || []).filter((m) => !deletedSet.has(m.id)),
+              }
+            : prev
+        );
+      }
+      if (failed > 0) {
+        toast.error(`Failed to delete ${failed} member(s)`);
+      }
+
+      if (viewingGymDetails && selectedGymId) {
+        fetchGymDetails(selectedGymId, selectedGym?.name, false);
+      } else {
+        fetchAllData();
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      toast.error('Failed to delete members');
     }
   };
 
@@ -1339,8 +1406,12 @@ const AdminDashboard = ({ defaultTab }) => {
               onEdit={(gym) => openEdit('gym', gym)}
               onDelete={(id, name) => openDelete('gym', id, name, `admin/gyms/${id}`)}
               onMemberEdit={(member) => openEdit('member', member)}
+              onMemberDelete={(member) => openDelete('member', member.id, member.full_name, `admin/members/${member.id}`)}
+              onMemberBulkDelete={handleMemberBulkDelete}
               onStaffEdit={(staff) => openEdit('staff', staff)}
+              onStaffDelete={(staff) => openDelete('staff', staff.id, staff.name || staff.user?.full_name, `admin/staff/${staff.id}`)}
               onPlanEdit={(plan) => openEdit('plan', plan)}
+              onPlanDelete={(plan) => openDelete('plan', plan.id, plan.name, `admin/plans/${plan.id}`)}
               onSoftwarePlanEdit={(gym) => setSoftwarePlanGym(gym)}
             />
           )}
