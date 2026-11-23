@@ -347,9 +347,12 @@ const Payments = () => {
           }
         } 
         // Check for PT payments
-        else if (payment.transaction_id?.startsWith('PT-') || 
-                   payment.notes?.includes('PT Payment') ||
-                   payment.membership_id === null) {
+        else if (
+          payment.transaction_id?.toUpperCase().startsWith('PT-') || 
+          payment.transaction_id?.toUpperCase().startsWith('PT_') ||
+          (payment.notes && /pt[\s\-_]payment|personal[\s\-_]training|\bpt\b/i.test(payment.notes)) ||
+          payment.membership_id === null
+        ) {
           paymentType = 'pt';
         }
         // Check for membership payments (default)

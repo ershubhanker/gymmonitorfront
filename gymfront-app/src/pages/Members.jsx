@@ -1820,13 +1820,20 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           session_days: pt_data.session_days || '[]',
           total_amount: pt_data.total_amount ? parseFloat(pt_data.total_amount) : null,
           amount_paid: pt_data.amount_paid ? parseFloat(pt_data.amount_paid) : 0,
-          notes: pt_data.notes || null
+          notes: pt_data.notes || null,
+          payment_method: pt_data.payment_method || payment_method || 'cash',
+          payment_date: pt_data.payment_date || payment_date || null
         };
         
         console.log('📤 Creating personal training session:', ptPayload);
         await api.post('/gym/personal-training', ptPayload);
         console.log('✅ Personal training session created');
         toast.success('Personal training session added!');
+
+        if (ptPayload.amount_paid > 0) {
+          window.dispatchEvent(new CustomEvent('paymentAdded'));
+          window.dispatchEvent(new CustomEvent('paymentUpdated'));
+        }
       } catch (ptError) {
         console.error('Error creating PT session:', ptError);
         toast('Member added but personal training session could not be created.');
@@ -1993,7 +2000,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           session_days: pt_data.session_days || '[]',
           total_amount: pt_data.total_amount ? parseFloat(pt_data.total_amount) : null,
           amount_paid: pt_data.amount_paid ? parseFloat(pt_data.amount_paid) : 0,
-          notes: pt_data.notes || null
+          notes: pt_data.notes || null,
+          payment_method: pt_data.payment_method || payment_method || 'cash',
+          payment_date: pt_data.payment_date || payment_date || null
         };
         
         console.log('📤 Creating/Updating PT session:', ptPayload);
@@ -2006,6 +2015,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           await api.post('/gym/personal-training', ptPayload);
           console.log('✅ New PT session created');
           toast.success('Personal training session added!');
+        }
+
+        if (ptPayload.amount_paid > 0) {
+          window.dispatchEvent(new CustomEvent('paymentAdded'));
+          window.dispatchEvent(new CustomEvent('paymentUpdated'));
         }
       } catch (ptError) {
         console.error('Error updating PT session:', ptError);

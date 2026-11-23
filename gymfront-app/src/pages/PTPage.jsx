@@ -159,6 +159,8 @@ const PTPage = () => {
     try {
       const response = await api.post('/gym/pt/packages', data);
       toast.success('PT Package created successfully!');
+      window.dispatchEvent(new CustomEvent('paymentAdded'));
+      window.dispatchEvent(new CustomEvent('paymentUpdated'));
       setShowPackageModal(false);
       fetchData();
     } catch (error) {
@@ -173,6 +175,8 @@ const PTPage = () => {
     try {
       const response = await api.put(`/gym/pt/packages/${editingPackage.id}`, data);
       toast.success('PT Package updated successfully!');
+      window.dispatchEvent(new CustomEvent('paymentAdded'));
+      window.dispatchEvent(new CustomEvent('paymentUpdated'));
       setShowPackageModal(false);
       setEditingPackage(null);
       fetchData();

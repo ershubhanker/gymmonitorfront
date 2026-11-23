@@ -2642,7 +2642,9 @@ const MemberModal = ({ isOpen, onClose,
         session_days: formData.pt_session_days || '[]',
         total_amount: formData.pt_total_amount ? parseFloat(formData.pt_total_amount) : null,
         amount_paid: formData.pt_amount_paid ? parseFloat(formData.pt_amount_paid) : 0,
-        notes: formData.pt_notes || null
+        notes: formData.pt_notes || null,
+        payment_method: formData.payment_method || 'cash',
+        payment_date: formData.payment_date || null
       } : null;
       
       let payload;
