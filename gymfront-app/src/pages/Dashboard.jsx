@@ -528,81 +528,6 @@ const Dashboard = () => {
       let leadsData = { data: [] };
   
       if (canSeeDashboard) {
-        // 🚀 High-performance unified summary endpoint with Redis backend caching
-        try {
-          const isForceRefresh = !silent && sessionStorage.getItem('dashboard_cache_invalidated') === 'true';
-          if (isForceRefresh) {
-            sessionStorage.removeItem('dashboard_cache_invalidated');
-          }
-          const summaryUrl = `/gym/dashboard/summary${isForceRefresh ? '?force_refresh=true' : ''}`;
-          const summaryRes = await fetchSilently(summaryUrl);
-          
-          if (summaryRes?.success && summaryRes.data && summaryRes.data.stats) {
-            const s = summaryRes.data;
-            const updatedStats = {
-              ...s.stats,
-              membersByGender: s.membersByGender || { male: 0, female: 0, other: 0 },
-              membershipDistribution: s.membershipDistribution || {},
-              recentMembers: (s.recentMembers || []).map(m => ({
-                id: m.id,
-                name: m.name,
-                joinedDate: m.joinedDate,
-                avatar: m.avatar 
-                  ? (m.avatar.startsWith('http') ? m.avatar : `${API_BASE_URL}${m.avatar}`)
-                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=0D9488&color=fff`
-              })),
-              recentPayments: (s.recentPayments || []).map(p => ({
-                id: p.id,
-                memberName: p.memberName,
-                amount: p.amount,
-                date: p.date,
-                method: p.method,
-                isRefund: p.isRefund
-              })),
-              expiringMembers: (s.expiringMembers || []).map(m => ({
-                id: m.id,
-                memberId: m.memberId,
-                memberName: m.memberName,
-                endDate: m.endDate,
-                daysLeft: m.daysLeft,
-                planName: m.planName,
-                avatar: m.avatar 
-                  ? (m.avatar.startsWith('http') ? m.avatar : `${API_BASE_URL}${m.avatar}`)
-                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(m.memberName)}&background=0D9488&color=fff`
-              })),
-              upcomingBirthdays: s.upcomingBirthdays || { members: [], staff: [], all: [], todayCount: 0, totalCount: 0 }
-            };
-
-            setStats(prev => ({ ...prev, ...updatedStats }));
-
-            if (s.membersWithBalanceList) {
-              setMembersWithBalanceList(s.membersWithBalanceList.map(m => ({
-                ...m,
-                avatar: m.avatar 
-                  ? (m.avatar.startsWith('http') ? m.avatar : `${API_BASE_URL}${m.avatar}`)
-                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=EF4444&color=fff`
-              })));
-            }
-            if (s.recentLeads) {
-              setRecentLeads(s.recentLeads.map(l => ({
-                ...l,
-                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(l.name)}&background=8B5CF6&color=fff`
-              })));
-            }
-            if (s.recentActivities && s.recentActivities.length > 0) {
-              setRecentActivities(s.recentActivities);
-            }
-            if (s.upcomingClasses) {
-              setUpcomingClasses(s.upcomingClasses);
-            }
-
-            setCache(CACHE_KEYS.DASHBOARD_STATS, updatedStats, 3 * 60 * 1000);
-            return; // ✅ Successfully loaded entire dashboard in 1 fast Redis request!
-          }
-        } catch (err) {
-          console.warn('Dashboard summary endpoint unavailable, falling back to multi-fetch:', err);
-        }
-
         try {
           const statsResult = await fetchMemberStatsOptimized();
           
@@ -645,7 +570,7 @@ const Dashboard = () => {
       }
   
       if (canSeePayments) {
-        promises.push(fetchSilently('/gym/payments?limit=10000'));
+        promises.push(fetchSilently('/gym/payments?limit=10'));
         endpointMap.payments = promises.length - 1;
       }
   
@@ -741,45 +666,12 @@ const Dashboard = () => {
       const currentYear = new Date().getFullYear();
       
       const allPayments = payments || [];
-      
-      const yearlyPayments = allPayments.filter(p => {
-        const paymentDate = p.payment_date ? new Date(p.payment_date) : null;
-        return paymentDate && paymentDate.getFullYear() === currentYear;
-      });
-      
-      const totalRevenue = yearlyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-      
-      const now = new Date();
-      const monthlyPayments = allPayments.filter(p => {
-        if (!p.payment_date) return false;
-        const paymentDate = new Date(p.payment_date);
-        return paymentDate.getMonth() === now.getMonth() && 
-               paymentDate.getFullYear() === now.getFullYear();
-      });
-      
-      const monthlyRevenue = monthlyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-      
-      const todayDate = new Date();
-      const firstDayOfLastMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
-      const lastDayOfLastMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 0);
-      
-      const lastMonthPayments = allPayments.filter(p => {
-        if (!p.payment_date) return false;
-        const paymentDate = new Date(p.payment_date);
-        return paymentDate >= firstDayOfLastMonth && paymentDate <= lastDayOfLastMonth;
-      });
-      
-      const lastMonthRevenue = lastMonthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-      
-      const revenueGrowth = lastMonthRevenue > 0 
-        ? ((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue * 100)
-        : monthlyRevenue > 0 ? 100 : 0;
-      
-      const refundPayments = allPayments.filter(p => p.amount < 0 || (p.notes && p.notes.includes('REFUND')));
-      const totalRefunds = refundPayments.reduce((sum, p) => sum + Math.abs(p.amount || 0), 0);
-      const refundCount = refundPayments.length;
-      
-      const netRevenue = totalRevenue - totalRefunds;
+      const totalRevenue = statsApiData.total_revenue || 0;
+      const monthlyRevenue = statsApiData.monthly_revenue || 0;
+      const revenueGrowth = statsApiData.revenue_growth || 0;
+      const totalRefunds = 0;
+      const refundCount = 0;
+      const netRevenue = totalRevenue;
   
       const pendingPayments = memberships.filter(m => 
         m.payment_status === 'pending' || m.payment_status === 'PENDING'
@@ -1399,13 +1291,6 @@ const Dashboard = () => {
             </div>
           )}
           
-          {canSeePayments && (
-            <div className="bg-white/10 backdrop-blur-sm rounded-full px-3 py-1 text-xs flex items-center gap-1.5">
-              <TrendUp className="h-3.5 w-3.5" />
-              {stats.monthlyRevenue > 0 ? formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue') : 'No revenue yet'} this month
-            </div>
-          )}
-          
           {canSeeLeads && followupsCount > 0 && (
             <button
               onClick={() => {
@@ -1429,8 +1314,8 @@ const Dashboard = () => {
         </div>
       </div>
   
-      {/* Row 1: Key Stats Cards - Total Members ALWAYS visible */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Row 1: Key Stats Cards - Total Members & New Members */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {canViewMemberStats && (
           <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-blue-500">
             <div className="flex items-center justify-between mb-2">
@@ -1482,115 +1367,7 @@ const Dashboard = () => {
             </div>
           </div>
         )}
-  
-        {canViewRevenueStats && (
-          <div 
-            className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-purple-500 cursor-pointer group"
-            onClick={() => setActiveTab('payments')}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="bg-purple-100 p-2 rounded-lg group-hover:bg-purple-200 transition-colors">
-                <IndianRupee className="h-4.5 w-4.5 text-purple-600" />
-              </div>
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                stats.revenueGrowth >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-              }`}>
-                {stats.revenueGrowth >= 0 ? '↑' : '↓'} {Math.abs(stats.revenueGrowth || 0)}%
-              </span>
-            </div>
-            <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wider">Monthly Revenue</h3>
-            <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-0.5">{formatCurrencyMasked(stats.monthlyRevenue, 'monthlyRevenue')}</p>
-            <p className="text-xs text-gray-600 mt-2.5 pt-2 border-t border-gray-100 flex items-center">
-              {stats.revenueGrowth >= 0 ? (
-                <TrendingUp className="h-3.5 w-3.5 mr-1 text-green-500" />
-              ) : (
-                <TrendingDown className="h-3.5 w-3.5 mr-1 text-red-500" />
-              )}
-              vs last month
-            </p>
-          </div>
-        )}
-  
-        {canViewRevenueStats && (
-          <div 
-            className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200 border-l-4 border-orange-500 cursor-pointer group"
-            onClick={() => setActiveTab('payments')}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="bg-orange-100 p-2 rounded-lg group-hover:bg-orange-200 transition-colors">
-                <CreditCard className="h-4.5 w-4.5 text-orange-600" />
-              </div>
-              <span className="text-xs font-semibold text-orange-700 bg-orange-100 px-2 py-0.5 rounded-full">
-                {formatNumberMasked(stats.pendingPayments, 'pendingPayments')} pending
-              </span>
-            </div>
-            <h3 className="text-gray-500 text-xs font-semibold uppercase tracking-wider">Total Yearly Revenue</h3>
-            <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-0.5">{formatCurrencyMasked(stats.totalRevenue, 'totalRevenue')}</p>
-            <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-100">
-              <span className="text-gray-600 flex items-center text-xs">
-                <CalendarIcon className="h-3.5 w-3.5 mr-1" />
-                {new Date().getFullYear()}
-              </span>
-              <span className="text-orange-600 font-medium text-xs flex items-center">
-                <ClockIcon className="h-3.5 w-3.5 mr-1" />
-                {formatNumberMasked(stats.expiringSoon, 'expiringSoon')} expiring
-              </span>
-            </div>
-          </div>
-        )}
       </div>
-
-      {/* Row 1.5: Refund Stats Cards */}
-      {canViewRevenueStats && stats.totalRefunds > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Total Refunds</p>
-                <p className="text-2xl sm:text-3xl font-bold text-white mt-0.5">{formatCurrencyMasked(stats.totalRefunds, 'totalRefunds')}</p>
-              </div>
-              <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
-                <TrendingDown className="h-5 w-5 text-white" />
-              </div>
-            </div>
-            <div className="mt-2 flex items-center gap-1.5 text-white/80 text-xs">
-              <span>{stats.refundCount} refund{stats.refundCount !== 1 ? 's' : ''} issued</span>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-emerald-500 to-green-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Net Revenue</p>
-                <p className="text-2xl sm:text-3xl font-bold text-white mt-0.5">{formatCurrencyMasked(stats.netRevenue, 'netRevenue')}</p>
-              </div>
-              <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
-                <TrendingUp className="h-5 w-5 text-white" />
-              </div>
-            </div>
-            <div className="mt-2 flex items-center gap-1.5 text-white/80 text-xs">
-              <span>After refunds</span>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-xl shadow-sm hover:shadow-md p-4 transition-all duration-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/80 text-xs font-semibold uppercase tracking-wider">Refund Rate</p>
-                <p className="text-2xl sm:text-3xl font-bold text-white mt-0.5">
-                  {stats.totalRevenue > 0 ? ((stats.totalRefunds / stats.totalRevenue) * 100).toFixed(1) : 0}%
-                </p>
-              </div>
-              <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
-                <BarChart3 className="h-5 w-5 text-white" />
-              </div>
-            </div>
-            <div className="mt-2 flex items-center gap-1.5 text-white/80 text-xs">
-              <span>Of gross revenue</span>
-            </div>
-          </div>
-        </div>
-      )}
   
       {/* Balance Overview Cards */}
       {canViewBalanceStats && (
