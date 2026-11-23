@@ -5,7 +5,7 @@ import {
   Loader2, AlertCircle, TrendingUp, TrendingDown,
   Wallet, Building, Wrench, Dumbbell, Users,
   Zap, ShoppingBag, GraduationCap, MoreHorizontal,
-  Eye, Upload, FileText
+  Eye, Upload, FileText, Droplets, Sparkles, Wifi
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -28,10 +28,14 @@ const ExpenseModal = ({ isOpen, onClose, onSave, expense = null }) => {
     { value: 'maintenance', label: 'Maintenance', icon: Wrench, color: 'text-orange-600' },
     { value: 'equipment', label: 'Equipment', icon: Dumbbell, color: 'text-blue-600' },
     { value: 'salary', label: 'Salary', icon: Users, color: 'text-green-600' },
-    { value: 'utilities', label: 'Utilities', icon: Zap, color: 'text-yellow-600' },
+    { value: 'electricity', label: 'Electricity', icon: Zap, color: 'text-amber-500' },
+    { value: 'water', label: 'Water', icon: Droplets, color: 'text-sky-600' },
+    { value: 'internet', label: 'Internet', icon: Wifi, color: 'text-indigo-600' },
+    { value: 'housekeeping', label: 'Housekeeping', icon: Sparkles, color: 'text-emerald-600' },
+    { value: 'utilities', label: 'Utilities', icon: Building, color: 'text-yellow-600' },
     { value: 'rent', label: 'Rent', icon: Building, color: 'text-purple-600' },
     { value: 'marketing', label: 'Marketing', icon: TrendingUp, color: 'text-pink-600' },
-    { value: 'supplies', label: 'Supplies', icon: ShoppingBag, color: 'text-indigo-600' },
+    { value: 'supplies', label: 'Supplies', icon: ShoppingBag, color: 'text-violet-600' },
     { value: 'training', label: 'Training', icon: GraduationCap, color: 'text-cyan-600' },
     { value: 'other', label: 'Other', icon: MoreHorizontal, color: 'text-gray-600' }
   ];
@@ -145,7 +149,7 @@ const ExpenseModal = ({ isOpen, onClose, onSave, expense = null }) => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Category <span className="text-red-500">*</span>
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {categories.map(cat => {
                   const Icon = cat.icon;
                   return (
@@ -153,14 +157,14 @@ const ExpenseModal = ({ isOpen, onClose, onSave, expense = null }) => {
                       key={cat.value}
                       type="button"
                       onClick={() => setFormData({ ...formData, category: cat.value })}
-                      className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
+                      className={`flex items-center gap-2 p-2 rounded-lg border transition-all text-left ${
                         formData.category === cat.value
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-xs'
                           : 'border-gray-200 hover:border-blue-300 text-gray-600'
                       }`}
                     >
-                      <Icon className={`h-4 w-4 ${formData.category === cat.value ? cat.color : 'text-gray-400'}`} />
-                      <span className="text-sm">{cat.label}</span>
+                      <Icon className={`h-4 w-4 shrink-0 ${formData.category === cat.value ? cat.color : 'text-gray-400'}`} />
+                      <span className="text-xs font-medium truncate">{cat.label}</span>
                     </button>
                   );
                 })}
@@ -268,15 +272,19 @@ const Expenses = () => {
   const itemsPerPage = 10;
 
   const categories = [
-    { value: 'maintenance', label: 'Maintenance', icon: Wrench, color: 'bg-orange-100 text-orange-700' },
-    { value: 'equipment', label: 'Equipment', icon: Dumbbell, color: 'bg-blue-100 text-blue-700' },
-    { value: 'salary', label: 'Salary', icon: Users, color: 'bg-green-100 text-green-700' },
-    { value: 'utilities', label: 'Utilities', icon: Zap, color: 'bg-yellow-100 text-yellow-700' },
-    { value: 'rent', label: 'Rent', icon: Building, color: 'bg-purple-100 text-purple-700' },
-    { value: 'marketing', label: 'Marketing', icon: TrendingUp, color: 'bg-pink-100 text-pink-700' },
-    { value: 'supplies', label: 'Supplies', icon: ShoppingBag, color: 'bg-indigo-100 text-indigo-700' },
-    { value: 'training', label: 'Training', icon: GraduationCap, color: 'bg-cyan-100 text-cyan-700' },
-    { value: 'other', label: 'Other', icon: MoreHorizontal, color: 'bg-gray-100 text-gray-700' }
+    { value: 'maintenance', label: 'Maintenance', icon: Wrench, color: 'bg-orange-100 text-orange-700', iconColor: 'text-orange-600' },
+    { value: 'equipment', label: 'Equipment', icon: Dumbbell, color: 'bg-blue-100 text-blue-700', iconColor: 'text-blue-600' },
+    { value: 'salary', label: 'Salary', icon: Users, color: 'bg-green-100 text-green-700', iconColor: 'text-green-600' },
+    { value: 'electricity', label: 'Electricity', icon: Zap, color: 'bg-amber-100 text-amber-700', iconColor: 'text-amber-500' },
+    { value: 'water', label: 'Water', icon: Droplets, color: 'bg-sky-100 text-sky-700', iconColor: 'text-sky-600' },
+    { value: 'internet', label: 'Internet', icon: Wifi, color: 'bg-indigo-100 text-indigo-700', iconColor: 'text-indigo-600' },
+    { value: 'housekeeping', label: 'Housekeeping', icon: Sparkles, color: 'bg-emerald-100 text-emerald-700', iconColor: 'text-emerald-600' },
+    { value: 'utilities', label: 'Utilities', icon: Building, color: 'bg-yellow-100 text-yellow-700', iconColor: 'text-yellow-600' },
+    { value: 'rent', label: 'Rent', icon: Building, color: 'bg-purple-100 text-purple-700', iconColor: 'text-purple-600' },
+    { value: 'marketing', label: 'Marketing', icon: TrendingUp, color: 'bg-pink-100 text-pink-700', iconColor: 'text-pink-600' },
+    { value: 'supplies', label: 'Supplies', icon: ShoppingBag, color: 'bg-violet-100 text-violet-700', iconColor: 'text-violet-600' },
+    { value: 'training', label: 'Training', icon: GraduationCap, color: 'bg-cyan-100 text-cyan-700', iconColor: 'text-cyan-600' },
+    { value: 'other', label: 'Other', icon: MoreHorizontal, color: 'bg-gray-100 text-gray-700', iconColor: 'text-gray-600' }
   ];
 
   const fetchExpenses = async () => {
@@ -402,7 +410,9 @@ const Expenses = () => {
   };
 
   const getCategoryDetails = (categoryValue) => {
-    return categories.find(c => c.value === categoryValue) || categories[8];
+    return categories.find(c => c.value?.toLowerCase() === categoryValue?.toLowerCase()) || 
+           categories.find(c => c.value === 'other') || 
+           categories[categories.length - 1];
   };
 
   const filteredExpenses = expenses.filter(expense => {
@@ -563,14 +573,14 @@ const Expenses = () => {
       {summary?.expenses_by_category && Object.keys(summary.expenses_by_category).length > 0 && (
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Expenses by Category</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3">
             {Object.entries(summary.expenses_by_category).map(([category, amount]) => {
               const catDetails = getCategoryDetails(category);
               const Icon = catDetails.icon;
               return (
-                <div key={category} className="p-3 bg-gray-50 rounded-lg text-center">
-                  <Icon className={`h-6 w-6 mx-auto mb-2 ${catDetails.color.split(' ')[2]}`} />
-                  <p className="text-xs text-gray-600">{catDetails.label}</p>
+                <div key={category} className="p-3 bg-gray-50 rounded-lg text-center border border-gray-100 hover:shadow-xs transition-shadow">
+                  <Icon className={`h-6 w-6 mx-auto mb-2 ${catDetails.iconColor || 'text-gray-600'}`} />
+                  <p className="text-xs text-gray-600 font-medium">{catDetails.label}</p>
                   <p className="text-sm font-bold text-gray-900">₹{typeof amount === 'number' ? amount.toLocaleString() : amount}</p>
                 </div>
               );
