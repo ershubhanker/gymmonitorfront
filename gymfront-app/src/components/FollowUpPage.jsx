@@ -131,6 +131,13 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
   // Action status
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
+  // Single & Bulk Delete State
+  const [selectedFollowups, setSelectedFollowups] = useState([]);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletePermanently, setDeletePermanently] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   // ─── Filters ────────────────────────────────────────────────────────────
   const [filters, setFilters] = useState({
     startDate: new Date().toISOString().split('T')[0],
@@ -473,6 +480,92 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
       toast.error('Failed to mark follow-up as completed');
       fetchFollowups(true);
       fetchDoneFollowups(true);
+    }
+  };
+
+  // ─── Selection Helpers ──────────────────────────────────────────────────
+  const activeList = activeMainTab === 'pending' ? followups : doneFollowups;
+  const allSelected = activeList.length > 0 && selectedFollowups.length === activeList.length;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedFollowups([]);
+    } else {
+      setSelectedFollowups(activeList.map(item => item.id));
+    }
+  };
+
+  const toggleSelectFollowup = (id) => {
+    setSelectedFollowups(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  // ─── Single Delete Follow-up ────────────────────────────────────────────
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/gym/followups/${deleteTarget.id}?delete_lead=${deletePermanently}`);
+      toast.success(deletePermanently ? 'Lead deleted permanently!' : 'Follow-up removed from list!');
+
+      setFollowups(prev => prev.filter(f => f.id !== deleteTarget.id));
+      setDoneFollowups(prev => prev.filter(d => d.id !== deleteTarget.id));
+      setSelectedFollowups(prev => prev.filter(id => id !== deleteTarget.id));
+
+      clearCachePattern('followups_');
+      clearCachePattern('done_followups_');
+      invalidateCache();
+      window.dispatchEvent(new CustomEvent('leadUpdated', { detail: { leadId: deleteTarget.id } }));
+
+      setDeleteTarget(null);
+      setDeletePermanently(false);
+      fetchFollowups(true);
+      fetchDoneFollowups(true);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Error deleting follow-up:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete follow-up');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // ─── Bulk Delete Follow-ups ─────────────────────────────────────────────
+  const handleConfirmBulkDelete = async () => {
+    if (selectedFollowups.length === 0) return;
+    setDeleting(true);
+    try {
+      await api.post('/gym/followups/bulk-delete', {
+        lead_ids: selectedFollowups,
+        delete_lead: deletePermanently
+      });
+      toast.success(
+        deletePermanently
+          ? `${selectedFollowups.length} leads deleted permanently!`
+          : `${selectedFollowups.length} follow-ups removed from list!`
+      );
+
+      const deletedSet = new Set(selectedFollowups);
+      setFollowups(prev => prev.filter(f => !deletedSet.has(f.id)));
+      setDoneFollowups(prev => prev.filter(d => !deletedSet.has(d.id)));
+      setSelectedFollowups([]);
+
+      clearCachePattern('followups_');
+      clearCachePattern('done_followups_');
+      invalidateCache();
+      window.dispatchEvent(new CustomEvent('leadUpdated', { detail: {} }));
+
+      setShowBulkDeleteModal(false);
+      setDeletePermanently(false);
+      fetchFollowups(true);
+      fetchDoneFollowups(true);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Error in bulk deleting follow-ups:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete selected follow-ups');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -953,7 +1046,10 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
         <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50/70 px-4 pt-3">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setActiveMainTab('pending')}
+              onClick={() => {
+                setActiveMainTab('pending');
+                setSelectedFollowups([]);
+              }}
               className={`pb-3 px-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
                 activeMainTab === 'pending'
                   ? 'border-blue-600 text-blue-600'
@@ -972,7 +1068,10 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
             </button>
 
             <button
-              onClick={() => setActiveMainTab('done')}
+              onClick={() => {
+                setActiveMainTab('done');
+                setSelectedFollowups([]);
+              }}
               className={`pb-3 px-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
                 activeMainTab === 'done'
                   ? 'border-emerald-600 text-emerald-600'
@@ -998,6 +1097,36 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
           </span>
         </div>
 
+        {/* ─── Bulk Action Bar ────────────────────────────────────────────── */}
+        {selectedFollowups.length > 0 && (
+          <div className="bg-red-50/90 border-b border-red-200 px-5 py-3 flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-150">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+              <span className="text-sm font-semibold text-red-950">
+                {selectedFollowups.length} follow-up{selectedFollowups.length !== 1 ? 's' : ''} selected
+              </span>
+              <button
+                onClick={() => setSelectedFollowups([])}
+                className="text-xs text-red-600 hover:text-red-800 underline font-medium ml-2 cursor-pointer"
+              >
+                Clear Selection
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setDeletePermanently(false);
+                  setShowBulkDeleteModal(true);
+                }}
+                className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs hover:shadow transition-all cursor-pointer"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Delete Selected ({selectedFollowups.length})</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Tab 1: Pending Follow-ups Table */}
         {activeMainTab === 'pending' && (
           loading ? (
@@ -1009,6 +1138,15 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="w-10 px-4 py-3.5 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                      title={allSelected ? "Deselect All" : "Select All"}
+                    />
+                  </th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Lead</th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status & Quality</th>
@@ -1021,13 +1159,26 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
                 {followups.map((lead) => {
                   const isOverdue = lead.next_follow_up && new Date(lead.next_follow_up) < new Date();
                   const isToday = lead.next_follow_up && new Date(lead.next_follow_up).toDateString() === new Date().toDateString();
+                  const isSelected = selectedFollowups.includes(lead.id);
 
                   return (
                     <tr
                       key={lead.id}
-                      className="hover:bg-blue-50/40 transition-colors group cursor-pointer"
+                      className={`hover:bg-blue-50/40 transition-colors group cursor-pointer ${
+                        isSelected ? 'bg-blue-50/60' : ''
+                      }`}
                       onClick={() => handleOpenLeadDetail(lead, 'overview')}
                     >
+                      {/* Selection Checkbox */}
+                      <td className="w-10 px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectFollowup(lead.id)}
+                          className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                        />
+                      </td>
+
                       {/* Lead Name & ID */}
                       <td className="px-5 py-3.5 whitespace-nowrap">
                         <div className="flex items-center">
@@ -1179,6 +1330,18 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
                               <MessageCircle className="h-4 w-4" />
                             </a>
                           )}
+
+                          {/* 🗑️ Delete Follow-up */}
+                          <button
+                            onClick={() => {
+                              setDeleteTarget(lead);
+                              setDeletePermanently(false);
+                            }}
+                            className="p-1.5 rounded-lg border border-gray-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all cursor-pointer"
+                            title="Delete / Remove Follow-up"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1211,6 +1374,15 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="w-10 px-4 py-3.5 text-center">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer"
+                        title={allSelected ? "Deselect All" : "Select All"}
+                      />
+                    </th>
                     <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Lead</th>
                     <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
                     <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status & Quality</th>
@@ -1224,13 +1396,26 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
                     const leadName = item.full_name || item.lead_name || 'Lead';
                     const leadPhone = item.phone || item.lead_phone;
                     const leadEmail = item.email || item.lead_email;
+                    const isSelected = selectedFollowups.includes(item.id);
 
                     return (
                       <tr
                         key={item.id}
-                        className="hover:bg-emerald-50/40 transition-colors group cursor-pointer"
+                        className={`hover:bg-emerald-50/40 transition-colors group cursor-pointer ${
+                          isSelected ? 'bg-emerald-50/60' : ''
+                        }`}
                         onClick={() => handleOpenLeadDetail(item, 'history')}
                       >
+                        {/* Selection Checkbox */}
+                        <td className="w-10 px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectFollowup(item.id)}
+                            className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer"
+                          />
+                        </td>
+
                         {/* Lead Name & ID */}
                         <td className="px-5 py-3.5 whitespace-nowrap">
                           <div className="flex items-center">
@@ -1343,6 +1528,18 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
                                 <MessageCircle className="h-4 w-4" />
                               </a>
                             )}
+
+                            {/* 🗑️ Delete Follow-up */}
+                            <button
+                              onClick={() => {
+                                setDeleteTarget(item);
+                                setDeletePermanently(false);
+                              }}
+                              className="p-1.5 rounded-lg border border-gray-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all cursor-pointer"
+                              title="Delete / Remove Follow-up"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1409,6 +1606,146 @@ const FollowUpPage = ({ onFollowUpClick, onRefresh }) => {
           onCompleteFollowUp={handleCompleteFollowUp}
           updatingStatus={updatingStatus}
         />
+      )}
+
+      {/* ─── MODAL 4: Single Delete Confirmation Modal ─────────────────── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-red-100 text-red-600 rounded-xl">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Delete Follow-up</h3>
+                <p className="text-xs text-gray-500">
+                  {deleteTarget.full_name || deleteTarget.lead_name || 'Lead'} (ID #{deleteTarget.id})
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Are you sure you want to remove the follow-up for <strong className="text-gray-900">{deleteTarget.full_name || deleteTarget.lead_name || 'this lead'}</strong> from your follow-up list?
+            </p>
+
+            <label className="flex items-start gap-2.5 p-3 rounded-xl bg-gray-50 border border-gray-200 mb-5 cursor-pointer hover:bg-gray-100/70 transition-colors">
+              <input
+                type="checkbox"
+                checked={deletePermanently}
+                onChange={(e) => setDeletePermanently(e.target.checked)}
+                className="mt-0.5 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500 cursor-pointer"
+              />
+              <div className="text-xs">
+                <span className="font-semibold text-gray-900">Also permanently delete this lead from CRM</span>
+                <p className="text-gray-500 text-[11px] mt-0.5">
+                  If unchecked, the lead is safely kept in CRM and only the scheduled follow-up is removed.
+                </p>
+              </div>
+            </label>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeletePermanently(false);
+                }}
+                disabled={deleting}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 text-sm font-medium transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl text-sm font-semibold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    <span>{deletePermanently ? 'Delete Lead' : 'Remove Follow-up'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL 5: Bulk Delete Confirmation Modal ───────────────────── */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-red-100 text-red-600 rounded-xl">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Delete {selectedFollowups.length} Follow-ups?
+                </h3>
+                <p className="text-xs text-gray-500">Bulk delete action</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Are you sure you want to remove <strong className="text-gray-900">{selectedFollowups.length}</strong> selected follow-up{selectedFollowups.length !== 1 ? 's' : ''} from the list?
+            </p>
+
+            <label className="flex items-start gap-2.5 p-3 rounded-xl bg-gray-50 border border-gray-200 mb-5 cursor-pointer hover:bg-gray-100/70 transition-colors">
+              <input
+                type="checkbox"
+                checked={deletePermanently}
+                onChange={(e) => setDeletePermanently(e.target.checked)}
+                className="mt-0.5 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500 cursor-pointer"
+              />
+              <div className="text-xs">
+                <span className="font-semibold text-gray-900">Also permanently delete these {selectedFollowups.length} leads from CRM</span>
+                <p className="text-gray-500 text-[11px] mt-0.5">
+                  If unchecked, leads remain safely in your CRM and only their follow-up schedules are removed.
+                </p>
+              </div>
+            </label>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBulkDeleteModal(false);
+                  setDeletePermanently(false);
+                }}
+                disabled={deleting}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 text-sm font-medium transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBulkDelete}
+                disabled={deleting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl text-sm font-semibold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    <span>{deletePermanently ? `Delete ${selectedFollowups.length} Leads` : `Remove ${selectedFollowups.length} Follow-ups`}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
