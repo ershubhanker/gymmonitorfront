@@ -26,7 +26,10 @@ import {
   ChevronLeft,
   ChevronRight, Clock, XCircle, RefreshCw, TrendingDown,
   Receipt,
-  Filter
+  Filter,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Copy
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
@@ -107,6 +110,7 @@ const Payments = () => {
   const [datePickerType, setDatePickerType] = useState('start');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('all');
+  const [directionFilter, setDirectionFilter] = useState<'all' | 'inflow' | 'outflow'>('all');
   const [paymentTypeFilter, setPaymentTypeFilter] = useState('all');
   
   // Pagination state
@@ -121,6 +125,8 @@ const Payments = () => {
   
   const [summary, setSummary] = useState({
     totalRevenue: 0,
+    inflowRevenue: 0,
+    inflowCount: 0,
     totalCount: 0,
     averagePayment: 0,
     cashPayments: 0,
@@ -134,7 +140,7 @@ const Payments = () => {
     addonPaymentCount: 0,
     renewalPayments: 0,
     renewalCount: 0,
-    // ✅ NEW: Refund tracking
+    // ✅ Refund tracking
     totalRefunds: 0,
     refundCount: 0,
     netRevenue: 0,
@@ -252,7 +258,7 @@ const Payments = () => {
     if (payments.length > 0 || startDate) {
       filterPayments();
     }
-  }, [payments, startDate, endDate, searchTerm, selectedMethod, paymentTypeFilter]);
+  }, [payments, startDate, endDate, searchTerm, selectedMethod, directionFilter, paymentTypeFilter]);
 
   // Exit selection mode when payments change
   useEffect(() => {
@@ -287,11 +293,7 @@ const Payments = () => {
       const params = new URLSearchParams();
       if (queryStart) params.append('start_date', queryStart);
       if (queryEnd) params.append('end_date', queryEnd);
-      if (!queryStart && !queryEnd) {
-        params.append('limit', '2000');
-      } else {
-        params.append('limit', '1000');
-      }
+      params.append('limit', '10000');
       
       // ✅ Fetch payments with date range parameters
       const response = await api.get(`/gym/payments?${params.toString()}`);
@@ -299,52 +301,53 @@ const Payments = () => {
       
       let paymentsData = Array.isArray(response.data) ? response.data : [];
       
-      // ✅ Process payments to detect types and refunds
+      // ✅ Process payments to detect strict direction (IN vs OUT), types and balance payments
       paymentsData = paymentsData.map(payment => {
-        let paymentType = 'membership';
-        let addonName = null;
-        let isRenewal = false;
+        const amount = Number(payment.amount) || 0;
         let isRefund = false;
         
-        // ✅ Check if this is a refund (negative amount or REFUND in notes/transaction_id)
-        const amount = Number(payment.amount) || 0;
+        // Strict refund check: negative amount or REFUND indicator
         if (amount < 0) {
           isRefund = true;
         }
-        if (payment.notes && (
-          payment.notes.includes('REFUND') || 
-          payment.notes.includes('Refund') ||
-          payment.notes.includes('refund')
-        )) {
+        if (payment.notes && /refund/i.test(payment.notes)) {
           isRefund = true;
         }
         if (payment.transaction_id && (
-          payment.transaction_id.startsWith('REF-') ||
-          payment.transaction_id.includes('REFUND')
+          payment.transaction_id.toUpperCase().startsWith('REF-') ||
+          payment.transaction_id.toUpperCase().includes('REFUND')
         )) {
           isRefund = true;
         }
         
+        const isInflow = !isRefund && amount > 0;
+
         // Check if it's a renewal payment
-        if (payment.notes && (
-          payment.notes.includes('Renewal') || 
-          payment.notes.includes('renewal') ||
-          payment.notes.includes('renew')
-        )) {
+        let isRenewal = false;
+        if (payment.notes && /renew/i.test(payment.notes)) {
           isRenewal = true;
         }
-        
+
+        // Check for balance clearance payments
+        const isBalance = Boolean(
+          payment.is_balance_payment ||
+          (payment.notes && /balance\s*(payment|collected|collection|clearance)/i.test(payment.notes)) ||
+          (payment.transaction_id?.startsWith('PAY-') && !isRefund)
+        );
+
+        let paymentType = 'membership';
+        let addonName = null;
+
+        if (isRefund) {
+          paymentType = 'refund';
+        } 
         // Check for add-on payments
-        if (payment.transaction_id?.startsWith('ADDON-PAY-') || 
+        else if (payment.transaction_id?.startsWith('ADDON-PAY-') || 
             payment.transaction_id?.startsWith('ADDON-')) {
           paymentType = 'addon';
           const notes = payment.notes || '';
           const addonMatch = notes.match(/Addon payment for ([^:]+)/);
-          if (addonMatch) {
-            addonName = addonMatch[1].trim();
-          } else {
-            addonName = 'Addon';
-          }
+          addonName = addonMatch ? addonMatch[1].trim() : 'Addon';
         } 
         // Check for PT payments
         else if (
@@ -354,29 +357,36 @@ const Payments = () => {
           payment.membership_id === null
         ) {
           paymentType = 'pt';
+        } 
+        // Check for renewals
+        else if (isRenewal) {
+          paymentType = 'renewal';
         }
-        // Check for membership payments (default)
+        // Check for balance clearance
+        else if (isBalance) {
+          paymentType = 'balance';
+        }
+        // Standard membership payment
         else {
-          if (payment.membership_id) {
-            paymentType = 'membership';
-          }
+          paymentType = 'membership';
         }
         
         return {
           ...payment,
           amount: amount,
+          is_inflow: isInflow,
+          is_refund: isRefund,
+          is_renewal: isRenewal,
+          is_balance_payment: isBalance,
+          payment_type: paymentType,
+          addon_name: addonName,
           member_name: payment.member?.full_name || payment.member_name || 'Unknown Member',
           member_phone: payment.member?.phone || '',
           member_email: payment.member?.email || '',
-          member_plan: payment.member?.membership_plan_name || payment.member?.plan || 'N/A',
+          member_plan: payment.membership_plan_name || payment.member?.membership_plan_name || payment.member?.plan || 'N/A',
           member_balance: payment.member?.balance_amount || payment.balance_amount || 0,
           gst_amount: payment.gst_amount || payment.tax_amount || 0,
-          is_balance_payment: payment.is_balance_payment || false,
           original_invoice_id: payment.original_invoice_id || null,
-          payment_type: paymentType,
-          addon_name: addonName,
-          is_renewal: isRenewal,
-          is_refund: isRefund,
         };
       });
       
@@ -429,11 +439,15 @@ const Payments = () => {
         }
       }
 
-      // ✅ Filter by search term
+      // ✅ Filter by search term (Member Name, Phone, Transaction ID, Notes)
       if (searchTerm && filtered.length > 0) {
+        const term = searchTerm.toLowerCase().trim();
         filtered = filtered.filter(payment => {
-          const memberName = payment.member_name || payment.member?.full_name || '';
-          return memberName.toLowerCase().includes(searchTerm.toLowerCase());
+          const memberName = (payment.member_name || payment.member?.full_name || '').toLowerCase();
+          const memberPhone = (payment.member_phone || payment.member?.phone || '').toLowerCase();
+          const txnId = (payment.transaction_id || '').toLowerCase();
+          const notes = (payment.notes || '').toLowerCase();
+          return memberName.includes(term) || memberPhone.includes(term) || txnId.includes(term) || notes.includes(term);
         });
       }
 
@@ -445,7 +459,16 @@ const Payments = () => {
         });
       }
 
-      // ✅ Filter by payment type
+      // ✅ Filter strictly by Flow Direction (Money In vs Money Out)
+      if (directionFilter !== 'all' && filtered.length > 0) {
+        if (directionFilter === 'inflow') {
+          filtered = filtered.filter(p => !p.is_refund && Number(p.amount) > 0);
+        } else if (directionFilter === 'outflow') {
+          filtered = filtered.filter(p => p.is_refund || Number(p.amount) < 0);
+        }
+      }
+
+      // ✅ Filter by payment category / type
       if (paymentTypeFilter !== 'all' && filtered.length > 0) {
         filtered = filtered.filter(payment => {
           if (paymentTypeFilter === 'membership') {
@@ -456,29 +479,32 @@ const Payments = () => {
             return payment.payment_type === 'addon' && !payment.is_refund;
           } else if (paymentTypeFilter === 'renewal') {
             return payment.is_renewal === true && !payment.is_refund;
+          } else if (paymentTypeFilter === 'balance') {
+            return (payment.is_balance_payment === true || payment.payment_type === 'balance') && !payment.is_refund;
           } else if (paymentTypeFilter === 'refunds') {
-            return payment.is_refund === true;
+            return payment.is_refund === true || Number(payment.amount) < 0;
           }
           return true;
         });
       }
 
       // ============================================================
-      // ✅ CALCULATE SUMMARY WITH REFUNDS PROPERLY HANDLED
+      // ✅ CALCULATE STRICT FINANCIAL LEDGER SUMMARY
       // ============================================================
       
-      // Separate positive and negative payments for the filtered date range
+      // Strict mathematical separation: Inflows (Money In) vs Outflows (Money Out / Refunds)
       const positivePayments = filtered.filter(p => Number(p.amount) > 0 && !p.is_refund);
       const refundPayments = filtered.filter(p => Number(p.amount) < 0 || p.is_refund);
       
-      // Total revenue = sum of all positive amounts in the filtered date range
+      // Gross Inflow = sum of all positive incoming payments
       const totalRevenue = positivePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
       
-      // Total refunds = sum of absolute values of refund payments in the filtered date range
+      // Gross Outflow = sum of all refunds & reversed payments
       const totalRefunds = refundPayments.reduce((sum, p) => sum + Math.abs(Number(p.amount) || 0), 0);
       const refundCount = refundPayments.length;
+      const inflowCount = positivePayments.length;
       
-      // Net revenue = totalRevenue - totalRefunds
+      // Strict Net Revenue Kept = Gross Inflow - Gross Outflow
       const netRevenue = totalRevenue - totalRefunds;
       
       const totalCount = filtered.length;
@@ -504,7 +530,7 @@ const Payments = () => {
       const totalGST = positivePayments.reduce((sum, p) => sum + (Number(p.gst_amount) || 0), 0);
       
       const totalBalancePayments = positivePayments
-        .filter(p => p.is_balance_payment === true)
+        .filter(p => p.is_balance_payment === true || p.payment_type === 'balance')
         .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
       const addonPayments = positivePayments
@@ -561,6 +587,8 @@ const Payments = () => {
 
       setSummary({
         totalRevenue,
+        inflowRevenue: totalRevenue,
+        inflowCount,
         totalCount,
         averagePayment: averagePayment || 0,
         cashPayments,
@@ -583,7 +611,7 @@ const Payments = () => {
       const sortedFiltered = [...filtered].sort((a, b) => {
         const dateA = new Date(a.payment_date);
         const dateB = new Date(b.payment_date);
-        return dateB - dateA;
+        return dateB.getTime() - dateA.getTime();
       });
       
       setFilteredPayments(sortedFiltered);
@@ -592,7 +620,7 @@ const Payments = () => {
       console.error('Error filtering payments:', err);
       setFilteredPayments([]);
     }
-  }, [payments, startDate, endDate, searchTerm, selectedMethod, paymentTypeFilter]);
+  }, [payments, startDate, endDate, searchTerm, selectedMethod, directionFilter, paymentTypeFilter]);
 
   const formatCurrency = (amount) => {
     if (!amount && amount !== 0) return `${currencySymbol} 0`;
@@ -764,18 +792,23 @@ const Payments = () => {
   // ===== GET PAYMENT TYPE BADGE =====
   const getPaymentTypeBadge = (payment) => {
     if (payment.is_refund) {
-      return { label: 'Refund', color: 'bg-red-100 text-red-700' };
+      return { label: 'Refund', color: 'bg-rose-100 text-rose-700 border border-rose-200' };
     }
     if (payment.is_renewal) {
-      return { label: 'Renewal', color: 'bg-purple-100 text-purple-700' };
+      return { label: 'Renewal', color: 'bg-purple-100 text-purple-700 border border-purple-200' };
     }
     switch(payment.payment_type) {
       case 'addon':
-        return { label: 'Add-On', color: 'bg-indigo-100 text-indigo-700' };
+        return { label: 'Add-On', color: 'bg-indigo-100 text-indigo-700 border border-indigo-200' };
       case 'pt':
-        return { label: 'PT', color: 'bg-blue-100 text-blue-700' };
+        return { label: 'PT', color: 'bg-blue-100 text-blue-700 border border-blue-200' };
+      case 'balance':
+        return { label: 'Balance Payment', color: 'bg-teal-100 text-teal-700 border border-teal-200' };
       default:
-        return { label: 'Membership', color: 'bg-green-100 text-green-700' };
+        if (payment.is_balance_payment) {
+          return { label: 'Balance Payment', color: 'bg-teal-100 text-teal-700 border border-teal-200' };
+        }
+        return { label: 'Membership', color: 'bg-emerald-100 text-emerald-700 border border-emerald-200' };
     }
   };
 
@@ -898,13 +931,14 @@ const Payments = () => {
       csvRows.push(['"Detailed Transactions"']);
       csvRows.push([
         '"Date"',
+        '"Transaction ID"',
+        '"Direction (IN/OUT)"',
         '"Member Name"',
         '"Member Phone"',
         '"Member Email"',
         '"Member Plan"',
         '"Amount"',
         '"Payment Method"',
-        '"Transaction ID"',
         '"Status"',
         '"Payment Time"',
         '"GST Amount"',
@@ -921,22 +955,27 @@ const Payments = () => {
         const dateStr = formatDate(payment.payment_date) || 'N/A';
         const timeStr = payment.payment_date ? new Date(payment.payment_date).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A';
         
-        const typeLabel = payment.is_refund ? 'REFUND' : 
+        const isRefund = payment.is_refund || Number(payment.amount) < 0;
+        const directionStr = isRefund ? 'OUT (Refund)' : 'IN (Collection)';
+        
+        const typeLabel = isRefund ? 'REFUND' : 
           payment.is_renewal ? 'Renewal' : 
           payment.payment_type === 'addon' ? 'Add-On' : 
-          payment.payment_type === 'pt' ? 'PT' : 'Membership';
+          payment.payment_type === 'pt' ? 'PT' : 
+          payment.is_balance_payment ? 'Balance Payment' : 'Membership';
         
-        const amountDisplay = payment.amount < 0 ? `(${formatCurrency(Math.abs(payment.amount))})` : formatCurrency(payment.amount);
+        const signedAmount = isRefund ? -Math.abs(payment.amount) : Math.abs(payment.amount);
         
         csvRows.push([
           `"${dateStr}"`,
+          `"${payment.transaction_id || `PAY-${payment.id}`}"`,
+          `"${directionStr}"`,
           `"${(payment.member_name || payment.member?.full_name || 'Unknown Member').replace(/"/g, '""')}"`,
           `"${payment.member_phone || payment.member?.phone || 'N/A'}"`,
           `"${payment.member_email || payment.member?.email || 'N/A'}"`,
           `"${payment.member_plan || 'N/A'}"`,
-          `"${payment.amount || 0}"`,
+          `"${signedAmount}"`,
           `"${(payment.payment_method || 'N/A').toUpperCase()}"`,
-          `"${payment.transaction_id || 'N/A'}"`,
           `"${payment.status || 'Completed'}"`,
           `"${timeStr}"`,
           `"${payment.gst_amount || 0}"`,
@@ -944,7 +983,7 @@ const Payments = () => {
           `"${((payment.gst_amount || 0) / 2).toFixed(2)}"`,
           `"${payment.is_balance_payment ? 'Yes' : 'No'}"`,
           `"${payment.is_renewal ? 'Yes' : 'No'}"`,
-          `"${payment.is_refund ? 'Yes' : 'No'}"`,
+          `"${isRefund ? 'Yes' : 'No'}"`,
           `"${typeLabel}"`,
           `"${(payment.notes || '').replace(/"/g, '""')}"`
         ]);
@@ -1199,14 +1238,14 @@ const Payments = () => {
     );
   };
 
-  // ===== RENDER SUMMARY CARDS WITH TODAY'S COLLECTION & REFUNDS =====
+  // ===== RENDER SUMMARY CARDS WITH STRICT FINANCIAL LEDGER ACCURACY =====
   const renderSummaryCards = () => {
     const todayStr = getTodayDateStr();
     const isTodayFiltered = startDate === todayStr && endDate === todayStr;
 
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        {/* 🔥 Today's Collection Card (Highlighted for Daily Sales Tracking) */}
+        {/* 🔥 Today's Collection Card (Highlighted Daily Inflow vs Outflow) */}
         <div 
           onClick={() => {
             setStartDate(todayStr);
@@ -1226,99 +1265,117 @@ const Payments = () => {
               Today's Sales
             </span>
           </div>
-          <p className="text-xs text-emerald-100 font-medium mb-0.5">Today's Collection</p>
-          <p className="text-2xl font-extrabold tracking-tight">
+          <p className="text-xs text-emerald-100 font-medium mb-0.5">Today's Net Collection</p>
+          <p className="text-2xl font-black tracking-tight">
             {formatCurrency(todaySummary.netRevenue)}
           </p>
-          <div className="mt-2 pt-2 border-t border-white/20 flex flex-wrap items-center justify-between text-xs text-emerald-50 gap-1">
-            <span className="font-medium">{todaySummary.count} payment{todaySummary.count !== 1 ? 's' : ''}</span>
-            <span className="opacity-95">
+          <div className="mt-2 pt-2 border-t border-white/20 text-xs text-emerald-50 space-y-1">
+            <div className="flex items-center justify-between font-medium">
+              <span className="text-emerald-100">In: +{formatCurrency(todaySummary.grossRevenue)} ({todaySummary.count})</span>
+              {todaySummary.totalRefunds > 0 && (
+                <span className="text-amber-200 font-semibold">Out: -{formatCurrency(todaySummary.totalRefunds)} ({todaySummary.refundCount})</span>
+              )}
+            </div>
+            <div className="text-[11px] opacity-90 truncate">
               Cash: {formatCurrency(todaySummary.cash)} | UPI: {formatCurrency(todaySummary.upi)}
-            </span>
+            </div>
           </div>
-          {todaySummary.totalRefunds > 0 && (
-            <p className="text-[11px] text-amber-200 mt-1">
-              Refunds today: {formatCurrency(todaySummary.totalRefunds)} ({todaySummary.refundCount})
-            </p>
-          )}
         </div>
 
-        {/* ✅ Total Revenue Card (Filtered Date Range) */}
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+        {/* ✅ Total Money In (Gross Inflow) */}
+        <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-700 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
           <div className="flex items-center justify-between mb-2">
-            <Wallet className="h-6 w-6 opacity-80" />
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/20">
-              {startDate && endDate && startDate === endDate
-                ? 'Selected Day'
-                : startDate || endDate
-                ? 'Filtered Range'
-                : 'All Time'}
+            <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
+              <ArrowUpRight className="h-5 w-5 text-white stroke-[2.5]" />
+            </div>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-400/25 border border-emerald-300/40 text-emerald-100">
+              Money In
             </span>
           </div>
           <p className="text-xs opacity-90 mb-0.5 font-medium truncate" title={
             startDate && endDate
-              ? (startDate === endDate ? `Total Revenue (${formatDate(startDate)})` : `Total Revenue (${formatDate(startDate)} - ${formatDate(endDate)})`)
+              ? (startDate === endDate ? `Gross Inflow (${formatDate(startDate)})` : `Gross Inflow (${formatDate(startDate)} - ${formatDate(endDate)})`)
               : startDate
-              ? `Total Revenue (From ${formatDate(startDate)})`
+              ? `Gross Inflow (From ${formatDate(startDate)})`
               : endDate
-              ? `Total Revenue (Up to ${formatDate(endDate)})`
-              : 'Total Revenue (All Time)'
+              ? `Gross Inflow (Up to ${formatDate(endDate)})`
+              : 'Gross Inflow (All Time)'
           }>
-            {startDate && endDate
-              ? (startDate === endDate ? `Total Revenue (${formatDate(startDate)})` : `Total Revenue (${formatDate(startDate)} - ${formatDate(endDate)})`)
-              : startDate
-              ? `Total Revenue (From ${formatDate(startDate)})`
-              : endDate
-              ? `Total Revenue (Up to ${formatDate(endDate)})`
-              : 'Total Revenue (All Time)'}
+            Total Money In (Inflow)
           </p>
-          <p className="text-2xl font-black tracking-tight">{formatCurrency(summary.totalRevenue)}</p>
-          <div className="mt-1 flex items-center justify-between text-xs opacity-85">
-            <span>{summary.totalCount} transaction{summary.totalCount !== 1 ? 's' : ''}</span>
-            {summary.totalRefunds > 0 && (
-              <span className="font-semibold text-blue-100">Net: {formatCurrency(summary.netRevenue)}</span>
-            )}
+          <p className="text-2xl font-black tracking-tight text-white">
+            +{formatCurrency(summary.totalRevenue)}
+          </p>
+          <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-xs opacity-90">
+            <span>{summary.inflowCount || (summary.totalCount - summary.refundCount)} payments</span>
+            <span>Avg: {formatCurrency(summary.averagePayment)}</span>
           </div>
         </div>
 
-        {/* ✅ Net Revenue Card (Revenue - Refunds) */}
-        <div className="bg-gradient-to-r from-emerald-600 to-green-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+        {/* ✅ Total Money Out (Gross Outflow / Refunds) */}
+        <div className="bg-gradient-to-br from-rose-500 via-red-600 to-rose-700 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
           <div className="flex items-center justify-between mb-2">
-            <TrendingUp className="h-6 w-6 opacity-80" />
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/20">
-              Net
+            <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
+              <ArrowDownLeft className="h-5 w-5 text-white stroke-[2.5]" />
+            </div>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-400/30 border border-rose-300/40 text-rose-100">
+              Money Out
             </span>
           </div>
-          <p className="text-xs opacity-80 mb-0.5">Net Revenue</p>
-          <p className="text-xl font-bold">{formatCurrency(summary.netRevenue)}</p>
-          <p className="text-xs opacity-70 mt-1">
-            {summary.refundCount} refund{summary.refundCount !== 1 ? 's' : ''} deducted
+          <p className="text-xs opacity-90 mb-0.5 font-medium">Total Money Out (Refunds)</p>
+          <p className="text-2xl font-black tracking-tight text-white">
+            {summary.totalRefunds > 0 ? `-${formatCurrency(summary.totalRefunds)}` : formatCurrency(0)}
           </p>
+          <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-xs opacity-90">
+            <span>{summary.refundCount} refund{summary.refundCount !== 1 ? 's' : ''} deducted</span>
+            <span>
+              {summary.totalCount > 0 ? ((summary.totalRefunds / (summary.totalRevenue + summary.totalRefunds || 1)) * 100).toFixed(1) : 0}% of gross
+            </span>
+          </div>
         </div>
 
-        {/* ✅ Total Refunds Card */}
-        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+        {/* ✅ Net Collection (Revenue - Refunds Kept) */}
+        <div className="bg-gradient-to-br from-emerald-600 via-teal-600 to-green-700 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
           <div className="flex items-center justify-between mb-2">
-            <TrendingDown className="h-6 w-6 opacity-80" />
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/20">
-              {summary.refundCount} refunds
+            <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
+              <TrendingUp className="h-5 w-5 text-white" />
+            </div>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white/20">
+              Net Kept
             </span>
           </div>
-          <p className="text-xs opacity-80 mb-0.5">Total Refunds</p>
-          <p className="text-xl font-bold">{formatCurrency(summary.totalRefunds)}</p>
-          <p className="text-xs opacity-70 mt-1">
-            {summary.totalCount > 0 ? ((summary.totalRefunds / (summary.totalRevenue + summary.totalRefunds)) * 100).toFixed(1) : 0}% of gross
+          <p className="text-xs opacity-90 mb-0.5 font-medium">Net Collection (Kept)</p>
+          <p className="text-2xl font-black tracking-tight text-white">
+            {formatCurrency(summary.netRevenue)}
           </p>
+          <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-xs opacity-90">
+            <span>Inflow − Outflow</span>
+            <span className="font-semibold text-emerald-100">
+              {summary.totalRevenue > 0 ? ((summary.netRevenue / summary.totalRevenue) * 100).toFixed(0) : 100}% kept
+            </span>
+          </div>
         </div>
 
         {/* ✅ GST Card */}
-        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all">
+        <div 
+          onClick={() => setShowGstModal(true)}
+          className="bg-gradient-to-br from-purple-600 to-indigo-700 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all cursor-pointer group"
+          title="Click to view or edit GST rate"
+        >
           <div className="flex items-center justify-between mb-2">
-            <Building className="h-6 w-6 opacity-80" />
+            <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm group-hover:bg-white/30 transition-all">
+              <Building className="h-5 w-5 text-white" />
+            </div>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white/20">
+              {gstRate}% GST
+            </span>
           </div>
-          <p className="text-xs opacity-80 mb-0.5">GST Collected</p>
-          <p className="text-xl font-bold">{formatCurrency(summary.totalGST)}</p>
-          <p className="text-xs opacity-70 mt-1">CGST + SGST</p>
+          <p className="text-xs opacity-90 mb-0.5 font-medium">GST Collected</p>
+          <p className="text-2xl font-black tracking-tight">{formatCurrency(summary.totalGST)}</p>
+          <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-xs opacity-90">
+            <span>CGST + SGST</span>
+            <span className="text-[11px] underline opacity-90">Settings</span>
+          </div>
         </div>
       </div>
     );
@@ -1698,28 +1755,29 @@ const Payments = () => {
       {/* Filters */}
       <div className="bg-white rounded-2xl shadow-lg p-6">
         <div className="flex flex-wrap items-center gap-4">
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-[220px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search by member name..."
+                placeholder="Search by member name, phone, or Txn ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               />
             </div>
           </div>
           
-          <div className="flex gap-2">
+          {/* Method Filters */}
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
             {['all', 'cash', 'card', 'upi'].map((method) => (
               <button
                 key={method}
                 onClick={() => setSelectedMethod(method)}
-                className={`px-3 py-1.5 rounded-lg capitalize text-sm transition-colors ${
+                className={`px-3 py-1.5 rounded-lg capitalize text-xs font-semibold transition-all ${
                   selectedMethod === method
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
                 {method === 'all' ? 'All Methods' : method}
@@ -1727,12 +1785,49 @@ const Payments = () => {
             ))}
           </div>
 
-          <div className="flex gap-1 border-l border-gray-200 pl-4">
+          {/* Direction Filter Tabs (Money In vs Money Out) */}
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              onClick={() => setDirectionFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                directionFilter === 'all'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              All Flow
+            </button>
+            <button
+              onClick={() => setDirectionFilter('inflow')}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                directionFilter === 'inflow'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-emerald-700 hover:bg-emerald-50'
+              }`}
+            >
+              <ArrowUpRight className="h-3.5 w-3.5 stroke-[2.5]" />
+              Money In ({summary.inflowCount || summary.totalCount - summary.refundCount})
+            </button>
+            <button
+              onClick={() => setDirectionFilter('outflow')}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                directionFilter === 'outflow'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'text-rose-700 hover:bg-rose-50'
+              }`}
+            >
+              <ArrowDownLeft className="h-3.5 w-3.5 stroke-[2.5]" />
+              Money Out ({summary.refundCount})
+            </button>
+          </div>
+
+          {/* Category Filter Buttons */}
+          <div className="flex flex-wrap gap-1 border-l border-gray-200 pl-3">
             <button
               onClick={() => setPaymentTypeFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 paymentTypeFilter === 'all'
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-gray-800 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -1740,7 +1835,7 @@ const Payments = () => {
             </button>
             <button
               onClick={() => setPaymentTypeFilter('membership')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 paymentTypeFilter === 'membership'
                   ? 'bg-green-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1750,7 +1845,7 @@ const Payments = () => {
             </button>
             <button
               onClick={() => setPaymentTypeFilter('pt')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 paymentTypeFilter === 'pt'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1760,9 +1855,9 @@ const Payments = () => {
             </button>
             <button
               onClick={() => setPaymentTypeFilter('addon')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 paymentTypeFilter === 'addon'
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-indigo-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -1770,34 +1865,35 @@ const Payments = () => {
             </button>
             <button
               onClick={() => setPaymentTypeFilter('renewal')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 paymentTypeFilter === 'renewal'
-                  ? 'bg-amber-600 text-white'
+                  ? 'bg-purple-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
               Renewals
             </button>
             <button
-              onClick={() => setPaymentTypeFilter('refunds')}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                paymentTypeFilter === 'refunds'
-                  ? 'bg-red-600 text-white'
+              onClick={() => setPaymentTypeFilter('balance')}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                paymentTypeFilter === 'balance'
+                  ? 'bg-teal-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              Refunds
+              Balance
             </button>
           </div>
           
-          {(searchTerm || selectedMethod !== 'all' || paymentTypeFilter !== 'all') && (
+          {(searchTerm || selectedMethod !== 'all' || directionFilter !== 'all' || paymentTypeFilter !== 'all') && (
             <button
               onClick={() => {
                 setSearchTerm('');
                 setSelectedMethod('all');
+                setDirectionFilter('all');
                 setPaymentTypeFilter('all');
               }}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-200"
             >
               <X className="h-4 w-4" />
               Clear Filters
@@ -1822,13 +1918,13 @@ const Payments = () => {
                     />
                   </th>
                 )}
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="px-5 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Date & Txn ID</th>
+                <th className="px-5 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Member</th>
+                <th className="px-5 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Flow & Amount</th>
+                <th className="px-5 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Method</th>
+                <th className="px-5 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Category</th>
+                <th className="px-5 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Status</th>
+                <th className="px-5 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -1842,11 +1938,20 @@ const Payments = () => {
                 </tr>
               ) : (
                 currentPayments.map((payment) => {
+                  const isRefund = payment.is_refund || Number(payment.amount) < 0;
                   const typeInfo = getPaymentTypeBadge(payment);
-                  const isRefund = payment.is_refund || payment.amount < 0;
+                  const txnId = payment.transaction_id || `PAY-${payment.id}`;
+                  const absAmount = Math.abs(Number(payment.amount) || 0);
                   
                   return (
-                    <tr key={payment.id} className={`hover:bg-gray-50 transition-colors ${isRefund ? 'bg-red-50/30' : ''}`}>
+                    <tr 
+                      key={payment.id} 
+                      className={`transition-colors border-b border-gray-100 ${
+                        isRefund 
+                          ? 'bg-rose-50/40 hover:bg-rose-50/70 border-l-4 border-rose-500' 
+                          : 'hover:bg-gray-50/80 border-l-4 border-transparent'
+                      }`}
+                    >
                       {selectionMode && (
                         <td className="px-4 py-4">
                           <input
@@ -1857,63 +1962,130 @@ const Payments = () => {
                           />
                         </td>
                       )}
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      {/* Date & Txn ID */}
+                      <td className="px-5 py-4 whitespace-nowrap">
                         <div>
-                          <p className="text-sm font-medium text-gray-900">{formatDate(payment.payment_date)}</p>
-                          {formatTimeOnly(payment.payment_date) ? (
+                          <p className="text-sm font-bold text-gray-900">{formatDate(payment.payment_date)}</p>
+                          {formatTimeOnly(payment.payment_date) && (
                             <p className="text-xs text-gray-400">{formatTimeOnly(payment.payment_date)}</p>
-                          ) : null}
+                          )}
+                          <div className="mt-1 flex items-center gap-1">
+                            <span 
+                              className={`font-mono text-[11px] px-1.5 py-0.5 rounded border ${
+                                isRefund 
+                                  ? 'bg-rose-100/70 text-rose-800 border-rose-200' 
+                                  : 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}
+                              title={txnId}
+                            >
+                              {txnId}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(txnId);
+                                toast.success('Txn ID copied');
+                              }}
+                              className="text-gray-400 hover:text-gray-700 p-0.5 rounded transition-colors"
+                              title="Copy Transaction ID"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </button>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+
+                      {/* Member Info */}
+                      <td className="px-5 py-4">
                         <div>
-                          <p className={`font-medium ${isRefund ? 'text-red-600' : 'text-gray-900'}`}>
+                          <p className={`font-bold text-sm ${isRefund ? 'text-rose-900' : 'text-gray-900'}`}>
                             {payment.member_name}
                           </p>
-                          <p className="text-xs text-gray-500">{payment.member_phone}</p>
-                          {payment.member_email && (
-                            <p className="text-xs text-gray-400">{payment.member_email}</p>
+                          {payment.member_phone && (
+                            <p className="text-xs text-gray-500 font-medium">{payment.member_phone}</p>
+                          )}
+                          {payment.member_plan && payment.member_plan !== 'N/A' && (
+                            <span className="inline-block mt-1 text-[11px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200 font-semibold">
+                              {payment.member_plan}
+                            </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <p className={`text-sm font-semibold ${isRefund ? 'text-red-600' : 'text-green-600'}`}>
-                          {formatCurrency(payment.amount)}
-                        </p>
-                        {payment.gst_amount > 0 && !isRefund && (
-                          <p className="text-xs text-purple-500">GST: {formatCurrency(payment.gst_amount)}</p>
-                        )}
-                        {isRefund && (
-                          <p className="text-xs text-red-400">Refund</p>
+
+                      {/* Direction & Amount */}
+                      <td className="px-5 py-4 whitespace-nowrap">
+                        {isRefund ? (
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-100 text-rose-700 border border-rose-300">
+                                <ArrowDownLeft className="h-3 w-3 stroke-[3]" />
+                                OUT
+                              </span>
+                              <span className="text-base font-black text-rose-600 font-mono tracking-tight">
+                                - {currencySymbol} {new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0 }).format(absAmount)}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-rose-500 font-semibold mt-0.5 pl-0.5">
+                              Refund / Outflow
+                            </p>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                <ArrowUpRight className="h-3 w-3 stroke-[3]" />
+                                IN
+                              </span>
+                              <span className="text-base font-black text-emerald-600 font-mono tracking-tight">
+                                + {currencySymbol} {new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0 }).format(absAmount)}
+                              </span>
+                            </div>
+                            {payment.gst_amount > 0 && (
+                              <p className="text-[11px] text-purple-600 font-medium mt-0.5 pl-0.5">
+                                GST: {formatCurrency(payment.gst_amount)}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+
+                      {/* Method */}
+                      <td className="px-5 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-lg">{getPaymentMethodIcon(payment.payment_method)}</span>
-                          <span className={`text-sm ${isRefund ? 'text-red-500' : 'text-gray-700'} capitalize`}>
+                          <span className="text-base">{getPaymentMethodIcon(payment.payment_method)}</span>
+                          <span className={`text-sm font-semibold capitalize ${isRefund ? 'text-rose-700' : 'text-gray-700'}`}>
                             {payment.payment_method || 'N/A'}
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${typeInfo.color}`}>
+
+                      {/* Category */}
+                      <td className="px-5 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${typeInfo.color}`}>
                           {typeInfo.label}
                         </span>
                         {payment.addon_name && (
-                          <span className="text-xs text-gray-400 block mt-0.5">({payment.addon_name})</span>
+                          <span className="text-xs text-gray-500 block mt-0.5 font-medium">({payment.addon_name})</span>
                         )}
                         {payment.is_balance_payment && !isRefund && (
-                          <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full block mt-0.5">Balance</span>
+                          <span className="text-[11px] bg-teal-100 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-full inline-block mt-0.5 font-semibold">
+                            Balance
+                          </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+
+                      {/* Status */}
+                      <td className="px-5 py-4 whitespace-nowrap">
                         {getStatusBadge(payment.status)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
+
+                      {/* Actions */}
+                      <td className="px-5 py-4 whitespace-nowrap text-right">
                         <button
                           onClick={() => handleSingleDelete(payment.id, payment.amount, payment.member_name)}
                           disabled={deleting}
-                          className={`p-2 ${isRefund ? 'text-red-500 hover:bg-red-50' : 'text-red-500 hover:bg-red-50'} rounded-lg transition-colors disabled:opacity-50`}
+                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                           title="Delete payment"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -1925,31 +2097,46 @@ const Payments = () => {
               )}
             </tbody>
             {filteredPayments.length > 0 && (
-              <tfoot className="bg-slate-50 border-t-2 border-slate-300">
+              <tfoot className="bg-slate-100 border-t-2 border-slate-300">
                 <tr>
                   {selectionMode && <td></td>}
-                  <td className="px-6 py-4 font-bold text-slate-800 text-sm" colSpan={2}>
+                  <td className="px-5 py-4 font-bold text-slate-800 text-sm" colSpan={2}>
                     <div className="flex items-center gap-2">
                       <Receipt className="h-4 w-4 text-blue-600" />
                       <span>
-                        Total for Selected Date Range ({filteredPayments.length} transaction{filteredPayments.length !== 1 ? 's' : ''})
+                        Totals for Selected Range ({filteredPayments.length} txns: {summary.inflowCount || summary.totalCount - summary.refundCount} In, {summary.refundCount} Out)
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <p className="text-sm font-black text-green-700">
-                      {formatCurrency(summary.totalRevenue)}
-                    </p>
-                    {summary.totalRefunds > 0 && (
-                      <p className="text-xs font-semibold text-slate-600">
-                        Net: {formatCurrency(summary.netRevenue)}
+                  <td className="px-5 py-4 whitespace-nowrap">
+                    <div className="space-y-0.5">
+                      <p className="text-xs font-bold text-emerald-700 flex items-center gap-1">
+                        <span>Inflow:</span> <span>+{formatCurrency(summary.totalRevenue)}</span>
                       </p>
-                    )}
+                      {summary.totalRefunds > 0 && (
+                        <p className="text-xs font-bold text-rose-600 flex items-center gap-1">
+                          <span>Outflow:</span> <span>-{formatCurrency(summary.totalRefunds)}</span>
+                        </p>
+                      )}
+                      <p className="text-sm font-black text-slate-900 border-t border-slate-300 pt-0.5 flex items-center gap-1">
+                        <span>Net:</span> <span>{formatCurrency(summary.netRevenue)}</span>
+                      </p>
+                    </div>
                   </td>
-                  <td colSpan={selectionMode ? 4 : 4} className="px-6 py-4 text-xs text-slate-600 text-right">
-                    <span className="font-semibold text-slate-700">Cash:</span> {formatCurrency(summary.cashPayments)} |{' '}
-                    <span className="font-semibold text-slate-700">UPI:</span> {formatCurrency(summary.upiPayments)} |{' '}
-                    <span className="font-semibold text-slate-700">Card:</span> {formatCurrency(summary.cardPayments)}
+                  <td colSpan={4} className="px-5 py-4 text-xs text-slate-600 text-right">
+                    <div className="flex flex-wrap justify-end gap-x-3 gap-y-1">
+                      <span><strong className="text-slate-800">Cash:</strong> {formatCurrency(summary.cashPayments)}</span>
+                      <span>•</span>
+                      <span><strong className="text-slate-800">UPI:</strong> {formatCurrency(summary.upiPayments)}</span>
+                      <span>•</span>
+                      <span><strong className="text-slate-800">Card:</strong> {formatCurrency(summary.cardPayments)}</span>
+                      {summary.totalGST > 0 && (
+                        <>
+                          <span>•</span>
+                          <span className="text-purple-700"><strong className="text-purple-900">GST:</strong> {formatCurrency(summary.totalGST)}</span>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               </tfoot>
