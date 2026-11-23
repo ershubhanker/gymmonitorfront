@@ -1453,7 +1453,6 @@ const Payments = () => {
                 </div>
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-xl font-extrabold text-white">{formatCurrency(todaySummary.netRevenue)}</span>
-                  <span className="text-xs text-blue-100">({todaySummary.count} {todaySummary.count === 1 ? 'trans' : 'trans'})</span>
                 </div>
               </div>
             </button>
