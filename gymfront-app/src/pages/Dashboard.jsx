@@ -638,8 +638,9 @@ const Dashboard = () => {
       const membersWithBalance = balanceMembersData.data || [];
       const leads = leadsData.data || [];
       
-      const today = new Date().toISOString().split('T')[0];
-      const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+      const todayDate = new Date();
+      const today = todayDate.toISOString().split('T')[0];
+      const firstDayOfMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1).toISOString().split('T')[0];
       
       const membersByGender = members.reduce((acc, m) => {
         const gender = m.gender || 'other';
