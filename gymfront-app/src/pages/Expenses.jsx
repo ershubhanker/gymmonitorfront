@@ -416,7 +416,7 @@ const Expenses = () => {
   };
 
   const filteredExpenses = expenses.filter(expense => {
-    if (selectedCategory && expense.category !== selectedCategory) return false;
+    if (selectedCategory && expense.category?.toLowerCase() !== selectedCategory?.toLowerCase()) return false;
     if (searchTerm && !expense.title.toLowerCase().includes(searchTerm.toLowerCase()) &&
         !expense.vendor_name?.toLowerCase().includes(searchTerm.toLowerCase())) return false;
     return true;
