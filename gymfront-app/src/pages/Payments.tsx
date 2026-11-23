@@ -99,7 +99,7 @@ const isPaymentToday = (payment: any): boolean => {
 export interface Payment {
   id: number | string;
   payment_date: string;
-  amount: number | string;
+  amount: number;
   payment_method: string;
   status?: string;
   member_id?: number | string;
