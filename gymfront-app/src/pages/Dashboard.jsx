@@ -38,6 +38,7 @@ import StaffHours from '../components/attendance/StaffHours';
 import MembershipPlans from './MembershipPlans';
 import HistoricalInvoices from './HistoricalInvoices';
 import SearchBar from '../components/SearchBar';
+import ExpiringMembersCard from '../components/ExpiringMembersCard';
 import FollowUpCard from '../components/FollowUpCard';
 import DoneFollowUpCard from '../components/DoneFollowUpCard';
 import BirthdayCard from '../components/BirthdayCard';
@@ -1861,114 +1862,21 @@ const Dashboard = () => {
           </div>
         )}
   
-        {canViewMemberStats && stats.expiringMembers.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 lg:col-span-2 transition-all">
-            <div className="flex items-center justify-between mb-3.5">
-              <div className="flex items-center gap-2">
-                <div className="bg-gradient-to-r from-orange-400 to-red-400 p-1.5 rounded-md">
-                  <ClockIcon className="h-4 w-4 text-white" />
-                </div>
-                <h3 className="text-base font-bold text-gray-800">Expiring Soon</h3>
-              </div>
-              <span className="bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full animate-pulse">
-                {stats.expiringMembers.length} {stats.expiringMembers.length === 1 ? 'member' : 'members'} need attention
-              </span>
-            </div>
-            
-            <div className="space-y-2 max-h-[290px] overflow-y-auto pr-1.5 custom-scrollbar">
-              {stats.expiringMembers.map((member) => (
-                <div 
-                  key={member.id} 
-                  className={`group relative flex items-center justify-between p-2.5 rounded-lg transition-all hover:shadow-sm cursor-pointer ${
-                    member.daysLeft <= 3 
-                      ? 'bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500' 
-                      : 'bg-gradient-to-r from-orange-50 to-yellow-50 border-l-4 border-orange-400'
-                  }`}
-                  onClick={() => {
-                    setSelectedMemberId(null);
-                    setTimeout(() => {
-                      setSelectedMemberId(member.memberId);
-                      setActiveTab('members');
-                    }, 0);
-                  }}
-                >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <img 
-                      src={member.avatar} 
-                      alt={member.memberName} 
-                      className="w-9 h-9 rounded-full border border-white shadow-sm flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold text-sm text-gray-900 truncate">{member.memberName}</p>
-                        {member.daysLeft <= 3 && (
-                          <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.2 rounded-full animate-pulse flex-shrink-0">
-                            Urgent
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-gray-600 truncate">{member.planName}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[11px] bg-white/80 px-1.5 py-0.5 rounded text-gray-700 shadow-xs">
-                          Expires: {member.endDate}
-                        </span>
-                        <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${
-                          member.daysLeft <= 3 
-                            ? 'bg-red-100 text-red-700' 
-                            : 'bg-orange-100 text-orange-700'
-                        }`}>
-                          {member.daysLeft}d left
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedMemberId(null);
-                      setTimeout(() => {
-                        setSelectedMemberId(member.memberId);
-                        setActiveTab('members');
-                      }, 0);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-r from-blue-500 to-purple-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:shadow-md flex-shrink-0 ml-2"
-                  >
-                    Renew →
-                  </button>
-                </div>
-              ))}
-            </div>
-            
-            <div className="mt-3 pt-2 border-t border-gray-100 text-center">
-              <button 
-                onClick={() => setActiveTab('members')}
-                className="text-blue-600 hover:text-blue-800 text-xs font-medium inline-flex items-center justify-center gap-1 py-1 hover:bg-blue-50 px-3 rounded-lg transition-colors"
-              >
-                View all expiring members
-                <ChevronDown className="h-3.5 w-3.5 rotate-270" />
-              </button>
-            </div>
-          </div>
-        )}
-  
-        {canViewMemberStats && stats.expiringMembers.length === 0 && (
-          <div className="bg-white rounded-xl shadow-sm hover:shadow-md p-4 lg:col-span-2 transition-all">
-            <div className="flex items-center justify-between mb-3.5">
-              <div className="flex items-center gap-2">
-                <div className="bg-gradient-to-r from-orange-400 to-red-400 p-1.5 rounded-md">
-                  <ClockIcon className="h-4 w-4 text-white" />
-                </div>
-                <h3 className="text-base font-bold text-gray-800">Memberships Expiring Soon</h3>
-              </div>
-            </div>
-            <div className="text-center py-8">
-              <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full mb-3 shadow-md">
-                <Gift className="h-7 w-7 text-white" />
-              </div>
-              <p className="text-gray-900 font-bold text-base mb-1">All Memberships Active! 🎉</p>
-              <p className="text-gray-500 text-xs">No memberships expiring in the next 7 days.</p>
-            </div>
-          </div>
+        {canViewMemberStats && (
+          <ExpiringMembersCard 
+            gymName={user?.gym_name || user?.gymName || ''}
+            initialMembers={stats.expiringMembers || []}
+            onMemberClick={(memberId) => {
+              setSelectedMemberId(null);
+              setTimeout(() => {
+                setSelectedMemberId(memberId);
+                setActiveTab('members');
+              }, 0);
+            }}
+            onViewAllClick={() => {
+              setActiveTab('members');
+            }}
+          />
         )}
       </div>
   
