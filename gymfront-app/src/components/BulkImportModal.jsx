@@ -1022,18 +1022,58 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
 
       const defaultPlan = allPlans.find(p => p.is_active) || allPlans[0];
 
-      const successfullyImportedPhones = new Set();
-      const failedPhoneNumbers = new Set();
-      
-      for (let i = 0; i < previewData.length; i++) {
+      // 1. Group rows by member phone number
+      const memberGroups = new Map();
+      previewData.forEach(row => {
+        const phoneKey = cleanPhone(row.phone) || safeString(row.phone);
+        if (!memberGroups.has(phoneKey)) {
+          memberGroups.set(phoneKey, []);
+        }
+        memberGroups.get(phoneKey).push(row);
+      });
+
+      // 2. Sort each member's rows chronologically by start_date ascending
+      // so earlier memberships (e.g. Feb 2025) are imported first,
+      // and newer/active memberships (e.g. Aug 2026) are imported last!
+      const sortedRows = [];
+      for (const [phoneKey, rows] of memberGroups.entries()) {
+        rows.sort((a, b) => {
+          const dateA = (a.start_date ? parseDate(a.start_date) : '') || '9999-99-99';
+          const dateB = (b.start_date ? parseDate(b.start_date) : '') || '9999-99-99';
+          return dateA.localeCompare(dateB);
+        });
+        sortedRows.push(...rows);
+      }
+
+      // 3. Pre-lookup existing members by phone to avoid duplicate member creation
+      const memberIdByPhone = {}; // Maps clean phone -> member.id
+      const allUniquePhones = [...memberGroups.keys()].filter(Boolean);
+      if (allUniquePhones.length > 0) {
+        try {
+          const lookupRes = await api.post('/gym/members/lookup-by-phones', { phones: allUniquePhones });
+          if (lookupRes.data) {
+            for (const [p, m] of Object.entries(lookupRes.data)) {
+              if (m && m.id) {
+                memberIdByPhone[p] = m.id;
+              }
+            }
+          }
+        } catch (lookupErr) {
+          console.warn('Could not batch lookup members by phone:', lookupErr);
+        }
+      }
+
+      const processedPeriods = new Set(); // deduplicate identical rows: `${memberId}_${planId}_${startDate}_${endDate}`
+
+      for (let i = 0; i < sortedRows.length; i++) {
         if (isCancelledRef.current) {
           toast.info('Import cancelled.');
           setUploading(false);
           return;
         }
 
-        const member = previewData[i];
-        setImportProgress({ current: i + 1, total: previewData.length });
+        const member = sortedRows[i];
+        setImportProgress({ current: i + 1, total: sortedRows.length });
 
         if (!member._isValid) {
           results.skipped++;
@@ -1044,203 +1084,224 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
           continue;
         }
 
-        const phone = safeString(member.phone);
-        if (successfullyImportedPhones.has(phone)) {
-          results.skipped++;
-          results.errors.push({
-            member: member.full_name,
-            error: `Duplicate phone number: ${phone} (already imported earlier in this file)`
-          });
-          continue;
-        }
+        const phone = cleanPhone(member.phone) || safeString(member.phone);
+        let memberId = memberIdByPhone[phone];
 
-        if (failedPhoneNumbers.has(phone)) {
-          results.skipped++;
-          results.errors.push({
-            member: member.full_name,
-            error: `Phone number ${phone} failed previously in this import`
-          });
-          continue;
-        }
-
-        try {
-          // Determine if member should be active based on end date
-          const shouldBeActive = statusBasedOnEndDate && member.end_date 
-            ? parseDate(member.end_date) >= new Date().toISOString().split('T')[0]
-            : true;
-          
-          const memberData = {
-            full_name: safeString(member.full_name),
-            phone: phone,
-            gender: safeString(member.gender) || 'male',
-            is_active: shouldBeActive,
-            joined_date: member.start_date ? parseDate(member.start_date) || new Date().toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          };
-
-          if (member.email && member.email.trim() !== '' && isValidEmail(member.email)) {
-            memberData.email = safeString(member.email);
-          }
-
-          if (member.address && member.address.trim() !== '') {
-            memberData.address = safeString(member.address);
-          }
-
-          if (member.date_of_birth) {
-            const dob = parseDate(member.date_of_birth);
-            if (dob) memberData.date_of_birth = dob;
-          }
-
-          if (member.emergency_contact_name && member.emergency_contact_name.trim() !== '') {
-            memberData.emergency_contact_name = safeString(member.emergency_contact_name);
-          }
-          if (member.emergency_contact_phone && member.emergency_contact_phone.trim() !== '') {
-            memberData.emergency_contact_phone = safeString(member.emergency_contact_phone);
-          }
-          if (member.medical_conditions && member.medical_conditions.trim() !== '') {
-            memberData.medical_conditions = safeString(member.medical_conditions);
-          }
-          if (member.allergies && member.allergies.trim() !== '') {
-            memberData.allergies = safeString(member.allergies);
-          }
-          if (member.medications && member.medications.trim() !== '') {
-            memberData.medications = safeString(member.medications);
-          }
-
-          const memberResponse = await api.post('/gym/members', memberData);
-          const newMember = memberResponse.data;
-          
-          successfullyImportedPhones.add(phone);
-
-          let planId = null;
-          let planName = safeString(member.plan_name);
-          
-          if (planName) {
-            const cleanPlanName = planName.toLowerCase().trim();
-            planId = planIdMap[cleanPlanName];
+        // Step A: Ensure member exists (create or find)
+        if (!memberId) {
+          try {
+            // Determine if member should be active based on end date
+            const shouldBeActive = statusBasedOnEndDate && member.end_date 
+              ? parseDate(member.end_date) >= new Date().toISOString().split('T')[0]
+              : true;
             
-            if (!planId) {
-              for (const [key, id] of Object.entries(planIdMap)) {
-                if (key.includes(cleanPlanName) || cleanPlanName.includes(key)) {
-                  planId = id;
-                  break;
+            const memberData = {
+              full_name: safeString(member.full_name),
+              phone: phone,
+              gender: safeString(member.gender) || 'male',
+              is_active: shouldBeActive,
+              joined_date: member.start_date ? parseDate(member.start_date) || new Date().toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            };
+
+            if (member.email && member.email.trim() !== '' && isValidEmail(member.email)) {
+              memberData.email = safeString(member.email);
+            }
+
+            if (member.address && member.address.trim() !== '') {
+              memberData.address = safeString(member.address);
+            }
+
+            if (member.date_of_birth) {
+              const dob = parseDate(member.date_of_birth);
+              if (dob) memberData.date_of_birth = dob;
+            }
+
+            if (member.emergency_contact_name && member.emergency_contact_name.trim() !== '') {
+              memberData.emergency_contact_name = safeString(member.emergency_contact_name);
+            }
+            if (member.emergency_contact_phone && member.emergency_contact_phone.trim() !== '') {
+              memberData.emergency_contact_phone = safeString(member.emergency_contact_phone);
+            }
+            if (member.medical_conditions && member.medical_conditions.trim() !== '') {
+              memberData.medical_conditions = safeString(member.medical_conditions);
+            }
+            if (member.allergies && member.allergies.trim() !== '') {
+              memberData.allergies = safeString(member.allergies);
+            }
+            if (member.medications && member.medications.trim() !== '') {
+              memberData.medications = safeString(member.medications);
+            }
+
+            const memberResponse = await api.post('/gym/members', memberData);
+            const newMember = memberResponse.data;
+            memberId = newMember.id;
+            memberIdByPhone[phone] = memberId;
+
+          } catch (createError) {
+            console.warn(`Member creation error for ${member.full_name} (${phone}):`, createError);
+            
+            let errorMsg = 'Unknown error';
+            if (createError?.response?.data?.detail) {
+              errorMsg = typeof createError.response.data.detail === 'string' 
+                ? createError.response.data.detail 
+                : JSON.stringify(createError.response.data.detail);
+            } else if (createError?.message) {
+              errorMsg = typeof createError.message === 'string' ? errorMsg : JSON.stringify(createError.message);
+            }
+            
+            const errorText = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg);
+            
+            // Check if member already exists in DB
+            let existingId = createError?.response?.headers?.['x-existing-member-id'];
+            if (!existingId) {
+              const idMatch = errorText.match(/member_id:\s*(\d+)/i);
+              if (idMatch) existingId = parseInt(idMatch[1], 10);
+            }
+
+            if (!existingId) {
+              // Fallback: look up member by phone
+              try {
+                const phoneRes = await api.get(`/gym/members/by-phone/${encodeURIComponent(phone)}`);
+                if (phoneRes?.data?.id) {
+                  existingId = phoneRes.data.id;
                 }
+              } catch (phoneErr) {
+                // Also try search members
+                try {
+                  const searchRes = await api.get(`/gym/members?search=${encodeURIComponent(phone)}`);
+                  const found = searchRes?.data?.find(m => cleanPhone(m.phone) === phone || (m.phone && m.phone.endsWith(phone.slice(-10))));
+                  if (found) existingId = found.id;
+                } catch (sErr) {}
               }
             }
-          }
-          
-          if (!planId && defaultPlan) {
-            planId = defaultPlan.id;
-            planName = defaultPlan.name;
-          }
 
-          if (planId) {
-            try {
-              let startDate = member.start_date ? parseDate(member.start_date) || new Date().toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-              
-              let endDate = member.end_date ? parseDate(member.end_date) : null;
-              
-              if (!endDate) {
-                const plan = allPlans.find(p => p.id === planId);
-                const durationDays = (member.duration && parseInt(member.duration, 10) > 0)
-                  ? parseInt(member.duration, 10)
-                  : (plan ? plan.duration_days : 30);
-                if (durationDays) {
-                  const [y, m, d] = startDate.split('-').map(Number);
-                  const end = new Date(y, m - 1, d + Math.max(0, durationDays - 1));
-                  const yyyy = end.getFullYear();
-                  const mm = String(end.getMonth() + 1).padStart(2, '0');
-                  const dd = String(end.getDate()).padStart(2, '0');
-                  endDate = `${yyyy}-${mm}-${dd}`;
-                }
-              }
-              
-              if (endDate) {
-                let amountPaid = 0;
-                if (member.net_cost !== null && member.net_cost !== undefined && member.net_cost > 0) {
-                  amountPaid = member.net_cost;
-                } else if (member.base_cost !== null && member.base_cost !== undefined && member.base_cost > 0) {
-                  amountPaid = member.base_cost;
-                  if (member.balance !== null && member.balance !== undefined && member.balance !== '') {
-                    const parsedBal = parseFloat(member.balance) || 0;
-                    if (parsedBal > 0 && parsedBal <= amountPaid) {
-                      amountPaid = Math.max(0, amountPaid - parsedBal - (member.discount || 0));
-                    }
-                  }
-                }
-                
-                let balanceDue = undefined;
-                if (member.balance !== null && member.balance !== undefined && member.balance !== '') {
-                  const b = parseFloat(member.balance);
-                  if (!isNaN(b)) {
-                    balanceDue = Math.max(0, b);
-                  }
-                } else if (member.base_cost !== null && member.base_cost > 0 && amountPaid < member.base_cost) {
-                  balanceDue = Math.max(0, member.base_cost - (member.discount || 0) - amountPaid);
-                }
-                
-                const membershipPayload = {
-                  member_id: newMember.id,
-                  plan_id: planId,
-                  start_date: startDate,
-                  end_date: endDate,
-                  amount_paid: amountPaid,
-                  discount_applied: member.discount || 0,
-                  balance_due: balanceDue,
-                };
-                
-                await api.post('/gym/memberships', membershipPayload);
-              }
-              
-            } catch (membershipError) {
-              console.error('Membership creation error:', membershipError);
-              const errorMsg = membershipError?.response?.data?.detail || membershipError?.message || 'Unknown error';
-              const errorText = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg);
+            if (existingId) {
+              memberId = Number(existingId);
+              memberIdByPhone[phone] = memberId;
+            } else {
+              // Truly failed to create or find member
+              results.failed++;
               results.errors.push({
                 member: member.full_name,
-                error: `Membership failed: ${errorText}`
+                error: errorText
               });
+              continue;
             }
-          }
-
-          results.success++;
-
-        } catch (error) {
-          console.error('Error importing member:', error);
-          
-          let errorMsg = 'Unknown error';
-          if (error?.response?.data?.detail) {
-            errorMsg = typeof error.response.data.detail === 'string' 
-              ? error.response.data.detail 
-              : JSON.stringify(error.response.data.detail);
-          } else if (error?.message) {
-            errorMsg = typeof error.message === 'string' ? error.message : JSON.stringify(error.message);
-          }
-          
-          const errorText = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg);
-          
-          const isDuplicateError = errorText.toLowerCase().includes('already exists') || 
-                                   errorText.toLowerCase().includes('duplicate') || 
-                                   errorText.toLowerCase().includes('phone') ||
-                                   errorText.toLowerCase().includes('email');
-          
-          if (isDuplicateError) {
-            results.skipped++;
-            failedPhoneNumbers.add(phone);
-            results.errors.push({
-              member: member.full_name,
-              error: `Member already exists with phone: ${phone} (skipped)`
-            });
-          } else {
-            results.failed++;
-            failedPhoneNumbers.add(phone);
-            results.errors.push({
-              member: member.full_name,
-              error: errorText
-            });
           }
         }
 
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Step B: Resolve plan and create membership for this period
+        let planId = null;
+        let planName = safeString(member.plan_name);
+        
+        if (planName) {
+          const cleanPlanName = planName.toLowerCase().trim();
+          planId = planIdMap[cleanPlanName];
+          
+          if (!planId) {
+            for (const [key, id] of Object.entries(planIdMap)) {
+              if (key.includes(cleanPlanName) || cleanPlanName.includes(key)) {
+                planId = id;
+                break;
+              }
+            }
+          }
+        }
+        
+        if (!planId && defaultPlan) {
+          planId = defaultPlan.id;
+          planName = defaultPlan.name;
+        }
+
+        if (planId) {
+          try {
+            let startDate = member.start_date ? parseDate(member.start_date) || new Date().toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+            
+            let endDate = member.end_date ? parseDate(member.end_date) : null;
+            
+            if (!endDate) {
+              const plan = allPlans.find(p => p.id === planId);
+              const durationDays = (member.duration && parseInt(member.duration, 10) > 0)
+                ? parseInt(member.duration, 10)
+                : (plan ? plan.duration_days : 30);
+              if (durationDays) {
+                const [y, m, d] = startDate.split('-').map(Number);
+                const end = new Date(y, m - 1, d + Math.max(0, durationDays - 1));
+                const yyyy = end.getFullYear();
+                const mm = String(end.getMonth() + 1).padStart(2, '0');
+                const dd = String(end.getDate()).padStart(2, '0');
+                endDate = `${yyyy}-${mm}-${dd}`;
+              }
+            }
+            
+            if (endDate) {
+              // Check for exact duplicate period within this import
+              const periodKey = `${memberId}_${planId}_${startDate}_${endDate}`;
+              if (processedPeriods.has(periodKey)) {
+                results.skipped++;
+                results.errors.push({
+                  member: member.full_name,
+                  error: `Duplicate membership period (${startDate} to ${endDate}) already processed (skipped duplicate row)`
+                });
+                continue;
+              }
+              processedPeriods.add(periodKey);
+
+              let amountPaid = 0;
+              if (member.net_cost !== null && member.net_cost !== undefined && member.net_cost > 0) {
+                amountPaid = member.net_cost;
+              } else if (member.base_cost !== null && member.base_cost !== undefined && member.base_cost > 0) {
+                amountPaid = member.base_cost;
+                if (member.balance !== null && member.balance !== undefined && member.balance !== '') {
+                  const parsedBal = parseFloat(member.balance) || 0;
+                  if (parsedBal > 0 && parsedBal <= amountPaid) {
+                    amountPaid = Math.max(0, amountPaid - parsedBal - (member.discount || 0));
+                  }
+                }
+              }
+              
+              let balanceDue = undefined;
+              if (member.balance !== null && member.balance !== undefined && member.balance !== '') {
+                const b = parseFloat(member.balance);
+                if (!isNaN(b)) {
+                  balanceDue = Math.max(0, b);
+                }
+              } else if (member.base_cost !== null && member.base_cost > 0 && amountPaid < member.base_cost) {
+                balanceDue = Math.max(0, member.base_cost - (member.discount || 0) - amountPaid);
+              }
+              
+              const membershipPayload = {
+                member_id: memberId,
+                plan_id: planId,
+                start_date: startDate,
+                end_date: endDate,
+                amount_paid: amountPaid,
+                discount_applied: member.discount || 0,
+                balance_due: balanceDue,
+                payment_date: startDate
+              };
+              
+              await api.post('/gym/memberships', membershipPayload);
+              results.success++;
+            } else {
+              results.success++;
+            }
+            
+          } catch (membershipError) {
+            console.error('Membership creation error:', membershipError);
+            const errorMsg = membershipError?.response?.data?.detail || membershipError?.message || 'Unknown error';
+            const errorText = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg);
+            results.failed++;
+            results.errors.push({
+              member: member.full_name,
+              error: `Membership plan failed: ${errorText}`
+            });
+          }
+        } else {
+          results.success++;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
 
       if (isCancelledRef.current) {
@@ -1253,7 +1314,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       setPlansCreated(createdPlans);
       setStep(4);
       
-      let summaryMessage = `✅ Import complete! ${results.success} members imported.`;
+      let summaryMessage = `✅ Import complete! ${results.success} membership records imported.`;
       if (invalidCount > 0) summaryMessage += ` ⚠️ ${invalidCount} invalid rows skipped.`;
       if (results.skipped > 0) summaryMessage += ` ⏭️ ${results.skipped} duplicates skipped.`;
       if (createdPlans.length > 0) summaryMessage += ` 📋 ${createdPlans.length} plans created.`;
