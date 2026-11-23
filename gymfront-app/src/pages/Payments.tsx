@@ -698,15 +698,16 @@ const Payments = () => {
     }
   }, [payments, startDate, endDate, searchTerm, selectedMethod, directionFilter, paymentTypeFilter]);
 
-  const formatCurrency = (amount) => {
+  const formatCurrency = (amount: number | string) => {
+    const num = Number(amount) || 0;
     if (!amount && amount !== 0) return `${currencySymbol} 0`;
     const formatted = new Intl.NumberFormat('en-IN', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(Math.abs(amount));
+    }).format(Math.abs(num));
 
     // ✅ Show negative amounts with parentheses for refunds
-    if (amount < 0) {
+    if (num < 0) {
       return `(${currencySymbol} ${formatted})`;
     }
     return `${currencySymbol} ${formatted}`;
@@ -817,7 +818,7 @@ const Payments = () => {
   };
 
   // ===== TOGGLE PAYMENT SELECTION =====
-  const togglePaymentSelection = (paymentId) => {
+  const togglePaymentSelection = (paymentId: number | string) => {
     const newSelected = new Set(selectedPayments);
     if (newSelected.has(paymentId)) {
       newSelected.delete(paymentId);
@@ -828,9 +829,10 @@ const Payments = () => {
   };
 
   // ===== SINGLE PAYMENT DELETE =====
-  const handleSingleDelete = async (paymentId, paymentAmount, memberName) => {
-    const isRefund = paymentAmount < 0;
-    const amountDisplay = isRefund ? `refund of ${formatCurrency(Math.abs(paymentAmount))}` : `payment of ${formatCurrency(paymentAmount)}`;
+  const handleSingleDelete = async (paymentId: number | string, paymentAmount: number | string, memberName: string) => {
+    const numAmount = Number(paymentAmount) || 0;
+    const isRefund = numAmount < 0;
+    const amountDisplay = isRefund ? `refund of ${formatCurrency(Math.abs(numAmount))}` : `payment of ${formatCurrency(numAmount)}`;
 
     if (!window.confirm(
       `Are you sure you want to delete the ${amountDisplay} for ${memberName}?\n\n` +
@@ -844,7 +846,7 @@ const Payments = () => {
       const response = await api.delete(`/gym/payments/${paymentId}`);
 
       if (response.data) {
-        toast.success(`${isRefund ? 'Refund' : 'Payment'} of ${formatCurrency(Math.abs(paymentAmount))} deleted successfully`);
+        toast.success(`${isRefund ? 'Refund' : 'Payment'} of ${formatCurrency(Math.abs(numAmount))} deleted successfully`);
 
         // ✅ Refresh the payments list
         await fetchPayments();
@@ -854,7 +856,7 @@ const Payments = () => {
           detail: { paymentId, memberId: response.data.member_id }
         }));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting payment:', error);
       toast.error(error.response?.data?.detail || 'Failed to delete payment');
     } finally {
@@ -889,7 +891,7 @@ const Payments = () => {
   };
 
   // ===== GET PAYMENT TYPE BADGE =====
-  const getPaymentTypeBadge = (payment) => {
+  const getPaymentTypeBadge = (payment: any) => {
     if (payment.is_refund) {
       return { label: 'Refund', color: 'bg-rose-100 text-rose-700 border border-rose-200' };
     }
@@ -912,7 +914,7 @@ const Payments = () => {
   };
 
   // ===== GET PAYMENT METHOD ICON =====
-  const getPaymentMethodIcon = (method) => {
+  const getPaymentMethodIcon = (method: any) => {
     const icons = {
       cash: '💰',
       card: '💳',
