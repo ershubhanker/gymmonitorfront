@@ -1244,7 +1244,7 @@ const Dashboard = () => {
     // Billing & Plan section (only for gym owners / super admins)
     if (canSeeBilling) {
       nav.push({
-        name: 'Billing & Plan',
+        name: 'Upgrade',
         icon: Crown,
         id: 'billing',
         section: 'account',
@@ -2833,7 +2833,7 @@ const Dashboard = () => {
                           className="w-full flex items-center justify-between py-1.5 px-3 rounded-lg text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors"
                         >
                           <span className="flex items-center gap-1.5">
-                            <Crown className="h-3.5 w-3.5 text-amber-500" /> Manage Billing & Plan
+                            <Crown className="h-3.5 w-3.5 text-amber-500" /> Upgrade Plan
                           </span>
                           <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
                         </button>
@@ -2892,7 +2892,7 @@ const Dashboard = () => {
                 Currency ({currencySymbol})
               </button>
 
-              {/* ✅ NEW — quick link to Billing from user menu */}
+              {/* ✅ Quick link to Upgrade from user menu */}
               {canSeeBilling && (
                 <button
                   onClick={() => {
@@ -2901,8 +2901,8 @@ const Dashboard = () => {
                   }}
                   className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
                 >
-                  <Crown className="h-4 w-4" />
-                  Billing & Plan
+                  <Crown className="h-4 w-4 text-amber-500" />
+                  Upgrade
                 </button>
               )}
 
