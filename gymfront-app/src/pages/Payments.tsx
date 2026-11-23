@@ -36,6 +36,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { parseUtcDate } from '../utils/dateUtils';
+import CustomDatePicker from '../components/CustomDatePicker';
 
 // Helper to extract strictly local YYYY-MM-DD (Asia/Kolkata) from payment date
 const getPaymentLocalDateStr = (paymentDate: any): string => {
@@ -1097,22 +1098,22 @@ const Payments = () => {
           </button>
         </div>
         
-        <input
-          type="date"
-          className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
-          value={datePickerType === 'start' ? startDate : endDate}
-          onChange={(e) => {
-            const val = e.target.value;
-            if (datePickerType === 'start') {
-              setStartDate(val);
-              if (val && endDate && val > endDate) setEndDate(val);
-            } else {
-              setEndDate(val);
-              if (val && startDate && val < startDate) setStartDate(val);
-            }
-            setShowDatePicker(false);
-          }}
-        />
+        <div className="mb-4">
+          <CustomDatePicker
+            value={datePickerType === 'start' ? startDate : endDate}
+            onChange={(val) => {
+              if (datePickerType === 'start') {
+                setStartDate(val);
+                if (val && endDate && val > endDate) setEndDate(val);
+              } else {
+                setEndDate(val);
+                if (val && startDate && val < startDate) setStartDate(val);
+              }
+              setShowDatePicker(false);
+            }}
+            placeholder={`Select ${datePickerType === 'start' ? 'From' : 'To'} Date`}
+          />
+        </div>
         
         <div className="mt-6 flex gap-3">
           <button
@@ -1557,26 +1558,22 @@ const Payments = () => {
       {/* Date Range Selector */}
       <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          {/* Direct Date Inputs */}
+          {/* Direct Date Inputs with Fast Year/Month Picker */}
           <div className="flex flex-wrap items-center gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
                 From Date
               </label>
-              <div className="relative flex items-center">
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setStartDate(val);
-                    if (val && endDate && val > endDate) {
-                      setEndDate(val);
-                    }
-                  }}
-                  className="px-3 py-2 border border-gray-300 rounded-xl text-sm font-medium text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm bg-white"
-                />
-              </div>
+              <CustomDatePicker
+                value={startDate}
+                onChange={(val) => {
+                  setStartDate(val);
+                  if (val && endDate && val > endDate) {
+                    setEndDate(val);
+                  }
+                }}
+                placeholder="From Date"
+              />
             </div>
 
             <div className="flex items-center pt-5 text-gray-400">
@@ -1587,20 +1584,16 @@ const Payments = () => {
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
                 To Date
               </label>
-              <div className="relative flex items-center">
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setEndDate(val);
-                    if (val && startDate && val < startDate) {
-                      setStartDate(val);
-                    }
-                  }}
-                  className="px-3 py-2 border border-gray-300 rounded-xl text-sm font-medium text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm bg-white"
-                />
-              </div>
+              <CustomDatePicker
+                value={endDate}
+                onChange={(val) => {
+                  setEndDate(val);
+                  if (val && startDate && val < startDate) {
+                    setStartDate(val);
+                  }
+                }}
+                placeholder="To Date"
+              />
             </div>
 
             {(startDate || endDate) && (
@@ -1708,6 +1701,34 @@ const Payments = () => {
             >
               All Time
             </button>
+
+            {/* Quick Full Year Jump Selector */}
+            <div className="relative">
+              <select
+                aria-label="Filter by full year"
+                onChange={(e) => {
+                  const yr = e.target.value;
+                  if (yr) {
+                    setStartDate(`${yr}-01-01`);
+                    setEndDate(`${yr}-12-31`);
+                  }
+                }}
+                value={
+                  startDate && endDate && startDate.startsWith(endDate.substring(0, 4)) && startDate.endsWith('-01-01') && endDate.endsWith('-12-31')
+                    ? startDate.substring(0, 4)
+                    : ''
+                }
+                className="px-2.5 py-1.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 cursor-pointer focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all shadow-sm"
+                title="Quick jump to any full year"
+              >
+                <option value="">Full Year...</option>
+                {Array.from({ length: 15 }, (_, i) => new Date().getFullYear() - i).map((yr) => (
+                  <option key={yr} value={yr}>
+                    Year {yr}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
