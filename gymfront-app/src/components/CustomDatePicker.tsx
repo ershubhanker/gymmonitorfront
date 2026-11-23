@@ -18,7 +18,6 @@ interface CustomDatePickerProps {
   maxDate?: string;
   className?: string;
   align?: 'left' | 'right';
-  showQuickYears?: boolean;
 }
 
 const MONTH_NAMES = [
@@ -44,7 +43,6 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
   maxDate,
   className = '',
   align = 'left',
-  showQuickYears = true,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -112,15 +110,6 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
       years.push(y);
     }
     return years;
-  }, [todayYear]);
-
-  // Quick jump years: last 6 years (e.g., 2026, 2025, 2024, 2023, 2022, 2021)
-  const quickYears = useMemo(() => {
-    const list: number[] = [];
-    for (let i = 0; i < 6; i++) {
-      list.push(todayYear - i);
-    }
-    return list;
   }, [todayYear]);
 
   // Month navigation
@@ -361,39 +350,6 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
               </button>
             </div>
           </div>
-
-          {/* Quick Year Jump Chips (Instant 1-click jump for the past 6 years) */}
-          {showQuickYears && (
-            <div className="mb-3 pb-2 border-b border-gray-100">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  Quick Year Jump
-                </span>
-                <span className="text-[10px] text-blue-600 font-medium">
-                  Viewing: {viewYear}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {quickYears.map((yr) => {
-                  const isActive = viewYear === yr;
-                  return (
-                    <button
-                      key={yr}
-                      type="button"
-                      onClick={() => setViewYear(yr)}
-                      className={`px-2 py-0.5 text-xs font-semibold rounded-md transition-all ${
-                        isActive
-                          ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-500'
-                          : 'bg-gray-100 text-gray-700 hover:bg-blue-50 hover:text-blue-700'
-                      }`}
-                    >
-                      {yr}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Weekday Row */}
           <div className="grid grid-cols-7 gap-1 text-center mb-1">
