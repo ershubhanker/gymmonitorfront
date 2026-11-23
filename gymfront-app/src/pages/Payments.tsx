@@ -856,9 +856,10 @@ const Payments = () => {
           detail: { paymentId, memberId: response.data.member_id }
         }));
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error deleting payment:', error);
-      toast.error(error.response?.data?.detail || 'Failed to delete payment');
+      const err = error as any;
+      toast.error(err?.response?.data?.detail || err?.message || 'Failed to delete payment');
     } finally {
       setDeleting(false);
     }
@@ -884,7 +885,8 @@ const Payments = () => {
       await fetchPayments();
     } catch (error) {
       console.error('Error bulk deleting payments:', error);
-      toast.error(error.response?.data?.detail || 'Failed to delete payments');
+      const err = error as any;
+      toast.error(err?.response?.data?.detail || err?.message || 'Failed to delete payments');
     } finally {
       setDeleting(false);
     }
