@@ -1821,8 +1821,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           total_amount: pt_data.total_amount ? parseFloat(pt_data.total_amount) : null,
           amount_paid: pt_data.amount_paid ? parseFloat(pt_data.amount_paid) : 0,
           notes: pt_data.notes || null,
-          payment_method: pt_data.payment_method || payment_method || 'cash',
-          payment_date: pt_data.payment_date || payment_date || null
+          payment_method: pt_data.payment_method || 'cash',
+          payment_date: pt_data.payment_date || new Date().toISOString().split('T')[0]
         };
         
         console.log('📤 Creating personal training session:', ptPayload);
@@ -2001,8 +2001,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           total_amount: pt_data.total_amount ? parseFloat(pt_data.total_amount) : null,
           amount_paid: pt_data.amount_paid ? parseFloat(pt_data.amount_paid) : 0,
           notes: pt_data.notes || null,
-          payment_method: pt_data.payment_method || payment_method || 'cash',
-          payment_date: pt_data.payment_date || payment_date || null
+          payment_method: pt_data.payment_method || 'cash',
+          payment_date: pt_data.payment_date || new Date().toISOString().split('T')[0]
         };
         
         console.log('📤 Creating/Updating PT session:', ptPayload);

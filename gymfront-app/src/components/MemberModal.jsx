@@ -1083,6 +1083,38 @@ const PersonalTrainingSection = ({
             </div>
           )}
 
+          {formData.pt_amount_paid && parseFloat(formData.pt_amount_paid) > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PT Payment Method
+                </label>
+                <select
+                  value={formData.pt_payment_method || 'cash'}
+                  onChange={(e) => setFormData(prev => ({ ...prev, pt_payment_method: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                >
+                  <option value="cash">Cash</option>
+                  <option value="online">Online / UPI</option>
+                  <option value="card">Card</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="cheque">Cheque</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PT Payment Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.pt_payment_date || new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setFormData(prev => ({ ...prev, pt_payment_date: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                />
+              </div>
+            </div>
+          )}
+
           {formData.pt_total_amount && formData.pt_total_amount > 0 && (
             <div className={`p-3 rounded-lg ${
               (parseFloat(formData.pt_total_amount) - parseFloat(formData.pt_amount_paid || 0)) > 0
@@ -2193,6 +2225,8 @@ const MemberModal = ({ isOpen, onClose,
     pt_total_amount: '',
     pt_amount_paid: '',
     pt_notes: '',
+    pt_payment_method: 'cash',
+    pt_payment_date: today,
   });
 
   const [activeTab, setActiveTab] = useState('personal');
@@ -2408,6 +2442,8 @@ const MemberModal = ({ isOpen, onClose,
         pt_total_amount: '',
         pt_amount_paid: '',
         pt_notes: '',
+        pt_payment_method: 'cash',
+        pt_payment_date: today,
       });
     } else if (isLeadConversion || rawData.full_name) {
       let gender = rawData.gender || 'male';
@@ -2448,6 +2484,8 @@ const MemberModal = ({ isOpen, onClose,
         pt_total_amount: '',
         pt_amount_paid: '',
         pt_notes: rawData.notes || '',
+        pt_payment_method: 'cash',
+        pt_payment_date: today,
       });
       
       if (rawData.interest) {
@@ -2483,6 +2521,8 @@ const MemberModal = ({ isOpen, onClose,
         pt_total_amount: '',
         pt_amount_paid: '',
         pt_notes: '',
+        pt_payment_method: 'cash',
+        pt_payment_date: today,
       });
     }
     
@@ -2643,8 +2683,8 @@ const MemberModal = ({ isOpen, onClose,
         total_amount: formData.pt_total_amount ? parseFloat(formData.pt_total_amount) : null,
         amount_paid: formData.pt_amount_paid ? parseFloat(formData.pt_amount_paid) : 0,
         notes: formData.pt_notes || null,
-        payment_method: formData.payment_method || 'cash',
-        payment_date: formData.payment_date || null
+        payment_method: formData.pt_payment_method || 'cash',
+        payment_date: formData.pt_payment_date || today
       } : null;
       
       let payload;
