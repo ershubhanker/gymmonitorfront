@@ -837,31 +837,40 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   // ============================================================
   // FETCH PT DATA
   // ============================================================
+  const ptDataInFlightRef = useRef(null);
+
   const fetchPTData = useCallback(async () => {
-    setLoadingPt(true);
-    try {
-      const cached = getCache(CACHE_KEYS.MEMBER_PT_DATA);
-      if (cached) {
-        setPtData(cached);
-        setLoadingPt(false);
-        return cached;
-      }
-      
-      const response = await api.get('/gym/members/pt-data');
-      const ptMap = {};
-      response.data.forEach(pt => {
-        ptMap[pt.member_id] = pt;
-      });
-      setPtData(ptMap);
-      setCache(CACHE_KEYS.MEMBER_PT_DATA, ptMap, 3 * 60 * 1000);
-      return ptMap;
-    } catch (error) {
-      console.error('Error fetching PT data:', error);
-      setPtData({});
-      return {};
-    } finally {
-      setLoadingPt(false);
+    const cached = getCache(CACHE_KEYS.MEMBER_PT_DATA);
+    if (cached) {
+      setPtData(cached);
+      return cached;
     }
+
+    if (ptDataInFlightRef.current) {
+      return ptDataInFlightRef.current;
+    }
+
+    setLoadingPt(true);
+    ptDataInFlightRef.current = (async () => {
+      try {
+        const response = await api.get('/gym/members/pt-data');
+        const ptMap = {};
+        (response.data || []).forEach(pt => {
+          ptMap[pt.member_id] = pt;
+        });
+        setPtData(ptMap);
+        setCache(CACHE_KEYS.MEMBER_PT_DATA, ptMap, 5 * 60 * 1000);
+        return ptMap;
+      } catch (error) {
+        console.error('Error fetching PT data:', error);
+        return {};
+      } finally {
+        setLoadingPt(false);
+        ptDataInFlightRef.current = null;
+      }
+    })();
+
+    return ptDataInFlightRef.current;
   }, [getCache, setCache]);
 
   // ============================================================
@@ -980,7 +989,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         setTotalMembersCount(cached.total || 0);
         setTotalPages(cached.totalPages || 0);
         setLoading(false);
-        await fetchPTData();
+        fetchPTData().catch(err => console.error('Error fetching PT data in background:', err));
         return;
       }
       
@@ -1061,12 +1070,15 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       setMembers(transformed);
       setTotalMembersCount(data.total || 0);
       setTotalPages(data.total_pages || 0);
+      setLoading(false);
       
-      await fetchPTData();
+      // Fetch PT data asynchronously in the background so table rendering is instant
+      fetchPTData().catch(err => console.error('Error fetching PT data in background:', err));
       
     } catch (error) {
       console.error('Error fetching members (optimized):', error);
       toast.error('Failed to fetch members');
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -1153,8 +1165,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       setTotalMembersCount(transformedMembers.length);
       setTotalPages(Math.ceil(transformedMembers.length / itemsPerPage));
       setCurrentPage(1);
+      setLoading(false);
       
-      await fetchPTData();
+      fetchPTData().catch(err => console.error('Error fetching PT data in background:', err));
       
     } catch (error) {
       console.error('Error fetching members by plan:', error);
@@ -1245,8 +1258,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       setMembers(transformed);
       setTotalMembersCount(transformed.length);
       setTotalPages(Math.ceil(transformed.length / itemsPerPage));
+      setLoading(false);
       
-      await fetchPTData();
+      fetchPTData().catch(err => console.error('Error fetching PT data in background:', err));
       
     } catch (error) {
       console.error('Error fetching members:', error.response?.data || error.message);
