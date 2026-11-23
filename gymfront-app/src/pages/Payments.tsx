@@ -1004,7 +1004,7 @@ const Payments = () => {
       csvRows.push(['']);
       csvRows.push(['"Balance Payment Summary:"']);
       csvRows.push([`"Total Balance Payments:","${formatCurrency(summary.totalBalancePayments)}"`]);
-      csvRows.push([`"Balance Payment Count:","${filteredPayments.filter(p => p.is_balance_payment && p.amount > 0).length}"`]);
+      csvRows.push([`"Balance Payment Count:","${filteredPayments.filter(p => p.is_balance_payment && Number(p.amount) > 0).length}"`]);
       csvRows.push(['']);
       csvRows.push(['"Add-On Payment Summary:"']);
       csvRows.push([`"Total Add-On Payments:","${formatCurrency(summary.totalAddonPayments)}"`]);
@@ -1022,10 +1022,10 @@ const Payments = () => {
       csvRows.push(['"Payment Method Breakdown"']);
       csvRows.push(['"Method","Amount","Count","Percentage"']);
       const methodBreakdown = [
-        { method: 'Cash', amount: summary.cashPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'cash' && p.amount > 0).length },
-        { method: 'Card', amount: summary.cardPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'card' && p.amount > 0).length },
-        { method: 'UPI', amount: summary.upiPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'upi' && p.amount > 0).length },
-        { method: 'Other', amount: summary.otherPayments, count: filteredPayments.filter(p => !['cash', 'card', 'upi'].includes(p.payment_method?.toLowerCase()) && p.amount > 0).length }
+        { method: 'Cash', amount: summary.cashPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'cash' && Number(p.amount) > 0).length },
+        { method: 'Card', amount: summary.cardPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'card' && Number(p.amount) > 0).length },
+        { method: 'UPI', amount: summary.upiPayments, count: filteredPayments.filter(p => p.payment_method?.toLowerCase() === 'upi' && Number(p.amount) > 0).length },
+        { method: 'Other', amount: summary.otherPayments, count: filteredPayments.filter(p => !['cash', 'card', 'upi'].includes(p.payment_method?.toLowerCase()) && Number(p.amount) > 0).length }
       ];
       methodBreakdown.forEach(item => {
         const percentage = totalRevenue > 0 ? (item.amount / totalRevenue * 100).toFixed(2) : '0';
@@ -1080,7 +1080,8 @@ const Payments = () => {
               payment.payment_type === 'pt' ? 'PT' :
                 payment.is_balance_payment ? 'Balance Payment' : 'Membership';
 
-        const signedAmount = isRefund ? -Math.abs(payment.amount) : Math.abs(payment.amount);
+        const absVal = Math.abs(Number(payment.amount) || 0);
+        const signedAmount = isRefund ? -absVal : absVal;
         const memberPlanText = typeof payment.member_plan === 'string' ? payment.member_plan : 'N/A';
         const memberNameText = typeof payment.member_name === 'string' ? payment.member_name : (payment.member?.full_name || 'Unknown Member');
 
