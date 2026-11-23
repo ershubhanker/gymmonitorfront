@@ -917,7 +917,7 @@ const Payments = () => {
 
   // ===== GET PAYMENT METHOD ICON =====
   const getPaymentMethodIcon = (method: any) => {
-    const icons = {
+    const icons: Record<string, string> = {
       cash: '💰',
       card: '💳',
       upi: '📱',
@@ -925,7 +925,8 @@ const Payments = () => {
       online: '🌐',
       credit: '💳'
     };
-    return icons[method?.toLowerCase()] || '💵';
+    const key = typeof method === 'string' ? method.toLowerCase().trim() : '';
+    return icons[key] || '💵';
   };
 
   // ===== GET STATUS BADGE =====
