@@ -64,7 +64,6 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
 
   const [viewYear, setViewYear] = useState<number>(currentYear);
   const [viewMonth, setViewMonth] = useState<number>(currentMonth);
-  const [typedInput, setTypedInput] = useState<string>(value || '');
 
   // Keep view in sync when value changes from outside
   useEffect(() => {
@@ -72,9 +71,6 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
       const [y, m] = value.split('-').map(Number);
       setViewYear(y);
       setViewMonth(m - 1);
-      setTypedInput(value);
-    } else {
-      setTypedInput('');
     }
   }, [value]);
 
@@ -213,25 +209,12 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
 
   const handleSelectDate = (dateStr: string) => {
     onChange(dateStr);
-    setTypedInput(dateStr);
     setIsOpen(false);
   };
 
   const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation();
     onChange('');
-    setTypedInput('');
-  };
-
-  const handleTypedInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setTypedInput(val);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
-      onChange(val);
-      const [y, m] = val.split('-').map(Number);
-      setViewYear(y);
-      setViewMonth(m - 1);
-    }
   };
 
   const handleSelectToday = () => {
@@ -388,35 +371,22 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
             })}
           </div>
 
-          {/* Direct Manual Entry & Footer Shortcuts */}
-          <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 flex-1">
-              <input
-                type="text"
-                placeholder="YYYY-MM-DD"
-                value={typedInput}
-                onChange={handleTypedInputChange}
-                className="w-28 px-2 py-1 text-xs border border-gray-200 rounded-lg text-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                title="Or type date directly (YYYY-MM-DD)"
-              />
-            </div>
-
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleSelectToday}
-                className="px-2.5 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-              >
-                Today
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="px-2.5 py-1 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                Done
-              </button>
-            </div>
+          {/* Footer Shortcuts */}
+          <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={handleSelectToday}
+              className="px-3 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
