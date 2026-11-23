@@ -113,6 +113,7 @@ export const AttendanceProvider = ({ children }) => {
       
       if (data.records && data.records.length > 0) {
         const newEvents = data.records.map(record => ({
+          ...record,
           id: record.id,
           user_id: record.member_id || (record.staff_id ? `S${record.staff_id}` : record.id),
           member_id: record.member_id,
@@ -122,7 +123,16 @@ export const AttendanceProvider = ({ children }) => {
           event_type: record.event_type || 'check_in',
           verified: record.verified !== undefined ? record.verified : true,
           notes: record.notes,
-          device_serial: record.device_serial || 'N/A'
+          device_serial: record.device_serial || 'N/A',
+          membership_expiry_date: record.membership_expiry_date || record.expiry_date || record.end_date,
+          expiry_date: record.expiry_date || record.membership_expiry_date || record.end_date,
+          end_date: record.end_date || record.expiry_date || record.membership_expiry_date,
+          balance_due: record.balance_due !== undefined ? record.balance_due : record.balance,
+          balance: record.balance !== undefined ? record.balance : record.balance_due,
+          balance_due_date: record.balance_due_date || record.next_payment_date,
+          next_payment_date: record.next_payment_date || record.balance_due_date,
+          plan_name: record.plan_name,
+          membership_status: record.membership_status
         }));
         
         setLiveEvents(prev => {

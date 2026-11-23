@@ -249,8 +249,14 @@ export default function LiveDisplay() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-              <InfoPill icon="📅" label="End Date" value={fmtDate(ev.end_date)} />
-              <InfoPill icon="💳" label="Balance" value={fmtMoney(ev.balance, ev.currency_symbol)} />
+              <InfoPill icon="📅" label="Membership Expiry" value={fmtDate(ev.end_date || ev.membership_expiry_date || ev.expiry_date)} />
+              <InfoPill 
+                icon="💳" 
+                label={ev.balance > 0 && (ev.balance_due_date || ev.next_payment_date) 
+                  ? `Balance (Due: ${fmtDate(ev.balance_due_date || ev.next_payment_date)})` 
+                  : "Balance"} 
+                value={fmtMoney(ev.balance, ev.currency_symbol)} 
+              />
             </div>
 
             <InfoPill icon="🕒" label="In Date & Time" value={fmtDateTime(ev.timestamp)} />

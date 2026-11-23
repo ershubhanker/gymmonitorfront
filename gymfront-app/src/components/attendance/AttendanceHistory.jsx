@@ -92,6 +92,58 @@ const formatCurrency = (amount) => {
   })}`;
 };
 
+// Helper to calculate membership expiry info with status and days left
+const getMembershipExpiryInfo = (expiryDate) => {
+  if (!expiryDate) return null;
+  try {
+    const cleanDate = typeof expiryDate === 'string' ? expiryDate.split('T')[0] : String(expiryDate);
+    const exp = new Date(cleanDate + 'T00:00:00');
+    if (isNaN(exp.getTime())) return { formatted: expiryDate, isExpired: false, daysLeft: null };
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffTime = exp.getTime() - today.getTime();
+    const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return {
+      formatted: exp.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      isExpired: daysLeft < 0,
+      daysLeft,
+      isExpiringSoon: daysLeft >= 0 && daysLeft <= 7,
+    };
+  } catch (e) {
+    return { formatted: expiryDate, isExpired: false, daysLeft: null };
+  }
+};
+
+// Helper to calculate balance due info with overdue status
+const getBalanceDueInfo = (balanceDue, balanceDueDate) => {
+  const balance = Number(balanceDue || 0);
+  if (balance <= 0) {
+    return { hasDue: false, balance: 0, dueDateFormatted: null, isOverdue: false };
+  }
+  let isOverdue = false;
+  let dueDateFormatted = null;
+  if (balanceDueDate) {
+    try {
+      const cleanDate = typeof balanceDueDate === 'string' ? balanceDueDate.split('T')[0] : String(balanceDueDate);
+      const due = new Date(cleanDate + 'T00:00:00');
+      if (!isNaN(due.getTime())) {
+        dueDateFormatted = due.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        isOverdue = due.getTime() < today.getTime();
+      }
+    } catch (e) {}
+  }
+  return {
+    hasDue: true,
+    balance,
+    dueDateFormatted,
+    isOverdue
+  };
+};
+
 // ===== Helper function to calculate working hours for staff =====
 const calculateStaffWorkingHours = (records, staffId, dateStr) => {
   if (!records || records.length === 0) return null;
@@ -986,13 +1038,13 @@ const AttendanceHistory = () => {
         memberSheet,
         'Member Attendance Report',
         `Generated ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
-        6
+        9
       );
       const memberHeaderRow = memberSheet.addRow(
-        ['Date', 'Time', 'Member Name', 'Event Type', 'Verified', 'Device Serial']
+        ['Date', 'Time', 'Member Name', 'Event Type', 'Membership Expiry', 'Balance Due', 'Balance Due Date', 'Verified', 'Device Serial']
       );
       styleHeaderRow(memberHeaderRow, HEADER_FILLS.members);
-      memberSheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: 6 } };
+      memberSheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: 9 } };
 
       recordsToExport.forEach(r => {
         const rawType = (r.event_type || '').toLowerCase();
@@ -1003,11 +1055,18 @@ const AttendanceHistory = () => {
           ? tsDate.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
           : 'N/A';
 
+        const expDate = r.membership_expiry_date || r.expiry_date || r.end_date;
+        const balDue = r.balance_due !== undefined ? Number(r.balance_due) : (r.balance !== undefined ? Number(r.balance) : 0);
+        const balDueDate = r.balance_due_date || r.next_payment_date;
+
         const row = memberSheet.addRow([
           tsDate && !isNaN(tsDate.getTime()) ? tsDate : null,
           timePart,
           r.member_name || 'Unknown',
           isOut ? 'CHECK OUT' : 'CHECK IN',
+          expDate ? formatDateOnly(expDate) : '—',
+          balDue > 0 ? balDue : 'Paid',
+          balDueDate ? formatDateOnly(balDueDate) : '—',
           r.verified ? 'Yes' : 'No',
           r.device_serial || 'N/A',
         ]);
@@ -1335,6 +1394,12 @@ const AttendanceHistory = () => {
                   {activeTab === 'members' ? 'Member' : 'Staff'}
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Event</th>
+                {activeTab === 'members' && (
+                  <>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Membership Expiry</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance Due</th>
+                  </>
+                )}
                 {activeTab === 'staff' && (
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Working Hours</th>
                 )}
@@ -1348,7 +1413,7 @@ const AttendanceHistory = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {currentRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={activeTab === 'staff' ? 7 : 5} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                     <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                     <p>No {activeTab} attendance records found</p>
                     <p className="text-sm text-gray-400 mt-1">
@@ -1428,6 +1493,72 @@ const AttendanceHistory = () => {
                           {eventLabel}
                         </span>
                       </td>
+                      {activeTab === 'members' && (() => {
+                        const expiryDate = record.membership_expiry_date || record.expiry_date || record.end_date;
+                        const expInfo = getMembershipExpiryInfo(expiryDate);
+                        const dueInfo = getBalanceDueInfo(
+                          record.balance_due !== undefined ? record.balance_due : record.balance,
+                          record.balance_due_date || record.next_payment_date
+                        );
+
+                        return (
+                          <>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {expInfo ? (
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-sm font-semibold text-gray-900">{expInfo.formatted}</span>
+                                    {expInfo.isExpired ? (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">
+                                        Expired
+                                      </span>
+                                    ) : expInfo.isExpiringSoon ? (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800">
+                                        {expInfo.daysLeft}d left
+                                      </span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700">
+                                        Active
+                                      </span>
+                                    )}
+                                  </div>
+                                  {record.plan_name && (
+                                    <div className="text-xs text-gray-500 truncate max-w-[160px]">
+                                      {record.plan_name}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-sm">—</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {dueInfo.hasDue ? (
+                                <div>
+                                  <div className="text-sm font-bold text-red-600">
+                                    ₹{dueInfo.balance.toLocaleString('en-IN')}
+                                  </div>
+                                  <div className="text-xs mt-0.5">
+                                    {dueInfo.dueDateFormatted ? (
+                                      <span className={dueInfo.isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'}>
+                                        {dueInfo.isOverdue ? 'Overdue: ' : 'Due: '}{dueInfo.dueDateFormatted}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-400">Due date not set</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : expInfo ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                  ✓ Paid
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 text-sm">—</span>
+                              )}
+                            </td>
+                          </>
+                        );
+                      })()}
                       {activeTab === 'staff' && (
                         <td className="px-6 py-4 whitespace-nowrap">
                           {showWorkingHours ? (
