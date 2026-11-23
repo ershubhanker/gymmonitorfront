@@ -565,7 +565,7 @@ const Dashboard = () => {
       const endpointMap = {};
   
       if (canSeeMembers) {
-        promises.push(fetchSilently('/gym/members?limit=100&sort=-created_at'));
+        promises.push(fetchSilently('/gym/members?limit=30&sort=-created_at'));
         endpointMap.members = promises.length - 1;
       }
   
@@ -575,7 +575,7 @@ const Dashboard = () => {
       }
   
       if (canSeeMemberships) {
-        promises.push(fetchSilently('/gym/memberships?limit=1000'));
+        promises.push(fetchSilently('/gym/memberships?limit=20'));
         endpointMap.memberships = promises.length - 1;
       }
   
@@ -674,56 +674,66 @@ const Dashboard = () => {
       const refundCount = 0;
       const netRevenue = totalRevenue;
   
-      const pendingPayments = memberships.filter(m => 
-        m.payment_status === 'pending' || m.payment_status === 'PENDING'
-      ).length;
+      const pendingPayments = statsApiData.pending_payments !== undefined 
+        ? statsApiData.pending_payments 
+        : memberships.filter(m => m.payment_status === 'pending' || m.payment_status === 'PENDING').length;
   
       const thirtyDaysLater = new Date(todayDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
-      const expiringThisMonth = memberships.filter(m => 
-        m.status === 'active' && 
-        m.end_date && 
-        m.end_date <= thirtyDaysLater &&
-        m.end_date >= today
-      ).length;
+      const expiringThisMonth = statsApiData.expiring_this_month !== undefined 
+        ? statsApiData.expiring_this_month 
+        : memberships.filter(m => m.status === 'active' && m.end_date && m.end_date <= thirtyDaysLater && m.end_date >= today).length;
   
-      const expiringSoon = memberships.filter(m => 
-        m.status === 'active' && 
-        m.end_date && 
-        m.end_date <= new Date(todayDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] &&
-        m.end_date >= today
-      ).length;
+      const expiringSoon = statsApiData.expiring_soon !== undefined 
+        ? statsApiData.expiring_soon 
+        : memberships.filter(m => m.status === 'active' && m.end_date && m.end_date <= new Date(todayDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] && m.end_date >= today).length;
   
-      const expiringMembers = memberships
-        .filter(m => 
-          m.status === 'active' && 
-          m.end_date && 
-          m.end_date <= new Date(todayDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] &&
-          m.end_date >= today
-        )
-        .map(m => {
-          const member = members.find(mem => mem.id === m.member_id);
-          const memberData = member || m.member;
-          const daysLeft = Math.ceil((new Date(m.end_date) - todayDate) / (1000 * 60 * 60 * 24));
-          
-          return {
-            id: m.id,
-            memberId: m.member_id,
-            memberName: memberData?.full_name || m.member?.full_name || 'Unknown Member',
-            endDate: new Date(m.end_date).toLocaleDateString('en-IN', {
+      const expiringMembers = (statsApiData.expiring_soon_members && statsApiData.expiring_soon_members.length > 0)
+        ? statsApiData.expiring_soon_members.slice(0, 5).map(m => ({
+            id: m.membership_id || m.id,
+            memberId: m.member_id || m.id,
+            memberName: m.member_name || 'Unknown Member',
+            endDate: m.end_date ? new Date(m.end_date).toLocaleDateString('en-IN', {
               day: 'numeric',
               month: 'short',
               year: 'numeric'
-            }),
-            daysLeft,
-            planName: m.plan?.name || 'Unknown Plan',
-            avatar: memberData?.full_name 
-              ? `https://ui-avatars.com/api/?name=${encodeURIComponent(memberData.full_name)}&background=0D9488&color=fff`
-              : `https://ui-avatars.com/api/?name=Unknown&background=0D9488&color=fff`
-          };
-        })
-        .sort((a, b) => a.daysLeft - b.daysLeft)
-        .slice(0, 5);
+            }) : 'N/A',
+            daysLeft: m.days_left ?? 0,
+            planName: m.plan_name || 'Unknown Plan',
+            avatar: m.profile_image || m.member_photo
+              ? ((m.profile_image || m.member_photo).startsWith('http') ? (m.profile_image || m.member_photo) : `${API_BASE_URL}${m.profile_image || m.member_photo}`)
+              : `https://ui-avatars.com/api/?name=${encodeURIComponent(m.member_name || 'Member')}&background=0D9488&color=fff`
+          }))
+        : memberships
+          .filter(m => 
+            m.status === 'active' && 
+            m.end_date && 
+            m.end_date <= new Date(todayDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] &&
+            m.end_date >= today
+          )
+          .map(m => {
+            const member = members.find(mem => mem.id === m.member_id);
+            const memberData = member || m.member;
+            const daysLeft = Math.ceil((new Date(m.end_date) - todayDate) / (1000 * 60 * 60 * 24));
+            
+            return {
+              id: m.id,
+              memberId: m.member_id,
+              memberName: memberData?.full_name || m.member?.full_name || 'Unknown Member',
+              endDate: new Date(m.end_date).toLocaleDateString('en-IN', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric'
+              }),
+              daysLeft,
+              planName: m.plan?.name || 'Unknown Plan',
+              avatar: memberData?.full_name 
+                ? `https://ui-avatars.com/api/?name=${encodeURIComponent(memberData.full_name)}&background=0D9488&color=fff`
+                : `https://ui-avatars.com/api/?name=Unknown&background=0D9488&color=fff`
+            };
+          })
+          .sort((a, b) => a.daysLeft - b.daysLeft)
+          .slice(0, 5);
   
       const todayCheckins = statsApiData.today_checkins || 0;
   
@@ -802,11 +812,13 @@ const Dashboard = () => {
       activities.sort((a, b) => new Date(b.time) - new Date(a.time));
       const sortedActivities = activities.slice(0, 5);
   
-      const membershipDistribution = memberships.reduce((acc, m) => {
-        const planName = m.plan?.name || 'No Plan';
-        acc[planName] = (acc[planName] || 0) + 1;
-        return acc;
-      }, {});
+      const membershipDistribution = (statsApiData.membership_distribution && Object.keys(statsApiData.membership_distribution).length > 0)
+        ? statsApiData.membership_distribution
+        : memberships.reduce((acc, m) => {
+            const planName = m.plan?.name || 'No Plan';
+            acc[planName] = (acc[planName] || 0) + 1;
+            return acc;
+          }, {});
   
       // Calculate today at midnight for accurate today vs upcoming birthday comparison
       const todayMidnight = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate(), 0, 0, 0, 0);

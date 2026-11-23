@@ -1186,15 +1186,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         params.append('status', filters.status);
       }
 
-      const [membersRes, membershipsRes, paymentsRes, deviceIdsRes] = await Promise.all([
+      const [membersRes, deviceIdsRes] = await Promise.all([
         api.get(`/gym/members?${params.toString()}`),
-        api.get('/gym/memberships?limit=10000'),
-        api.get('/gym/payments?limit=10000'),
         api.get('/attendance/members/device-ids').catch(() => ({ data: [] })),
       ]);
-
-      const membershipsData = membershipsRes.data || [];
-      const paymentsData = paymentsRes.data || [];
 
       const deviceIdMap = {};
       (deviceIdsRes.data || []).forEach(entry => {
@@ -1203,14 +1198,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         }
       });
 
-      const transformed = membersRes.data.map(member => {
-        const today = new Date().toISOString().split('T')[0];
-        const activeMembership = membershipsData.find(
-          ms => ms.member?.id === member.id &&
-                ms.status === 'active' &&
-                ms.end_date >= today
-        );
-        const memberPayments = paymentsData.filter(p => p.member_id === member.id);
+      const transformed = (membersRes.data || []).map(member => {
+        const activeMembership = member.current_membership || (member.memberships && member.memberships[0]) || null;
+        const memberPayments = member.payments || [];
         const paymentCount = memberPayments.length;
       
         let avatarUrl;
