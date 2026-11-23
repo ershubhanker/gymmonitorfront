@@ -1,10 +1,10 @@
 // src/pages/Payments.tsx - Complete updated with refund handling and proper revenue calculation
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  CreditCard, 
-  Calendar, 
-  Download, 
+import {
+  CreditCard,
+  Calendar,
+  Download,
   Search,
   ChevronDown,
   X,
@@ -21,7 +21,7 @@ import {
   CheckSquare,
   Square,
   AlertTriangle,
-  Tag, 
+  Tag,
   Dumbbell,
   ChevronLeft,
   ChevronRight, Clock, XCircle, RefreshCw, TrendingDown,
@@ -51,7 +51,7 @@ const getPaymentLocalDateStr = (paymentDate: any): string => {
     if (d && !isNaN(d.getTime())) {
       return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     }
-  } catch (e) {}
+  } catch (e) { }
   return String(paymentDate).split('T')[0].split(' ')[0];
 };
 
@@ -115,17 +115,17 @@ const Payments = () => {
   const [selectedMethod, setSelectedMethod] = useState('all');
   const [directionFilter, setDirectionFilter] = useState<'all' | 'inflow' | 'outflow'>('all');
   const [paymentTypeFilter, setPaymentTypeFilter] = useState('all');
-  
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
-  
+
   // Delete-related state
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPayments, setSelectedPayments] = useState(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  
+
   const [summary, setSummary] = useState({
     totalRevenue: 0,
     inflowRevenue: 0,
@@ -184,10 +184,10 @@ const Payments = () => {
       const pDate = getPaymentLocalDateStr(p.payment_date);
       return Boolean(pDate && pDate === todayDateStr);
     });
-    
+
     const positiveToday = todayPayments.filter(p => !p.is_refund && Number(p.amount) > 0);
     const refundToday = todayPayments.filter(p => p.is_refund || Number(p.amount) < 0);
-    
+
     const grossRevenue = positiveToday.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const totalRefunds = refundToday.reduce((sum, p) => sum + Math.abs(Number(p.amount) || 0), 0);
     const netRevenue = grossRevenue - totalRefunds;
@@ -240,9 +240,23 @@ const Payments = () => {
     }
   }, [user?.gst_rate]);
 
+  // Fetch today's summary independently so the Today card is always accurate
+  const fetchTodaySummary = useCallback(async () => {
+    try {
+      const todayDateStr = getTodayDateStr();
+      const res = await api.get(`/gym/payments?start_date=${todayDateStr}&end_date=${todayDateStr}&limit=500`);
+      if (Array.isArray(res.data) && res.data.length > 0) {
+        setTodaySummary(calculateTodaySummary(res.data));
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
   // ✅ Load current month payments on initial mount
   useEffect(() => {
     fetchPayments(startDate, endDate);
+    fetchTodaySummary();
   }, []);
 
   // ✅ Fetch payments whenever startDate or endDate changes
@@ -275,22 +289,25 @@ const Payments = () => {
     const handlePaymentAdded = () => {
       console.log('🔄 Payment added event received, refreshing...');
       fetchPayments(startDate, endDate);
+      fetchTodaySummary();
     };
 
     window.addEventListener('paymentAdded', handlePaymentAdded);
     window.addEventListener('paymentUpdated', handlePaymentAdded);
-    
+    window.addEventListener('paymentDeleted', handlePaymentAdded);
+
     return () => {
       window.removeEventListener('paymentAdded', handlePaymentAdded);
       window.removeEventListener('paymentUpdated', handlePaymentAdded);
+      window.removeEventListener('paymentDeleted', handlePaymentAdded);
     };
-  }, [startDate, endDate]);
+  }, [startDate, endDate, fetchTodaySummary]);
 
   const fetchPayments = useCallback(async (sDate?: string, eDate?: string) => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const queryStart = sDate !== undefined ? sDate : startDate;
       const queryEnd = eDate !== undefined ? eDate : endDate;
 
@@ -298,18 +315,18 @@ const Payments = () => {
       if (queryStart) params.append('start_date', queryStart);
       if (queryEnd) params.append('end_date', queryEnd);
       params.append('limit', '10000');
-      
+
       // ✅ Fetch payments with date range parameters
       const response = await api.get(`/gym/payments?${params.toString()}`);
       console.log('📊 Payments response:', response.data);
-      
+
       let paymentsData = Array.isArray(response.data) ? response.data : [];
-      
+
       // ✅ Process payments to detect strict direction (IN vs OUT), types and balance payments
       paymentsData = paymentsData.map(payment => {
         const amount = Number(payment.amount) || 0;
         let isRefund = false;
-        
+
         // Strict refund check: negative amount or REFUND indicator
         if (amount < 0) {
           isRefund = true;
@@ -323,7 +340,7 @@ const Payments = () => {
         )) {
           isRefund = true;
         }
-        
+
         const isInflow = !isRefund && amount > 0;
 
         // Check if it's a renewal payment
@@ -344,24 +361,24 @@ const Payments = () => {
 
         if (isRefund) {
           paymentType = 'refund';
-        } 
+        }
         // Check for add-on payments
-        else if (payment.transaction_id?.startsWith('ADDON-PAY-') || 
-            payment.transaction_id?.startsWith('ADDON-')) {
+        else if (payment.transaction_id?.startsWith('ADDON-PAY-') ||
+          payment.transaction_id?.startsWith('ADDON-')) {
           paymentType = 'addon';
           const notes = payment.notes || '';
           const addonMatch = notes.match(/Addon payment for ([^:]+)/);
           addonName = addonMatch ? addonMatch[1].trim() : 'Addon';
-        } 
+        }
         // Check for PT payments
         else if (
-          payment.transaction_id?.toUpperCase().startsWith('PT-') || 
+          payment.transaction_id?.toUpperCase().startsWith('PT-') ||
           payment.transaction_id?.toUpperCase().startsWith('PT_') ||
           (payment.notes && /pt[\s\-_]payment|personal[\s\-_]training|\bpt\b/i.test(payment.notes)) ||
           payment.membership_id === null
         ) {
           paymentType = 'pt';
-        } 
+        }
         // Check for renewals
         else if (isRenewal) {
           paymentType = 'renewal';
@@ -374,7 +391,24 @@ const Payments = () => {
         else {
           paymentType = 'membership';
         }
-        
+
+        // Safe plan name extraction (prevent objects from crashing React child rendering)
+        const rawPlan = payment.membership_plan_name || payment.member?.membership_plan_name || payment.member?.plan;
+        let safePlanStr = 'N/A';
+        if (typeof rawPlan === 'string' && rawPlan.trim()) {
+          safePlanStr = rawPlan.trim();
+        } else if (rawPlan && typeof rawPlan === 'object' && rawPlan.name) {
+          safePlanStr = String(rawPlan.name).trim();
+        } else if (payment.member?.current_membership?.plan?.name) {
+          safePlanStr = String(payment.member.current_membership.plan.name).trim();
+        }
+
+        const rawName = payment.member?.full_name || payment.member_name;
+        const safeMemberName = typeof rawName === 'string' && rawName.trim() ? rawName.trim() : 'Unknown Member';
+
+        const rawPhone = payment.member?.phone || payment.member_phone;
+        const safeMemberPhone = typeof rawPhone === 'string' || typeof rawPhone === 'number' ? String(rawPhone).trim() : '';
+
         return {
           ...payment,
           amount: amount,
@@ -384,16 +418,16 @@ const Payments = () => {
           is_balance_payment: isBalance,
           payment_type: paymentType,
           addon_name: addonName,
-          member_name: payment.member?.full_name || payment.member_name || 'Unknown Member',
-          member_phone: payment.member?.phone || '',
-          member_email: payment.member?.email || '',
-          member_plan: payment.membership_plan_name || payment.member?.membership_plan_name || payment.member?.plan || 'N/A',
-          member_balance: payment.member?.balance_amount || payment.balance_amount || 0,
-          gst_amount: payment.gst_amount || payment.tax_amount || 0,
+          member_name: safeMemberName,
+          member_phone: safeMemberPhone,
+          member_email: typeof payment.member?.email === 'string' ? payment.member.email : (payment.member_email || ''),
+          member_plan: safePlanStr,
+          member_balance: Number(payment.member?.balance_amount ?? payment.balance_amount) || 0,
+          gst_amount: Number(payment.gst_amount ?? payment.tax_amount) || 0,
           original_invoice_id: payment.original_invoice_id || null,
         };
       });
-      
+
       console.log('✅ Processed payments:', paymentsData.length);
       console.log('💰 Refunds found:', paymentsData.filter(p => p.is_refund).length);
       setPayments(paymentsData);
@@ -495,44 +529,44 @@ const Payments = () => {
       // ============================================================
       // ✅ CALCULATE STRICT FINANCIAL LEDGER SUMMARY
       // ============================================================
-      
+
       // Strict mathematical separation: Inflows (Money In) vs Outflows (Money Out / Refunds)
       const positivePayments = filtered.filter(p => Number(p.amount) > 0 && !p.is_refund);
       const refundPayments = filtered.filter(p => Number(p.amount) < 0 || p.is_refund);
-      
+
       // Gross Inflow = sum of all positive incoming payments
       const totalRevenue = positivePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-      
+
       // Gross Outflow = sum of all refunds & reversed payments
       const totalRefunds = refundPayments.reduce((sum, p) => sum + Math.abs(Number(p.amount) || 0), 0);
       const refundCount = refundPayments.length;
       const inflowCount = positivePayments.length;
-      
+
       // Strict Net Revenue Kept = Gross Inflow - Gross Outflow
       const netRevenue = totalRevenue - totalRefunds;
-      
+
       const totalCount = filtered.length;
       const averagePayment = positivePayments.length > 0 ? totalRevenue / positivePayments.length : 0;
-      
+
       // Payment method breakdown (only positive payments)
       const cashPayments = positivePayments
         .filter(p => p.payment_method?.toLowerCase() === 'cash')
         .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-      
+
       const cardPayments = positivePayments
         .filter(p => p.payment_method?.toLowerCase() === 'card')
         .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-      
+
       const upiPayments = positivePayments
         .filter(p => p.payment_method?.toLowerCase() === 'upi')
         .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-      
+
       const otherPayments = positivePayments
         .filter(p => !['cash', 'card', 'upi'].includes(p.payment_method?.toLowerCase()))
         .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
       const totalGST = positivePayments.reduce((sum, p) => sum + (Number(p.gst_amount) || 0), 0);
-      
+
       const totalBalancePayments = positivePayments
         .filter(p => p.is_balance_payment === true || p.payment_type === 'balance')
         .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
@@ -560,31 +594,31 @@ const Payments = () => {
         prevEnd.setDate(prevEnd.getDate() - 1);
         const prevStartStr = prevStart.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
         const prevEndStr = prevEnd.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-        
+
         const previousPositive = payments
           .filter(p => {
             const pDate = getPaymentLocalDateStr(p.payment_date);
-            return pDate && 
-                   pDate >= prevStartStr && 
-                   pDate <= prevEndStr &&
-                   Number(p.amount) > 0 &&
-                   !p.is_refund;
+            return pDate &&
+              pDate >= prevStartStr &&
+              pDate <= prevEndStr &&
+              Number(p.amount) > 0 &&
+              !p.is_refund;
           })
           .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-        
+
         const previousRefunds = payments
           .filter(p => {
             const pDate = getPaymentLocalDateStr(p.payment_date);
-            return pDate && 
-                   pDate >= prevStartStr && 
-                   pDate <= prevEndStr &&
-                   (Number(p.amount) < 0 || p.is_refund);
+            return pDate &&
+              pDate >= prevStartStr &&
+              pDate <= prevEndStr &&
+              (Number(p.amount) < 0 || p.is_refund);
           })
           .reduce((sum, p) => sum + Math.abs(Number(p.amount) || 0), 0);
-        
+
         const previousNetRevenue = previousPositive - previousRefunds;
-        
-        growth = previousNetRevenue > 0 
+
+        growth = previousNetRevenue > 0
           ? ((netRevenue - previousNetRevenue) / previousNetRevenue * 100)
           : netRevenue > 0 ? 100 : 0;
       }
@@ -611,13 +645,14 @@ const Payments = () => {
         netRevenue,
       });
 
-      // ✅ Sort by date (newest first)
+      // ✅ Sort by date (newest first) safely without NaN
       const sortedFiltered = [...filtered].sort((a, b) => {
-        const dateA = new Date(a.payment_date);
-        const dateB = new Date(b.payment_date);
-        return dateB.getTime() - dateA.getTime();
+        const timeA = a.payment_date ? (parseUtcDate(a.payment_date)?.getTime() || 0) : 0;
+        const timeB = b.payment_date ? (parseUtcDate(b.payment_date)?.getTime() || 0) : 0;
+        if (timeB !== timeA) return timeB - timeA;
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
       });
-      
+
       setFilteredPayments(sortedFiltered);
       setCurrentPage(1);
     } catch (err) {
@@ -632,7 +667,7 @@ const Payments = () => {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(Math.abs(amount));
-    
+
     // ✅ Show negative amounts with parentheses for refunds
     if (amount < 0) {
       return `(${currencySymbol} ${formatted})`;
@@ -704,6 +739,29 @@ const Payments = () => {
     }
   };
 
+  // Safe clipboard copy that works across both HTTPS and HTTP/insecure contexts
+  const handleCopyTxn = (txnId: string) => {
+    if (!txnId) return;
+    try {
+      if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(txnId);
+        toast.success('Txn ID copied');
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = txnId;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        toast.success('Txn ID copied');
+      }
+    } catch (e) {
+      toast.error('Failed to copy ID');
+    }
+  };
+
   // ===== TOGGLE SELECTION MODE =====
   const toggleSelectionMode = () => {
     setSelectionMode(!selectionMode);
@@ -736,26 +794,26 @@ const Payments = () => {
   const handleSingleDelete = async (paymentId, paymentAmount, memberName) => {
     const isRefund = paymentAmount < 0;
     const amountDisplay = isRefund ? `refund of ${formatCurrency(Math.abs(paymentAmount))}` : `payment of ${formatCurrency(paymentAmount)}`;
-    
+
     if (!window.confirm(
       `Are you sure you want to delete the ${amountDisplay} for ${memberName}?\n\n` +
       `This action cannot be undone and will update the member's balance.`
     )) {
       return;
     }
-  
+
     setDeleting(true);
     try {
       const response = await api.delete(`/gym/payments/${paymentId}`);
-      
+
       if (response.data) {
         toast.success(`${isRefund ? 'Refund' : 'Payment'} of ${formatCurrency(Math.abs(paymentAmount))} deleted successfully`);
-        
+
         // ✅ Refresh the payments list
         await fetchPayments();
-        
+
         // ✅ Dispatch event to refresh dashboard
-        window.dispatchEvent(new CustomEvent('paymentDeleted', { 
+        window.dispatchEvent(new CustomEvent('paymentDeleted', {
           detail: { paymentId, memberId: response.data.member_id }
         }));
       }
@@ -772,15 +830,15 @@ const Payments = () => {
     const paymentIds = Array.from(selectedPayments);
     const selectedPaymentsData = filteredPayments.filter(p => selectedPayments.has(p.id));
     const totalAmount = selectedPaymentsData.reduce((sum, p) => sum + p.amount, 0);
-    
+
     setShowDeleteConfirm(false);
     setDeleting(true);
-    
+
     try {
       const response = await api.delete('/gym/payments/bulk-delete', {
         data: { payment_ids: paymentIds }
       });
-      
+
       toast.success(response.data.message);
       setSelectionMode(false);
       setSelectedPayments(new Set());
@@ -801,7 +859,7 @@ const Payments = () => {
     if (payment.is_renewal) {
       return { label: 'Renewal', color: 'bg-purple-100 text-purple-700 border border-purple-200' };
     }
-    switch(payment.payment_type) {
+    switch (payment.payment_type) {
       case 'addon':
         return { label: 'Add-On', color: 'bg-indigo-100 text-indigo-700 border border-indigo-200' };
       case 'pt':
@@ -830,20 +888,22 @@ const Payments = () => {
   };
 
   // ===== GET STATUS BADGE =====
-  const getStatusBadge = (status) => {
-    const statusConfig = {
+  const getStatusBadge = (status: any) => {
+    const statusConfig: Record<string, { color: string; icon: any }> = {
       paid: { color: 'bg-green-100 text-green-700', icon: CheckCircle },
       completed: { color: 'bg-green-100 text-green-700', icon: CheckCircle },
       pending: { color: 'bg-yellow-100 text-yellow-700', icon: Clock },
       overdue: { color: 'bg-red-100 text-red-700', icon: AlertCircle },
       cancelled: { color: 'bg-gray-100 text-gray-500', icon: XCircle },
     };
-    const config = statusConfig[status?.toLowerCase()] || statusConfig.paid;
+    const statusKey = typeof status === 'string' && status.trim() ? status.trim().toLowerCase() : 'paid';
+    const config = statusConfig[statusKey] || statusConfig.paid;
     const Icon = config.icon;
+    const displayLabel = statusKey.charAt(0).toUpperCase() + statusKey.slice(1);
     return (
       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
         <Icon className="h-3 w-3" />
-        {status?.charAt(0).toUpperCase() + status?.slice(1) || 'Paid'}
+        {displayLabel}
       </span>
     );
   };
@@ -859,12 +919,12 @@ const Payments = () => {
       const startDateFormatted = startDate ? formatDate(startDate) : 'All Records';
       const endDateFormatted = endDate ? formatDate(endDate) : 'All Records';
       const exportDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-      
+
       const totalRevenue = summary.totalRevenue;
       const totalRefunds = summary.totalRefunds;
       const netRevenue = summary.netRevenue;
       const totalTransactions = filteredPayments.length;
-      
+
       const halfRate = gstRate / 2;
       const taxableAmount = gstRate === 0
         ? totalRevenue
@@ -874,9 +934,9 @@ const Payments = () => {
         : (summary.totalGST > 0 ? summary.totalGST : totalRevenue - taxableAmount);
       const cgstAmount = gstCollected / 2;
       const sgstAmount = gstCollected / 2;
-      
+
       const csvRows = [];
-      
+
       csvRows.push(['"PAYMENT REPORT"']);
       csvRows.push(['']);
       csvRows.push(['"Gym Information:"']);
@@ -895,11 +955,11 @@ const Payments = () => {
       csvRows.push([`"Refund Count:","${summary.refundCount}"`]);
       csvRows.push(['']);
       csvRows.push(['"GST Summary:"']);
-      csvRows.push([`"GST Rate:","${gstRate}% (CGST ${gstRate/2}% + SGST ${gstRate/2}%)"`]);
+      csvRows.push([`"GST Rate:","${gstRate}% (CGST ${gstRate / 2}% + SGST ${gstRate / 2}%)"`]);
       csvRows.push([`"Total GST Collected:","${formatCurrency(gstCollected)}"`]);
       csvRows.push([`"Taxable Amount (excl. GST):","${formatCurrency(taxableAmount)}"`]);
-      csvRows.push([`"CGST (${gstRate/2}%):","${formatCurrency(cgstAmount)}"`]);
-      csvRows.push([`"SGST (${gstRate/2}%):","${formatCurrency(sgstAmount)}"`]);
+      csvRows.push([`"CGST (${gstRate / 2}%):","${formatCurrency(cgstAmount)}"`]);
+      csvRows.push([`"SGST (${gstRate / 2}%):","${formatCurrency(sgstAmount)}"`]);
       csvRows.push(['']);
       csvRows.push(['"Balance Payment Summary:"']);
       csvRows.push([`"Total Balance Payments:","${formatCurrency(summary.totalBalancePayments)}"`]);
@@ -917,7 +977,7 @@ const Payments = () => {
       csvRows.push([`"Total Refunds:","${formatCurrency(summary.totalRefunds)}"`]);
       csvRows.push([`"Refund Count:","${summary.refundCount}"`]);
       csvRows.push(['']);
-      
+
       csvRows.push(['"Payment Method Breakdown"']);
       csvRows.push(['"Method","Amount","Count","Percentage"']);
       const methodBreakdown = [
@@ -931,7 +991,7 @@ const Payments = () => {
         csvRows.push([`"${item.method}"`, `"${formatCurrency(item.amount)}"`, item.count, `"${percentage}%"`]);
       });
       csvRows.push(['']);
-      
+
       csvRows.push(['"Detailed Transactions"']);
       csvRows.push([
         '"Date"',
@@ -946,38 +1006,51 @@ const Payments = () => {
         '"Status"',
         '"Payment Time"',
         '"GST Amount"',
-        `"CGST (${gstRate/2}%)"`,
-        `"SGST (${gstRate/2}%)"`,
+        `"CGST (${gstRate / 2}%)"`,
+        `"SGST (${gstRate / 2}%)"`,
         '"Is Balance Payment"',
         '"Is Renewal"',
         '"Is Refund"',
         '"Payment Type"',
         '"Notes"'
       ]);
-      
+
       filteredPayments.forEach(payment => {
         const dateStr = formatDate(payment.payment_date) || 'N/A';
-        const timeStr = payment.payment_date ? new Date(payment.payment_date).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A';
-        
+        let timeStr = 'N/A';
+        try {
+          const d = parseUtcDate(payment.payment_date);
+          if (d && !isNaN(d.getTime())) {
+            timeStr = d.toLocaleTimeString('en-IN', {
+              timeZone: 'Asia/Kolkata',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true
+            });
+          }
+        } catch (e) {}
+
         const isRefund = payment.is_refund || Number(payment.amount) < 0;
         const directionStr = isRefund ? 'OUT (Refund)' : 'IN (Collection)';
-        
-        const typeLabel = isRefund ? 'REFUND' : 
-          payment.is_renewal ? 'Renewal' : 
-          payment.payment_type === 'addon' ? 'Add-On' : 
-          payment.payment_type === 'pt' ? 'PT' : 
-          payment.is_balance_payment ? 'Balance Payment' : 'Membership';
-        
+
+        const typeLabel = isRefund ? 'REFUND' :
+          payment.is_renewal ? 'Renewal' :
+            payment.payment_type === 'addon' ? 'Add-On' :
+              payment.payment_type === 'pt' ? 'PT' :
+                payment.is_balance_payment ? 'Balance Payment' : 'Membership';
+
         const signedAmount = isRefund ? -Math.abs(payment.amount) : Math.abs(payment.amount);
-        
+        const memberPlanText = typeof payment.member_plan === 'string' ? payment.member_plan : 'N/A';
+        const memberNameText = typeof payment.member_name === 'string' ? payment.member_name : (payment.member?.full_name || 'Unknown Member');
+
         csvRows.push([
           `"${dateStr}"`,
           `"${payment.transaction_id || `PAY-${payment.id}`}"`,
           `"${directionStr}"`,
-          `"${(payment.member_name || payment.member?.full_name || 'Unknown Member').replace(/"/g, '""')}"`,
+          `"${memberNameText.replace(/"/g, '""')}"`,
           `"${payment.member_phone || payment.member?.phone || 'N/A'}"`,
           `"${payment.member_email || payment.member?.email || 'N/A'}"`,
-          `"${payment.member_plan || 'N/A'}"`,
+          `"${memberPlanText}"`,
           `"${signedAmount}"`,
           `"${(payment.payment_method || 'N/A').toUpperCase()}"`,
           `"${payment.status || 'Completed'}"`,
@@ -992,7 +1065,7 @@ const Payments = () => {
           `"${(payment.notes || '').replace(/"/g, '""')}"`
         ]);
       });
-      
+
       csvRows.push(['']);
       csvRows.push(['"Final Summary"']);
       csvRows.push([`"Total Records:","${filteredPayments.length}"`]);
@@ -1007,22 +1080,24 @@ const Payments = () => {
       csvRows.push(['"Declaration:"']);
       csvRows.push([`"This report is generated by ${gymName} (GST: ${gymGST})"`]);
       csvRows.push([`"All payments are recorded as per the selected date range: ${startDateFormatted} to ${endDateFormatted}"`]);
-      
+
       const csvString = csvRows.map(row => row.join(',')).join('\n');
-      
+
       const blob = new Blob(['\uFEFF' + csvString], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      
-      const fileName = `payment_report_${startDate}_to_${endDate}_GST_${gymGST.replace(/[^a-zA-Z0-9]/g, '')}.csv`;
+
+      const sTag = startDate || 'all';
+      const eTag = endDate || 'all';
+      const fileName = `payment_report_${sTag}_to_${eTag}_GST_${gymGST.replace(/[^a-zA-Z0-9]/g, '')}.csv`;
       link.href = url;
       link.setAttribute('download', fileName);
-      
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
+
       toast.success(`Exported ${filteredPayments.length} transactions with GST and refund details!`);
     } catch (err) {
       console.error('Error exporting:', err);
@@ -1062,18 +1137,17 @@ const Payments = () => {
                   .catch(() => toast.error('Failed to update GST rate'))
                   .finally(() => setUpdatingGst(false));
               }}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${
-                gstRate === rate
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${gstRate === rate
                   ? 'border-purple-500 bg-purple-50 text-purple-700'
                   : 'border-gray-200 hover:border-purple-300 text-gray-700'
-              }`}
+                }`}
             >
               <div className="text-left">
                 <p className="font-semibold">
                   {rate === 0 ? '0% GST (Exempt)' : `${rate}% GST`}
                 </p>
                 <p className="text-xs text-gray-500">
-                  {rate === 0 ? 'No GST charges applied' : `CGST ${rate/2}% + SGST ${rate/2}%`}
+                  {rate === 0 ? 'No GST charges applied' : `CGST ${rate / 2}% + SGST ${rate / 2}%`}
                 </p>
               </div>
               {gstRate === rate && <CheckCircle className="h-5 w-5 text-purple-600" />}
@@ -1093,14 +1167,14 @@ const Payments = () => {
           <h3 className="text-xl font-bold text-gray-900">
             Select {datePickerType === 'start' ? 'From' : 'To'} Date
           </h3>
-          <button 
+          <button
             onClick={() => setShowDatePicker(false)}
             className="p-2 hover:bg-gray-100 rounded-full transition-colors"
           >
             <X className="h-5 w-5 text-gray-500" />
           </button>
         </div>
-        
+
         <div className="mb-4">
           <CustomDatePicker
             value={datePickerType === 'start' ? startDate : endDate}
@@ -1117,7 +1191,7 @@ const Payments = () => {
             placeholder={`Select ${datePickerType === 'start' ? 'From' : 'To'} Date`}
           />
         </div>
-        
+
         <div className="mt-6 flex gap-3">
           <button
             onClick={() => {
@@ -1193,11 +1267,11 @@ const Payments = () => {
               <X className="h-5 w-5 text-gray-500" />
             </button>
           </div>
-          
+
           <p className="text-gray-600 mb-4">
             Are you sure you want to delete <strong className="text-red-600">{selectedCount}</strong> payment{selectedCount !== 1 ? 's' : ''}?
           </p>
-          
+
           <div className="bg-red-50 rounded-xl p-4 mb-6">
             <p className="text-sm text-red-800 mb-2">⚠️ This action will:</p>
             <ul className="text-sm text-red-700 space-y-1 ml-4">
@@ -1211,7 +1285,7 @@ const Payments = () => {
               </p>
             </div>
           </div>
-          
+
           <div className="flex gap-3">
             <button
               onClick={() => setShowDeleteConfirm(false)}
@@ -1250,14 +1324,13 @@ const Payments = () => {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {/* 🔥 Today's Collection Card (Highlighted Daily Inflow vs Outflow) */}
-        <div 
+        <div
           onClick={() => {
             setStartDate(todayStr);
             setEndDate(todayStr);
           }}
-          className={`relative overflow-hidden bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-700 rounded-2xl p-4 text-white shadow-lg hover:shadow-2xl hover:scale-[1.01] transition-all cursor-pointer group border-2 ${
-            isTodayFiltered ? 'border-white ring-2 ring-emerald-300' : 'border-transparent'
-          }`}
+          className={`relative overflow-hidden bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-700 rounded-2xl p-4 text-white shadow-lg hover:shadow-2xl hover:scale-[1.01] transition-all cursor-pointer group border-2 ${isTodayFiltered ? 'border-white ring-2 ring-emerald-300' : 'border-transparent'
+            }`}
           title="Click to view only today's transactions"
         >
           <div className="flex items-center justify-between mb-2">
@@ -1300,10 +1373,10 @@ const Payments = () => {
             startDate && endDate
               ? (startDate === endDate ? `Gross Inflow (${formatDate(startDate)})` : `Gross Inflow (${formatDate(startDate)} - ${formatDate(endDate)})`)
               : startDate
-              ? `Gross Inflow (From ${formatDate(startDate)})`
-              : endDate
-              ? `Gross Inflow (Up to ${formatDate(endDate)})`
-              : 'Gross Inflow (All Time)'
+                ? `Gross Inflow (From ${formatDate(startDate)})`
+                : endDate
+                  ? `Gross Inflow (Up to ${formatDate(endDate)})`
+                  : 'Gross Inflow (All Time)'
           }>
             Total Money In (Inflow)
           </p>
@@ -1361,7 +1434,7 @@ const Payments = () => {
         </div>
 
         {/* ✅ GST Card */}
-        <div 
+        <div
           onClick={() => setShowGstModal(true)}
           className="bg-gradient-to-br from-purple-600 to-indigo-700 rounded-2xl p-4 text-white shadow-lg hover:shadow-xl transition-all cursor-pointer group"
           title="Click to view or edit GST rate"
@@ -1387,9 +1460,17 @@ const Payments = () => {
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredPayments.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
+  const safeCurrentPage = Math.max(1, Math.min(currentPage, totalPages || 1));
+  const startIndex = (safeCurrentPage - 1) * itemsPerPage;
   const endIndex = Math.min(startIndex + itemsPerPage, filteredPayments.length);
   const currentPayments = filteredPayments.slice(startIndex, endIndex);
+
+  // Auto-clamp currentPage when totalPages changes
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [totalPages, currentPage]);
 
   // ===== MAIN RENDER =====
   if (loading) {
@@ -1433,14 +1514,14 @@ const Payments = () => {
                 Payment Transactions
               </h1>
               <p className="text-blue-100 mt-2">
-                GST: {gymGST} ({gstRate === 0 ? '0% — Exempt' : `${gstRate}% — CGST ${gstRate/2}% + SGST ${gstRate/2}%`}) | {gymName}
+                GST: {gymGST} ({gstRate === 0 ? '0% — Exempt' : `${gstRate}% — CGST ${gstRate / 2}% + SGST ${gstRate / 2}%`}) | {gymName}
               </p>
             </div>
 
             {/* Quick Today's Sales Badge in Header */}
             <button
               onClick={() => {
-                const todayStr = new Date().toLocaleDateString('en-CA');
+                const todayStr = getTodayDateStr();
                 setStartDate(todayStr);
                 setEndDate(todayStr);
               }}
@@ -1488,11 +1569,10 @@ const Payments = () => {
             </button>
             <button
               onClick={toggleSelectionMode}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
-                selectionMode 
-                  ? 'bg-blue-600 text-white' 
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${selectionMode
+                  ? 'bg-blue-600 text-white'
                   : 'bg-white/20 backdrop-blur-sm hover:bg-white/30'
-              }`}
+                }`}
             >
               {selectionMode ? (
                 <>
@@ -1623,7 +1703,7 @@ const Payments = () => {
               </div>
             )}
           </div>
-          
+
           {/* Quick Preset Buttons */}
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1632,11 +1712,10 @@ const Payments = () => {
                 setStartDate(todayStr);
                 setEndDate(todayStr);
               }}
-              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs flex items-center gap-1.5 ${
-                startDate === getTodayDateStr() && endDate === getTodayDateStr()
+              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs flex items-center gap-1.5 ${startDate === getTodayDateStr() && endDate === getTodayDateStr()
                   ? 'bg-emerald-600 text-white shadow-md ring-2 ring-emerald-300'
                   : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-              }`}
+                }`}
             >
               <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
               Today
@@ -1647,11 +1726,10 @@ const Payments = () => {
                 setStartDate(yesterdayStr);
                 setEndDate(yesterdayStr);
               }}
-              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${
-                startDate === getYesterdayDateStr() && endDate === getYesterdayDateStr()
+              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${startDate === getYesterdayDateStr() && endDate === getYesterdayDateStr()
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Yesterday
             </button>
@@ -1662,11 +1740,10 @@ const Payments = () => {
                 setStartDate(startOfWeek);
                 setEndDate(todayStr);
               }}
-              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${
-                startDate === getStartOfWeekStr() && endDate === getTodayDateStr()
+              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${startDate === getStartOfWeekStr() && endDate === getTodayDateStr()
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               This Week
             </button>
@@ -1677,11 +1754,10 @@ const Payments = () => {
                 setStartDate(`${year}-${month}-01`);
                 setEndDate(todayStr);
               }}
-              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${
-                startDate === `${getTodayDateStr().split('-')[0]}-${getTodayDateStr().split('-')[1]}-01` && endDate === getTodayDateStr()
+              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${startDate === `${getTodayDateStr().split('-')[0]}-${getTodayDateStr().split('-')[1]}-01` && endDate === getTodayDateStr()
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               This Month
             </button>
@@ -1691,11 +1767,10 @@ const Payments = () => {
                 setStartDate(lastMonth.start);
                 setEndDate(lastMonth.end);
               }}
-              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${
-                startDate === getLastMonthRange().start && endDate === getLastMonthRange().end
+              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${startDate === getLastMonthRange().start && endDate === getLastMonthRange().end
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Last Month
             </button>
@@ -1704,11 +1779,10 @@ const Payments = () => {
                 setStartDate('');
                 setEndDate('');
               }}
-              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${
-                !startDate && !endDate
+              className={`px-3 py-1.5 rounded-xl transition-all font-semibold text-xs ${!startDate && !endDate
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               All Time
             </button>
@@ -1751,10 +1825,10 @@ const Payments = () => {
               {startDate && endDate
                 ? (startDate === endDate ? formatDate(startDate) : `${formatDate(startDate)} to ${formatDate(endDate)}`)
                 : startDate
-                ? `From ${formatDate(startDate)} onwards`
-                : endDate
-                ? `Up to ${formatDate(endDate)}`
-                : 'All Recorded Dates'}
+                  ? `From ${formatDate(startDate)} onwards`
+                  : endDate
+                    ? `Up to ${formatDate(endDate)}`
+                    : 'All Recorded Dates'}
             </span>
             <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
               {filteredPayments.length} payment{filteredPayments.length !== 1 ? 's' : ''}
@@ -1798,18 +1872,17 @@ const Payments = () => {
               />
             </div>
           </div>
-          
+
           {/* Method Filters */}
           <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
             {['all', 'cash', 'card', 'upi'].map((method) => (
               <button
                 key={method}
                 onClick={() => setSelectedMethod(method)}
-                className={`px-3 py-1.5 rounded-lg capitalize text-xs font-semibold transition-all ${
-                  selectedMethod === method
+                className={`px-3 py-1.5 rounded-lg capitalize text-xs font-semibold transition-all ${selectedMethod === method
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 {method === 'all' ? 'All Methods' : method}
               </button>
@@ -1820,32 +1893,29 @@ const Payments = () => {
           <div className="flex gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
               onClick={() => setDirectionFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                directionFilter === 'all'
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${directionFilter === 'all'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+                }`}
             >
               All Flow
             </button>
             <button
               onClick={() => setDirectionFilter('inflow')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                directionFilter === 'inflow'
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${directionFilter === 'inflow'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-emerald-700 hover:bg-emerald-50'
-              }`}
+                }`}
             >
               <ArrowUpRight className="h-3.5 w-3.5 stroke-[2.5]" />
               Money In ({summary.inflowCount || summary.totalCount - summary.refundCount})
             </button>
             <button
               onClick={() => setDirectionFilter('outflow')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                directionFilter === 'outflow'
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${directionFilter === 'outflow'
                   ? 'bg-rose-600 text-white shadow-sm'
                   : 'text-rose-700 hover:bg-rose-50'
-              }`}
+                }`}
             >
               <ArrowDownLeft className="h-3.5 w-3.5 stroke-[2.5]" />
               Money Out ({summary.refundCount})
@@ -1856,66 +1926,60 @@ const Payments = () => {
           <div className="flex flex-wrap gap-1 border-l border-gray-200 pl-3">
             <button
               onClick={() => setPaymentTypeFilter('all')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                paymentTypeFilter === 'all'
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${paymentTypeFilter === 'all'
                   ? 'bg-gray-800 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               All Types
             </button>
             <button
               onClick={() => setPaymentTypeFilter('membership')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                paymentTypeFilter === 'membership'
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${paymentTypeFilter === 'membership'
                   ? 'bg-green-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Membership
             </button>
             <button
               onClick={() => setPaymentTypeFilter('pt')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                paymentTypeFilter === 'pt'
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${paymentTypeFilter === 'pt'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               PT
             </button>
             <button
               onClick={() => setPaymentTypeFilter('addon')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                paymentTypeFilter === 'addon'
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${paymentTypeFilter === 'addon'
                   ? 'bg-indigo-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Add-Ons
             </button>
             <button
               onClick={() => setPaymentTypeFilter('renewal')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                paymentTypeFilter === 'renewal'
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${paymentTypeFilter === 'renewal'
                   ? 'bg-purple-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Renewals
             </button>
             <button
               onClick={() => setPaymentTypeFilter('balance')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                paymentTypeFilter === 'balance'
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${paymentTypeFilter === 'balance'
                   ? 'bg-teal-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Balance
             </button>
           </div>
-          
+
           {(searchTerm || selectedMethod !== 'all' || directionFilter !== 'all' || paymentTypeFilter !== 'all') && (
             <button
               onClick={() => {
@@ -1968,20 +2032,21 @@ const Payments = () => {
                   </td>
                 </tr>
               ) : (
-                currentPayments.map((payment) => {
+                currentPayments.map((payment, idx) => {
                   const isRefund = payment.is_refund || Number(payment.amount) < 0;
                   const typeInfo = getPaymentTypeBadge(payment);
                   const txnId = payment.transaction_id || `PAY-${payment.id}`;
                   const absAmount = Math.abs(Number(payment.amount) || 0);
-                  
+                  const memberName = typeof payment.member_name === 'string' ? payment.member_name : (payment.member?.full_name || 'Unknown Member');
+                  const memberPlan = typeof payment.member_plan === 'string' ? payment.member_plan : 'N/A';
+
                   return (
-                    <tr 
-                      key={payment.id} 
-                      className={`transition-colors border-b border-gray-100 ${
-                        isRefund 
-                          ? 'bg-rose-50/40 hover:bg-rose-50/70 border-l-4 border-rose-500' 
+                    <tr
+                      key={payment.id ? `pay-${payment.id}` : `pay-row-${idx}`}
+                      className={`transition-colors border-b border-gray-100 ${isRefund
+                          ? 'bg-rose-50/40 hover:bg-rose-50/70 border-l-4 border-rose-500'
                           : 'hover:bg-gray-50/80 border-l-4 border-transparent'
-                      }`}
+                        }`}
                     >
                       {selectionMode && (
                         <td className="px-4 py-4">
@@ -2001,12 +2066,11 @@ const Payments = () => {
                             <p className="text-xs text-gray-400">{formatTimeOnly(payment.payment_date)}</p>
                           )}
                           <div className="mt-1 flex items-center gap-1">
-                            <span 
-                              className={`font-mono text-[11px] px-1.5 py-0.5 rounded border ${
-                                isRefund 
-                                  ? 'bg-rose-100/70 text-rose-800 border-rose-200' 
+                            <span
+                              className={`font-mono text-[11px] px-1.5 py-0.5 rounded border ${isRefund
+                                  ? 'bg-rose-100/70 text-rose-800 border-rose-200'
                                   : 'bg-slate-100 text-slate-700 border-slate-200'
-                              }`}
+                                }`}
                               title={txnId}
                             >
                               {txnId}
@@ -2015,8 +2079,7 @@ const Payments = () => {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                navigator.clipboard.writeText(txnId);
-                                toast.success('Txn ID copied');
+                                handleCopyTxn(txnId);
                               }}
                               className="text-gray-400 hover:text-gray-700 p-0.5 rounded transition-colors"
                               title="Copy Transaction ID"
@@ -2031,14 +2094,14 @@ const Payments = () => {
                       <td className="px-5 py-4">
                         <div>
                           <p className={`font-bold text-sm ${isRefund ? 'text-rose-900' : 'text-gray-900'}`}>
-                            {payment.member_name}
+                            {memberName}
                           </p>
                           {payment.member_phone && (
-                            <p className="text-xs text-gray-500 font-medium">{payment.member_phone}</p>
+                            <p className="text-xs text-gray-500 font-medium">{String(payment.member_phone)}</p>
                           )}
-                          {payment.member_plan && payment.member_plan !== 'N/A' && (
+                          {memberPlan && memberPlan !== 'N/A' && (
                             <span className="inline-block mt-1 text-[11px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200 font-semibold">
-                              {payment.member_plan}
+                              {memberPlan}
                             </span>
                           )}
                         </div>
@@ -2184,7 +2247,7 @@ const Payments = () => {
               <span className="font-medium">{filteredPayments.length}</span> payments
             </div>
             <div className="flex items-center space-x-2">
-              <button 
+              <button
                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
                 className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2195,7 +2258,7 @@ const Payments = () => {
                 Page <span className="font-medium">{currentPage}</span> of{' '}
                 <span className="font-medium">{totalPages}</span>
               </span>
-              <button 
+              <button
                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages}
                 className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2212,8 +2275,18 @@ const Payments = () => {
         <AddPaymentModal
           isOpen={showAddPaymentModal}
           onClose={() => setShowAddPaymentModal(false)}
-          onPaymentSuccess={() => {
+          onPaymentSuccess={(newPaymentDate) => {
             fetchPayments();
+            fetchTodaySummary();
+            if (newPaymentDate) {
+              if (startDate && newPaymentDate < startDate) {
+                setStartDate(newPaymentDate);
+                toast.success(`Date range expanded to ${newPaymentDate} to show the new payment`);
+              } else if (endDate && newPaymentDate > endDate) {
+                setEndDate(newPaymentDate);
+                toast.success(`Date range expanded to ${newPaymentDate} to show the new payment`);
+              }
+            }
           }}
         />
       )}

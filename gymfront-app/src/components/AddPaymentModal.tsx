@@ -21,7 +21,7 @@ import CustomDatePicker from './CustomDatePicker';
 interface AddPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onPaymentSuccess: () => void;
+  onPaymentSuccess: (paymentDate?: string) => void;
 }
 
 interface MemberOption {
@@ -65,6 +65,8 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   const [memberResults, setMemberResults] = useState<MemberOption[]>([]);
   const [searchingMembers, setSearchingMembers] = useState(false);
   const [selectedMember, setSelectedMember] = useState<MemberOption | null>(null);
+  const [showMemberDropdown, setShowMemberDropdown] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
   // Payment Form State
   const [amount, setAmount] = useState<string>('');
@@ -76,12 +78,9 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
 
   // Search debounce
   useEffect(() => {
-    if (!isOpen) return;
-    if (selectedMember) return;
+    if (!isOpen || selectedMember) return;
 
     if (!memberSearchQuery.trim()) {
-      // Pre-load recent members
-      fetchRecentMembers();
       return;
     }
 
@@ -92,7 +91,19 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
     return () => clearTimeout(timer);
   }, [memberSearchQuery, isOpen, selectedMember]);
 
-  // Reset form when modal opens or closes
+  // Click outside to close member search dropdown
+  useEffect(() => {
+    if (!showMemberDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setShowMemberDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMemberDropdown]);
+
+  // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
       setPaymentDate(getTodayDateStr());
@@ -102,6 +113,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
       setNotes('');
       setSelectedMember(null);
       setMemberSearchQuery('');
+      setShowMemberDropdown(false);
       fetchRecentMembers();
     }
   }, [isOpen]);
@@ -125,6 +137,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
       const res = await api.get(`/gym/members?search=${encodeURIComponent(query)}&limit=15`);
       const list = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       setMemberResults(list);
+      setShowMemberDropdown(true);
     } catch (err) {
       console.warn('Failed to search members:', err);
     } finally {
@@ -135,7 +148,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   const handleSelectMember = (member: MemberOption) => {
     setSelectedMember(member);
     setMemberSearchQuery('');
-    setMemberResults([]);
+    setShowMemberDropdown(false);
 
     // If member has balance due, pre-fill or suggest amount
     const balanceDue = member.current_membership?.balance_due ?? member.balance_due ?? 0;
@@ -148,6 +161,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
     setSelectedMember(null);
     setMemberSearchQuery('');
     setAmount('');
+    setShowMemberDropdown(true);
     fetchRecentMembers();
   };
 
@@ -195,7 +209,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
 
       // Notify other components & refresh ledger
       window.dispatchEvent(new CustomEvent('paymentUpdated'));
-      onPaymentSuccess();
+      onPaymentSuccess(paymentDate);
       onClose();
     } catch (err: any) {
       const errorMsg = err.response?.data?.detail || err.message || 'Failed to record payment';
@@ -247,24 +261,40 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
             </label>
 
             {!selectedMember ? (
-              <div className="relative">
+              <div className="relative" ref={searchContainerRef}>
                 <div className="relative flex items-center">
                   <Search className="absolute left-3 h-4 w-4 text-gray-400" />
                   <input
                     type="text"
                     value={memberSearchQuery}
-                    onChange={(e) => setMemberSearchQuery(e.target.value)}
+                    onFocus={() => setShowMemberDropdown(true)}
+                    onChange={(e) => {
+                      setMemberSearchQuery(e.target.value);
+                      setShowMemberDropdown(true);
+                    }}
                     placeholder="Search member by name, phone or email..."
-                    className="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                    className="w-full pl-9 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
                     autoFocus
                   />
+                  {memberSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMemberSearchQuery('');
+                        setShowMemberDropdown(false);
+                      }}
+                      className="absolute right-8 text-gray-400 hover:text-gray-600 p-1"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   {searchingMembers && (
                     <Loader2 className="absolute right-3 h-4 w-4 text-blue-500 animate-spin" />
                   )}
                 </div>
 
                 {/* Search Results Dropdown */}
-                {memberResults.length > 0 && (
+                {showMemberDropdown && memberResults.length > 0 && (
                   <div className="absolute top-full left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-white rounded-xl shadow-xl border border-gray-100 z-50 divide-y divide-gray-50">
                     {memberResults.map((m) => {
                       const balance = m.current_membership?.balance_due ?? m.balance_due ?? 0;

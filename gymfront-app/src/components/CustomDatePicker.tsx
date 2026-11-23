@@ -47,39 +47,51 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Parse current value or fallback to today
+  // Normalize input value (handle YYYY-MM-DD or ISO datetime strings)
+  const cleanValue = useMemo(() => {
+    if (!value) return '';
+    const s = String(value).trim();
+    return s.split('T')[0].split(' ')[0];
+  }, [value]);
+
+  // Today in local YYYY-MM-DD
   const today = useMemo(() => {
     const now = new Date();
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   }, []);
 
-  const [currentYear, currentMonth, currentDay] = useMemo(() => {
-    if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      const [y, m, d] = value.split('-').map(Number);
-      return [y, m - 1, d];
+  const [currentYear, currentMonth] = useMemo(() => {
+    if (cleanValue && /^\d{4}-\d{2}-\d{2}$/.test(cleanValue)) {
+      const [y, m] = cleanValue.split('-').map(Number);
+      if (!isNaN(y) && !isNaN(m) && m >= 1 && m <= 12) {
+        return [y, m - 1];
+      }
     }
     const now = new Date();
-    return [now.getFullYear(), now.getMonth(), now.getDate()];
-  }, [value]);
+    return [now.getFullYear(), now.getMonth()];
+  }, [cleanValue]);
 
   const [viewYear, setViewYear] = useState<number>(currentYear);
   const [viewMonth, setViewMonth] = useState<number>(currentMonth);
 
   // Keep view in sync when value changes from outside
   useEffect(() => {
-    if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      const [y, m] = value.split('-').map(Number);
-      setViewYear(y);
-      setViewMonth(m - 1);
+    if (cleanValue && /^\d{4}-\d{2}-\d{2}$/.test(cleanValue)) {
+      const [y, m] = cleanValue.split('-').map(Number);
+      if (!isNaN(y) && !isNaN(m) && m >= 1 && m <= 12) {
+        setViewYear(y);
+        setViewMonth(m - 1);
+      }
     }
-  }, [value]);
+  }, [cleanValue]);
 
   // Handle click outside to close dropdown
   useEffect(() => {
     if (!isOpen) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (containerRef.current && !containerRef.current.contains(target)) {
         setIsOpen(false);
       }
     };
@@ -98,15 +110,17 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
     };
   }, [isOpen]);
 
-  // Year list for dropdown: 15 years back, 3 years forward
+  // Year list for dropdown: ensure viewYear is always included
   const todayYear = new Date().getFullYear();
   const yearOptions = useMemo(() => {
     const years: number[] = [];
-    for (let y = todayYear + 2; y >= todayYear - 15; y--) {
+    const minYear = Math.min(viewYear, todayYear - 15);
+    const maxYear = Math.max(viewYear, todayYear + 3);
+    for (let y = maxYear; y >= minYear; y--) {
       years.push(y);
     }
     return years;
-  }, [todayYear]);
+  }, [todayYear, viewYear]);
 
   // Month navigation
   const prevMonth = () => {
@@ -156,7 +170,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
         dateStr,
         isCurrentMonth: false,
         isDisabled: Boolean((minDate && dateStr < minDate) || (maxDate && dateStr > maxDate)),
-        isSelected: dateStr === value,
+        isSelected: dateStr === cleanValue,
         isToday: dateStr === today
       });
     }
@@ -169,7 +183,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
         dateStr,
         isCurrentMonth: true,
         isDisabled: Boolean((minDate && dateStr < minDate) || (maxDate && dateStr > maxDate)),
-        isSelected: dateStr === value,
+        isSelected: dateStr === cleanValue,
         isToday: dateStr === today
       });
     }
@@ -185,27 +199,33 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
         dateStr,
         isCurrentMonth: false,
         isDisabled: Boolean((minDate && dateStr < minDate) || (maxDate && dateStr > maxDate)),
-        isSelected: dateStr === value,
+        isSelected: dateStr === cleanValue,
         isToday: dateStr === today
       });
     }
 
     return days;
-  }, [viewYear, viewMonth, value, today, minDate, maxDate]);
+  }, [viewYear, viewMonth, cleanValue, today, minDate, maxDate]);
 
   // Format display text for input button
   const displayLabel = useMemo(() => {
-    if (!value) return '';
+    if (!cleanValue) return '';
     try {
-      const [y, m, d] = value.split('-').map(Number);
-      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
-        return `${d} ${MONTH_SHORT[m - 1]} ${y}`;
+      const parts = cleanValue.split('-');
+      if (parts.length === 3) {
+        const y = Number(parts[0]);
+        const m = Number(parts[1]);
+        const d = Number(parts[2]);
+        if (!isNaN(y) && !isNaN(m) && !isNaN(d) && m >= 1 && m <= 12) {
+          const monthText = MONTH_SHORT[m - 1] || '';
+          return `${d} ${monthText} ${y}`.trim();
+        }
       }
     } catch {
       // fallback
     }
-    return value;
-  }, [value]);
+    return cleanValue;
+  }, [cleanValue]);
 
   const handleSelectDate = (dateStr: string) => {
     onChange(dateStr);
