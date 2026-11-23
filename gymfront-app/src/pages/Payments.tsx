@@ -829,13 +829,14 @@ const Payments = () => {
   };
 
   // ===== SINGLE PAYMENT DELETE =====
-  const handleSingleDelete = async (paymentId: number | string, paymentAmount: number | string, memberName: string) => {
+  const handleSingleDelete = async (paymentId: number | string, paymentAmount: number | string, memberName?: string) => {
     const numAmount = Number(paymentAmount) || 0;
     const isRefund = numAmount < 0;
     const amountDisplay = isRefund ? `refund of ${formatCurrency(Math.abs(numAmount))}` : `payment of ${formatCurrency(numAmount)}`;
+    const safeName = memberName || 'Member';
 
     if (!window.confirm(
-      `Are you sure you want to delete the ${amountDisplay} for ${memberName}?\n\n` +
+      `Are you sure you want to delete the ${amountDisplay} for ${safeName}?\n\n` +
       `This action cannot be undone and will update the member's balance.`
     )) {
       return;
@@ -2220,7 +2221,7 @@ const Payments = () => {
                       {/* Actions */}
                       <td className="px-5 py-4 whitespace-nowrap text-right">
                         <button
-                          onClick={() => handleSingleDelete(payment.id, payment.amount, payment.member_name)}
+                          onClick={() => handleSingleDelete(payment.id, payment.amount, payment.member_name || 'Member')}
                           disabled={deleting}
                           className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                           title="Delete payment"
