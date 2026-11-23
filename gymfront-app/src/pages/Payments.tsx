@@ -2177,9 +2177,9 @@ const Payments = () => {
                                 + {currencySymbol} {new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0 }).format(absAmount)}
                               </span>
                             </div>
-                            {payment.gst_amount > 0 && (
+                            {Number(payment.gst_amount || 0) > 0 && (
                               <p className="text-[11px] text-purple-600 font-medium mt-0.5 pl-0.5">
-                                GST: {formatCurrency(payment.gst_amount)}
+                                GST: {formatCurrency(payment.gst_amount || 0)}
                               </p>
                             )}
                           </div>
