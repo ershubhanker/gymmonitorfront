@@ -866,7 +866,7 @@ const Payments = () => {
   const handleBulkDelete = async () => {
     const paymentIds = Array.from(selectedPayments);
     const selectedPaymentsData = filteredPayments.filter(p => selectedPayments.has(p.id));
-    const totalAmount = selectedPaymentsData.reduce((sum, p) => sum + p.amount, 0);
+    const totalAmount = selectedPaymentsData.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
     setShowDeleteConfirm(false);
     setDeleting(true);
@@ -1287,7 +1287,7 @@ const Payments = () => {
   const DeleteConfirmModal = () => {
     const selectedCount = selectedPayments.size;
     const selectedData = filteredPayments.filter(p => selectedPayments.has(p.id));
-    const totalAmount = selectedData.reduce((sum, p) => sum + p.amount, 0);
+    const totalAmount = selectedData.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const isRefund = totalAmount < 0;
 
     return (
@@ -1647,7 +1647,7 @@ const Payments = () => {
               <p className="text-sm text-blue-700">
                 {selectedCount} payment{selectedCount !== 1 ? 's' : ''} selected
                 {selectedCount > 0 && ` • Total: ${formatCurrency(
-                  filteredPayments.filter(p => selectedPayments.has(p.id)).reduce((sum, p) => sum + p.amount, 0)
+                  filteredPayments.filter(p => selectedPayments.has(p.id)).reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
                 )}`}
               </p>
             </div>
