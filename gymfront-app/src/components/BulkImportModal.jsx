@@ -883,6 +883,93 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
   };
 
   // ============================================================
+  // 🔍 SMART PLAN MATCHING (PREVENTS DUPLICATE PLAN CREATION)
+  // ============================================================
+  const normalizePlanString = (str) => {
+    if (!str) return '';
+    return String(str)
+      .toLowerCase()
+      .replace(/[-_()]/g, ' ')
+      .replace(/\b(plan|package|membership|subscription)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const extractDurationDays = (planName, explicitDuration = null) => {
+    if (explicitDuration && Number(explicitDuration) > 0) return Number(explicitDuration);
+    const s = safeString(planName).toLowerCase();
+    if (s.includes('half') || s.includes('6 month')) return 180;
+    if (s.includes('quarter') || s.includes('3 month')) return 90;
+    if (s.includes('year') || s.includes('annual') || s.includes('12 month')) return 365;
+    if (s.includes('day')) {
+      const m = s.match(/(\d+)\s*day/);
+      if (m) return parseInt(m[1], 10);
+    }
+    if (s.includes('month') || s.includes('monthly')) {
+      const m = s.match(/(\d+)\s*month/);
+      if (m) return parseInt(m[1], 10) * 30;
+      return 30;
+    }
+    return null;
+  };
+
+  const getCanonicalDurationKey = (planName, explicitDuration = null) => {
+    const durationDays = extractDurationDays(planName, explicitDuration);
+    if (!durationDays) return null;
+    if (durationDays >= 28 && durationDays <= 32) return 'monthly_30';
+    if (durationDays >= 85 && durationDays <= 95) return 'quarterly_90';
+    if (durationDays >= 175 && durationDays <= 185) return 'half_yearly_180';
+    if (durationDays >= 360 && durationDays <= 366) return 'yearly_365';
+    return 'custom_' + durationDays;
+  };
+
+  const findExistingMatchingPlan = (planName, explicitDuration = null, plans = []) => {
+    if (!planName || !plans || plans.length === 0) return null;
+    const rawClean = safeString(planName).toLowerCase().trim();
+    if (!rawClean) return null;
+
+    // 1. Exact match (case-insensitive & whitespace trimmed)
+    const exact = plans.find(p => p && p.name && safeString(p.name).toLowerCase().trim() === rawClean);
+    if (exact) return exact;
+
+    // 2. Normalized match (without 'plan', 'membership', 'package', 'subscription')
+    const normTarget = normalizePlanString(planName);
+    if (normTarget) {
+      const normMatch = plans.find(p => p && p.name && normalizePlanString(p.name) === normTarget);
+      if (normMatch) return normMatch;
+    }
+
+    // 3. Substring match for named plans (e.g. 'Zumba' matches 'Zumba Special')
+    if (normTarget && normTarget.length >= 3) {
+      const subMatch = plans.find(p => {
+        if (!p || !p.name) return false;
+        const pNorm = normalizePlanString(p.name);
+        if (!pNorm) return false;
+        // Guard against 'yearly' matching 'half yearly'
+        if ((normTarget.includes('half') !== pNorm.includes('half')) && (normTarget.includes('year') || pNorm.includes('year'))) {
+          return false;
+        }
+        return pNorm.includes(normTarget) || normTarget.includes(pNorm);
+      });
+      if (subMatch) return subMatch;
+    }
+
+    // 4. Canonical duration match for standard duration keywords
+    const targetKey = getCanonicalDurationKey(planName, explicitDuration);
+    if (targetKey) {
+      const durationMatch = plans.find(p => {
+        if (!p) return false;
+        const pDur = p.duration_days || p.duration || p.explicitDuration;
+        const pKey = getCanonicalDurationKey(p.name, pDur);
+        return pKey === targetKey;
+      });
+      if (durationMatch) return durationMatch;
+    }
+
+    return null;
+  };
+
+  // ============================================================
   // 🚀 HANDLE IMPORT (FIXED ERROR HANDLING)
   // ============================================================
   const handleImport = async () => {
@@ -912,16 +999,33 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
       });
 
       const uniquePlans = [...new Set(previewData.map(m => safeString(m.plan_name)).filter(Boolean))];
-      const plansToCreate = uniquePlans.filter(name => {
-        if (!name) return false;
-        const cleanName = name.toLowerCase().trim();
-        return !existingPlanMap[cleanName];
-      });
+      const plansToCreate = [];
+
+      for (const name of uniquePlans) {
+        if (!name) continue;
+        const matchingRow = previewData.find(
+          m => safeString(m.plan_name).toLowerCase().trim() === name.toLowerCase().trim() && m.duration
+        );
+        const explicitDuration = matchingRow ? matchingRow.duration : null;
+
+        // Check if plan already exists in gym database (exact, normalized, substring, or duration match)
+        const matched = findExistingMatchingPlan(name, explicitDuration, existingPlans);
+        if (matched) {
+          existingPlanMap[name.toLowerCase().trim()] = matched.id;
+        } else {
+          // Check if already queued for creation in this batch to prevent duplicate creation
+          const matchedInQueue = findExistingMatchingPlan(name, explicitDuration, plansToCreate);
+          if (!matchedInQueue) {
+            plansToCreate.push({ name, explicitDuration });
+          }
+        }
+      }
 
       if (plansToCreate.length > 0 && !isCancelledRef.current) {
         toast.loading(`Creating ${plansToCreate.length} missing plans...`, { id: 'create-plans' });
         
-        for (const planName of plansToCreate) {
+        for (const planItem of plansToCreate) {
+          const planName = typeof planItem === 'string' ? planItem : planItem.name;
           if (isCancelledRef.current) {
             toast.dismiss('create-plans');
             toast.info('Import cancelled during plan creation.');
@@ -934,7 +1038,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             const matchingRow = previewData.find(
               m => safeString(m.plan_name).toLowerCase().trim() === planName.toLowerCase().trim() && m.duration
             );
-            const explicitDuration = matchingRow ? matchingRow.duration : null;
+            const explicitDuration = matchingRow ? matchingRow.duration : (planItem.explicitDuration || null);
             const { durationDays, planType } = extractDuration(planName, explicitDuration);
             
             // Find any row with this plan name that has a cost mapped
@@ -957,8 +1061,12 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
             const newPlanResponse = await api.post('/gym/plans', planData);
             const newPlan = newPlanResponse.data;
             
-            if (newPlan && newPlan.name) {
-              existingPlanMap[newPlan.name.toLowerCase().trim()] = newPlan.id;
+            if (newPlan) {
+              existingPlans.push(newPlan);
+              if (newPlan.name) {
+                existingPlanMap[newPlan.name.toLowerCase().trim()] = newPlan.id;
+              }
+              existingPlanMap[planName.toLowerCase().trim()] = newPlan.id;
             }
             createdPlans.push(planName);
             
@@ -1195,14 +1303,21 @@ const BulkImportModal = ({ isOpen, onClose, onImportComplete }) => {
         let planName = safeString(member.plan_name);
         
         if (planName) {
-          const cleanPlanName = planName.toLowerCase().trim();
-          planId = planIdMap[cleanPlanName];
-          
-          if (!planId) {
-            for (const [key, id] of Object.entries(planIdMap)) {
-              if (key.includes(cleanPlanName) || cleanPlanName.includes(key)) {
-                planId = id;
-                break;
+          // 1. Smart match against existing/created plans (exact, normalized, substring, or duration)
+          const matchedPlan = findExistingMatchingPlan(planName, member.duration, allPlans);
+          if (matchedPlan) {
+            planId = matchedPlan.id;
+            planName = matchedPlan.name;
+          } else {
+            const cleanPlanName = planName.toLowerCase().trim();
+            planId = planIdMap[cleanPlanName];
+            
+            if (!planId) {
+              for (const [key, id] of Object.entries(planIdMap)) {
+                if (key.includes(cleanPlanName) || cleanPlanName.includes(key)) {
+                  planId = id;
+                  break;
+                }
               }
             }
           }
