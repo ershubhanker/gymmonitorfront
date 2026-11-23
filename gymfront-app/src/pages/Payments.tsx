@@ -96,12 +96,49 @@ const isPaymentToday = (payment: any): boolean => {
   return Boolean(pLocal && pLocal === getTodayDateStr());
 };
 
+export interface Payment {
+  id: number | string;
+  payment_date: string;
+  amount: number | string;
+  payment_method: string;
+  status?: string;
+  member_id?: number | string;
+  member_name?: string;
+  member_phone?: string;
+  member_email?: string;
+  member_plan?: any;
+  member_balance?: number;
+  member?: {
+    id?: number | string;
+    full_name?: string;
+    phone?: string;
+    email?: string;
+    balance_amount?: number;
+  };
+  membership?: any;
+  notes?: string;
+  transaction_id?: string;
+  is_inflow?: boolean;
+  is_refund?: boolean;
+  is_renewal?: boolean;
+  is_balance_payment?: boolean;
+  payment_category?: string;
+  payment_type?: string;
+  addon_name?: string;
+  original_invoice_id?: string | null;
+  subtotal?: number;
+  gst_amount?: number;
+  gst_rate?: number;
+  created_at?: string;
+  [key: string]: any;
+}
+
 const Payments = () => {
   const { user, setUser } = useAuth();
-  const [payments, setPayments] = useState([]);
-  const [filteredPayments, setFilteredPayments] = useState([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [filteredPayments, setFilteredPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState(() => {
     const todayStr = getTodayDateStr();
     const [year, month] = todayStr.split('-');
@@ -122,7 +159,7 @@ const Payments = () => {
 
   // Delete-related state
   const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedPayments, setSelectedPayments] = useState(new Set());
+  const [selectedPayments, setSelectedPayments] = useState<Set<any>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -455,24 +492,24 @@ const Payments = () => {
         setTodaySummary(todaySummaryData);
       }
 
-      let filtered = [...payments];
+      let filtered: Payment[] = [...payments];
 
       // ✅ Filter strictly by date range using Asia/Kolkata local date
       if (filtered.length > 0) {
         if (startDate && endDate) {
-          filtered = filtered.filter(payment => {
+          filtered = filtered.filter((payment: Payment) => {
             const pDate = getPaymentLocalDateStr(payment.payment_date);
-            return pDate && pDate >= startDate && pDate <= endDate;
+            return Boolean(pDate && pDate >= startDate && pDate <= endDate);
           });
         } else if (startDate) {
-          filtered = filtered.filter(payment => {
+          filtered = filtered.filter((payment: Payment) => {
             const pDate = getPaymentLocalDateStr(payment.payment_date);
-            return pDate && pDate >= startDate;
+            return Boolean(pDate && pDate >= startDate);
           });
         } else if (endDate) {
-          filtered = filtered.filter(payment => {
+          filtered = filtered.filter((payment: Payment) => {
             const pDate = getPaymentLocalDateStr(payment.payment_date);
-            return pDate && pDate <= endDate;
+            return Boolean(pDate && pDate <= endDate);
           });
         }
       }
