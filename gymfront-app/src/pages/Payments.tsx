@@ -29,7 +29,8 @@ import {
   Filter,
   ArrowUpRight,
   ArrowDownLeft,
-  Copy
+  Copy,
+  PlusCircle
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
@@ -37,6 +38,7 @@ import api from '../services/api';
 import toast from 'react-hot-toast';
 import { parseUtcDate } from '../utils/dateUtils';
 import CustomDatePicker from '../components/CustomDatePicker';
+import AddPaymentModal from '../components/AddPaymentModal';
 
 // Helper to extract strictly local YYYY-MM-DD (Asia/Kolkata) from payment date
 const getPaymentLocalDateStr = (paymentDate: any): string => {
@@ -228,6 +230,7 @@ const Payments = () => {
     user?.gst_rate !== undefined && user?.gst_rate !== null ? Number(user.gst_rate) : 5.0
   );
   const [showGstModal, setShowGstModal] = useState(false);
+  const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
   const [updatingGst, setUpdatingGst] = useState(false);
 
   // Sync gstRate whenever user profile updates
@@ -1458,10 +1461,18 @@ const Payments = () => {
               </div>
             </button>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowAddPaymentModal(true)}
+              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-4 py-2 rounded-xl shadow-md transition-all active:scale-95"
+              title="Record a payment with custom or back date for an existing member"
+            >
+              <PlusCircle className="h-5 w-5" />
+              Add Payment
+            </button>
             <button
               onClick={() => setShowGstModal(true)}
-              className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-all"
+              className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl hover:bg-white/30 transition-all font-medium"
               title="Change GST Rate"
             >
               <Building className="h-5 w-5" />
@@ -2197,6 +2208,15 @@ const Payments = () => {
       </div>
 
       {/* Modals */}
+      {showAddPaymentModal && (
+        <AddPaymentModal
+          isOpen={showAddPaymentModal}
+          onClose={() => setShowAddPaymentModal(false)}
+          onPaymentSuccess={() => {
+            fetchPayments();
+          }}
+        />
+      )}
       {showDatePicker && <DatePickerModal />}
       {showGstModal && <GstRateModal />}
       {showDeleteConfirm && <DeleteConfirmModal />}
