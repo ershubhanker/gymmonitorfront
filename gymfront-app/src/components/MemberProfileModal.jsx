@@ -764,6 +764,7 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
   const [paymentEditData, setPaymentEditData] = useState(() => {
     const curr = normalizedInitial?.current_membership;
     return {
+      payment_id: null,
       amount_paid: curr?.amount_paid !== undefined ? curr.amount_paid.toString() : '',
       discount_applied: curr?.discount_applied !== undefined ? curr.discount_applied.toString() : '',
       payment_method: 'cash',
@@ -1426,6 +1427,7 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
       const activePayDate = curr.payment_date || curr.last_payment_date || memPayment?.payment_date;
       
       setPaymentEditData({
+        payment_id: memPayment?.id || null,
         amount_paid: amountPaid.toString(),
         discount_applied: discountApplied.toString(),
         payment_method: memPayment?.payment_method || 'cash',
@@ -1494,6 +1496,7 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
       const chosenPaymentDate = paymentEditData.payment_date;
 
       const payload = {
+        payment_id: paymentEditData.payment_id || undefined,
         amount_paid: amountPaid,
         discount_applied: discountApplied,
         notes: paymentEditData.notes || '',
@@ -1529,7 +1532,7 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
       setPayments(prev => {
         if (!Array.isArray(prev) || prev.length === 0) return prev;
         return prev.map(p => {
-          if (p.membership_id === membershipId) {
+          if ((paymentEditData.payment_id && p.id === paymentEditData.payment_id) || (!paymentEditData.payment_id && p.membership_id === membershipId)) {
             return {
               ...p,
               amount: amountPaid,
@@ -1558,12 +1561,39 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
       toast.error(errorMessage);
     } finally {
       setSavingPayment(false);
+      setPaymentEditData(prev => ({ ...prev, payment_id: null }));
     }
   };
 
   const handlePaymentEditCancel = () => {
     setIsEditingPayment(false);
     setPaymentError(null);
+    setPaymentEditData(prev => ({ ...prev, payment_id: null }));
+  };
+
+  const handleDeletePayment = async (paymentId, paymentAmount) => {
+    if (!window.confirm(`Are you sure you want to delete this payment of ${formatCurrency(paymentAmount)}?`)) {
+      return;
+    }
+    try {
+      toast.loading('Deleting payment...', { id: 'delete-payment' });
+      await api.delete(`/gym/payments/${paymentId}`);
+      toast.dismiss('delete-payment');
+      toast.success('Payment deleted successfully');
+      
+      await Promise.all([
+        fetchMemberDetails(),
+        fetchPayments(),
+        fetchBalanceDetails(),
+      ]);
+      window.dispatchEvent(new CustomEvent('paymentUpdated'));
+      window.dispatchEvent(new CustomEvent('paymentAdded'));
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      toast.dismiss('delete-payment');
+      console.error('Error deleting payment:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete payment');
+    }
   };
 
   // ===== MEMBERSHIP EDIT FUNCTIONS =====
@@ -3857,60 +3887,72 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
               <div className="text-center py-4">
                 <Loader2 className="h-6 w-6 animate-spin text-gray-400 mx-auto" />
               </div>
-            ) : payments.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-[10px]">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="text-left px-2 py-1.5">Date</th>
-                      <th className="text-left px-2 py-1.5">Amount</th>
-                      <th className="text-left px-2 py-1.5">Method</th>
-                      <th className="text-left px-2 py-1.5">Status</th>
-                      <th className="text-right px-2 py-1.5">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {payments.map((payment) => (
-                      <tr key={payment.id} className="hover:bg-gray-50">
-                        <td className="px-2 py-1.5 font-medium text-gray-900">{formatDate(payment.payment_date)}</td>
-                        <td className="px-2 py-1.5 font-medium text-green-600">{formatCurrency(payment.amount)}</td>
-                        <td className="px-2 py-1.5 capitalize">{payment.payment_method}</td>
-                        <td className="px-2 py-1.5">{getPaymentStatusBadge(payment.status)}</td>
-                        <td className="px-2 py-1.5 text-right">
-                          {currentMembership && (
+            ) : (() => {
+              const visiblePayments = (payments || []).filter(p => p && p.status !== 'cancelled' && (Number(p.amount) !== 0 || p.status === 'paid'));
+              return visiblePayments.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[10px]">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-2 py-1.5">Date</th>
+                        <th className="text-left px-2 py-1.5">Amount</th>
+                        <th className="text-left px-2 py-1.5">Method</th>
+                        <th className="text-left px-2 py-1.5">Status</th>
+                        <th className="text-right px-2 py-1.5">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {visiblePayments.map((payment) => (
+                        <tr key={payment.id} className="hover:bg-gray-50">
+                          <td className="px-2 py-1.5 font-medium text-gray-900">{formatDate(payment.payment_date)}</td>
+                          <td className="px-2 py-1.5 font-medium text-green-600">{formatCurrency(payment.amount)}</td>
+                          <td className="px-2 py-1.5 capitalize">{payment.payment_method}</td>
+                          <td className="px-2 py-1.5">{getPaymentStatusBadge(payment.status)}</td>
+                          <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                            {currentMembership && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleEditPaymentClick();
+                                  setPaymentEditData(prev => ({
+                                    ...prev,
+                                    payment_id: payment.id,
+                                    payment_date: toDateInputValue(payment.payment_date) || prev.payment_date,
+                                    amount_paid: (payment.amount !== undefined && payment.amount !== null ? payment.amount : prev.amount_paid).toString(),
+                                    payment_method: payment.payment_method || prev.payment_method,
+                                    notes: payment.notes || prev.notes
+                                  }));
+                                }}
+                                className="text-purple-600 hover:text-purple-800 p-0.5 rounded hover:bg-purple-50 transition-colors"
+                                title="Edit this payment"
+                              >
+                                <Pencil className="h-3 w-3 inline" />
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => {
-                                handleEditPaymentClick();
-                                setPaymentEditData(prev => ({
-                                  ...prev,
-                                  payment_date: toDateInputValue(payment.payment_date) || prev.payment_date,
-                                  amount_paid: (payment.amount !== undefined && payment.amount !== null ? payment.amount : prev.amount_paid).toString(),
-                                  payment_method: payment.payment_method || prev.payment_method,
-                                  notes: payment.notes || prev.notes
-                                }));
-                              }}
-                              className="text-purple-600 hover:text-purple-800 p-0.5 rounded hover:bg-purple-50 transition-colors"
-                              title="Edit this payment"
+                              onClick={() => handleDeletePayment(payment.id, payment.amount)}
+                              className="text-red-500 hover:text-red-700 p-0.5 rounded hover:bg-red-50 transition-colors ml-1.5"
+                              title="Delete this payment"
                             >
-                              <Pencil className="h-3 w-3 inline" />
+                              <Trash2 className="h-3 w-3 inline" />
                             </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div className="mt-2 p-2 bg-gray-50 rounded-lg flex justify-between">
-                  <span className="font-medium text-gray-600 text-[10px]">Total Paid (All Time):</span>
-                  <span className="font-bold text-green-600 text-xs">{formatCurrency(payments.reduce((sum, p) => sum + (p.amount || 0), 0))}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="mt-2 p-2 bg-gray-50 rounded-lg flex justify-between">
+                    <span className="font-medium text-gray-600 text-[10px]">Total Paid (All Time):</span>
+                    <span className="font-bold text-green-600 text-xs">{formatCurrency(visiblePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0))}</span>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="text-center py-4">
-                <p className="text-xs text-gray-400">No payment records</p>
-              </div>
-            )}
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-xs text-gray-400">No payment records</p>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Membership History */}
