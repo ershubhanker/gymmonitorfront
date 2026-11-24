@@ -4,7 +4,8 @@ import {
   MessageSquare, Building2, Phone, CheckCircle2, AlertTriangle,
   RefreshCw, Search, Copy, Check, ExternalLink, Shield, Globe,
   Link as LinkIcon, Unlink, Key, ArrowRight, X, Loader2, Sparkles,
-  PhoneCall, Hash, Info, Smartphone, ChevronDown
+  PhoneCall, Hash, Info, Smartphone, ChevronDown, Play, Pause,
+  PauseCircle, PlayCircle, Power
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -181,6 +182,9 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
   const [exchangeGymId, setExchangeGymId] = useState('');
   const [submittingExchange, setSubmittingExchange] = useState(false);
 
+  // Toggle Service State
+  const [togglingServiceGymId, setTogglingServiceGymId] = useState(null);
+
   const fetchAccounts = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
@@ -215,6 +219,20 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
     setCopiedText(text);
     toast.success(`${label} copied to clipboard!`);
     setTimeout(() => setCopiedText(null), 2000);
+  };
+
+  const handleToggleService = async (gymId, enable) => {
+    setTogglingServiceGymId(gymId);
+    try {
+      const res = await api.post(`/admin/whatsapp/toggle-service/${gymId}`, { enabled: enable });
+      toast.success(res.data?.message || `WhatsApp service ${enable ? 'started' : 'stopped'}`);
+      fetchAccounts(true);
+    } catch (err) {
+      console.error('Error toggling WhatsApp service:', err);
+      toast.error(err.response?.data?.detail || 'Failed to toggle service');
+    } finally {
+      setTogglingServiceGymId(null);
+    }
   };
 
   // Open Link Modal
@@ -411,7 +429,7 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
         </div>
 
         {/* Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-6">
           <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-400">Total Meta WABAs</p>
@@ -425,20 +443,34 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
           <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-400">Linked to Gyms</p>
-              <p className="text-2xl font-bold text-emerald-400 mt-1">{data.linked_count || 0}</p>
+              <p className="text-2xl font-bold text-sky-400 mt-1">{data.linked_count || 0}</p>
             </div>
-            <div className="p-2.5 bg-emerald-500/10 rounded-lg text-emerald-400">
+            <div className="p-2.5 bg-sky-500/10 rounded-lg text-sky-400">
               <CheckCircle2 className="h-5 w-5" />
             </div>
           </div>
 
           <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-400">Unlinked / Pending</p>
-              <p className="text-2xl font-bold text-amber-400 mt-1">{data.unlinked_count || 0}</p>
+              <p className="text-xs font-medium text-gray-400">Service Active</p>
+              <p className="text-2xl font-bold text-emerald-400 mt-1">
+                {(data.accounts || []).filter(a => a.linked_gym && a.linked_gym.whatsapp_status !== 'paused').length}
+              </p>
+            </div>
+            <div className="p-2.5 bg-emerald-500/10 rounded-lg text-emerald-400">
+              <Play className="h-5 w-5 fill-current" />
+            </div>
+          </div>
+
+          <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-400">Service Stopped</p>
+              <p className="text-2xl font-bold text-amber-400 mt-1">
+                {(data.accounts || []).filter(a => a.linked_gym && a.linked_gym.whatsapp_status === 'paused').length}
+              </p>
             </div>
             <div className="p-2.5 bg-amber-500/10 rounded-lg text-amber-400">
-              <AlertTriangle className="h-5 w-5" />
+              <Pause className="h-5 w-5 fill-current" />
             </div>
           </div>
         </div>
@@ -626,6 +658,36 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
 
                     {isLinked ? (
                       <>
+                        {gym.whatsapp_status === 'paused' ? (
+                          <button
+                            onClick={() => handleToggleService(gym.id, true)}
+                            disabled={togglingServiceGymId === gym.id}
+                            className="px-3 py-1.5 bg-emerald-950/70 hover:bg-emerald-900 text-emerald-300 rounded-xl text-xs font-semibold transition-colors border border-emerald-700/60 flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                            title="Start / Resume WhatsApp messaging service for this gym"
+                          >
+                            {togglingServiceGymId === gym.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Play className="h-3.5 w-3.5 fill-current text-emerald-400" />
+                            )}
+                            <span>Start Service</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleToggleService(gym.id, false)}
+                            disabled={togglingServiceGymId === gym.id}
+                            className="px-3 py-1.5 bg-amber-950/70 hover:bg-amber-900 text-amber-300 rounded-xl text-xs font-semibold transition-colors border border-amber-700/60 flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                            title="Stop / Pause WhatsApp messaging service for this gym"
+                          >
+                            {togglingServiceGymId === gym.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Pause className="h-3.5 w-3.5 fill-current text-amber-400" />
+                            )}
+                            <span>Stop Service</span>
+                          </button>
+                        )}
+
                         {onSelectGym && (
                           <button
                             onClick={() => onSelectGym(gym.id, gym.name)}
@@ -679,11 +741,18 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
                           <span className="text-gray-200">{gym.owner_name || gym.email || '—'}</span>
                         </div>
                         <div className="flex justify-between items-center py-1 border-b border-gray-800/50">
-                          <span className="text-gray-400">Connection Status:</span>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-950 text-emerald-300 font-medium">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                            {gym.whatsapp_status}
-                          </span>
+                          <span className="text-gray-400">Messaging Service:</span>
+                          {gym.whatsapp_status === 'paused' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs bg-amber-950/80 text-amber-300 font-semibold border border-amber-800/60">
+                              <PauseCircle className="h-3.5 w-3.5 text-amber-400" />
+                              Service Stopped / Paused
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs bg-emerald-950/80 text-emerald-300 font-semibold border border-emerald-800/60">
+                              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                              Service Active & Sending
+                            </span>
+                          )}
                         </div>
                         <div className="flex justify-between items-center py-1">
                           <span className="text-gray-400">Connected Phone:</span>

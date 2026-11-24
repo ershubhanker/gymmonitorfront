@@ -4,9 +4,12 @@ import {
   ArrowLeft, User, MailIcon, PhoneIcon, MapPin, Clock, 
   BarChart3, Shield, Award, CreditCard, DollarSign, Wallet,
   Users, Building2, Loader2, Edit, Trash2, ExternalLink,
-  Search, X, ChevronRight, Calendar, AlertCircle, Crown, IndianRupee
+  Search, X, ChevronRight, Calendar, AlertCircle, Crown, IndianRupee,
+  MessageSquare, Play, Pause, PauseCircle
 } from 'lucide-react';
 import { formatCurrency, formatDate, formatDateTime, statusBadge } from '../../services/adminHelpers';
+import api from '../../services/api';
+import toast from 'react-hot-toast';
 
 const DetailSection = ({ title, icon, children }) => (
   <div className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden">
@@ -66,6 +69,27 @@ const GymDetails = ({
   const [filteredMembers, setFilteredMembers] = useState([]);
   const [selectedMemberIds, setSelectedMemberIds] = useState([]);
   const [showAllMembers, setShowAllMembers] = useState(false);
+  const [togglingWhatsApp, setTogglingWhatsApp] = useState(false);
+  const [currentGym, setCurrentGym] = useState(gym);
+
+  useEffect(() => {
+    setCurrentGym(gym);
+  }, [gym]);
+
+  const handleToggleWhatsAppService = async (enable) => {
+    if (!currentGym?.id) return;
+    setTogglingWhatsApp(true);
+    try {
+      const res = await api.post(`/admin/whatsapp/toggle-service/${currentGym.id}`, { enabled: enable });
+      toast.success(res.data?.message || `WhatsApp service ${enable ? 'started' : 'stopped'}`);
+      setCurrentGym(prev => ({ ...prev, whatsapp_status: res.data?.whatsapp_status }));
+    } catch (err) {
+      console.error('Failed to toggle WhatsApp service:', err);
+      toast.error(err.response?.data?.detail || 'Failed to toggle WhatsApp service');
+    } finally {
+      setTogglingWhatsApp(false);
+    }
+  };
 
   useEffect(() => {
     if (gym?.members) {
@@ -296,6 +320,82 @@ const GymDetails = ({
           </div>
         </div>
       </div>
+
+      {/* WhatsApp Business API Integration & Service Control */}
+      {(currentGym.whatsapp_phone_number || currentGym.whatsapp_waba_id || currentGym.whatsapp_phone_number_id) && (
+        <div className="bg-gradient-to-r from-emerald-950/40 via-gray-900 to-indigo-950/40 border border-emerald-800/50 rounded-2xl p-5 shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-800">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl text-white shadow-lg shadow-emerald-900/30">
+                <MessageSquare className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-base flex items-center gap-2">
+                  WhatsApp Business API Service
+                  {currentGym.whatsapp_status === 'paused' ? (
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-950/90 text-amber-300 border border-amber-800/70 flex items-center gap-1">
+                      <PauseCircle className="h-3 w-3 text-amber-400" /> Service Stopped
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-950/90 text-emerald-300 border border-emerald-800/70 flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Service Active
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-gray-400">
+                  Automated WhatsApp invoices, renewals, and reminders for this gym
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => handleToggleWhatsAppService(currentGym.whatsapp_status === 'paused')}
+              disabled={togglingWhatsApp}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors shadow-md disabled:opacity-50 self-start sm:self-auto ${
+                currentGym.whatsapp_status === 'paused'
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30'
+                  : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/30'
+              }`}
+            >
+              {togglingWhatsApp ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : currentGym.whatsapp_status === 'paused' ? (
+                <Play className="h-4 w-4 fill-current" />
+              ) : (
+                <Pause className="h-4 w-4 fill-current" />
+              )}
+              <span>{currentGym.whatsapp_status === 'paused' ? 'Start WhatsApp Service' : 'Stop WhatsApp Service'}</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 text-xs">
+            <div>
+              <span className="text-gray-400 block mb-1">WhatsApp Number</span>
+              <span className="font-mono font-semibold text-white">
+                {currentGym.whatsapp_phone_number || 'Not set'}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-400 block mb-1">Phone Number ID</span>
+              <span className="font-mono text-gray-300">
+                {currentGym.whatsapp_phone_number_id || '—'}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-400 block mb-1">WABA ID</span>
+              <span className="font-mono text-gray-300">
+                {currentGym.whatsapp_waba_id || '—'}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-400 block mb-1">Connected Since</span>
+              <span className="text-gray-300">
+                {currentGym.whatsapp_connected_at ? formatDate(currentGym.whatsapp_connected_at) : '—'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Gym Details Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
