@@ -13,7 +13,7 @@ import {
   ChevronLeft, PanelLeftClose, PanelLeftOpen, ArrowLeft, ExternalLink,
   BookOpen, Hash, Phone as PhoneIcon, Mail as MailIcon, Dumbbell, Gift,
   PieChart, Layers, LayoutGrid, List, Grid, Maximize2, AlertTriangle,
-  Crown, MessageCircle,
+  Crown, MessageCircle, PhoneCall, Smartphone,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api, { fetchWhatsAppUnreadCount } from '../services/api';
@@ -29,6 +29,7 @@ import SoftwarePlanModal from '../components/admin/SoftwarePlanModal';
 import WhatsAppChatScreen from '../components/admin/WhatsAppChatScreen';
 import WhatsAppLogs from '../components/WhatsAppLogs';
 import ActiveUsersTracker from '../components/admin/ActiveUsersTracker';
+import WhatsAppAccountsManager from '../components/admin/WhatsAppAccountsManager';
 
 // ─── Field components ─────────────────────────────────────────────────
 
@@ -963,6 +964,7 @@ const AdminDashboard = ({ defaultTab }) => {
     { id: 'irregular-members', name: 'Irregular Members', icon: AlertTriangle, count: null },
     { id: 'whatsapp-chat', name: 'WhatsApp Chats', icon: MessageCircle, count: unreadChatCount > 0 ? unreadChatCount : null },
     { id: 'whatsapp', name: 'WhatsApp Logs', icon: MessageSquare, count: null },
+    { id: 'whatsapp-clients', name: 'Client WABAs', icon: PhoneCall, count: null },
   ];
 
   if (loading) {
@@ -1168,7 +1170,7 @@ const AdminDashboard = ({ defaultTab }) => {
         </nav>
 
         {/* Search / Filter Bar */}
-        {selectedTab !== 'overview' && !viewingGymDetails && selectedTab !== 'irregular-members' && selectedTab !== 'whatsapp-chat' && selectedTab !== 'whatsapp' && selectedTab !== 'active-users' && (
+        {selectedTab !== 'overview' && !viewingGymDetails && selectedTab !== 'irregular-members' && selectedTab !== 'whatsapp-chat' && selectedTab !== 'whatsapp' && selectedTab !== 'whatsapp-clients' && selectedTab !== 'active-users' && (
           <div className="bg-gray-900/60 border-b border-gray-800 px-3 sm:px-4 lg:px-8 py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
             <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
@@ -1825,6 +1827,11 @@ const AdminDashboard = ({ defaultTab }) => {
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
               <WhatsAppLogs />
             </div>
+          )}
+
+          {/* CLIENT WABA ACCOUNTS (TECH PROVIDER) */}
+          {selectedTab === 'whatsapp-clients' && (
+            <WhatsAppAccountsManager onSelectGym={fetchGymDetails} />
           )}
         </main>
       </div>
