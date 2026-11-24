@@ -23,12 +23,21 @@ const FB_SDK_SRC = 'https://connect.facebook.net/en_US/sdk.js';
 
 const initFacebookSdk = (appId, version) => {
   if (!appId) return;
+  const apiVersion = version || 'v21.0';
   if (window.FB) {
-    window.FB.init({ appId, autoLogAppEvents: true, xfbml: true, version });
+    try {
+      window.FB.init({ appId, cookie: true, autoLogAppEvents: true, xfbml: true, version: apiVersion });
+    } catch (e) {
+      console.warn('FB.init error:', e);
+    }
     return;
   }
   window.fbAsyncInit = () => {
-    window.FB.init({ appId, autoLogAppEvents: true, xfbml: true, version });
+    try {
+      window.FB.init({ appId, cookie: true, autoLogAppEvents: true, xfbml: true, version: apiVersion });
+    } catch (e) {
+      console.warn('FB.init error:', e);
+    }
   };
   if (!document.getElementById('facebook-jssdk')) {
     const script = document.createElement('script');
@@ -36,7 +45,6 @@ const initFacebookSdk = (appId, version) => {
     script.src = FB_SDK_SRC;
     script.async = true;
     script.defer = true;
-    script.crossOrigin = 'anonymous';
     document.body.appendChild(script);
   }
 };
@@ -205,9 +213,19 @@ const WhatsAppSignupTab = () => {
   const fbLoginCallback = (response) => {
     console.log('🔑 FB Login response:', response);
     
-    if (!response.authResponse || !response.authResponse.code) {
+    if (response?.error_message) {
       setConnecting(false);
-      toast.error('Facebook authentication was not completed. Please try again.');
+      toast.error(`Facebook login error: ${response.error_message}`);
+      return;
+    }
+
+    if (!response || !response.authResponse || !response.authResponse.code) {
+      setConnecting(false);
+      if (response?.status === 'unknown') {
+        toast.info('Facebook login popup was closed or blocked.');
+      } else {
+        toast.error('Facebook authentication was not completed. Please try again.');
+      }
       return;
     }
 
@@ -302,16 +320,22 @@ const WhatsAppSignupTab = () => {
     
     console.log('🚀 Launching WhatsApp Embedded Signup with config:', config.config_id);
     
-    window.FB.login(fbLoginCallback, {
-      config_id: config.config_id,
-      response_type: 'code',
-      override_default_response_type: true,
-      extras: {
-        feature: 'whatsapp_embedded_signup',
-        sessionInfoVersion: 3,
-        setup: {},
-      },
-    });
+    try {
+      window.FB.login(fbLoginCallback, {
+        config_id: config.config_id,
+        response_type: 'code',
+        override_default_response_type: true,
+        extras: {
+          setup: {},
+          featureType: '',
+          sessionInfoVersion: '3',
+        },
+      });
+    } catch (err) {
+      console.error('FB.login error:', err);
+      toast.error('Failed to open Facebook login: ' + err.message);
+      setConnecting(false);
+    }
   };
 
   // ============================================================
