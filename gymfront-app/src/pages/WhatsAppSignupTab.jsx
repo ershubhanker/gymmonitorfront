@@ -1,8 +1,21 @@
 // WhatsAppSignupTab.jsx
-// Complete working implementation with full data capture from Meta
+// Complete working implementation with Meta WhatsApp Embedded Signup and Phone Number Management
 
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageCircle, CheckCircle2, Loader2, AlertCircle, Unplug, Smartphone, Building2, Phone } from 'lucide-react';
+import { 
+  MessageCircle, 
+  CheckCircle2, 
+  Loader2, 
+  AlertCircle, 
+  Unplug, 
+  Smartphone, 
+  Building2, 
+  Phone, 
+  RefreshCw, 
+  Check, 
+  PlusCircle, 
+  ShieldCheck 
+} from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -31,9 +44,11 @@ const initFacebookSdk = (appId, version) => {
 const WhatsAppSignupTab = () => {
   const [config, setConfig] = useState(null);
   const [status, setStatus] = useState(null);
+  const [phoneNumbers, setPhoneNumbers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [sdkLoaded, setSdkLoaded] = useState(false);
+  const [switchingNumber, setSwitchingNumber] = useState(false);
 
   // Store all data from the Embedded Signup message event
   const signupDataRef = useRef({
@@ -65,15 +80,17 @@ const WhatsAppSignupTab = () => {
       ]);
       setConfig(configRes.data);
       setStatus(statusRes.data);
+
+      if (statusRes.data?.connected) {
+        fetchPhoneNumbers();
+      }
       
       // Initialize Facebook SDK
       if (configRes.data.app_id) {
-        initFacebookSdk(configRes.data.app_id, configRes.data.graph_api_version || 'v26.0');
-        // Check if SDK is loaded
+        initFacebookSdk(configRes.data.app_id, configRes.data.graph_api_version || 'v25.0');
         if (window.FB) {
           setSdkLoaded(true);
         } else {
-          // Wait for SDK to load
           const checkSDK = setInterval(() => {
             if (window.FB) {
               setSdkLoaded(true);
@@ -91,82 +108,94 @@ const WhatsAppSignupTab = () => {
     }
   };
 
+  const fetchPhoneNumbers = async () => {
+    try {
+      const res = await api.get('/gym/whatsapp/phone-numbers');
+      if (res.data?.phone_numbers) {
+        setPhoneNumbers(res.data.phone_numbers);
+      }
+    } catch (error) {
+      console.warn('Could not fetch WABA phone numbers:', error);
+    }
+  };
+
   // ============================================================
-  // ✅ COMPLETE MESSAGE EVENT HANDLER - Captures ALL data
+  // ✅ ROBUST MESSAGE EVENT HANDLER - Handles Objects & JSON Strings
   // ============================================================
   const handleEmbeddedSignupMessage = (event) => {
     // Only process messages from Facebook
-    if (!event.origin?.endsWith('facebook.com')) return;
+    if (!event.origin || (!event.origin.endsWith('facebook.com') && !event.origin.includes('facebook'))) return;
 
+    let data = null;
     try {
-      const data = JSON.parse(event.data);
-      
-      if (data.type !== 'WA_EMBEDDED_SIGNUP') return;
-
-      console.log('📨 Embedded Signup message event:', data);
-
-      // ============================================================
-      // ✅ SUCCESSFUL COMPLETION - Captures all asset IDs
-      // ============================================================
-      if (data.event === 'FINISH' || 
-          data.event === 'FINISH_ONLY_WABA' || 
-          data.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING' || 
-          data.event === 'FINISH_OBO_MIGRATION' || 
-          data.event === 'FINISH_GRANT_ONLY_API_ACCESS') {
-        
-        const eventData = data.data || {};
-        
-        // ✅ Store ALL available data
-        signupDataRef.current = {
-          waba_id: eventData.waba_id || null,
-          phone_number_id: eventData.phone_number_id || null,
-          business_id: eventData.business_id || null,
-          waba_ids: eventData.waba_ids || [],
-          ad_account_ids: eventData.ad_account_ids || [],
-          page_ids: eventData.page_ids || [],
-          dataset_ids: eventData.dataset_ids || [],
-          catalog_ids: eventData.catalog_ids || [],
-          instagram_account_ids: eventData.instagram_account_ids || [],
-          event_type: data.event
-        };
-
-        console.log('✅ WABA Signup Data Captured:', signupDataRef.current);
-        
-        // Show success toast with the captured data
-        toast.success(
-          `WhatsApp Business connected! WABA ID: ${eventData.waba_id || 'N/A'}`,
-          { duration: 5000 }
-        );
-
-      // ============================================================
-      // ❌ CANCELLED FLOW
-      // ============================================================
-      } else if (data.event === 'CANCEL') {
-        const cancelData = data.data || {};
-        
-        if (cancelData.error_message) {
-          // User reported an error
-          toast.error(`WhatsApp setup error: ${cancelData.error_message}`);
-          console.error('WhatsApp error:', cancelData);
-        } else {
-          // User cancelled voluntarily
-          const step = cancelData.current_step || 'unknown';
-          toast.info(`WhatsApp setup cancelled at step: ${step}`);
-        }
-        setConnecting(false);
-
-      // ============================================================
-      // ❌ ERROR OCCURRED
-      // ============================================================
-      } else if (data.event === 'ERROR') {
-        const errorData = data.data || {};
-        toast.error(errorData.error_message || 'WhatsApp setup failed');
-        console.error('WhatsApp error:', errorData);
-        setConnecting(false);
+      if (typeof event.data === 'string') {
+        data = JSON.parse(event.data);
+      } else if (typeof event.data === 'object' && event.data !== null) {
+        data = event.data;
       }
-    } catch (e) {
-      // Non-JSON message events - ignore
-      console.log('Non-JSON message event (ignored):', event.data);
+    } catch {
+      // Non-JSON message event, ignore
+      return;
+    }
+
+    if (!data || data.type !== 'WA_EMBEDDED_SIGNUP') return;
+
+    console.log('📨 Embedded Signup message event:', data);
+
+    // ============================================================
+    // ✅ SUCCESSFUL COMPLETION - Captures all asset IDs
+    // ============================================================
+    if (
+      data.event === 'FINISH' || 
+      data.event === 'FINISH_ONLY_WABA' || 
+      data.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING' || 
+      data.event === 'FINISH_OBO_MIGRATION' || 
+      data.event === 'FINISH_GRANT_ONLY_API_ACCESS'
+    ) {
+      const eventData = data.data || {};
+      
+      // Store all captured IDs
+      signupDataRef.current = {
+        waba_id: eventData.waba_id || null,
+        phone_number_id: eventData.phone_number_id || null,
+        business_id: eventData.business_id || null,
+        waba_ids: eventData.waba_ids || [],
+        ad_account_ids: eventData.ad_account_ids || [],
+        page_ids: eventData.page_ids || [],
+        dataset_ids: eventData.dataset_ids || [],
+        catalog_ids: eventData.catalog_ids || [],
+        instagram_account_ids: eventData.instagram_account_ids || [],
+        event_type: data.event
+      };
+
+      console.log('✅ WABA Signup Data Captured from Meta popup:', signupDataRef.current);
+      toast.success(
+        `WhatsApp setup complete in popup! Finalizing connection...`,
+        { duration: 4000 }
+      );
+
+    // ============================================================
+    // ❌ CANCELLED FLOW
+    // ============================================================
+    } else if (data.event === 'CANCEL') {
+      const cancelData = data.data || {};
+      if (cancelData.error_message) {
+        toast.error(`WhatsApp setup error: ${cancelData.error_message}`);
+        console.error('WhatsApp setup error reported:', cancelData);
+      } else {
+        const step = cancelData.current_step || 'unknown';
+        toast.info(`WhatsApp setup window closed at step: ${step}`);
+      }
+      setConnecting(false);
+
+    // ============================================================
+    // ❌ ERROR OCCURRED
+    // ============================================================
+    } else if (data.event === 'ERROR') {
+      const errorData = data.data || {};
+      toast.error(errorData.error_message || 'WhatsApp setup failed');
+      console.error('WhatsApp error event:', errorData);
+      setConnecting(false);
     }
   };
 
@@ -176,30 +205,18 @@ const WhatsAppSignupTab = () => {
   const fbLoginCallback = (response) => {
     console.log('🔑 FB Login response:', response);
     
-    if (!response.authResponse) {
+    if (!response.authResponse || !response.authResponse.code) {
       setConnecting(false);
-      toast.error('Facebook login failed. Please try again.');
+      toast.error('Facebook authentication was not completed. Please try again.');
       return;
     }
 
     const code = response.authResponse.code;
-    console.log('🔑 Exchangeable token code received:', code);
+    console.log('🔑 Exchangeable auth code received:', code);
 
     const { waba_id, phone_number_id, business_id } = signupDataRef.current;
 
-    // ✅ Validate that we have the required data
-    if (!waba_id || !phone_number_id) {
-      setConnecting(false);
-      toast.error(
-        'WhatsApp setup did not complete fully. ' +
-        'Please close the popup and try again. ' +
-        'Make sure you complete all steps including phone number verification.'
-      );
-      console.error('Missing required data:', { waba_id, phone_number_id });
-      return;
-    }
-
-    // Send all data to backend
+    // Send code to backend; backend auto-discovers WABA and Phone IDs if missing
     completeWhatsAppConnection(code, waba_id, phone_number_id, business_id);
   };
 
@@ -228,7 +245,10 @@ const WhatsAppSignupTab = () => {
       
       toast.success(`✅ WhatsApp connected: ${res.data.phone_number || 'Success!'}`);
       
-      // Clear the stored data after successful connection
+      // Fetch refreshed phone numbers under the WABA
+      fetchPhoneNumbers();
+
+      // Clear the stored ref data
       signupDataRef.current = {
         waba_id: null,
         phone_number_id: null,
@@ -251,7 +271,7 @@ const WhatsAppSignupTab = () => {
   };
 
   // ============================================================
-  // ✅ LAUNCH WHATSAPP SIGNUP
+  // ✅ LAUNCH WHATSAPP SIGNUP / ADD PHONE NUMBER
   // ============================================================
   const launchWhatsAppSignup = () => {
     if (!window.FB) {
@@ -287,9 +307,40 @@ const WhatsAppSignupTab = () => {
       response_type: 'code',
       override_default_response_type: true,
       extras: {
+        feature: 'whatsapp_embedded_signup',
+        sessionInfoVersion: 3,
         setup: {},
       },
     });
+  };
+
+  // ============================================================
+  // ✅ SELECT / SWITCH PHONE NUMBER
+  // ============================================================
+  const handleSelectPhoneNumber = async (phoneNumberId) => {
+    if (switchingNumber || phoneNumberId === status?.phone_number_id) return;
+
+    setSwitchingNumber(true);
+    try {
+      const res = await api.post('/gym/whatsapp/select-phone-number', {
+        phone_number_id: phoneNumberId,
+      });
+
+      setStatus(prev => ({
+        ...prev,
+        phone_number: res.data.phone_number,
+        phone_number_id: res.data.phone_number_id,
+        display_name: res.data.display_name,
+      }));
+
+      toast.success(`Active WhatsApp number set to ${res.data.phone_number || 'selected number'}`);
+      fetchPhoneNumbers();
+    } catch (error) {
+      console.error('Failed to switch phone number:', error);
+      toast.error(error.response?.data?.detail || 'Failed to switch phone number');
+    } finally {
+      setSwitchingNumber(false);
+    }
   };
 
   // ============================================================
@@ -306,6 +357,7 @@ const WhatsAppSignupTab = () => {
     try {
       await api.post('/gym/whatsapp/disconnect');
       setStatus({ connected: false });
+      setPhoneNumbers([]);
       toast.success('WhatsApp disconnected successfully');
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to disconnect');
@@ -333,8 +385,8 @@ const WhatsAppSignupTab = () => {
           WhatsApp Business
         </h3>
         <p className="text-sm text-gray-500 mt-1">
-          Connect your gym's own WhatsApp Business number so invoices and notifications 
-          go out under your business name and templates.
+          Connect your gym's WhatsApp Business number so member invoices and renewal 
+          notifications go out directly from your verified business number.
         </p>
       </div>
 
@@ -346,12 +398,12 @@ const WhatsAppSignupTab = () => {
             <p className="text-sm font-medium text-green-900">
               ✅ Connected — {status.display_name || 'WhatsApp Business Account'}
             </p>
-            <p className="text-sm text-green-700 flex items-center gap-2">
-              <Phone className="h-3 w-3" />
-              {status.phone_number || 'Phone number verified'}
+            <p className="text-sm text-green-700 flex items-center gap-2 mt-0.5">
+              <Phone className="h-3.5 w-3.5" />
+              Active Number: <span className="font-semibold">{status.phone_number || 'Phone number verified'}</span>
             </p>
             {status.waba_id && (
-              <p className="text-xs text-green-600 mt-1">
+              <p className="text-xs text-green-600 mt-1 font-mono">
                 WABA ID: {status.waba_id}
               </p>
             )}
@@ -371,14 +423,78 @@ const WhatsAppSignupTab = () => {
               No WhatsApp Business connected
             </p>
             <p className="text-sm text-yellow-700 mt-1">
-              Connect your own WhatsApp Business number to send invoices 
-              and notifications under your gym's name.
+              Connect your own WhatsApp Business number to send invoices and notifications 
+              under your gym's official name and phone number.
             </p>
           </div>
         </div>
       )}
 
-      {/* Connection Button */}
+      {/* Phone Numbers List (if connected and multiple numbers exist) */}
+      {status?.connected && phoneNumbers.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-green-600" />
+              Registered Phone Numbers under your Account ({phoneNumbers.length})
+            </h4>
+            <button
+              onClick={fetchPhoneNumbers}
+              className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+            >
+              <RefreshCw className="h-3 w-3" /> Refresh List
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {phoneNumbers.map((num) => {
+              const isActive = status?.phone_number === num.display_phone_number || status?.phone_number_id === num.id;
+              return (
+                <div 
+                  key={num.id}
+                  className={`flex items-center justify-between p-3 rounded-lg border text-sm transition-colors ${
+                    isActive ? 'bg-green-50/70 border-green-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Phone className={`h-4 w-4 ${isActive ? 'text-green-600' : 'text-gray-400'}`} />
+                    <div>
+                      <p className="font-medium text-gray-900 flex items-center gap-2">
+                        {num.display_phone_number}
+                        {num.verified_name && (
+                          <span className="text-xs text-gray-500 font-normal">({num.verified_name})</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Status: <span className="font-mono text-gray-700">{num.code_verification_status || 'VERIFIED'}</span>
+                        {num.quality_rating && ` • Quality: ${num.quality_rating}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    {isActive ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <Check className="h-3 w-3" /> Active
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleSelectPhoneNumber(num.id)}
+                        disabled={switchingNumber}
+                        className="px-3 py-1 text-xs font-medium bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {switchingNumber ? 'Switching...' : 'Use this number'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Connection Buttons */}
       <div className="flex flex-wrap items-center gap-4">
         <button
           onClick={launchWhatsAppSignup}
@@ -388,7 +504,7 @@ const WhatsAppSignupTab = () => {
             transition-all duration-200
             ${(connecting || !sdkLoaded || !config) 
               ? 'bg-gray-400 cursor-not-allowed' 
-              : 'bg-[#1877f2] hover:bg-[#166fe0]'}
+              : 'bg-[#1877f2] hover:bg-[#166fe0] shadow-sm'}
           `}
         >
           {connecting ? (
@@ -399,12 +515,12 @@ const WhatsAppSignupTab = () => {
           ) : !sdkLoaded ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading SDK...
+              Loading Facebook SDK...
             </>
           ) : status?.connected ? (
             <>
-              <RefreshCw className="h-4 w-4" />
-              Reconnect / Switch Number
+              <PlusCircle className="h-4 w-4" />
+              Add / Reconnect WhatsApp Number
             </>
           ) : (
             <>
@@ -423,10 +539,9 @@ const WhatsAppSignupTab = () => {
 
       {/* Configuration Status */}
       {config && (
-        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-          <p className="text-xs text-gray-500">
-            WhatsApp configuration loaded ✓
-          </p>
+        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 text-xs text-gray-600 flex items-center justify-between">
+          <span>WhatsApp Embedded Signup Ready ✓</span>
+          <span className="font-mono text-gray-400">Meta API {config.graph_api_version || 'v25.0'}</span>
         </div>
       )}
 
@@ -434,24 +549,21 @@ const WhatsAppSignupTab = () => {
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h4 className="text-sm font-medium text-blue-800 flex items-center gap-2">
           <Smartphone className="h-4 w-4" />
-          How it works
+          How Embedded Signup & Phone Number Setup works
         </h4>
         <ul className="mt-2 text-xs text-blue-700 space-y-1.5 list-disc list-inside">
-          <li>Click "Connect WhatsApp Number" to start the setup</li>
-          <li>A popup will open where you'll connect your Facebook account</li>
-          <li>Follow the steps to create or connect your WhatsApp Business Account</li>
-          <li>You'll need to verify your phone number during the process</li>
-          <li>After successful setup, all invoices and notifications will use your number</li>
+          <li>Click <strong>"Connect WhatsApp Number"</strong> (or <strong>"Add / Reconnect WhatsApp Number"</strong>).</li>
+          <li>Meta's secure popup window will open where you log into your Facebook / Meta account.</li>
+          <li>Select or create your <strong>WhatsApp Business Account (WABA)</strong>.</li>
+          <li>Select an existing phone number or choose <strong>"Add a phone number"</strong> and verify it via SMS or Phone Call OTP.</li>
+          <li>Once verified, close the popup — GymMonitor will automatically configure the Cloud API sending credentials for your gym.</li>
         </ul>
         <p className="mt-2 text-xs text-blue-600">
-          ⚠️ Make sure popups are allowed for this site
+          ⚠️ Make sure popups are allowed for this site in your browser.
         </p>
       </div>
     </div>
   );
 };
-
-// Missing import for RefreshCw
-import { RefreshCw } from 'lucide-react';
 
 export default WhatsAppSignupTab;
