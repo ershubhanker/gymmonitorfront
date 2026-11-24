@@ -25,7 +25,7 @@ const CURRENCIES = [
   { symbol: 'R', label: 'South African Rand', code: 'ZAR', flag: '🇿🇦' },
 ];
 
-const Profile = () => {
+const Profile = ({ onNavigate }) => {
   const { user, setUser, logout, updateCurrencySymbol } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   const [saving, setSaving] = useState(false);
@@ -1009,7 +1009,9 @@ const Profile = () => {
             </form>
           )}
 
-          {activeTab === 'whatsapp' && <WhatsAppSignupTab />}
+          {activeTab === 'whatsapp' && (
+            <WhatsAppSignupTab onNavigateToChat={() => onNavigate?.('whatsapp-chat')} />
+          )}
         </div>
       </div>
     </div>

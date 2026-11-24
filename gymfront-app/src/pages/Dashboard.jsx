@@ -51,6 +51,7 @@ import AddOns from './AddOns';
 import PTPage from './PTPage';
 import WhatsAppNotifications from './WhatsAppNotifications';
 import WhatsAppContactNotice from '../components/WhatsAppContactNotice';
+import WhatsAppChatScreen from '../components/admin/WhatsAppChatScreen';
 import BillingSettings from './BillingSettings'; // ✅ NEW — SaaS billing tab
 
 const AUTO_REFRESH_INTERVAL = 60000;
@@ -2637,7 +2638,7 @@ const Dashboard = () => {
           )}
           {activeTab === 'diet-plans' && <DietPlans />}
           {activeTab === 'irregular-members' && canSeeAttendance && <IrregularMembers />}
-          {activeTab === 'profile' && <Profile />}
+          {activeTab === 'profile' && <Profile onNavigate={(tab) => setActiveTab(tab)} />}
           {activeTab === 'payments' && canSeePayments && <Payments />}
           {activeTab === 'leads' && canSeeLeads && (
             <Leads 
@@ -2650,7 +2651,7 @@ const Dashboard = () => {
           )}
           {activeTab === 'trainer-schedule' && <TrainerSchedule />}
           {activeTab === 'historical-invoices' && <HistoricalInvoices />}
-          {activeTab === 'whatsapp-chat' && <WhatsAppContactNotice />}
+          {activeTab === 'whatsapp-chat' && <WhatsAppChatScreen />}
           {activeTab === 'whatsapp-logs' && <WhatsAppLogs />}
           {activeTab === 'whatsapp-notifications' && canSeeWhatsApp && <WhatsAppNotifications />}
 

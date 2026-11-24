@@ -49,7 +49,7 @@ const initFacebookSdk = (appId, version) => {
   }
 };
 
-const WhatsAppSignupTab = () => {
+const WhatsAppSignupTab = ({ onNavigateToChat }) => {
   const [config, setConfig] = useState(null);
   const [status, setStatus] = useState(null);
   const [phoneNumbers, setPhoneNumbers] = useState([]);
@@ -416,28 +416,45 @@ const WhatsAppSignupTab = () => {
 
       {/* Status Card */}
       {status?.connected ? (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
-          <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-green-900">
-              ✅ Connected — {status.display_name || 'WhatsApp Business Account'}
-            </p>
-            <p className="text-sm text-green-700 flex items-center gap-2 mt-0.5">
-              <Phone className="h-3.5 w-3.5" />
-              Active Number: <span className="font-semibold">{status.phone_number || 'Phone number verified'}</span>
-            </p>
-            {status.waba_id && (
-              <p className="text-xs text-green-600 mt-1 font-mono">
-                WABA ID: {status.waba_id}
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-green-900">
+                ✅ Connected — {status.display_name || 'WhatsApp Business Account'}
               </p>
+              <p className="text-sm text-green-700 flex items-center gap-2 mt-0.5">
+                <Phone className="h-3.5 w-3.5" />
+                Active Number: <span className="font-semibold">{status.phone_number || 'Phone number verified'}</span>
+              </p>
+              {status.waba_id && (
+                <p className="text-xs text-green-600 mt-1 font-mono">
+                  WABA ID: {status.waba_id}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={handleDisconnect}
+              className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700 font-medium flex-shrink-0"
+            >
+              <Unplug className="h-4 w-4" /> Disconnect
+            </button>
+          </div>
+
+          <div className="pt-2.5 border-t border-green-200/80 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-green-800">
+              Your number is live for notifications, automated invoices, and 2-way member chat.
+            </p>
+            {onNavigateToChat && (
+              <button
+                type="button"
+                onClick={onNavigateToChat}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+              >
+                <MessageCircle className="h-4 w-4" /> Open WhatsApp Live Chat
+              </button>
             )}
           </div>
-          <button
-            onClick={handleDisconnect}
-            className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700 font-medium flex-shrink-0"
-          >
-            <Unplug className="h-4 w-4" /> Disconnect
-          </button>
         </div>
       ) : (
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start gap-3">
