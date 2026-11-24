@@ -14,8 +14,6 @@ import api, {
 } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
-const WEBHOOK_URL = 'https://api.gymmonitor.in/whatsapp/webhook';
-
 // Format relative date / time
 const formatMessageTime = (isoString) => {
   if (!isoString) return '';
@@ -346,17 +344,13 @@ const WhatsAppChatScreen = ({ onSelectMember, onNavigateToConnect }) => {
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[calc(100vh-8.5rem)] min-h-[550px]">
-      {/* ── Top Bar / Webhook Status Banner ── */}
+      {/* ── Top Bar ── */}
       <div className="bg-gray-950/80 border-b border-gray-800 px-3 sm:px-4 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 sm:gap-3 text-xs">
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1.5 font-medium flex-shrink-0">
+          <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full flex items-center gap-1.5 font-medium flex-shrink-0 text-xs">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            Meta Webhook Live
+            WhatsApp Live Chat
           </div>
-          <span className="text-gray-400 hidden sm:inline">Listening at:</span>
-          <code className="text-gray-300 bg-gray-900 px-2 py-0.5 rounded border border-gray-800 font-mono text-[11px] select-all max-w-[200px] xs:max-w-[260px] sm:max-w-none truncate">
-            {WEBHOOK_URL}
-          </code>
         </div>
         <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-3">
           {unreadTotal > 0 && (
@@ -544,7 +538,7 @@ const WhatsAppChatScreen = ({ onSelectMember, onNavigateToConnect }) => {
                   <CheckCircle2 className="h-4 w-4" /> Meta Cloud API Connected
                 </div>
                 <p className="text-gray-400 text-[11px]">
-                  When a member replies via WhatsApp, Meta delivers it directly to your webhook. You have a 24-hour window to chat with them for free!
+                  When a member replies via WhatsApp, their message appears instantly here. You have a 24-hour window to chat with them in real time!
                 </p>
               </div>
             </div>
