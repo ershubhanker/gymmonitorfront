@@ -7,7 +7,7 @@ import {
   Clock, FileText, RefreshCw, Wifi, Loader2, WifiOff,
   FileSpreadsheet, Link, AlertTriangle, Smartphone, User,
   ArrowLeft, ArrowRight, Dumbbell, Send, MoreVertical, Eye, Layers,
-  ChevronDown
+  ChevronDown, Calendar
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
@@ -725,8 +725,44 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   const [loading, setLoading] = useState(false);
   const [members, setMembers] = useState([]);
   const [stats, setStats] = useState({ total: 0, active: 0, newThisMonth: 0 });
-  const [filters, setFilters] = useState({ status: 'all', plan: 'all', gender: 'all' });
+  const [filters, setFilters] = useState({ 
+    status: 'all', 
+    plan: 'all', 
+    gender: 'all',
+    expiry_from: '',
+    expiry_to: ''
+  });
   const [showNewThisMonthOnly, setShowNewThisMonthOnly] = useState(false);
+
+  // Quick preset helper functions for Membership Expiry
+  const setExpiryPreset = useCallback((days) => {
+    const today = new Date();
+    const fromStr = today.toISOString().split('T')[0];
+    const toDate = new Date();
+    toDate.setDate(today.getDate() + days);
+    const toStr = toDate.toISOString().split('T')[0];
+    setFilters(prev => ({ ...prev, expiry_from: fromStr, expiry_to: toStr }));
+    setCurrentPage(1);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+  }, [clearCachePattern]);
+
+  const setExpiryThisMonth = useCallback(() => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    setFilters(prev => ({ ...prev, expiry_from: firstDay, expiry_to: lastDay }));
+    setCurrentPage(1);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+  }, [clearCachePattern]);
+
+  const setExpiryAlreadyExpired = useCallback(() => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const toStr = yesterday.toISOString().split('T')[0];
+    setFilters(prev => ({ ...prev, expiry_from: '', expiry_to: toStr }));
+    setCurrentPage(1);
+    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+  }, [clearCachePattern]);
   const [downloadingInvoice, setDownloadingInvoice] = useState(null);
   const [downloadingBulk, setDownloadingBulk] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
@@ -980,7 +1016,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     
     setLoading(true);
     try {
-      const cacheKey = `${CACHE_KEYS.MEMBERS_LIST}_${debouncedSearchTerm}_${filters.status}_${filters.gender}_${currentPage}`;
+      const cacheKey = `${CACHE_KEYS.MEMBERS_LIST}_${debouncedSearchTerm}_${filters.status}_${filters.gender}_${filters.expiry_from || ''}_${filters.expiry_to || ''}_${currentPage}`;
       
       const cached = force ? null : getCache(cacheKey);
       if (cached) {
@@ -993,15 +1029,18 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         return;
       }
       
-      const params = {
-        search: debouncedSearchTerm,
-        status: filters.status === 'all' ? 'all' : filters.status,
-        page: currentPage,
-        limit: itemsPerPage
-      };
+      const queryParams = new URLSearchParams({
+        skip: (currentPage - 1) * itemsPerPage,
+        limit: Math.min(itemsPerPage, 100),
+        ...(debouncedSearchTerm && debouncedSearchTerm.trim() && { search: debouncedSearchTerm.trim() }),
+        ...(filters.status !== 'all' && { status: filters.status }),
+        ...(filters.expiry_from && { expiry_from: filters.expiry_from }),
+        ...(filters.expiry_to && { expiry_to: filters.expiry_to }),
+      });
       
-      console.log('Fetching members with optimized endpoint:', params);
-      const data = await fetchMembersOptimized(params);
+      console.log('Fetching members with optimized endpoint:', queryParams.toString());
+      const response = await api.get(`/gym/members/optimized?${queryParams.toString()}`);
+      const data = response.data;
       
       const transformed = data.items.map(item => {
         let avatarUrl;
@@ -1082,7 +1121,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, filters.status, filters.gender, currentPage, itemsPerPage, showSingleMember, fetchPTData, getCache, setCache]);
+  }, [debouncedSearchTerm, filters.status, filters.gender, filters.expiry_from, filters.expiry_to, currentPage, itemsPerPage, showSingleMember, fetchPTData, getCache, setCache]);
 
   // ============================================================
   // FETCH MEMBERS BY PLAN
@@ -1199,6 +1238,13 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         params.append('status', filters.status);
       }
 
+      if (filters.expiry_from) {
+        params.append('expiry_from', filters.expiry_from);
+      }
+      if (filters.expiry_to) {
+        params.append('expiry_to', filters.expiry_to);
+      }
+
       const [membersRes, deviceIdsRes] = await Promise.all([
         api.get(`/gym/members?${params.toString()}`),
         api.get('/attendance/members/device-ids').catch(() => ({ data: [] })),
@@ -1268,7 +1314,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, filters.status, showNewThisMonthOnly, itemsPerPage, showSingleMember, fetchPTData]);
+  }, [debouncedSearchTerm, filters.status, filters.expiry_from, filters.expiry_to, showNewThisMonthOnly, itemsPerPage, showSingleMember, fetchPTData]);
 
   // ============================================================
   // MAIN FETCH FUNCTION
@@ -1384,7 +1430,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       setTotalMembersCount(1);
       setTotalPages(1);
     }
-  }, [debouncedSearchTerm, filters.status, filters.gender, currentPage, showSingleMember, singleMemberData, selectedPlanId]);
+  }, [debouncedSearchTerm, filters.status, filters.gender, filters.expiry_from, filters.expiry_to, currentPage, showSingleMember, singleMemberData, selectedPlanId]);
 
   // ============================================================
   // FILTER HANDLERS
@@ -2596,10 +2642,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
             >
               {showSingleMember ? <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" /> : <RefreshCw className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />}
             </button>
-            {(filters.status !== 'all' || showNewThisMonthOnly || searchTerm || selectedPlanId) && !showSingleMember && (
+            {(filters.status !== 'all' || filters.expiry_from || filters.expiry_to || showNewThisMonthOnly || searchTerm || selectedPlanId) && !showSingleMember && (
               <button
                 onClick={() => {
-                  setFilters({ ...filters, status: 'all' });
+                  setFilters({ status: 'all', plan: 'all', gender: 'all', expiry_from: '', expiry_to: '' });
                   setShowNewThisMonthOnly(false);
                   setSearchTerm('');
                   setCurrentPage(1);
@@ -2678,66 +2724,191 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
 
         {/* Filters */}
         {showFilters && !showSingleMember && (
-          <div className="mt-3 pt-3 border-t grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Status</label>
-              <select 
-                value={filters.status} 
-                onChange={(e) => {
-                  setFilters({ ...filters, status: e.target.value });
-                  setShowNewThisMonthOnly(false);
-                  setCurrentPage(1);
-                  setSelectedPlanId(null);
-                  clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-                  clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
-                  fetchMembers(true);
-                }}
-                className="w-full border border-gray-300 rounded-lg p-1.5 sm:p-2 text-sm"
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
+          <div className="mt-3 pt-3 border-t space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select 
+                  value={filters.status} 
+                  onChange={(e) => {
+                    setFilters({ ...filters, status: e.target.value });
+                    setShowNewThisMonthOnly(false);
+                    setCurrentPage(1);
+                    setSelectedPlanId(null);
+                    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                    clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+                    fetchMembers(true);
+                  }}
+                  className="w-full border border-gray-300 rounded-lg p-1.5 sm:p-2 text-sm"
+                >
+                  <option value="all">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Gender</label>
+                <select 
+                  value={filters.gender} 
+                  onChange={(e) => {
+                    setFilters({ ...filters, gender: e.target.value });
+                    setCurrentPage(1);
+                    setSelectedPlanId(null);
+                    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                    clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+                    fetchMembers(true);
+                  }}
+                  className="w-full border border-gray-300 rounded-lg p-1.5 sm:p-2 text-sm"
+                >
+                  <option value="all">All Genders</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              {showNewThisMonthOnly && (
+                <div className="flex items-center">
+                  <span className="inline-flex items-center px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-blue-100 text-blue-800 text-xs sm:text-sm">
+                    <span className="font-medium">Filter: New Members This Month</span>
+                    <button
+                      onClick={() => {
+                        setShowNewThisMonthOnly(false);
+                        setCurrentPage(1);
+                        clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                        clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+                        fetchMembers(true);
+                      }}
+                      className="ml-1 sm:ml-2 text-blue-600 hover:text-blue-800"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                </div>
+              )}
             </div>
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Gender</label>
-              <select 
-                value={filters.gender} 
-                onChange={(e) => {
-                  setFilters({ ...filters, gender: e.target.value });
-                  setCurrentPage(1);
-                  setSelectedPlanId(null);
-                  clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-                  clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
-                  fetchMembers(true);
-                }}
-                className="w-full border border-gray-300 rounded-lg p-1.5 sm:p-2 text-sm"
-              >
-                <option value="all">All Genders</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            {showNewThisMonthOnly && (
-              <div className="flex items-center">
-                <span className="inline-flex items-center px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-blue-100 text-blue-800 text-xs sm:text-sm">
-                  <span className="font-medium">Filter: New Members This Month</span>
+
+            {/* Custom Expiry Date Range Filter */}
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 sm:p-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                <label className="text-xs sm:text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4 text-blue-600" />
+                  Filter by Membership Expiry Date
+                </label>
+                {/* Quick Presets */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-gray-500 font-medium">Presets:</span>
                   <button
-                    onClick={() => {
-                      setShowNewThisMonthOnly(false);
+                    type="button"
+                    onClick={() => setExpiryPreset(7)}
+                    className="px-2 py-0.5 text-xs rounded border border-gray-300 bg-white hover:bg-blue-50 hover:text-blue-600 hover:border-blue-400 transition-colors font-medium"
+                  >
+                    Next 7 Days
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpiryPreset(15)}
+                    className="px-2 py-0.5 text-xs rounded border border-gray-300 bg-white hover:bg-blue-50 hover:text-blue-600 hover:border-blue-400 transition-colors font-medium"
+                  >
+                    Next 15 Days
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpiryPreset(30)}
+                    className="px-2 py-0.5 text-xs rounded border border-gray-300 bg-white hover:bg-blue-50 hover:text-blue-600 hover:border-blue-400 transition-colors font-medium"
+                  >
+                    Next 30 Days
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpiryThisMonth()}
+                    className="px-2 py-0.5 text-xs rounded border border-gray-300 bg-white hover:bg-blue-50 hover:text-blue-600 hover:border-blue-400 transition-colors font-medium"
+                  >
+                    This Month
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpiryAlreadyExpired()}
+                    className="px-2 py-0.5 text-xs rounded border border-gray-300 bg-white hover:bg-red-50 hover:text-red-600 hover:border-red-400 transition-colors font-medium"
+                  >
+                    Already Expired
+                  </button>
+                  {(filters.expiry_from || filters.expiry_to) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilters(prev => ({ ...prev, expiry_from: '', expiry_to: '' }));
+                        setCurrentPage(1);
+                        clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                      }}
+                      className="px-2 py-0.5 text-xs rounded border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors font-semibold"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                    Expiry From (Start Date)
+                  </label>
+                  <input
+                    type="date"
+                    value={filters.expiry_from || ''}
+                    onChange={(e) => {
+                      setFilters(prev => ({ ...prev, expiry_from: e.target.value }));
                       setCurrentPage(1);
                       clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
-                      clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
-                      fetchMembers(true);
                     }}
-                    className="ml-1 sm:ml-2 text-blue-600 hover:text-blue-800"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
+                    className="w-full border border-gray-300 rounded-lg p-1.5 sm:p-2 text-xs sm:text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                    Expiry To (End Date)
+                  </label>
+                  <input
+                    type="date"
+                    value={filters.expiry_to || ''}
+                    onChange={(e) => {
+                      setFilters(prev => ({ ...prev, expiry_to: e.target.value }));
+                      setCurrentPage(1);
+                      clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                    }}
+                    className="w-full border border-gray-300 rounded-lg p-1.5 sm:p-2 text-xs sm:text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
               </div>
-            )}
+            </div>
+          </div>
+        )}
+
+        {/* Active Expiry Filter Info Banner */}
+        {(filters.expiry_from || filters.expiry_to) && !showSingleMember && (
+          <div className="mt-3 pt-3 border-t">
+            <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg p-2 sm:p-3">
+              <Calendar className="h-5 w-5 text-amber-600 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-amber-900 text-xs sm:text-sm">
+                  Filtering Memberships Expiring: <span className="underline">{filters.expiry_from ? new Date(filters.expiry_from).toLocaleDateString() : 'Any time before'}</span> to <span className="underline">{filters.expiry_to ? new Date(filters.expiry_to).toLocaleDateString() : 'Ongoing'}</span>
+                </p>
+                <p className="text-[11px] sm:text-xs text-amber-700 mt-0.5">
+                  Showing members expiring in this date range (sorted earliest to latest expiry)
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setFilters(prev => ({ ...prev, expiry_from: '', expiry_to: '' }));
+                  setCurrentPage(1);
+                  clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                  fetchMembers(true);
+                }}
+                className="px-2.5 py-1 text-xs bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-lg transition-colors flex items-center gap-1 font-medium flex-shrink-0"
+              >
+                <X className="h-3 w-3" />
+                Clear Expiry
+              </button>
+            </div>
           </div>
         )}
 
@@ -2874,6 +3045,11 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                             </div>
                             <div className="text-[10px] sm:text-xs text-gray-500 truncate">
                               Joined {new Date(member.joinDate).toLocaleDateString()}
+                              {member.membershipEndDate && (
+                                <span className="md:hidden ml-1 text-amber-700 font-medium">
+                                  • Exp: {new Date(member.membershipEndDate).toLocaleDateString()}
+                                </span>
+                              )}
                             </div>
                             <div className="sm:hidden text-[10px] text-gray-400 truncate">{member.phone}</div>
                           </div>
@@ -2884,14 +3060,33 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                         <div className="text-xs text-gray-500">{member.phone}</div>
                       </td>
                       <td className="hidden md:table-cell px-3 sm:px-6 py-3 sm:py-4">
-                        <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[100px]">
+                        <div className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[120px]">
                           {typeof member.membership === 'string' ? member.membership : (member.membership?.plan_name || 'No Plan')}
                         </div>
-                        <div className="text-[10px] sm:text-xs text-gray-500 truncate">
+                        <div className="text-[10px] sm:text-xs truncate mt-0.5">
                           {member.membershipEndDate ? (
-                            <span>
-                              Exp: {new Date(member.membershipEndDate).toLocaleDateString()}
-                            </span>
+                            (() => {
+                              const expDate = new Date(member.membershipEndDate);
+                              const today = new Date();
+                              today.setHours(0, 0, 0, 0);
+                              const isPast = expDate < today;
+                              const daysLeft = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
+                              const isExpiringSoon = !isPast && daysLeft <= 7;
+
+                              return (
+                                <span className={
+                                  isPast 
+                                    ? "text-red-600 font-medium" 
+                                    : isExpiringSoon 
+                                      ? "text-amber-600 font-semibold" 
+                                      : "text-gray-500"
+                                }>
+                                  Exp: {expDate.toLocaleDateString()}
+                                  {isPast && " (Expired)"}
+                                  {isExpiringSoon && ` (${daysLeft}d left)`}
+                                </span>
+                              );
+                            })()
                           ) : (
                             <span className="text-gray-400">No active</span>
                           )}
