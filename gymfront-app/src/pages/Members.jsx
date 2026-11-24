@@ -733,6 +733,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     expiry_to: ''
   });
   const [showNewThisMonthOnly, setShowNewThisMonthOnly] = useState(false);
+  const [showExpiryBar, setShowExpiryBar] = useState(false);
 
   // Quick preset helper functions for Membership Expiry
   const setExpiryPreset = useCallback((days) => {
@@ -742,6 +743,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     toDate.setDate(today.getDate() + days);
     const toStr = toDate.toISOString().split('T')[0];
     setFilters(prev => ({ ...prev, expiry_from: fromStr, expiry_to: toStr }));
+    setShowExpiryBar(true);
     setCurrentPage(1);
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
   }, [clearCachePattern]);
@@ -751,6 +753,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     setFilters(prev => ({ ...prev, expiry_from: firstDay, expiry_to: lastDay }));
+    setShowExpiryBar(true);
     setCurrentPage(1);
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
   }, [clearCachePattern]);
@@ -760,6 +763,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     yesterday.setDate(yesterday.getDate() - 1);
     const toStr = yesterday.toISOString().split('T')[0];
     setFilters(prev => ({ ...prev, expiry_from: '', expiry_to: toStr }));
+    setShowExpiryBar(true);
     setCurrentPage(1);
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
   }, [clearCachePattern]);
@@ -2617,6 +2621,27 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
               totalActiveMembers={totalActiveMembers}
             />
             
+            {/* Dedicated Expiring Members Filter Button */}
+            <button
+              onClick={() => setShowExpiryBar(prev => !prev)}
+              disabled={showSingleMember}
+              className={`px-2.5 sm:px-3 py-1.5 sm:py-2 border rounded-lg flex items-center gap-1.5 text-xs sm:text-sm font-semibold transition-colors flex-shrink-0 ${
+                (filters.expiry_from || filters.expiry_to)
+                  ? 'bg-amber-100 text-amber-900 border-amber-400 shadow-sm'
+                  : showExpiryBar
+                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              } ${showSingleMember ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title="Show members whose membership is going to expire by date"
+            >
+              <Calendar className="h-4 w-4 text-amber-600 flex-shrink-0" />
+              <span className="hidden xs:inline">Expiring Members</span>
+              <span className="xs:hidden">Expiry</span>
+              {(filters.expiry_from || filters.expiry_to) && (
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              )}
+            </button>
+
             <button
               onClick={() => setShowFilters(!showFilters)}
               disabled={showSingleMember}
@@ -2647,6 +2672,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 onClick={() => {
                   setFilters({ status: 'all', plan: 'all', gender: 'all', expiry_from: '', expiry_to: '' });
                   setShowNewThisMonthOnly(false);
+                  setShowExpiryBar(false);
                   setSearchTerm('');
                   setCurrentPage(1);
                   setSelectedPlanId(null);
@@ -2721,6 +2747,125 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
             </button>
           </div>
         </div>
+
+        {/* Dedicated Membership Expiry Date Range Selector Bar */}
+        {(showExpiryBar || filters.expiry_from || filters.expiry_to) && !showSingleMember && (
+          <div className="mt-3 pt-3 border-t bg-amber-50/70 rounded-xl p-3 sm:p-4 border border-amber-200 shadow-sm animate-in fade-in duration-200">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              {/* Left: Title + Date Inputs */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 flex-1">
+                <div className="flex items-center gap-1.5 text-amber-900 font-bold text-xs sm:text-sm flex-shrink-0">
+                  <Calendar className="h-4 w-4 text-amber-600" />
+                  <span>Expiring Between Dates:</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs text-gray-700 font-semibold">From:</label>
+                    <input
+                      type="date"
+                      value={filters.expiry_from || ''}
+                      onChange={(e) => {
+                        setFilters(prev => ({ ...prev, expiry_from: e.target.value }));
+                        setCurrentPage(1);
+                        clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                      }}
+                      className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm bg-white text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs text-gray-700 font-semibold">To:</label>
+                    <input
+                      type="date"
+                      value={filters.expiry_to || ''}
+                      onChange={(e) => {
+                        setFilters(prev => ({ ...prev, expiry_to: e.target.value }));
+                        setCurrentPage(1);
+                        clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                      }}
+                      className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm bg-white text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 shadow-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: Quick Presets */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-gray-600 font-medium mr-1">Quick:</span>
+                <button
+                  type="button"
+                  onClick={() => setExpiryPreset(7)}
+                  className="px-2.5 py-1 text-xs rounded-lg border border-amber-300 bg-white hover:bg-amber-100 text-amber-900 font-semibold transition-colors shadow-2xs"
+                >
+                  Next 7 Days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpiryPreset(15)}
+                  className="px-2.5 py-1 text-xs rounded-lg border border-amber-300 bg-white hover:bg-amber-100 text-amber-900 font-semibold transition-colors shadow-2xs"
+                >
+                  Next 15 Days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpiryPreset(30)}
+                  className="px-2.5 py-1 text-xs rounded-lg border border-amber-300 bg-white hover:bg-amber-100 text-amber-900 font-semibold transition-colors shadow-2xs"
+                >
+                  Next 30 Days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpiryThisMonth()}
+                  className="px-2.5 py-1 text-xs rounded-lg border border-amber-300 bg-white hover:bg-amber-100 text-amber-900 font-semibold transition-colors shadow-2xs"
+                >
+                  This Month
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpiryAlreadyExpired()}
+                  className="px-2.5 py-1 text-xs rounded-lg border border-red-300 bg-white hover:bg-red-50 text-red-700 font-semibold transition-colors shadow-2xs"
+                >
+                  Expired
+                </button>
+                {(filters.expiry_from || filters.expiry_to) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilters(prev => ({ ...prev, expiry_from: '', expiry_to: '' }));
+                      setShowExpiryBar(false);
+                      setCurrentPage(1);
+                      clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                    }}
+                    className="px-2.5 py-1 text-xs rounded-lg bg-red-100 text-red-700 hover:bg-red-200 font-bold transition-colors flex items-center gap-1 shadow-2xs"
+                  >
+                    <X className="h-3 w-3" />
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Live active summary */}
+            {(filters.expiry_from || filters.expiry_to) && (
+              <div className="mt-2.5 pt-2 border-t border-amber-200/80 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  Showing members going to expire from <strong>{filters.expiry_from ? new Date(filters.expiry_from).toLocaleDateString() : 'any previous date'}</strong> to <strong>{filters.expiry_to ? new Date(filters.expiry_to).toLocaleDateString() : 'ongoing'}</strong>. Found <strong>{paginatedMembers.length} member{paginatedMembers.length !== 1 ? 's' : ''}</strong> (sorted soonest to expire first).
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilters(prev => ({ ...prev, expiry_from: '', expiry_to: '' }));
+                    setShowExpiryBar(false);
+                    setCurrentPage(1);
+                    clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                  }}
+                  className="text-red-700 hover:text-red-900 font-semibold flex items-center gap-1 underline text-[11px]"
+                >
+                  Clear Expiry Filter
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Filters */}
         {showFilters && !showSingleMember && (
@@ -2979,7 +3124,15 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                 </th>
                 <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
                 <th className="hidden sm:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
-                <th className="hidden md:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Membership</th>
+                <th className="hidden md:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {filters.expiry_from || filters.expiry_to ? (
+                    <span className="text-amber-800 font-bold flex items-center gap-1">
+                      <Calendar className="h-3.5 w-3.5 text-amber-600 inline" /> Membership / Expiry Date ↓
+                    </span>
+                  ) : (
+                    'Membership'
+                  )}
+                </th>
                 <th className="hidden lg:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="hidden xl:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PT</th>
                 <th className="hidden 2xl:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sync</th>
@@ -2998,13 +3151,15 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
               ) : paginatedMembers.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="px-6 py-4 text-center text-gray-500">
-                    {showNewThisMonthOnly 
-                      ? 'No new members joined this month' 
-                      : selectedPlanId
-                        ? `No members found in this plan`
-                        : showSingleMember 
-                          ? 'Member not found' 
-                          : 'No members found'}
+                    {filters.expiry_from || filters.expiry_to
+                      ? `No members found whose membership is expiring between ${filters.expiry_from || 'start'} and ${filters.expiry_to || 'end'}`
+                      : showNewThisMonthOnly 
+                        ? 'No new members joined this month' 
+                        : selectedPlanId
+                          ? `No members found in this plan`
+                          : showSingleMember 
+                            ? 'Member not found' 
+                            : 'No members found'}
                   </td>
                 </tr>
               ) : (
