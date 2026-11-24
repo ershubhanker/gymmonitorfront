@@ -6,12 +6,13 @@ import {
   Sparkles, Shield, UserCheck, CheckCircle2, AlertTriangle, Loader2, ArrowLeft
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import {
+import api, {
   fetchWhatsAppConversations,
   fetchWhatsAppChatMessages,
   sendWhatsAppChatMessage,
   markWhatsAppChatRead
 } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 const WEBHOOK_URL = 'https://api.gymmonitor.in/whatsapp/webhook';
 
@@ -43,7 +44,12 @@ const formatChatDateHeader = (isoString) => {
   return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-const WhatsAppChatScreen = ({ onSelectMember }) => {
+const WhatsAppChatScreen = ({ onSelectMember, onNavigateToConnect }) => {
+  const { user } = useAuth();
+  const [checkingConnection, setCheckingConnection] = useState(true);
+  const [wabaConnected, setWabaConnected] = useState(false);
+  const [connectionDetails, setConnectionDetails] = useState(null);
+
   const [conversations, setConversations] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [selectedPhone, setSelectedPhone] = useState(null);
@@ -63,8 +69,48 @@ const WhatsAppChatScreen = ({ onSelectMember }) => {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
+  // ─── Verify WhatsApp Business Account Connection Status ────────────────
+  const checkWabaStatus = useCallback(async () => {
+    if (user?.role === 'super_admin') {
+      setWabaConnected(true);
+      setCheckingConnection(false);
+      return;
+    }
+
+    setCheckingConnection(true);
+    try {
+      const response = await api.get('/gym/whatsapp/status');
+      const isConnected = !!response.data?.connected;
+      setWabaConnected(isConnected);
+      setConnectionDetails(response.data);
+      if (!isConnected) {
+        toast.error('You need to connect WhatsApp Business account first', {
+          id: 'waba-not-connected-toast',
+          duration: 4000
+        });
+      }
+    } catch (err) {
+      console.error('Error checking WABA connection status:', err);
+      setWabaConnected(false);
+      toast.error('You need to connect WhatsApp Business account first', {
+        id: 'waba-not-connected-toast',
+        duration: 4000
+      });
+    } finally {
+      setCheckingConnection(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    checkWabaStatus();
+  }, [checkWabaStatus]);
+
   // ─── Fetch Conversations ───────────────────────────────────────────────
   const loadConversations = useCallback(async (isSilent = false) => {
+    if (!wabaConnected && user?.role !== 'super_admin') {
+      setLoadingConversations(false);
+      return;
+    }
     if (!isSilent) setLoadingConversations(true);
     try {
       const data = await fetchWhatsAppConversations({
@@ -89,20 +135,23 @@ const WhatsAppChatScreen = ({ onSelectMember }) => {
     } finally {
       if (!isSilent) setLoadingConversations(false);
     }
-  }, [searchTerm, filterType, selectedPhone]);
+  }, [searchTerm, filterType, selectedPhone, wabaConnected, user]);
 
   // Initial load & filter change
   useEffect(() => {
-    loadConversations();
-  }, [filterType]);
+    if (wabaConnected) {
+      loadConversations();
+    }
+  }, [filterType, wabaConnected]);
 
   // Search debounce
   useEffect(() => {
+    if (!wabaConnected) return;
     const timer = setTimeout(() => {
       loadConversations();
     }, 350);
     return () => clearTimeout(timer);
-  }, [searchTerm]);
+  }, [searchTerm, wabaConnected]);
 
   // ─── Fetch Messages for Selected Chat ──────────────────────────────────
   const loadMessages = useCallback(async (phone, isSilent = false) => {
@@ -144,6 +193,7 @@ const WhatsAppChatScreen = ({ onSelectMember }) => {
 
   // ─── Polling for Live Incoming Replies ─────────────────────────────────
   useEffect(() => {
+    if (!wabaConnected) return;
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         loadConversations(true);
@@ -154,7 +204,7 @@ const WhatsAppChatScreen = ({ onSelectMember }) => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [loadConversations, loadMessages, selectedPhone]);
+  }, [loadConversations, loadMessages, selectedPhone, wabaConnected]);
 
   // Auto-scroll when messages update
   useEffect(() => {
@@ -221,6 +271,78 @@ const WhatsAppChatScreen = ({ onSelectMember }) => {
     }
     groupedMessages.push({ type: 'message', data: m, id: m.id || m.message_id });
   });
+
+  if (checkingConnection) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center flex flex-col items-center justify-center min-h-[420px] shadow-sm">
+        <Loader2 className="h-9 w-9 text-green-600 animate-spin mb-3" />
+        <p className="text-sm font-semibold text-gray-800">Checking WhatsApp Business Account connection...</p>
+        <p className="text-xs text-gray-500 mt-1">Verifying your WhatsApp Business API (WABA) status</p>
+      </div>
+    );
+  }
+
+  if (!wabaConnected) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-10 max-w-2xl mx-auto my-8 text-center">
+        {/* Warning Icon */}
+        <div className="w-16 h-16 bg-amber-50 border border-amber-200 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+          <AlertTriangle className="h-8 w-8 text-amber-600" />
+        </div>
+
+        {/* Status Badge */}
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200 mb-3">
+          <AlertCircle className="h-3.5 w-3.5 text-amber-700" />
+          WhatsApp Account Not Connected
+        </div>
+
+        {/* Main Alert Title */}
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
+          You need to connect WhatsApp Business account first
+        </h2>
+
+        {/* Descriptive Text */}
+        <p className="text-sm text-gray-600 mb-6 max-w-lg mx-auto leading-relaxed">
+          The WhatsApp Live Chat screen is only visible when your gym is linked to an active WhatsApp Business Account (WABA). Connecting enables real-time 2-way messaging with members and incoming leads.
+        </p>
+
+        {/* Information Box */}
+        <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-4 mb-6 text-left max-w-md mx-auto">
+          <div className="flex items-start gap-3">
+            <MessageCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-800 space-y-1">
+              <p className="font-semibold text-amber-900">Next Steps to Connect:</p>
+              <ol className="list-decimal list-inside space-y-1 text-amber-800">
+                <li>Go to your Gym <strong>Profile &gt; WhatsApp</strong> settings</li>
+                <li>Log in with Facebook and complete Embedded Signup</li>
+                <li>Link your gym's official phone number</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          {onNavigateToConnect && (
+            <button
+              onClick={onNavigateToConnect}
+              className="w-full sm:w-auto px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-medium text-sm transition-all shadow-sm flex items-center justify-center gap-2"
+            >
+              <MessageCircle className="h-4 w-4" />
+              Connect WhatsApp Business Account
+            </button>
+          )}
+          <button
+            onClick={checkWabaStatus}
+            className="w-full sm:w-auto px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Recheck Connection Status
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[calc(100vh-8.5rem)] min-h-[550px]">

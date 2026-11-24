@@ -25,9 +25,15 @@ const CURRENCIES = [
   { symbol: 'R', label: 'South African Rand', code: 'ZAR', flag: '🇿🇦' },
 ];
 
-const Profile = ({ onNavigate }) => {
+const Profile = ({ onNavigate, initialTab }) => {
   const { user, setUser, logout, updateCurrencySymbol } = useAuth();
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(initialTab || 'profile');
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedCurrency, setSelectedCurrency] = useState(user?.currency_symbol || '₹');

@@ -141,6 +141,12 @@ const Dashboard = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [profileInitialTab, setProfileInitialTab] = useState('profile');
+
+  const navigateToProfile = (subTab = 'profile') => {
+    setProfileInitialTab(subTab);
+    setActiveTab('profile');
+  };
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
@@ -2638,7 +2644,7 @@ const Dashboard = () => {
           )}
           {activeTab === 'diet-plans' && <DietPlans />}
           {activeTab === 'irregular-members' && canSeeAttendance && <IrregularMembers />}
-          {activeTab === 'profile' && <Profile onNavigate={(tab) => setActiveTab(tab)} />}
+          {activeTab === 'profile' && <Profile initialTab={profileInitialTab} onNavigate={(tab) => setActiveTab(tab)} />}
           {activeTab === 'payments' && canSeePayments && <Payments />}
           {activeTab === 'leads' && canSeeLeads && (
             <Leads 
@@ -2651,7 +2657,9 @@ const Dashboard = () => {
           )}
           {activeTab === 'trainer-schedule' && <TrainerSchedule />}
           {activeTab === 'historical-invoices' && <HistoricalInvoices />}
-          {activeTab === 'whatsapp-chat' && <WhatsAppChatScreen />}
+          {activeTab === 'whatsapp-chat' && (
+            <WhatsAppChatScreen onNavigateToConnect={() => navigateToProfile('whatsapp')} />
+          )}
           {activeTab === 'whatsapp-logs' && <WhatsAppLogs />}
           {activeTab === 'whatsapp-notifications' && canSeeWhatsApp && <WhatsAppNotifications />}
 
