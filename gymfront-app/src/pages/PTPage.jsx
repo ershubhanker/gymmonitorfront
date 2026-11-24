@@ -541,6 +541,12 @@ const PTPage = () => {
                       <p className="text-gray-500">Amount</p>
                       <p className="font-semibold">{formatCurrency(pkg.total_amount)}</p>
                     </div>
+                    {pkg.discount_applied > 0 && (
+                      <div>
+                        <p className="text-gray-500">Discount</p>
+                        <p className="font-semibold text-rose-600">-{formatCurrency(pkg.discount_applied)}</p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-gray-500">Paid</p>
                       <p className="font-semibold text-green-600">{formatCurrency(pkg.amount_paid)}</p>
@@ -735,6 +741,7 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol, editPackage }
         package_name: editPackage.package_name || '8 Sessions Package',
         total_sessions: editPackage.total_sessions || 8,
         total_amount: editPackage.total_amount || 0,
+        discount_applied: editPackage.discount_applied || 0,
         amount_paid: editPackage.amount_paid || 0,
         payment_method: 'cash',
         payment_date: new Date().toISOString().split('T')[0],
@@ -751,6 +758,7 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol, editPackage }
       package_name: '8 Sessions Package',
       total_sessions: 8,
       total_amount: 2000,
+      discount_applied: 0,
       amount_paid: 2000,
       payment_method: 'cash',
       payment_date: new Date().toISOString().split('T')[0],
@@ -773,12 +781,17 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol, editPackage }
     
     setShowCustomSessions(isCustom);
     
-    setFormData(prev => ({
-      ...prev,
-      package_name: packageName,
-      total_sessions: isCustom ? prev.total_sessions : config.sessions,
-      total_amount: isCustom ? prev.total_amount : config.defaultAmount,
-    }));
+    setFormData(prev => {
+      const newTotal = isCustom ? prev.total_amount : config.defaultAmount;
+      const net = Math.max(0, newTotal - (prev.discount_applied || 0));
+      return {
+        ...prev,
+        package_name: packageName,
+        total_sessions: isCustom ? prev.total_sessions : config.sessions,
+        total_amount: newTotal,
+        amount_paid: Math.min(prev.amount_paid, net)
+      };
+    });
   };
 
   // Handle search - Now includes Member ID
@@ -821,9 +834,10 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol, editPackage }
       return;
     }
     
-    // Validate amount_paid
-    if (formData.amount_paid > formData.total_amount) {
-      toast.error(`Amount paid cannot exceed total amount of ${currencySymbol} ${formData.total_amount}`);
+    // Validate amount_paid with discount
+    const netAmount = Math.max(0, formData.total_amount - (formData.discount_applied || 0));
+    if (formData.amount_paid > netAmount) {
+      toast.error(`Amount paid cannot exceed net amount of ${currencySymbol} ${netAmount}`);
       return;
     }
     
@@ -1023,7 +1037,7 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol, editPackage }
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Total Amount ({currencySymbol}) *
@@ -1040,6 +1054,20 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol, editPackage }
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
+                Discount ({currencySymbol})
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={formData.discount_applied || ''}
+                onChange={(e) => setFormData({...formData, discount_applied: parseFloat(e.target.value) || 0})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Amount Paid ({currencySymbol})
               </label>
               <input
@@ -1049,15 +1077,22 @@ const PackageModal = ({ onClose, onSave, trainers, currencySymbol, editPackage }
                 value={formData.amount_paid}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value) || 0;
-                  if (val <= formData.total_amount) {
+                  const net = Math.max(0, formData.total_amount - (formData.discount_applied || 0));
+                  if (val <= net) {
                     setFormData({...formData, amount_paid: val});
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
               />
-              <p className="text-xs text-gray-400 mt-1">Cannot exceed total amount</p>
+              <p className="text-xs text-gray-400 mt-1">Cannot exceed net amount</p>
             </div>
           </div>
+          {formData.discount_applied > 0 && (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-2.5 text-xs flex justify-between items-center text-purple-800">
+              <span><strong>Net Payable:</strong> {currencySymbol} {Math.max(0, formData.total_amount - formData.discount_applied)}</span>
+              <span><strong>Balance Due:</strong> {currencySymbol} {Math.max(0, Math.max(0, formData.total_amount - formData.discount_applied) - formData.amount_paid)}</span>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>

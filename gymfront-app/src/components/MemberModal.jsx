@@ -762,7 +762,7 @@ const PersonalTrainingSection = ({
   loadingTrainers,
   isEdit
 }) => {
-  const [showPTOption, setShowPTOption] = useState(false);
+  const [showPTOption, setShowPTOption] = useState(Boolean(formData.pt_trainer_id));
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [ptAmountError, setPtAmountError] = useState(null);
@@ -776,6 +776,12 @@ const PersonalTrainingSection = ({
     { value: 'saturday', label: 'Saturday' },
     { value: 'sunday', label: 'Sunday' }
   ];
+
+  useEffect(() => {
+    if (formData.pt_trainer_id) {
+      setShowPTOption(true);
+    }
+  }, [formData.pt_trainer_id]);
 
   useEffect(() => {
     if (formData.pt_session_time) {
@@ -813,12 +819,20 @@ const PersonalTrainingSection = ({
     setFormData(prev => ({ ...prev, pt_session_days: JSON.stringify(newDays) }));
   };
 
+  const getPtNetAmount = () => {
+    const totalAmount = parseFloat(formData.pt_total_amount) || 0;
+    const discount = parseFloat(formData.pt_discount_applied) || 0;
+    return Math.max(0, totalAmount - discount);
+  };
+
   const validatePtAmountPaid = (value) => {
     const totalAmount = parseFloat(formData.pt_total_amount) || 0;
+    const discount = parseFloat(formData.pt_discount_applied) || 0;
+    const netAmount = Math.max(0, totalAmount - discount);
     const amountPaid = parseFloat(value) || 0;
     
-    if (totalAmount > 0 && amountPaid > totalAmount) {
-      setPtAmountError(`Amount paid cannot exceed total amount (₹${totalAmount})`);
+    if (totalAmount > 0 && amountPaid > netAmount) {
+      setPtAmountError(`Amount paid cannot exceed net amount (₹${netAmount})`);
       return false;
     } else {
       setPtAmountError(null);
@@ -828,10 +842,12 @@ const PersonalTrainingSection = ({
 
   const handlePtAmountPaidChange = (value) => {
     const totalAmount = parseFloat(formData.pt_total_amount) || 0;
+    const discount = parseFloat(formData.pt_discount_applied) || 0;
+    const netAmount = Math.max(0, totalAmount - discount);
     const amountPaid = parseFloat(value) || 0;
     
-    if (totalAmount > 0 && amountPaid > totalAmount) {
-      setPtAmountError(`Amount paid cannot exceed ₹${totalAmount}`);
+    if (totalAmount > 0 && amountPaid > netAmount) {
+      setPtAmountError(`Amount paid cannot exceed net amount (₹${netAmount})`);
       setFormData(prev => ({ ...prev, pt_amount_paid: value }));
     } else if (amountPaid < 0) {
       setPtAmountError('Amount paid cannot be negative');
@@ -844,30 +860,50 @@ const PersonalTrainingSection = ({
 
   const handlePtTotalAmountChange = (value) => {
     const totalAmount = parseFloat(value) || 0;
+    const discount = parseFloat(formData.pt_discount_applied) || 0;
+    const netAmount = Math.max(0, totalAmount - discount);
     const currentPaid = parseFloat(formData.pt_amount_paid) || 0;
     
     setFormData(prev => ({ ...prev, pt_total_amount: value }));
     
-    if (currentPaid > totalAmount && totalAmount > 0) {
-      setFormData(prev => ({ ...prev, pt_amount_paid: String(totalAmount) }));
+    if (currentPaid > netAmount && netAmount > 0) {
+      setFormData(prev => ({ ...prev, pt_amount_paid: String(netAmount) }));
       setPtAmountError(null);
     } else if (totalAmount === 0) {
       setPtAmountError(null);
     }
   };
 
-  const setPtFullPayment = () => {
+  const handlePtDiscountChange = (value) => {
+    const discount = parseFloat(value) || 0;
     const totalAmount = parseFloat(formData.pt_total_amount) || 0;
-    if (totalAmount > 0) {
-      setFormData(prev => ({ ...prev, pt_amount_paid: String(totalAmount) }));
+    const netAmount = Math.max(0, totalAmount - discount);
+    const currentPaid = parseFloat(formData.pt_amount_paid) || 0;
+
+    setFormData(prev => ({ ...prev, pt_discount_applied: value }));
+
+    if (discount > totalAmount && totalAmount > 0) {
+      setPtAmountError(`Discount cannot exceed total amount (₹${totalAmount})`);
+    } else if (currentPaid > netAmount && totalAmount > 0) {
+      setFormData(prev => ({ ...prev, pt_amount_paid: String(netAmount), pt_discount_applied: value }));
+      setPtAmountError(null);
+    } else {
+      setPtAmountError(null);
+    }
+  };
+
+  const setPtFullPayment = () => {
+    const netAmount = getPtNetAmount();
+    if (netAmount > 0) {
+      setFormData(prev => ({ ...prev, pt_amount_paid: String(netAmount) }));
       setPtAmountError(null);
     }
   };
 
   const setPtHalfPayment = () => {
-    const totalAmount = parseFloat(formData.pt_total_amount) || 0;
-    if (totalAmount > 0) {
-      const halfAmount = Math.floor(totalAmount / 2);
+    const netAmount = getPtNetAmount();
+    if (netAmount > 0) {
+      const halfAmount = Math.floor(netAmount / 2);
       setFormData(prev => ({ ...prev, pt_amount_paid: String(halfAmount) }));
       setPtAmountError(null);
     }
@@ -1018,7 +1054,7 @@ const PersonalTrainingSection = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Total Amount (₹) <span className="text-red-500">*</span>
@@ -1031,6 +1067,20 @@ const PersonalTrainingSection = ({
                 onChange={(e) => handlePtTotalAmountChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                 placeholder="e.g., 5000"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Discount (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="10"
+                value={formData.pt_discount_applied || ''}
+                onChange={(e) => handlePtDiscountChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                placeholder="0"
               />
             </div>
             <div>
@@ -1064,14 +1114,14 @@ const PersonalTrainingSection = ({
                 onClick={setPtFullPayment}
                 className="flex-1 py-1.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
               >
-                Full (₹{formData.pt_total_amount})
+                Full (₹{getPtNetAmount()})
               </button>
               <button
                 type="button"
                 onClick={setPtHalfPayment}
                 className="flex-1 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
               >
-                Half (₹{Math.floor(parseFloat(formData.pt_total_amount) / 2)})
+                Half (₹{Math.floor(getPtNetAmount() / 2)})
               </button>
               <button
                 type="button"
@@ -1115,28 +1165,43 @@ const PersonalTrainingSection = ({
             </div>
           )}
 
-          {formData.pt_total_amount && formData.pt_total_amount > 0 && (
-            <div className={`p-3 rounded-lg ${
-              (parseFloat(formData.pt_total_amount) - parseFloat(formData.pt_amount_paid || 0)) > 0
-                ? 'bg-amber-50 border border-amber-200'
-                : 'bg-green-50 border border-green-200'
-            }`}>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Balance Due:</span>
-                <span className={`font-bold ${
-                  (parseFloat(formData.pt_total_amount) - parseFloat(formData.pt_amount_paid || 0)) > 0
-                    ? 'text-amber-600'
-                    : 'text-green-600'
-                }`}>
-                  ₹{(parseFloat(formData.pt_total_amount || 0) - parseFloat(formData.pt_amount_paid || 0)).toFixed(2)}
-                </span>
+          {formData.pt_total_amount && parseFloat(formData.pt_total_amount) > 0 && (() => {
+            const total = parseFloat(formData.pt_total_amount) || 0;
+            const discount = parseFloat(formData.pt_discount_applied) || 0;
+            const net = Math.max(0, total - discount);
+            const paid = parseFloat(formData.pt_amount_paid) || 0;
+            const bal = Math.max(0, net - paid);
+            const discountPercent = total > 0 && discount > 0 ? Math.round((discount / total) * 100) : 0;
+
+            return (
+              <div className={`p-3 rounded-lg ${
+                bal > 0
+                  ? 'bg-amber-50 border border-amber-200'
+                  : 'bg-green-50 border border-green-200'
+              }`}>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600 font-medium">Balance Due:</span>
+                  <span className={`font-bold ${
+                    bal > 0 ? 'text-amber-600' : 'text-green-600'
+                  }`}>
+                    ₹{bal.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex flex-wrap justify-between text-xs text-gray-500 mt-1 gap-2">
+                  <span>Total: ₹{total.toFixed(2)}</span>
+                  {discount > 0 && (
+                    <span className="text-purple-600 font-medium">
+                      Discount: -₹{discount.toFixed(2)} ({discountPercent}%)
+                    </span>
+                  )}
+                  {discount > 0 && (
+                    <span className="text-gray-700 font-semibold">Net: ₹{net.toFixed(2)}</span>
+                  )}
+                  <span className="text-green-600 font-medium">Paid: ₹{paid.toFixed(2)}</span>
+                </div>
               </div>
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>Total: ₹{parseFloat(formData.pt_total_amount || 0).toFixed(2)}</span>
-                <span>Paid: ₹{parseFloat(formData.pt_amount_paid || 0).toFixed(2)}</span>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2223,6 +2288,7 @@ const MemberModal = ({ isOpen, onClose,
     pt_session_time: '',
     pt_session_days: '[]',
     pt_total_amount: '',
+    pt_discount_applied: '',
     pt_amount_paid: '',
     pt_notes: '',
     pt_payment_method: 'cash',
@@ -2403,6 +2469,31 @@ const MemberModal = ({ isOpen, onClose,
         })
         .finally(() => setLoadingHistory(false));
 
+      if (member.id) {
+        api.get(`/gym/members/${member.id}/personal-training`)
+          .then(ptRes => {
+            const sessions = ptRes.data || [];
+            const activeSession = sessions.find(s => s.status === 'active' || s.status === 'pending' || s.status === 'upcoming') || sessions[0];
+            if (activeSession) {
+              setFormData(prev => ({
+                ...prev,
+                pt_trainer_id: activeSession.trainer_id ? String(activeSession.trainer_id) : '',
+                pt_start_date: activeSession.start_date || '',
+                pt_end_date: activeSession.end_date || '',
+                pt_session_time: activeSession.session_time || '',
+                pt_session_days: activeSession.session_days ? (typeof activeSession.session_days === 'string' ? activeSession.session_days : JSON.stringify(activeSession.session_days)) : '[]',
+                pt_total_amount: activeSession.total_amount ? String(activeSession.total_amount) : '',
+                pt_discount_applied: activeSession.discount_applied ? String(activeSession.discount_applied) : '',
+                pt_amount_paid: activeSession.amount_paid !== undefined && activeSession.amount_paid !== null ? String(activeSession.amount_paid) : '',
+                pt_notes: activeSession.notes || '',
+              }));
+            }
+          })
+          .catch(ptErr => {
+            console.warn('Could not load PT sessions for member in modal:', ptErr);
+          });
+      }
+
       const activeMem = member.current_membership || member.active_membership || member.membershipData || member.raw?.membership || (member.memberships && member.memberships[0]);
       const memIsActive = Boolean(
         (member.membershipStatus && member.membershipStatus.toLowerCase() === 'active') ||
@@ -2440,6 +2531,7 @@ const MemberModal = ({ isOpen, onClose,
         pt_session_time: '',
         pt_session_days: '[]',
         pt_total_amount: '',
+        pt_discount_applied: '',
         pt_amount_paid: '',
         pt_notes: '',
         pt_payment_method: 'cash',
@@ -2482,6 +2574,7 @@ const MemberModal = ({ isOpen, onClose,
         pt_session_time: '',
         pt_session_days: '[]',
         pt_total_amount: '',
+        pt_discount_applied: '',
         pt_amount_paid: '',
         pt_notes: rawData.notes || '',
         pt_payment_method: 'cash',
@@ -2519,6 +2612,7 @@ const MemberModal = ({ isOpen, onClose,
         pt_session_time: '',
         pt_session_days: '[]',
         pt_total_amount: '',
+        pt_discount_applied: '',
         pt_amount_paid: '',
         pt_notes: '',
         pt_payment_method: 'cash',
@@ -2681,6 +2775,7 @@ const MemberModal = ({ isOpen, onClose,
         session_time: formData.pt_session_time,
         session_days: formData.pt_session_days || '[]',
         total_amount: formData.pt_total_amount ? parseFloat(formData.pt_total_amount) : null,
+        discount_applied: formData.pt_discount_applied ? parseFloat(formData.pt_discount_applied) : 0,
         amount_paid: formData.pt_amount_paid ? parseFloat(formData.pt_amount_paid) : 0,
         notes: formData.pt_notes || null,
         payment_method: formData.pt_payment_method || 'cash',

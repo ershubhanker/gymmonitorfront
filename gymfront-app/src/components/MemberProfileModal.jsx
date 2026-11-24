@@ -3752,11 +3752,34 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
                         </div>
                       </div>
                       
-                      <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 pt-2 border-t border-gray-200">
+                      <div className={`mt-2 grid gap-2 pt-2 border-t border-gray-200 ${
+                        session.discount_applied > 0 ? 'grid-cols-2 md:grid-cols-6' : 'grid-cols-2 md:grid-cols-4'
+                      }`}>
                         <div>
                           <span className="text-gray-500 text-[10px]">Total:</span>
                           <p className="font-semibold text-purple-700 text-xs">{formatCurrency(session.total_amount || 0)}</p>
                         </div>
+                        {session.discount_applied > 0 && (
+                          <>
+                            <div>
+                              <span className="text-gray-500 text-[10px]">Discount:</span>
+                              <p className="font-semibold text-rose-600 text-xs">
+                                -{formatCurrency(session.discount_applied)}
+                                {session.total_amount > 0 && (
+                                  <span className="text-[9px] text-gray-400 ml-1">
+                                    ({Math.round((session.discount_applied / session.total_amount) * 100)}%)
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 text-[10px]">Net Payable:</span>
+                              <p className="font-semibold text-gray-900 text-xs">
+                                {formatCurrency(Math.max(0, (session.total_amount || 0) - (session.discount_applied || 0)))}
+                              </p>
+                            </div>
+                          </>
+                        )}
                         <div>
                           <span className="text-gray-500 text-[10px]">Paid:</span>
                           <p className="font-semibold text-green-600 text-xs">{formatCurrency(session.amount_paid || 0)}</p>
@@ -3902,13 +3925,25 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {visiblePayments.map((payment) => (
-                        <tr key={payment.id} className="hover:bg-gray-50">
-                          <td className="px-2 py-1.5 font-medium text-gray-900">{formatDate(payment.payment_date)}</td>
-                          <td className="px-2 py-1.5 font-medium text-green-600">{formatCurrency(payment.amount)}</td>
-                          <td className="px-2 py-1.5 capitalize">{payment.payment_method}</td>
-                          <td className="px-2 py-1.5">{getPaymentStatusBadge(payment.status)}</td>
-                          <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                      {visiblePayments.map((payment) => {
+                        const isPtPayment = payment.transaction_id?.toUpperCase().startsWith('PT-') ||
+                          payment.transaction_id?.toUpperCase().startsWith('PT_') ||
+                          (payment.notes && /pt[\s\-_]payment|personal[\s\-_]training|\bpt\b/i.test(payment.notes));
+
+                        return (
+                          <tr key={payment.id} className="hover:bg-gray-50">
+                            <td className="px-2 py-1.5 font-medium text-gray-900">{formatDate(payment.payment_date)}</td>
+                            <td className="px-2 py-1.5 font-medium text-green-600">
+                              {formatCurrency(payment.amount)}
+                              {isPtPayment && (
+                                <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-100 text-blue-700 border border-blue-200">
+                                  PT
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1.5 capitalize">{payment.payment_method}</td>
+                            <td className="px-2 py-1.5">{getPaymentStatusBadge(payment.status)}</td>
+                            <td className="px-2 py-1.5 text-right whitespace-nowrap">
                             {currentMembership && (
                               <button
                                 type="button"
@@ -3939,7 +3974,8 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
                             </button>
                           </td>
                         </tr>
-                      ))}
+                      );
+                    })}
                     </tbody>
                   </table>
                   <div className="mt-2 p-2 bg-gray-50 rounded-lg flex justify-between">
