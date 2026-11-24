@@ -1,7 +1,7 @@
 // src/components/admin/GymDetails.jsx
 import React, { useState, useEffect } from 'react';
 import { 
-  ArrowLeft, User, MailIcon, PhoneIcon, MapPin, Clock, 
+  ArrowLeft, User, UserPlus, MailIcon, PhoneIcon, MapPin, Clock, 
   BarChart3, Shield, Award, CreditCard, DollarSign, Wallet,
   Users, Building2, Loader2, Edit, Trash2, ExternalLink,
   Search, X, ChevronRight, Calendar, AlertCircle, Crown, IndianRupee,
@@ -59,6 +59,9 @@ const GymDetails = ({
   onMemberEdit, 
   onMemberDelete,
   onMemberBulkDelete,
+  onLeadEdit,
+  onLeadDelete,
+  onLeadBulkDelete,
   onStaffEdit, 
   onStaffDelete,
   onPlanEdit, 
@@ -69,6 +72,14 @@ const GymDetails = ({
   const [filteredMembers, setFilteredMembers] = useState([]);
   const [selectedMemberIds, setSelectedMemberIds] = useState([]);
   const [showAllMembers, setShowAllMembers] = useState(false);
+
+  // Leads state
+  const [leadSearch, setLeadSearch] = useState('');
+  const [leadStatusFilter, setLeadStatusFilter] = useState('all');
+  const [filteredLeads, setFilteredLeads] = useState([]);
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [showAllLeads, setShowAllLeads] = useState(false);
+
   const [togglingWhatsApp, setTogglingWhatsApp] = useState(false);
   const [currentGym, setCurrentGym] = useState(gym);
 
@@ -110,7 +121,32 @@ const GymDetails = ({
     }
   }, [memberSearch, gym]);
 
+  // Filter leads based on search & status
+  useEffect(() => {
+    if (gym?.leads) {
+      let list = gym.leads;
+      if (leadStatusFilter !== 'all') {
+        list = list.filter(l => l.status === leadStatusFilter);
+      }
+      const search = leadSearch.toLowerCase().trim();
+      if (search) {
+        list = list.filter(l =>
+          l.full_name?.toLowerCase().includes(search) ||
+          l.email?.toLowerCase().includes(search) ||
+          l.phone?.includes(search) ||
+          l.interest?.toLowerCase().includes(search) ||
+          l.preferred_plan?.toLowerCase().includes(search) ||
+          l.source?.toLowerCase().includes(search)
+        );
+      }
+      setFilteredLeads(list);
+    } else {
+      setFilteredLeads([]);
+    }
+  }, [leadSearch, leadStatusFilter, gym?.leads]);
+
   const visibleMembers = showAllMembers ? filteredMembers : filteredMembers.slice(0, 50);
+  const visibleLeads = showAllLeads ? filteredLeads : filteredLeads.slice(0, 50);
 
   const toggleSelectMember = (id) => {
     setSelectedMemberIds(prev =>
@@ -125,6 +161,22 @@ const GymDetails = ({
       setSelectedMemberIds(prev => prev.filter(id => !visibleIds.includes(id)));
     } else {
       setSelectedMemberIds(prev => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  const toggleSelectLead = (id) => {
+    setSelectedLeadIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllLeads = () => {
+    const visibleIds = visibleLeads.map(l => l.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedLeadIds.includes(id));
+    if (allSelected) {
+      setSelectedLeadIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      setSelectedLeadIds(prev => Array.from(new Set([...prev, ...visibleIds])));
     }
   };
 
@@ -229,9 +281,11 @@ const GymDetails = ({
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 sm:gap-4">
         <StatCard icon={User} label="Members" value={gym.members?.length || 0}
           sub={`${gym.members?.filter(m => m.is_active).length || 0} active`} color="green" />
+        <StatCard icon={UserPlus} label="Leads" value={gym.leads?.length || gym.stats?.total_leads || 0}
+          sub={`${gym.leads?.filter(l => l.status === 'new' || l.status === 'contacted').length || 0} active/new`} color="purple" />
         <StatCard icon={Shield} label="Staff" value={gym.total_staff || 0}
           sub={`${gym.active_staff || 0} active`} color="orange" />
         <StatCard icon={Award} label="Plans" value={gym.plans?.length || 0}
@@ -426,6 +480,7 @@ const GymDetails = ({
             <div className="space-y-1">
               <DetailItem label="Total Members" value={gym.stats.total_members || 0} />
               <DetailItem label="Active Members" value={gym.stats.active_members || 0} />
+              <DetailItem label="Total Leads" value={gym.leads?.length || gym.stats?.total_leads || 0} />
               <DetailItem label="Total Staff" value={gym.stats.total_staff || 0} />
               <DetailItem label="Active Staff" value={gym.stats.active_staff || 0} />
               <DetailItem label="Total Plans" value={gym.stats.total_plans || 0} />
@@ -681,6 +736,188 @@ const GymDetails = ({
         ) : (
           <p className="text-gray-500 text-sm text-center py-4">
             {memberSearch ? 'No members match your search' : 'No members found in this gym'}
+          </p>
+        )}
+      </DetailSection>
+
+      {/* Leads Section */}
+      <DetailSection title={`Leads (${filteredLeads.length})`} icon={<UserPlus className="h-4 w-4 text-purple-400" />}>
+        {/* Lead Search, Filter & Selection Toolbar */}
+        <div className="space-y-3 mb-4">
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+              <input
+                value={leadSearch}
+                onChange={e => setLeadSearch(e.target.value)}
+                placeholder="Search leads by name, email, phone, or interest..."
+                className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500"
+              />
+              {leadSearch && (
+                <button
+                  onClick={() => setLeadSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {selectedLeadIds.length > 0 && (
+              <div className="flex items-center gap-2 bg-purple-900/30 border border-purple-800/60 px-3 py-1.5 rounded-xl self-start sm:self-auto">
+                <span className="text-xs text-purple-200">
+                  <strong className="text-white font-semibold">{selectedLeadIds.length}</strong> selected
+                </span>
+                <button
+                  onClick={() => setSelectedLeadIds([])}
+                  className="text-xs text-gray-400 hover:text-white px-2 py-0.5 rounded bg-gray-800"
+                >
+                  Clear
+                </button>
+                {onLeadBulkDelete && (
+                  <button
+                    onClick={() => {
+                      onLeadBulkDelete(selectedLeadIds);
+                      setSelectedLeadIds([]);
+                    }}
+                    className="flex items-center gap-1 text-xs text-white bg-red-600 hover:bg-red-500 px-2.5 py-1 rounded-lg font-medium transition-colors"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Delete Selected
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs scrollbar-hide">
+            {[
+              { id: 'all', label: `All (${gym.leads?.length || 0})` },
+              { id: 'new', label: 'New' },
+              { id: 'contacted', label: 'Contacted' },
+              { id: 'trial_scheduled', label: 'Trial Scheduled' },
+              { id: 'trial_completed', label: 'Trial Done' },
+              { id: 'converted', label: 'Converted' },
+              { id: 'lost', label: 'Lost' },
+            ].map(pill => (
+              <button
+                key={pill.id}
+                onClick={() => setLeadStatusFilter(pill.id)}
+                className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                  leadStatusFilter === pill.id
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
+                }`}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {filteredLeads.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[750px] text-sm">
+              <thead>
+                <tr className="text-left text-gray-400 border-b border-gray-700">
+                  <th className="pb-2 pr-3 w-8">
+                    <input
+                      type="checkbox"
+                      checked={visibleLeads.length > 0 && visibleLeads.every(l => selectedLeadIds.includes(l.id))}
+                      onChange={toggleSelectAllLeads}
+                      className="rounded border-gray-600 text-purple-600 focus:ring-purple-500 bg-gray-700 cursor-pointer"
+                    />
+                  </th>
+                  <th className="pb-2 pr-4 font-medium">Name</th>
+                  <th className="pb-2 pr-4 font-medium">Phone</th>
+                  <th className="pb-2 pr-4 font-medium">Email</th>
+                  <th className="pb-2 pr-4 font-medium">Status</th>
+                  <th className="pb-2 pr-4 font-medium">Source</th>
+                  <th className="pb-2 pr-4 font-medium">Interest / Plan</th>
+                  <th className="pb-2 pr-4 font-medium">Next Follow-up</th>
+                  <th className="pb-2 pr-4 font-medium">Created</th>
+                  <th className="pb-2 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700/50">
+                {visibleLeads.map(l => (
+                  <tr key={l.id} className={`hover:bg-gray-800/30 transition-colors ${selectedLeadIds.includes(l.id) ? 'bg-purple-950/20' : ''}`}>
+                    <td className="py-2 pr-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedLeadIds.includes(l.id)}
+                        onChange={() => toggleSelectLead(l.id)}
+                        className="rounded border-gray-600 text-purple-600 focus:ring-purple-500 bg-gray-700 cursor-pointer"
+                      />
+                    </td>
+                    <td className="py-2 pr-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-600 to-orange-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                          {l.full_name?.charAt(0) || 'L'}
+                        </div>
+                        <span className="text-white font-medium">{l.full_name}</span>
+                      </div>
+                    </td>
+                    <td className="py-2 pr-4 text-gray-300 font-mono text-xs">{l.phone}</td>
+                    <td className="py-2 pr-4 text-gray-400 text-xs">{l.email || '—'}</td>
+                    <td className="py-2 pr-4">
+                      <span className={`px-2 py-0.5 text-xs rounded-full capitalize ${statusBadge(l.status)}`}>
+                        {l.status ? l.status.replace('_', ' ') : 'new'}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-4 text-gray-300 text-xs capitalize">
+                      {l.source ? l.source.replace('_', ' ') : 'walk-in'}
+                    </td>
+                    <td className="py-2 pr-4 text-gray-300 text-xs">
+                      {l.interest || l.preferred_plan || '—'}
+                    </td>
+                    <td className="py-2 pr-4 text-xs text-amber-400 whitespace-nowrap">
+                      {l.next_follow_up ? formatDate(l.next_follow_up) : '—'}
+                    </td>
+                    <td className="py-2 pr-4 text-xs text-gray-500 whitespace-nowrap">{formatDate(l.created_at)}</td>
+                    <td className="py-2">
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        {onLeadEdit && (
+                          <button
+                            onClick={() => onLeadEdit(l)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-blue-900/40 hover:bg-blue-900/70 text-blue-300 rounded-lg border border-blue-800/50 transition-colors"
+                            title="Edit Lead"
+                          >
+                            <Edit className="h-3 w-3" /> Edit
+                          </button>
+                        )}
+                        {onLeadDelete && (
+                          <button
+                            onClick={() => onLeadDelete(l)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-red-900/40 hover:bg-red-900/70 text-red-300 rounded-lg border border-red-800/50 transition-colors"
+                            title="Delete Lead"
+                          >
+                            <Trash2 className="h-3 w-3" /> Del
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filteredLeads.length > 50 && (
+              <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
+                <p>
+                  Showing {visibleLeads.length} of {filteredLeads.length} leads
+                </p>
+                <button
+                  onClick={() => setShowAllLeads(!showAllLeads)}
+                  className="text-purple-400 hover:text-purple-300 font-medium transition-colors"
+                >
+                  {showAllLeads ? 'Show first 50 leads' : `Show all ${filteredLeads.length} leads`}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-gray-500 text-sm text-center py-4">
+            {leadSearch || leadStatusFilter !== 'all' ? 'No leads match your filter or search' : 'No leads found in this gym'}
           </p>
         )}
       </DetailSection>

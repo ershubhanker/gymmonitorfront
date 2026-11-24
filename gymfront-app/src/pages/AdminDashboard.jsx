@@ -755,10 +755,14 @@ const AdminDashboard = ({ defaultTab }) => {
       const response = await api.get(`/admin/gyms/${gymId}`);
       setSelectedGym(response.data);
 
-      const membersResponse = await api.get(`/admin/gyms/${gymId}/members?limit=1000`);
+      const [membersResponse, leadsResponse] = await Promise.all([
+        api.get(`/admin/gyms/${gymId}/members?limit=1000`),
+        api.get(`/admin/gyms/${gymId}/leads?limit=1000`).catch(() => ({ data: [] })),
+      ]);
       setSelectedGym((prev) => ({
         ...prev,
         members: membersResponse.data || [],
+        leads: leadsResponse.data || [],
       }));
     } catch (error) {
       console.error('Error fetching gym details:', error);
@@ -831,6 +835,10 @@ const AdminDashboard = ({ defaultTab }) => {
           setSelectedGym((prev) =>
             prev ? { ...prev, members: (prev.members || []).filter((m) => m.id !== currentTarget.id) } : prev
           );
+        } else if (currentTarget.type === 'lead') {
+          setSelectedGym((prev) =>
+            prev ? { ...prev, leads: (prev.leads || []).filter((l) => l.id !== currentTarget.id) } : prev
+          );
         } else if (currentTarget.type === 'staff') {
           setSelectedGym((prev) =>
             prev ? { ...prev, staff: (prev.staff || []).filter((s) => s.id !== currentTarget.id) } : prev
@@ -848,6 +856,40 @@ const AdminDashboard = ({ defaultTab }) => {
       console.error('Delete error:', err);
       const msg = err.response?.data?.detail?.message || err.response?.data?.detail || 'Failed to delete';
       toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
+  };
+
+  const handleLeadBulkDelete = async (ids) => {
+    if (!ids || ids.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${ids.length} selected lead(s)? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const results = await Promise.allSettled(ids.map((id) => api.delete(`/admin/leads/${id}`)));
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+
+      if (succeeded > 0) {
+        toast.success(`${succeeded} lead(s) deleted successfully!`);
+        const deletedSet = new Set(
+          ids.filter((_, idx) => results[idx].status === 'fulfilled')
+        );
+        setSelectedGym((prev) =>
+          prev
+            ? {
+                ...prev,
+                leads: (prev.leads || []).filter((l) => !deletedSet.has(l.id)),
+              }
+            : prev
+        );
+      }
+      if (failed > 0) {
+        toast.error(`Failed to delete ${failed} lead(s)`);
+      }
+    } catch (err) {
+      console.error('Bulk delete leads error:', err);
+      toast.error('Failed to delete leads');
     }
   };
 
@@ -1410,6 +1452,9 @@ const AdminDashboard = ({ defaultTab }) => {
               onMemberEdit={(member) => openEdit('member', member)}
               onMemberDelete={(member) => openDelete('member', member.id, member.full_name, `admin/members/${member.id}`)}
               onMemberBulkDelete={handleMemberBulkDelete}
+              onLeadEdit={(lead) => openEdit('lead', lead)}
+              onLeadDelete={(lead) => openDelete('lead', lead.id, lead.full_name, `admin/leads/${lead.id}`)}
+              onLeadBulkDelete={handleLeadBulkDelete}
               onStaffEdit={(staff) => openEdit('staff', staff)}
               onStaffDelete={(staff) => openDelete('staff', staff.id, staff.name || staff.user?.full_name, `admin/staff/${staff.id}`)}
               onPlanEdit={(plan) => openEdit('plan', plan)}
