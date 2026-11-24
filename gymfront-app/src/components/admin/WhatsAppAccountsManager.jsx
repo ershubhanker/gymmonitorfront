@@ -4,10 +4,143 @@ import {
   MessageSquare, Building2, Phone, CheckCircle2, AlertTriangle,
   RefreshCw, Search, Copy, Check, ExternalLink, Shield, Globe,
   Link as LinkIcon, Unlink, Key, ArrowRight, X, Loader2, Sparkles,
-  PhoneCall, Hash, Info, Smartphone
+  PhoneCall, Hash, Info, Smartphone, ChevronDown
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+
+function SearchableGymInput({
+  gyms = [],
+  value,
+  onChange,
+  placeholder = 'Type to search gym by name, ID, or phone...',
+  required = false
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const wrapperRef = React.useRef(null);
+
+  const selectedGym = gyms.find((g) => String(g.id) === String(value));
+
+  useEffect(() => {
+    if (selectedGym) {
+      setSearchTerm(selectedGym.name || '');
+    } else if (!value) {
+      setSearchTerm('');
+    }
+  }, [value, selectedGym]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredGyms = gyms.filter((g) => {
+    if (!searchTerm.trim()) return true;
+    const q = searchTerm.toLowerCase();
+    const nameMatch = (g.name || '').toLowerCase().includes(q);
+    const idMatch = String(g.id).includes(q);
+    const phoneMatch = (g.phone || '').includes(q) || (g.whatsapp_phone_number || '').includes(q);
+    return nameMatch || idMatch || phoneMatch;
+  });
+
+  const handleSelect = (gym) => {
+    onChange(String(gym.id));
+    setSearchTerm(gym.name || '');
+    setIsOpen(false);
+  };
+
+  const handleClear = () => {
+    onChange('');
+    setSearchTerm('');
+    setIsOpen(true);
+  };
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setIsOpen(true);
+            if (value && e.target.value !== selectedGym?.name) {
+              onChange('');
+            }
+          }}
+          onFocus={() => setIsOpen(true)}
+          placeholder={placeholder}
+          required={required && !value}
+          className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl pl-9 pr-9 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500"
+        />
+        {searchTerm ? (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white p-1 rounded-md"
+            title="Clear selection"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-gray-800 border border-gray-700 rounded-xl shadow-2xl py-1 divide-y divide-gray-700/50">
+          {filteredGyms.length === 0 ? (
+            <div className="px-4 py-3 text-xs text-gray-400 text-center">
+              No gyms found matching "{searchTerm}"
+            </div>
+          ) : (
+            filteredGyms.map((g) => {
+              const isSelected = String(g.id) === String(value);
+              return (
+                <button
+                  type="button"
+                  key={g.id}
+                  onClick={() => handleSelect(g)}
+                  className={`w-full text-left px-3.5 py-2.5 flex items-center justify-between text-xs transition-colors hover:bg-gray-700/70 ${
+                    isSelected ? 'bg-purple-900/40 text-purple-200' : 'text-gray-200'
+                  }`}
+                >
+                  <div className="min-w-0 pr-2">
+                    <div className="font-semibold text-white flex items-center gap-1.5 truncate">
+                      <Building2 className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" />
+                      <span className="truncate">{g.name}</span>
+                      <span className="text-gray-400 font-mono text-[11px]">(ID: #{g.id})</span>
+                    </div>
+                    {(g.phone || g.whatsapp_phone_number) && (
+                      <div className="text-[11px] text-gray-400 font-mono mt-0.5 pl-5 truncate">
+                        Phone: {g.whatsapp_phone_number || g.phone}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {g.is_linked_here && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800">
+                        Linked
+                      </span>
+                    )}
+                    {isSelected && <Check className="h-4 w-4 text-purple-400" />}
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function WhatsAppAccountsManager({ onSelectGym }) {
   const [loading, setLoading] = useState(true);
@@ -669,19 +802,13 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
                 <label className="block text-xs font-medium text-gray-300 mb-1.5">
                   Select Gym in GymMonitor <span className="text-red-400">*</span>
                 </label>
-                <select
+                <SearchableGymInput
+                  gyms={data.gyms || []}
                   value={selectedGymId}
-                  onChange={(e) => setSelectedGymId(e.target.value)}
-                  required
-                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="">-- Choose Gym --</option>
-                  {(data.gyms || []).map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name} (ID: #{g.id}) {g.whatsapp_phone_number ? `• ${g.whatsapp_phone_number}` : ''} {g.is_linked_here ? '★ Already Linked' : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedGymId}
+                  placeholder="Type gym name, ID, or phone to search..."
+                  required={true}
+                />
               </div>
 
               {linkModalAccount.phone_numbers?.length > 0 && (
@@ -853,18 +980,13 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
                 <label className="block text-xs font-medium text-gray-300 mb-1.5">
                   Link Directly to Gym (Optional)
                 </label>
-                <select
+                <SearchableGymInput
+                  gyms={data.gyms || []}
                   value={exchangeGymId}
-                  onChange={(e) => setExchangeGymId(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="">-- Do not link yet (exchange token only) --</option>
-                  {(data.gyms || []).map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name} (ID: #{g.id}) {g.whatsapp_phone_number ? `• ${g.whatsapp_phone_number}` : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setExchangeGymId}
+                  placeholder="Type to search gym to link (or leave empty)..."
+                  required={false}
+                />
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-2">
