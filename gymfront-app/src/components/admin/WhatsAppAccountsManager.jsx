@@ -41,6 +41,13 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
   const [unlinkingGymId, setUnlinkingGymId] = useState(null);
   const [subscribingWabaId, setSubscribingWabaId] = useState(null);
 
+  // Exchange Code Modal State
+  const [showExchangeModal, setShowExchangeModal] = useState(false);
+  const [exchangeCode, setExchangeCode] = useState('');
+  const [exchangeRedirectUri, setExchangeRedirectUri] = useState('');
+  const [exchangeGymId, setExchangeGymId] = useState('');
+  const [submittingExchange, setSubmittingExchange] = useState(false);
+
   const fetchAccounts = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
@@ -173,6 +180,35 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
     }
   };
 
+  const handleExchangeSubmit = async (e) => {
+    e.preventDefault();
+    if (!exchangeCode.trim()) {
+      toast.error('Please enter the authorization code');
+      return;
+    }
+
+    setSubmittingExchange(true);
+    try {
+      const payload = {
+        code: exchangeCode.trim(),
+        redirect_uri: exchangeRedirectUri.trim() || null,
+        gym_id: exchangeGymId ? parseInt(exchangeGymId, 10) : null,
+      };
+      const res = await api.post('/admin/whatsapp/exchange-code', payload);
+      toast.success(res.data?.message || 'Code exchanged successfully!');
+      setShowExchangeModal(false);
+      setExchangeCode('');
+      setExchangeRedirectUri('');
+      setExchangeGymId('');
+      fetchAccounts(true);
+    } catch (err) {
+      console.error('Exchange code error:', err);
+      toast.error(err.response?.data?.detail || 'Failed to exchange code');
+    } finally {
+      setSubmittingExchange(false);
+    }
+  };
+
   // Filter accounts
   const filteredAccounts = (data.accounts || []).filter((acc) => {
     if (filterStatus === 'linked' && !acc.linked_gym) return false;
@@ -221,6 +257,15 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowExchangeModal(true)}
+              className="flex items-center gap-2 px-3.5 py-2 bg-gray-800 hover:bg-gray-700 text-purple-300 rounded-xl text-sm font-medium transition-colors border border-purple-500/40 shadow-md"
+              title="Exchange an authorization code from Meta Developer Console or Embedded Signup"
+            >
+              <Key className="h-4 w-4" />
+              <span>Exchange Auth Code</span>
+            </button>
+
             <button
               onClick={() => fetchAccounts(true)}
               disabled={refreshing || loading}
@@ -744,6 +789,99 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
                 >
                   {submittingRegister ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                   <span>{submittingRegister ? 'Registering...' : 'Register on Meta'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* ── MODAL: EXCHANGE AUTH CODE (MANUAL / META DEV TOOL) ── */}
+      {showExchangeModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative">
+            <button
+              onClick={() => setShowExchangeModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-purple-500/20 text-purple-400 rounded-xl border border-purple-500/30">
+                <Key className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Exchange Authorization Code</h3>
+                <p className="text-xs text-gray-400">
+                  Direct exchange for Meta Embedded Signup authorization code
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleExchangeSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1.5">
+                  Authorization Code (`code`) <span className="text-red-400">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={exchangeCode}
+                  onChange={(e) => setExchangeCode(e.target.value)}
+                  placeholder="Paste the authorization code received from the Meta signup popup..."
+                  required
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1.5">
+                  Redirect URI (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={exchangeRedirectUri}
+                  onChange={(e) => setExchangeRedirectUri(e.target.value)}
+                  placeholder="https://developers.facebook.com/es/oauth/callback/... (only if used in auth)"
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Required only if the code was generated from Meta Developer Console test tool with a redirect URI.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1.5">
+                  Link Directly to Gym (Optional)
+                </label>
+                <select
+                  value={exchangeGymId}
+                  onChange={(e) => setExchangeGymId(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="">-- Do not link yet (exchange token only) --</option>
+                  {(data.gyms || []).map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name} (ID: #{g.id}) {g.whatsapp_phone_number ? `• ${g.whatsapp_phone_number}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExchangeModal(false)}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-sm font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingExchange || !exchangeCode.trim()}
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition-colors flex items-center gap-2 shadow-lg shadow-purple-900/30 disabled:opacity-50"
+                >
+                  {submittingExchange ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  <span>{submittingExchange ? 'Exchanging...' : 'Exchange & Connect'}</span>
                 </button>
               </div>
             </form>
