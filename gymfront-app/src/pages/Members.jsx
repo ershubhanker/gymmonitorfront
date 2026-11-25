@@ -1905,6 +1905,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       }
     }
   
+    setCurrentPage(1);
     invalidateMemberCache();
     clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
     clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
@@ -3524,6 +3525,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
           clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
           clearCachePattern(CACHE_KEYS.MEMBER_STATS);
+          setCurrentPage(1);
           fetchMembers(true);
           fetchStats();
           fetchPlanStats();
