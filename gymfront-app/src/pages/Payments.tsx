@@ -40,6 +40,7 @@ import toast from 'react-hot-toast';
 import { parseUtcDate } from '../utils/dateUtils';
 import CustomDatePicker from '../components/CustomDatePicker';
 import AddPaymentModal from '../components/AddPaymentModal';
+import EditPaymentModal from '../components/EditPaymentModal';
 
 // Helper to extract strictly local YYYY-MM-DD (Asia/Kolkata) from payment date
 const getPaymentLocalDateStr = (paymentDate: any): string => {
@@ -167,13 +168,6 @@ const Payments = () => {
   // Edit-related state
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editForm, setEditForm] = useState({
-    amount: '',
-    payment_date: '',
-    payment_method: 'cash',
-    notes: '',
-  });
-  const [savingEdit, setSavingEdit] = useState(false);
 
   const [summary, setSummary] = useState({
     totalRevenue: 0,
@@ -843,77 +837,7 @@ const Payments = () => {
   // ===== OPEN EDIT PAYMENT MODAL =====
   const handleOpenEditModal = (payment: Payment) => {
     setEditingPayment(payment);
-    const rawAmt = Math.abs(Number(payment.amount) || 0);
-    setEditForm({
-      amount: rawAmt > 0 ? String(rawAmt) : '',
-      payment_date: getPaymentLocalDateStr(payment.payment_date) || getTodayDateStr(),
-      payment_method: (payment.payment_method || 'cash').toLowerCase(),
-      notes: payment.notes || '',
-    });
     setShowEditModal(true);
-  };
-
-  // ===== SAVE EDITED PAYMENT =====
-  const handleSaveEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingPayment) return;
-
-    const numAmount = parseFloat(editForm.amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      toast.error('Please enter a valid amount greater than 0');
-      return;
-    }
-
-    if (!editForm.payment_date) {
-      toast.error('Please select a payment date');
-      return;
-    }
-
-    setSavingEdit(true);
-    try {
-      const payload = {
-        amount: numAmount,
-        payment_date: editForm.payment_date,
-        payment_method: editForm.payment_method,
-        notes: editForm.notes,
-      };
-
-      const response = await api.put(`/gym/payments/${editingPayment.id}`, payload);
-
-      toast.success('Payment updated successfully');
-      setShowEditModal(false);
-      setEditingPayment(null);
-
-      // Refresh payment list & today's summary
-      await fetchPayments();
-      fetchTodaySummary();
-
-      // If edited date falls outside current date range filter, expand the range so it shows
-      if (editForm.payment_date) {
-        if (startDate && editForm.payment_date < startDate) {
-          setStartDate(editForm.payment_date);
-          toast.success(`Date filter expanded to ${editForm.payment_date}`);
-        } else if (endDate && editForm.payment_date > endDate) {
-          setEndDate(editForm.payment_date);
-          toast.success(`Date filter expanded to ${editForm.payment_date}`);
-        }
-      }
-
-      // Notify dashboard & member profiles
-      window.dispatchEvent(new CustomEvent('paymentUpdated', {
-        detail: {
-          paymentId: editingPayment.id,
-          memberId: editingPayment.member_id || response.data?.payment?.member_id,
-          amount: numAmount,
-          paymentDate: editForm.payment_date,
-        }
-      }));
-    } catch (error: any) {
-      console.error('Error updating payment:', error);
-      toast.error(error?.response?.data?.detail || error?.message || 'Failed to update payment');
-    } finally {
-      setSavingEdit(false);
-    }
   };
 
   // ===== SINGLE PAYMENT DELETE =====
@@ -1443,189 +1367,6 @@ const Payments = () => {
               )}
             </button>
           </div>
-        </div>
-      </div>
-    );
-  };
-
-  // ===== EDIT PAYMENT MODAL =====
-  const EditPaymentModal = () => {
-    if (!editingPayment) return null;
-
-    const origAmount = Math.abs(Number(editingPayment.amount) || 0);
-    const currAmount = parseFloat(editForm.amount) || 0;
-    const diff = currAmount - origAmount;
-    const memberName = editingPayment.member_name || editingPayment.member?.full_name || 'Member';
-    const memberPhone = editingPayment.member_phone || editingPayment.member?.phone;
-    const planName = typeof editingPayment.member_plan === 'string' ? editingPayment.member_plan : 'N/A';
-    const txnId = editingPayment.transaction_id || `PAY-${editingPayment.id}`;
-
-    return (
-      <div
-        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-        onClick={() => !savingEdit && setShowEditModal(false)}
-      >
-        <div
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-                <Pencil className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">Edit Payment</h3>
-                <p className="text-xs text-gray-500">Update payment date, amount, method, or notes</p>
-              </div>
-            </div>
-            <button
-              onClick={() => !savingEdit && setShowEditModal(false)}
-              disabled={savingEdit}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* Member & Transaction info banner */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-5">
-            <div className="flex justify-between items-start gap-2">
-              <div>
-                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Member</p>
-                <p className="text-sm font-bold text-slate-800">{memberName}</p>
-                {memberPhone && <p className="text-xs text-slate-500">{memberPhone}</p>}
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Plan / Type</p>
-                <p className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 inline-block mt-0.5">
-                  {planName !== 'N/A' ? planName : (editingPayment.payment_type || 'Membership')}
-                </p>
-              </div>
-            </div>
-            <div className="mt-2 pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs text-slate-600">
-              <span>Txn: <strong className="font-mono">{txnId}</strong></span>
-              <span>Original Amount: <strong>{formatCurrency(origAmount)}</strong></span>
-            </div>
-          </div>
-
-          <form onSubmit={handleSaveEdit} className="space-y-4">
-            {/* Payment Date */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                Payment Date <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={editForm.payment_date}
-                onChange={(e) => setEditForm(prev => ({ ...prev, payment_date: e.target.value }))}
-                required
-                disabled={savingEdit}
-                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-              <p className="text-[11px] text-gray-500 mt-1">
-                The date when this payment was actually received.
-              </p>
-            </div>
-
-            {/* Payment Amount */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                Amount ({currencySymbol}) <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-sm">
-                  {currencySymbol}
-                </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={editForm.amount}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, amount: e.target.value }))}
-                  required
-                  disabled={savingEdit}
-                  placeholder="0.00"
-                  className="w-full pl-9 pr-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-bold text-gray-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                />
-              </div>
-              {diff !== 0 && !isNaN(diff) && (
-                <div className={`mt-1.5 text-xs px-2.5 py-1 rounded-lg flex items-center justify-between font-medium ${
-                  diff > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'
-                }`}>
-                  <span>Adjustment: {diff > 0 ? `+${formatCurrency(diff)}` : `-${formatCurrency(Math.abs(diff))}`}</span>
-                  <span className="text-[11px] opacity-80">
-                    {diff > 0 ? 'Reduces member balance' : 'Increases member balance due'}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Payment Method */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                Payment Method
-              </label>
-              <select
-                value={editForm.payment_method}
-                onChange={(e) => setEditForm(prev => ({ ...prev, payment_method: e.target.value }))}
-                disabled={savingEdit}
-                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all capitalize"
-              >
-                <option value="cash">💰 Cash</option>
-                <option value="upi">📱 UPI</option>
-                <option value="card">💳 Card</option>
-                <option value="bank">🏦 Bank Transfer</option>
-                <option value="online">🌐 Online</option>
-                <option value="other">💵 Other</option>
-              </select>
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                Notes / Remarks
-              </label>
-              <textarea
-                value={editForm.notes}
-                onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
-                disabled={savingEdit}
-                rows={2}
-                placeholder="Reason for edit or payment notes..."
-                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"
-              />
-            </div>
-
-            {/* Actions */}
-            <div className="pt-3 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowEditModal(false)}
-                disabled={savingEdit}
-                className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={savingEdit}
-                className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {savingEdit ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="h-4 w-4" />
-                    Save Changes
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
         </div>
       </div>
     );
@@ -2620,7 +2361,30 @@ const Payments = () => {
       {showDatePicker && <DatePickerModal />}
       {showGstModal && <GstRateModal />}
       {showDeleteConfirm && <DeleteConfirmModal />}
-      {showEditModal && <EditPaymentModal />}
+      {showEditModal && editingPayment && (
+        <EditPaymentModal
+          isOpen={showEditModal}
+          onClose={() => {
+            setShowEditModal(false);
+            setEditingPayment(null);
+          }}
+          payment={editingPayment}
+          currencySymbol={currencySymbol}
+          onPaymentUpdated={async (newPaymentDate) => {
+            await fetchPayments();
+            fetchTodaySummary();
+            if (newPaymentDate) {
+              if (startDate && newPaymentDate < startDate) {
+                setStartDate(newPaymentDate);
+                toast.success(`Date filter expanded to ${newPaymentDate}`);
+              } else if (endDate && newPaymentDate > endDate) {
+                setEndDate(newPaymentDate);
+                toast.success(`Date filter expanded to ${newPaymentDate}`);
+              }
+            }
+          }}
+        />
+      )}
     </div>
   );
 };
