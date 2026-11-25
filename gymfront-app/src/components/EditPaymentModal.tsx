@@ -77,7 +77,9 @@ export default function EditPaymentModal({
   const diff = currAmount - origAmount;
   const memberName = payment.member_name || payment.member?.full_name || 'Member';
   const memberPhone = payment.member_phone || payment.member?.phone;
-  const planName = typeof payment.member_plan === 'string' ? payment.member_plan : 'N/A';
+  const planName = typeof payment.member_plan === 'string' 
+    ? payment.member_plan 
+    : (payment.membership_plan_name || payment.membership?.plan?.name || payment.plan_name || 'N/A');
   const txnId = payment.transaction_id || `PAY-${payment.id}`;
 
   const handleSubmit = async (e: React.FormEvent) => {

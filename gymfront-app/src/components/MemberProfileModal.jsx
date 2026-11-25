@@ -17,6 +17,7 @@ import api, { API_BASE_URL, getMemberTransfers } from '../services/api';
 import toast from 'react-hot-toast';
 import MembershipTransferModal from './MembershipTransferModal';
 import UpgradePlanModal from './UpgradePlanModal';
+import EditPaymentModal from './EditPaymentModal';
 import CameraCapture from './CameraCapture';
 import { parseUtcDate } from '../utils/dateUtils';
 
@@ -779,6 +780,8 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
   });
   const [savingPayment, setSavingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
+  const [selectedPaymentForEdit, setSelectedPaymentForEdit] = useState(null);
+  const [showPaymentEditModal, setShowPaymentEditModal] = useState(false);
 
   // ===== MEMBERSHIP EDIT STATE =====
   const [isEditingMembership, setIsEditingMembership] = useState(false);
@@ -2075,6 +2078,7 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
 
     // Fetch detailed member record and secondary data in parallel without blocking UI
     fetchMemberDetails();
+    fetchPayments();
     fetchComments();
     fetchAttendanceHistory();
     fetchPtSessions();
@@ -2082,6 +2086,26 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
     fetchMemberAddons();
     fetchTransfers();
   }, [memberId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Automatically refresh payment details when payments are edited or added anywhere
+  useEffect(() => {
+    const handlePaymentChange = (e) => {
+      const eventMemberId = e?.detail?.memberId;
+      if (!eventMemberId || String(eventMemberId) === String(memberId)) {
+        fetchMemberDetails();
+        fetchPayments();
+        fetchBalanceDetails();
+      }
+    };
+
+    window.addEventListener('paymentUpdated', handlePaymentChange);
+    window.addEventListener('paymentAdded', handlePaymentChange);
+
+    return () => {
+      window.removeEventListener('paymentUpdated', handlePaymentChange);
+      window.removeEventListener('paymentAdded', handlePaymentChange);
+    };
+  }, [memberId, fetchMemberDetails, fetchPayments, fetchBalanceDetails]);
 
   useEffect(() => {
     const isValidMemberId =
@@ -2505,7 +2529,20 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
             
             {currentMembership && !isEditingPayment && (
               <button
-                onClick={handleEditPaymentClick}
+                onClick={() => {
+                  const memPayment = payments?.find(p => p.membership_id === currentMembership.id) || payments?.[0];
+                  if (memPayment) {
+                    setSelectedPaymentForEdit({
+                      ...memPayment,
+                      member_name: memPayment.member_name || member?.full_name,
+                      member_phone: memPayment.member_phone || member?.phone,
+                      member_plan: memPayment.membership_plan_name || currentMembership?.plan?.name
+                    });
+                    setShowPaymentEditModal(true);
+                  } else {
+                    handleEditPaymentClick();
+                  }
+                }}
                 className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-[10px] font-medium"
               >
                 <Pencil className="h-3 w-3" />
@@ -3975,26 +4012,22 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
                             <td className="px-2 py-1.5 capitalize">{payment.payment_method}</td>
                             <td className="px-2 py-1.5">{getPaymentStatusBadge(payment.status)}</td>
                             <td className="px-2 py-1.5 text-right whitespace-nowrap">
-                            {currentMembership && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleEditPaymentClick();
-                                  setPaymentEditData(prev => ({
-                                    ...prev,
-                                    payment_id: payment.id,
-                                    payment_date: toDateInputValue(payment.payment_date) || prev.payment_date,
-                                    amount_paid: (payment.amount !== undefined && payment.amount !== null ? payment.amount : prev.amount_paid).toString(),
-                                    payment_method: payment.payment_method || prev.payment_method,
-                                    notes: payment.notes || prev.notes
-                                  }));
-                                }}
-                                className="text-purple-600 hover:text-purple-800 p-0.5 rounded hover:bg-purple-50 transition-colors"
-                                title="Edit this payment"
-                              >
-                                <Pencil className="h-3 w-3 inline" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedPaymentForEdit({
+                                  ...payment,
+                                  member_name: payment.member_name || member?.full_name,
+                                  member_phone: payment.member_phone || member?.phone,
+                                  member_plan: payment.membership_plan_name || payment.member_plan || currentMembership?.plan?.name
+                                });
+                                setShowPaymentEditModal(true);
+                              }}
+                              className="text-purple-600 hover:text-purple-800 p-0.5 rounded hover:bg-purple-50 transition-colors"
+                              title="Edit this payment"
+                            >
+                              <Pencil className="h-3 w-3 inline" />
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleDeletePayment(payment.id, payment.amount)}
@@ -4300,6 +4333,27 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
                 fetchPayments(),
                 fetchBalanceDetails(),
                 fetchMembershipHistory(),
+              ]);
+              if (onUpdate) onUpdate();
+            }}
+          />
+        )}
+
+        {/* Edit Individual Payment Modal */}
+        {showPaymentEditModal && selectedPaymentForEdit && (
+          <EditPaymentModal
+            isOpen={showPaymentEditModal}
+            onClose={() => {
+              setShowPaymentEditModal(false);
+              setSelectedPaymentForEdit(null);
+            }}
+            payment={selectedPaymentForEdit}
+            currencySymbol={currencySymbol}
+            onPaymentUpdated={async () => {
+              await Promise.all([
+                fetchMemberDetails(),
+                fetchPayments(),
+                fetchBalanceDetails(),
               ]);
               if (onUpdate) onUpdate();
             }}
