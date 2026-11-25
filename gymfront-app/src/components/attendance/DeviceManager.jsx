@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Trash2, Wifi, WifiOff, Copy, RefreshCw, 
   Eye, EyeOff, Edit, Check, X, AlertCircle, Loader2,
-  DoorOpen, Lock, Unlock, Server, Laptop, HelpCircle
+  DoorOpen, Lock, Unlock, Server, Laptop, HelpCircle,
+  Fingerprint
 } from 'lucide-react';
 import api, { API_BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
@@ -36,6 +37,7 @@ const DeviceManager = () => {
   const [statusLoading, setStatusLoading] = useState({});
   
   const [unlockingDevice, setUnlockingDevice] = useState(null);
+  const [backingUpDevice, setBackingUpDevice] = useState(null);
   const [doorStatuses, setDoorStatuses] = useState({});
   
   const [connectionType, setConnectionType] = useState('bridge');
@@ -469,6 +471,19 @@ const DeviceManager = () => {
     }
   };
 
+  const handleBackupFingerprints = async (device) => {
+    setBackingUpDevice(device.id);
+    const toastId = toast.loading(`Requesting fingerprint backup from ${device.device_name}...`);
+    try {
+      const response = await api.post(`/gym/attendance/devices/${device.id}/backup-fingerprints`);
+      toast.success(response.data?.message || 'Fingerprint backup command queued!', { id: toastId });
+    } catch (error) {
+      toast.error(error.response?.data?.detail || error.message || 'Failed to queue backup command', { id: toastId });
+    } finally {
+      setBackingUpDevice(null);
+    }
+  };
+
   const getDoorStatusDisplay = (deviceId) => {
     const status = doorStatuses[deviceId];
     if (!status) return 'Unknown';
@@ -746,6 +761,26 @@ const DeviceManager = () => {
                       )}
                       {isUnlocking ? 'Unlocking...' : 'Unlock Door'}
                     </button>
+
+                    {device.connection_type === 'server' && (
+                      <button
+                        onClick={() => handleBackupFingerprints(device)}
+                        disabled={backingUpDevice === device.id}
+                        className={`flex-1 px-3 py-2 rounded-lg transition-colors text-sm font-medium ${
+                          backingUpDevice === device.id
+                            ? 'bg-gray-100 text-gray-400 cursor-wait'
+                            : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+                        }`}
+                        title="Back up all fingerprint templates from this machine to the cloud database"
+                      >
+                        {backingUpDevice === device.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
+                        ) : (
+                          <Fingerprint className="h-4 w-4 inline mr-1" />
+                        )}
+                        {backingUpDevice === device.id ? 'Syncing...' : 'Backup Fingers'}
+                      </button>
+                    )}
 
                     
                     <button
