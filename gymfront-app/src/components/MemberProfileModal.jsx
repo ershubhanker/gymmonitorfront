@@ -10,11 +10,13 @@ import {
   Dumbbell, Pencil, Maximize2, Hash, Snowflake,
   Heart, AlertTriangle, Filter, Plus, ChevronDown,
   Percent, Camera, Wifi, Lock, Unlock,
-  ArrowRight, ArrowLeftRight, Upload, Smartphone, Key
+  ArrowRight, ArrowLeftRight, Upload, Smartphone, Key,
+  TrendingUp
 } from 'lucide-react';
 import api, { API_BASE_URL, getMemberTransfers } from '../services/api';
 import toast from 'react-hot-toast';
 import MembershipTransferModal from './MembershipTransferModal';
+import UpgradePlanModal from './UpgradePlanModal';
 import CameraCapture from './CameraCapture';
 import { parseUtcDate } from '../utils/dateUtils';
 
@@ -675,6 +677,9 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transfers, setTransfers] = useState([]);
   const [loadingTransfers, setLoadingTransfers] = useState(false);
+
+  // ===== UPGRADE PLAN STATE =====
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // ===== EDIT STATE =====
   const [isEditing, setIsEditing] = useState(false);
@@ -2517,6 +2522,20 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
                 Membership
               </button>
             )}
+
+            {currentMembership && !isEditingMembership && !isEditingPayment && !isEditing && (
+              <button
+                onClick={() => {
+                  if (!plans || plans.length === 0) fetchPlans();
+                  setShowUpgradeModal(true);
+                }}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-[10px] font-medium shadow-sm"
+                title="Upgrade plan with previous payment credit"
+              >
+                <TrendingUp className="h-3 w-3" />
+                Upgrade Plan
+              </button>
+            )}
           </div>
 
           {/* Freeze Modal - Smaller */}
@@ -3438,6 +3457,18 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
                       <span className="font-medium text-blue-600">{formatDate(currentMembership.next_payment_date)}</span>
                     </div>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!plans || plans.length === 0) fetchPlans();
+                      setShowUpgradeModal(true);
+                    }}
+                    className="w-full mt-2.5 py-1.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg text-xs font-semibold shadow-sm flex items-center justify-center gap-1.5 transition-all"
+                  >
+                    <TrendingUp className="h-3.5 w-3.5" />
+                    Upgrade Plan
+                  </button>
                 </div>
               ) : (
                 <p className="text-xs text-gray-500 text-center py-2">No active membership</p>
@@ -4255,6 +4286,25 @@ const MemberProfileModal = ({ memberId, initialMember = null, initialPlans = [],
             if (onUpdate) onUpdate();
           }}
         />
+
+        {/* Upgrade Plan Modal */}
+        {showUpgradeModal && (
+          <UpgradePlanModal
+            isOpen={showUpgradeModal}
+            onClose={() => setShowUpgradeModal(false)}
+            member={member}
+            plans={plans}
+            onSuccess={async () => {
+              await Promise.all([
+                fetchMemberDetails(),
+                fetchPayments(),
+                fetchBalanceDetails(),
+                fetchMembershipHistory(),
+              ]);
+              if (onUpdate) onUpdate();
+            }}
+          />
+        )}
 
         {/* Addon Payment Modal - Smaller */}
         {showAddonPaymentModal && selectedAddonForPayment && (

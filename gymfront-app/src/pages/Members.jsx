@@ -7,11 +7,12 @@ import {
   Clock, FileText, RefreshCw, Wifi, Loader2, WifiOff,
   FileSpreadsheet, Link, AlertTriangle, Smartphone, User,
   ArrowLeft, ArrowRight, Dumbbell, Send, MoreVertical, Eye, Layers,
-  ChevronDown, Calendar
+  ChevronDown, Calendar, TrendingUp
 } from 'lucide-react';
 import MemberModal from '../components/MemberModal';
 import DeviceSyncModal from '../components/attendance/DeviceSyncModal';
 import MembershipTransferModal from '../components/MembershipTransferModal';
+import UpgradePlanModal from '../components/UpgradePlanModal';
 import toast from 'react-hot-toast';
 import api, { API_BASE_URL, fetchMembersOptimized, fetchMemberStatsOptimized, resendInvoiceWhatsApp } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -656,6 +657,7 @@ const ActionDropdown = ({ member, onAction }) => {
 
   const actions = [
     { id: 'view', label: 'View Profile', icon: Eye, color: 'text-blue-600' },
+    { id: 'upgrade', label: 'Upgrade Plan', icon: TrendingUp, color: 'text-emerald-600' },
     { id: 'invoice', label: 'Download Invoice', icon: FileText, color: 'text-green-600' },
     { id: 'whatsapp', label: 'Resend Invoice', icon: Send, color: 'text-blue-500' },
     { id: 'invoice_action', label: 'Invoice Actions', icon: FileText, color: 'text-amber-600' },
@@ -799,6 +801,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
   // ===== MEMBERSHIP TRANSFER STATE =====
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferMember, setTransferMember] = useState(null);
+
+  // ===== UPGRADE PLAN STATE =====
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeMember, setUpgradeMember] = useState(null);
 
   const [exporting, setExporting] = useState(false);
   const itemsPerPage = 50;
@@ -1554,6 +1560,10 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
     switch(actionId) {
       case 'view':
         openProfileModal(member);
+        break;
+      case 'upgrade':
+        setUpgradeMember(member.raw || member);
+        setShowUpgradeModal(true);
         break;
       case 'invoice':
         handleDownloadInvoice(member);
@@ -3342,6 +3352,17 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                           </button>
                           
                           <button 
+                            onClick={() => {
+                              setUpgradeMember(member.raw || member);
+                              setShowUpgradeModal(true);
+                            }}
+                            className="hidden sm:inline-flex p-1.5 text-emerald-600 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors"
+                            title="Upgrade Plan"
+                          >
+                            <TrendingUp className="h-4 w-4" />
+                          </button>
+
+                          <button 
                             onClick={() => openEditModal(member)} 
                             className="hidden sm:inline-flex p-1.5 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
                             title="Edit Member"
@@ -3464,6 +3485,26 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
             fetchStats();
             fetchPlanStats();
             window.dispatchEvent(new CustomEvent('memberUpdated', { detail: { memberId: selectedMemberForProfile.id } }));
+          }}
+        />
+      )}
+
+      {showUpgradeModal && upgradeMember && (
+        <UpgradePlanModal
+          isOpen={showUpgradeModal}
+          onClose={() => {
+            setShowUpgradeModal(false);
+            setUpgradeMember(null);
+          }}
+          member={upgradeMember}
+          plans={membershipPlans}
+          onSuccess={() => {
+            clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+            clearCachePattern(CACHE_KEYS.MEMBERS_BY_PLAN);
+            clearCachePattern(CACHE_KEYS.MEMBER_STATS);
+            fetchMembers(true);
+            fetchStats();
+            fetchPlanStats();
           }}
         />
       )}

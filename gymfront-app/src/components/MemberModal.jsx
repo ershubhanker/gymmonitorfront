@@ -3287,11 +3287,11 @@ const MemberModal = ({ isOpen, onClose,
                         <RefreshCw className="h-5 w-5 text-blue-600" />
                         <div>
                           <p className="font-medium text-blue-900 text-sm">
-                            {isMemberActive ? 'Renew or Upgrade / Change Plan' : 'Renew Membership'}
+                            {isMemberActive ? 'Renew Membership (New Term Cycle)' : 'Renew Membership'}
                           </p>
                           <p className="text-xs text-blue-600 mt-0.5">
                             {isMemberActive 
-                              ? 'Creates a new membership period or change active plan' 
+                              ? 'Adds a new term cycle for this member (For switching active plans with previous credit, use Upgrade Plan)' 
                               : 'Assign a new membership plan period for this inactive member'}
                           </p>
                         </div>
