@@ -1849,7 +1849,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           amount_paid: paidAmount,
           discount_applied: discount,
           payment_method: payment_method || 'cash',
-          payment_date: payment_date,
+          payment_date: payment_date || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }),
         };
         
         if (dueDate) {
@@ -1887,7 +1887,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           amount_paid: pt_data.amount_paid ? parseFloat(pt_data.amount_paid) : 0,
           notes: pt_data.notes || null,
           payment_method: pt_data.payment_method || 'cash',
-          payment_date: pt_data.payment_date || new Date().toISOString().split('T')[0]
+          payment_date: pt_data.payment_date || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
         };
         
         console.log('📤 Creating personal training session:', ptPayload);
@@ -2013,7 +2013,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           payment_method: payment_method || 'cash',
           current_membership_id: current_membership_id || null,
           is_renewal: true,
-          payment_date: payment_date,
+          payment_date: payment_date || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }),
         };
         
         console.log('📤 Membership renewal payload:', membershipPayload);
@@ -2069,7 +2069,7 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           amount_paid: pt_data.amount_paid ? parseFloat(pt_data.amount_paid) : 0,
           notes: pt_data.notes || null,
           payment_method: pt_data.payment_method || 'cash',
-          payment_date: pt_data.payment_date || new Date().toISOString().split('T')[0]
+          payment_date: pt_data.payment_date || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
         };
         
         console.log('📤 Creating/Updating PT session:', ptPayload);

@@ -654,7 +654,7 @@ const CustomDueDatePicker = ({
 const PaymentDatePicker = ({ value, onChange, disabled }) => {
   const [showPicker, setShowPicker] = useState(false);
   const containerRef = useRef(null);
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -720,7 +720,7 @@ const PaymentDatePicker = ({ value, onChange, disabled }) => {
             <button
               type="button"
               onClick={() => {
-                const todayStr = new Date().toISOString().split('T')[0];
+                const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
                 onChange(todayStr);
                 setShowPicker(false);
               }}
@@ -733,7 +733,7 @@ const PaymentDatePicker = ({ value, onChange, disabled }) => {
               onClick={() => {
                 const yesterday = new Date();
                 yesterday.setDate(yesterday.getDate() - 1);
-                onChange(yesterday.toISOString().split('T')[0]);
+                onChange(yesterday.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }));
                 setShowPicker(false);
               }}
               className="flex-1 py-1.5 text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
@@ -2259,7 +2259,7 @@ const MemberModal = ({ isOpen, onClose,
   prefillData = null 
 
  }) => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
   const isEdit = !!member;
   const isMemberActive = Boolean(
     isEdit &&
@@ -2801,7 +2801,7 @@ const MemberModal = ({ isOpen, onClose,
           discount_applied: discountApplied,
           renew_membership: true,
           custom_due_date: dueDate,
-          payment_date: formData.payment_date,
+          payment_date: formData.payment_date || today,
           pt_data: ptData,
           addons: selectedAddons.map(a => ({
             addon_id: a.id,
@@ -2823,7 +2823,7 @@ const MemberModal = ({ isOpen, onClose,
           amount_paid: amountPaid,
           discount_applied: discountApplied,
           custom_due_date: dueDate,
-          payment_date: formData.payment_date,
+          payment_date: formData.payment_date || today,
           pt_data: ptData,
           addons: selectedAddons.map(a => ({
             addon_id: a.id,
