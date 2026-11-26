@@ -716,35 +716,31 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
 
                     {isLinked ? (
                       <>
-                        {gym.whatsapp_status === 'paused' ? (
-                          <button
-                            onClick={() => handleToggleService(gym.id, true)}
-                            disabled={togglingServiceGymId === gym.id}
-                            className="px-3 py-1.5 bg-emerald-950/70 hover:bg-emerald-900 text-emerald-300 rounded-xl text-xs font-semibold transition-colors border border-emerald-700/60 flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-                            title="Start / Resume WhatsApp messaging service for this gym"
-                          >
-                            {togglingServiceGymId === gym.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Play className="h-3.5 w-3.5 fill-current text-emerald-400" />
-                            )}
-                            <span>Start Service</span>
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleToggleService(gym.id, false)}
-                            disabled={togglingServiceGymId === gym.id}
-                            className="px-3 py-1.5 bg-amber-950/70 hover:bg-amber-900 text-amber-300 rounded-xl text-xs font-semibold transition-colors border border-amber-700/60 flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-                            title="Stop / Pause WhatsApp messaging service for this gym"
-                          >
-                            {togglingServiceGymId === gym.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Pause className="h-3.5 w-3.5 fill-current text-amber-400" />
-                            )}
-                            <span>Stop Service</span>
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleToggleService(gym.id, gym.whatsapp_status === 'paused')}
+                          disabled={togglingServiceGymId === gym.id}
+                          className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+                            gym.whatsapp_status !== 'paused'
+                              ? 'bg-green-900/40 hover:bg-green-900/60 text-green-400 border border-green-700/50 shadow-sm'
+                              : 'bg-red-900/40 hover:bg-red-900/60 text-red-400 border border-red-700/50 shadow-sm'
+                          } ${togglingServiceGymId === gym.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          title={`Toggle WhatsApp service for ${gym.name} (Gym #${gym.id})`}
+                        >
+                          {togglingServiceGymId === gym.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <MessageSquare className="h-3.5 w-3.5" />
+                          )}
+                          <span>WhatsApp {gym.whatsapp_status !== 'paused' ? 'ON' : 'OFF'}</span>
+                          <span className="font-mono text-[10px] px-1.5 py-0.2 bg-black/40 rounded border border-white/10 text-gray-300">
+                            #{gym.id}
+                          </span>
+                          <span
+                            className={`h-2 w-2 rounded-full ${
+                              gym.whatsapp_status !== 'paused' ? 'bg-green-400 animate-pulse' : 'bg-red-400'
+                            } flex-shrink-0`}
+                          />
+                        </button>
 
                         {onSelectGym && (
                           <button
@@ -769,13 +765,28 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
                         </button>
                       </>
                     ) : (
-                      <button
-                        onClick={() => openLinkModal(account)}
-                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-md shadow-emerald-950"
-                      >
-                        <LinkIcon className="h-3.5 w-3.5" />
-                        <span>Link to Gym</span>
-                      </button>
+                      <>
+                        <button
+                          onClick={() => openLinkModal(account)}
+                          className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium bg-red-900/20 hover:bg-red-900/40 text-red-400/80 border border-red-800/40 transition-colors"
+                          title={`WABA ${account.waba_id} is unlinked. Click to link and turn service ON.`}
+                        >
+                          <MessageSquare className="h-3.5 w-3.5 text-red-400" />
+                          <span>WhatsApp OFF</span>
+                          <span className="font-mono text-[10px] px-1.5 py-0.2 bg-black/40 rounded border border-white/10 text-gray-400">
+                            Unlinked
+                          </span>
+                          <span className="h-2 w-2 rounded-full bg-red-400 flex-shrink-0" />
+                        </button>
+
+                        <button
+                          onClick={() => openLinkModal(account)}
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-md shadow-emerald-950"
+                        >
+                          <LinkIcon className="h-3.5 w-3.5" />
+                          <span>Link to Gym</span>
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -800,17 +811,19 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
                         </div>
                         <div className="flex justify-between items-center py-1 border-b border-gray-800/50">
                           <span className="text-gray-400">Messaging Service:</span>
-                          {gym.whatsapp_status === 'paused' ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs bg-amber-950/80 text-amber-300 font-semibold border border-amber-800/60">
-                              <PauseCircle className="h-3.5 w-3.5 text-amber-400" />
-                              Service Stopped / Paused
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs bg-emerald-950/80 text-emerald-300 font-semibold border border-emerald-800/60">
-                              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                              Service Active & Sending
-                            </span>
-                          )}
+                          <button
+                            onClick={() => handleToggleService(gym.id, gym.whatsapp_status === 'paused')}
+                            disabled={togglingServiceGymId === gym.id}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors border ${
+                              gym.whatsapp_status !== 'paused'
+                                ? 'bg-green-900/40 hover:bg-green-900/60 text-green-300 border-green-700/60'
+                                : 'bg-red-900/40 hover:bg-red-900/60 text-red-300 border-red-700/60'
+                            }`}
+                            title={`Click to turn ${gym.whatsapp_status !== 'paused' ? 'OFF' : 'ON'} service for Gym #${gym.id}`}
+                          >
+                            <span className={`h-2 w-2 rounded-full ${gym.whatsapp_status !== 'paused' ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+                            <span>WhatsApp {gym.whatsapp_status !== 'paused' ? 'ON (Active & Sending)' : 'OFF (Service Paused)'}</span>
+                          </button>
                         </div>
                         <div className="flex justify-between items-center py-1 border-b border-gray-800/50">
                           <span className="text-gray-400">Connected Phone:</span>
@@ -870,9 +883,19 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
                                     {phone.display_phone_number || 'No number'}
                                   </span>
                                   {isActiveSender && (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950 text-emerald-300 border border-emerald-700/80 flex items-center gap-1">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                      Active Sender
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1 ${
+                                        gym.whatsapp_status !== 'paused'
+                                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-700/80'
+                                          : 'bg-red-950 text-red-300 border border-red-800/80'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`h-1.5 w-1.5 rounded-full ${
+                                          gym.whatsapp_status !== 'paused' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
+                                        }`}
+                                      />
+                                      {gym.whatsapp_status !== 'paused' ? 'Active Sender (ON)' : 'Active Sender (OFF)'}
                                     </span>
                                   )}
                                   {phone.quality_rating && (
