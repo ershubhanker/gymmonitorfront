@@ -174,6 +174,7 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
   // Unlink State
   const [unlinkingGymId, setUnlinkingGymId] = useState(null);
   const [subscribingWabaId, setSubscribingWabaId] = useState(null);
+  const [checkingSubWabaId, setCheckingSubWabaId] = useState(null);
 
   // Exchange Code Modal State
   const [showExchangeModal, setShowExchangeModal] = useState(false);
@@ -309,6 +310,27 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
       toast.error(err.response?.data?.detail || 'Failed to subscribe webhook');
     } finally {
       setSubscribingWabaId(null);
+    }
+  };
+
+  const handleCheckSubscriptions = async (wabaId) => {
+    setCheckingSubWabaId(wabaId);
+    try {
+      const res = await api.get(`/admin/whatsapp/subscribed-apps/${wabaId}`);
+      const apps = res.data?.data?.data || [];
+      if (apps.length > 0) {
+        const appNames = apps
+          .map((a) => a.whatsapp_business_api_data?.name || `App ID: ${a.whatsapp_business_api_data?.id || 'Unknown'}`)
+          .join(', ');
+        toast.success(`Subscribed to: ${appNames}`);
+      } else {
+        toast('No app currently subscribed to this WABA. Click "Subscribe App" to enable.', { icon: 'ℹ️' });
+      }
+    } catch (err) {
+      console.error('Error checking subscriptions:', err);
+      toast.error(err.response?.data?.detail || 'Failed to check subscriptions');
+    } finally {
+      setCheckingSubWabaId(null);
     }
   };
 
@@ -676,6 +698,20 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
                         <Globe className="h-3.5 w-3.5 text-sky-400" />
                       )}
                       <span>Subscribe App</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleCheckSubscriptions(account.waba_id)}
+                      disabled={checkingSubWabaId === account.waba_id}
+                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-gray-200 rounded-xl text-xs font-medium transition-colors border border-gray-800 flex items-center gap-1.5 disabled:opacity-50"
+                      title="Verify if webhook app is subscribed to this WABA on Meta"
+                    >
+                      {checkingSubWabaId === account.waba_id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Check className="h-3.5 w-3.5 text-emerald-400" />
+                      )}
+                      <span className="hidden sm:inline">Check Webhook</span>
                     </button>
 
                     {isLinked ? (
