@@ -5,7 +5,7 @@ import {
   RefreshCw, Search, Copy, Check, ExternalLink, Shield, Globe,
   Link as LinkIcon, Unlink, Key, ArrowRight, X, Loader2, Sparkles,
   PhoneCall, Hash, Info, Smartphone, ChevronDown, Play, Pause,
-  PauseCircle, PlayCircle, Power
+  PauseCircle, PlayCircle, Power, Send
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -185,6 +185,9 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
   // Toggle Service State
   const [togglingServiceGymId, setTogglingServiceGymId] = useState(null);
 
+  // Set Active Phone State
+  const [settingActivePhoneId, setSettingActivePhoneId] = useState(null);
+
   const fetchAccounts = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
@@ -309,6 +312,24 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
     }
   };
 
+  const handleSetActivePhone = async (gymId, phoneId, wabaId) => {
+    setSettingActivePhoneId(phoneId);
+    try {
+      const res = await api.post('/admin/whatsapp/set-gym-phone', {
+        gym_id: gymId,
+        phone_number_id: phoneId,
+        waba_id: wabaId,
+      });
+      toast.success(res.data?.message || 'Active sending number updated successfully!');
+      fetchAccounts(true);
+    } catch (err) {
+      console.error('Error setting active phone number:', err);
+      toast.error(err.response?.data?.detail || 'Failed to set active sending number');
+    } finally {
+      setSettingActivePhoneId(null);
+    }
+  };
+
   const handleRegisterPhone = async (e) => {
     e.preventDefault();
     if (!registerModalPhone?.id) return;
@@ -318,6 +339,7 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
       const payload = {
         phone_number_id: registerModalPhone.id,
         pin: registrationPin || '123456',
+        gym_id: registerModalPhone.gymId || null,
       };
       const res = await api.post('/admin/whatsapp/register-number', payload);
       toast.success(res.data?.message || 'Phone number registered with Meta!');
@@ -754,12 +776,26 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
                             </span>
                           )}
                         </div>
-                        <div className="flex justify-between items-center py-1">
+                        <div className="flex justify-between items-center py-1 border-b border-gray-800/50">
                           <span className="text-gray-400">Connected Phone:</span>
                           <span className="font-mono text-purple-300 font-medium">
                             {gym.whatsapp_phone_number || '—'}
                           </span>
                         </div>
+                        <div className="flex justify-between items-center py-1">
+                          <span className="text-gray-400">Active Sender ID:</span>
+                          <code className="font-mono text-[11px] text-gray-300 bg-gray-900 px-1.5 py-0.5 rounded border border-gray-800">
+                            {gym.whatsapp_phone_number_id || 'Not Set'}
+                          </code>
+                        </div>
+                        {gym.whatsapp_phone_number_id && !phones.some((p) => p.id === gym.whatsapp_phone_number_id) && (
+                          <div className="mt-2 p-2 bg-amber-950/60 border border-amber-800/70 rounded-lg text-amber-300 text-[11px] flex items-start gap-1.5">
+                            <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                            <span>
+                              Active Sender ID doesn't match any phone number in this WABA (number was likely re-added on Meta). Click <strong>Set as Active Sender</strong> on the new number below to restore sending.
+                            </span>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="py-4 text-center">
@@ -781,58 +817,87 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
                       <p className="text-xs text-gray-500 italic py-2">No phone numbers found on this WABA yet.</p>
                     ) : (
                       <div className="space-y-2">
-                        {phones.map((phone) => (
-                          <div
-                            key={phone.id}
-                            className="bg-gray-900/90 border border-gray-800 rounded-lg p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-                          >
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono text-sm font-bold text-white">
-                                  {phone.display_phone_number || 'No number'}
-                                </span>
-                                {phone.quality_rating && (
-                                  <span
-                                    className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase ${
-                                      phone.quality_rating.toUpperCase() === 'GREEN'
-                                        ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                                        : phone.quality_rating.toUpperCase() === 'YELLOW'
-                                        ? 'bg-amber-950 text-amber-400 border border-amber-800'
-                                        : 'bg-red-950 text-red-400 border border-red-800'
-                                    }`}
-                                  >
-                                    Quality: {phone.quality_rating}
+                        {phones.map((phone) => {
+                          const isActiveSender = isLinked && gym?.whatsapp_phone_number_id === phone.id;
+                          return (
+                            <div
+                              key={phone.id}
+                              className={`border rounded-lg p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition-all ${
+                                isActiveSender
+                                  ? 'bg-emerald-950/20 border-emerald-800/80 shadow-sm'
+                                  : 'bg-gray-900/90 border-gray-800'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-sm font-bold text-white">
+                                    {phone.display_phone_number || 'No number'}
                                   </span>
+                                  {isActiveSender && (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950 text-emerald-300 border border-emerald-700/80 flex items-center gap-1">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                      Active Sender
+                                    </span>
+                                  )}
+                                  {phone.quality_rating && (
+                                    <span
+                                      className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase ${
+                                        phone.quality_rating.toUpperCase() === 'GREEN'
+                                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                                          : phone.quality_rating.toUpperCase() === 'YELLOW'
+                                          ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                                          : 'bg-red-950 text-red-400 border border-red-800'
+                                      }`}
+                                    >
+                                      Quality: {phone.quality_rating}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
+                                  <span>Verified Name: <strong className="text-gray-300">{phone.verified_name || '—'}</strong></span>
+                                  <span>• ID: <code className="font-mono text-gray-300">{phone.id}</code></span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                  onClick={() => copyToClipboard(phone.id, 'Phone Number ID')}
+                                  className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs flex items-center gap-1"
+                                  title="Copy Phone ID"
+                                >
+                                  {copiedText === phone.id ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                                  <span>ID</span>
+                                </button>
+
+                                <button
+                                  onClick={() => setRegisterModalPhone({ ...phone, gymId: isLinked ? gym?.id : null })}
+                                  className="px-2 py-1 bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 border border-purple-700/50 rounded text-xs flex items-center gap-1"
+                                  title="Register phone number with 6-digit PIN on Meta Cloud API"
+                                >
+                                  <Key className="h-3 w-3" />
+                                  <span>Register PIN</span>
+                                </button>
+
+                                {isLinked && !isActiveSender && (
+                                  <button
+                                    onClick={() => handleSetActivePhone(gym.id, phone.id, account.waba_id)}
+                                    disabled={settingActivePhoneId === phone.id}
+                                    className="px-2.5 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/60 rounded text-xs font-medium flex items-center gap-1 transition-colors disabled:opacity-50"
+                                    title={`Set ${phone.display_phone_number || phone.id} as the active sending number for ${gym.name}`}
+                                  >
+                                    {settingActivePhoneId === phone.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Send className="h-3 w-3" />
+                                    )}
+                                    <span>Set as Active Sender</span>
+                                  </button>
                                 )}
                               </div>
-
-                              <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
-                                <span>Verified Name: <strong className="text-gray-300">{phone.verified_name || '—'}</strong></span>
-                                <span>• ID: <code className="font-mono text-gray-300">{phone.id}</code></span>
-                              </div>
                             </div>
-
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => copyToClipboard(phone.id, 'Phone Number ID')}
-                                className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs flex items-center gap-1"
-                                title="Copy Phone ID"
-                              >
-                                {copiedText === phone.id ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                                <span>ID</span>
-                              </button>
-
-                              <button
-                                onClick={() => setRegisterModalPhone(phone)}
-                                className="px-2 py-1 bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 border border-purple-700/50 rounded text-xs flex items-center gap-1"
-                                title="Register phone number with 6-digit PIN on Meta Cloud API"
-                              >
-                                <Key className="h-3 w-3" />
-                                <span>Register PIN</span>
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -968,6 +1033,12 @@ export default function WhatsAppAccountsManager({ onSelectGym }) {
                 <p className="text-[11px] text-gray-500 mt-1">
                   Meta Cloud API requires registering the phone number with a 6-digit PIN before sending messages.
                 </p>
+                {registerModalPhone?.gymId && (
+                  <div className="mt-2.5 p-2.5 bg-emerald-950/40 border border-emerald-800/50 rounded-xl text-emerald-300 text-xs flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                    <span>This phone number will also be automatically set as the active sending number for this gym.</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-2">
