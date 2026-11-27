@@ -2568,7 +2568,9 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
         >
           <p className="text-xs sm:text-sm text-gray-600">Inactive Members</p>
           <p className="text-xl sm:text-2xl font-bold text-gray-600">{showSingleMember ? (singleMemberData?.status === 'inactive' ? 1 : 0) : inactiveCount}</p>
-          <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Click to show inactive</p>
+          <p className="text-[10px] sm:text-xs text-gray-400 mt-1">
+            {filters.status === 'inactive' ? 'Sorted: Recently inactive first' : 'Click to show inactive'}
+          </p>
         </div>
         <div 
           onClick={handleFilterNewThisMonth}
@@ -3035,6 +3037,32 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
                   />
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Active Inactive Members Banner */}
+        {filters.status === 'inactive' && !showSingleMember && !selectedPlanId && !(filters.expiry_from || filters.expiry_to) && (
+          <div className="mt-3 pt-3 border-t">
+            <div className="flex items-center justify-between gap-3 bg-red-50/80 border border-red-200 rounded-lg p-2 sm:p-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+                <p className="text-xs sm:text-sm text-red-900 font-medium">
+                  Showing <strong>Inactive Members</strong> (sorted with <strong>recently expired members on top</strong> for follow-up calls).
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setFilters(prev => ({ ...prev, status: 'all' }));
+                  setCurrentPage(1);
+                  clearCachePattern(CACHE_KEYS.MEMBERS_LIST);
+                  fetchMembers(true);
+                }}
+                className="px-2.5 py-1 text-xs bg-red-100 hover:bg-red-200 text-red-800 rounded-lg transition-colors flex items-center gap-1 font-medium flex-shrink-0"
+              >
+                <X className="h-3 w-3" />
+                Show All
+              </button>
             </div>
           </div>
         )}
