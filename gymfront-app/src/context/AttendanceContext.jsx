@@ -328,12 +328,19 @@ export const AttendanceProvider = ({ children }) => {
     }
 
     try {
-      const response = await api.post(`/attendance/devices/${deviceId}/sync-member`, {
+      const syncPayload = {
         id: member.id,
         full_name: member.full_name,
         phone: member.phone || '',
         email: member.email || '',
-      });
+      };
+      if (options.enroll_finger !== undefined) {
+        syncPayload.enroll_finger = options.enroll_finger;
+      } else if (member.enroll_finger !== undefined) {
+        syncPayload.enroll_finger = member.enroll_finger;
+      }
+
+      const response = await api.post(`/attendance/devices/${deviceId}/sync-member`, syncPayload);
       
       console.log('Sync response:', response.data);
       

@@ -1928,29 +1928,6 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
       } else {
         toast.success(`✅ ${createdMember.full_name} added successfully!`);
       }
-      
-      const autoSyncDevice = devices.find(d => d.is_active);
-      if (createdMember && createdMember.id && autoSyncDevice) {
-        setTimeout(async () => {
-          const result = await syncMemberToDevice(autoSyncDevice.id, createdMember, { silent: true });
-          if (!result?.success) {
-            console.warn('Background device sync skipped/failed (no alert shown):', result?.error);
-          }
-        }, 1500);
-      }
-      
-      const activeDevices = devices.filter(d => d.is_active);
-      if (activeDevices.length > 0) {
-        setTimeout(() => {
-          if (window.confirm(`Would you like to sync "${createdMember.full_name}" to the attendance device now?`)) {
-            setSelectedMemberForSync({
-              id: createdMember.id,
-              full_name: createdMember.full_name,
-            });
-            setShowDeviceSyncModal(true);
-          }
-        }, 500);
-      }
     }
     
     return createdMember;
@@ -2035,8 +2012,8 @@ const Members = ({ initialMemberId, onMemberSelect }) => {
           setTimeout(async () => {
             const result = await syncMemberToDevice(
               renewalSyncDevice.id,
-              { id: memberId, ...memberFields },
-              { silent: true }
+              { id: memberId, ...memberFields, enroll_finger: false },
+              { silent: true, enroll_finger: false }
             );
             if (!result?.success) {
               console.warn('Background device sync skipped/failed (no alert shown):', result?.error);
